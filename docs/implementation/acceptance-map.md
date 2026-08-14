@@ -133,3 +133,13 @@ P0の必須ACは AC-001、003〜008、013〜014、018〜023、025〜026、028〜
 - 全体検証: 16 test files / 79 tests、line 91.36%、branch 81.81%、functions 100%、format/lint/type/build合格。0001〜0010結合テストPASS。
 - 費用: Windows PC内だけ、外部費用・外部CI・公開0件。
 - 未完了: 画像本体の無料PC内非公開Storage、実ファイルのEXIF除去/書出し失敗停止、PWA撮影UI、住所期限、注文等の実API、実iPhone Safari。
+
+## Iteration 16の実証範囲
+
+- 無料Storage: Node.js標準機能だけで、明示されたPC内絶対パス配下へ原本/表示用を分離保存。外部Storage/APIなし。
+- 原本不変: 受信bytesのSHA-256一致、排他的作成、同一bytes再送は再利用、同じkeyの異なるbytesは拒否。`..`等のパス越境も拒否。
+- EXIF除去: JPEGのEXIF/XMP系APP1、APP13、commentを除去。PNGはeXIf/text/time metadata chunkを除去。表示用は別ファイルで原本を変更しない。
+- fail-closed: 壊れたJPEG、未対応変換、書出し失敗は表示ファイル0件。途中ファイルを削除。
+- 自動検証: 17 test files / 83 tests、line 91.36%、branch 81.81%、functions 100%、format/lint/type/build合格。
+- 費用: ライブラリ追加0件、外部費用・外部CI・公開0件。
+- 未完了: upload API/PWA撮影との接続、HEIC/WebPの無料安全変換、実iPhone写真fixture、住所期限、注文等の実API。

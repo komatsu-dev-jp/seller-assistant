@@ -166,3 +166,14 @@
 - 費用: Windows PC内だけ。有料画像API、SaaS、外部CI、公開、デプロイ0件。
 - 未完了: 画像本体の無料PC内非公開Storage、実ファイルの位置EXIF除去と失敗時書出し0件、PWA撮影UI、住所期限、注文等の実API、実iPhone Safari。
 - 次の一手: PC内private mediaディレクトリへ原本を不変保存し、無料の画像処理で位置EXIFを除去した表示派生だけを作るadapterを実装する。
+
+## Iteration 16 — 2026-08-15 無料PC内MediaStoreと位置metadata除去
+
+- 基準値: DB/APIは原本/派生metadataを守れたが、画像bytesを保存・除去する処理はなかった。
+- 実装: `LocalPrivateMediaStore`をNode.js標準機能だけで追加。絶対private root、workspace別key、原本SHA照合、排他的作成、fsync、同一再送、異bytes競合、path traversal拒否を実装した。
+- 派生: JPEGはAPP1/APP13/comment、PNGはeXIf/text/time chunkを除去し、別の表示用keyへ排他的copyする。原本は読み取りだけ。
+- fail-closed: 壊れたJPEGの除去を拒否し、表示先/一時ファイル0件。HEIC/WebPは推測変換せず未対応として停止する。
+- 検証: 合成GPS metadata入りJPEGで原本SHA不変、表示側にGPS文字0件、表示hash一致、容量減少を確認。再送、異bytes、越境、壊れた入力も確認。17 files / 83 tests、format/lint/type/build合格。
+- 費用: 新しい依存0件、Windows PC内のみ。有料画像API、SaaS、外部CI、公開、デプロイ0件。
+- 未完了: upload API/PWA撮影との接続、HEIC/WebPの無料安全変換、実iPhone写真fixture、住所期限、注文等の実API。
+- 次の一手: 認証済みbinary uploadをLocalPrivateMediaStoreへ接続し、保存成功後だけlocation_photo metadataを登録する一体処理を追加する。

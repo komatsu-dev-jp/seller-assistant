@@ -7,3 +7,5 @@ PostgreSQLを確定データの正本として使います。`migrations/0001_p0
 APIの`DATABASE_URL`は、`resale_app_runtime`を付与されたLOGINロールを使います。PostgreSQL管理者、`SUPERUSER`、`BYPASSRLS`、runtime未所属の接続ではAPIが起動を拒否します。migrationと初期owner作成だけは別の管理用接続を使い、通常APIへ管理者URLを渡しません。
 
 通常APIは在庫の場所・状態・移動番号を直接更新できません。未格納の現物を作り、商品ラベルと場所ラベルを人が確認した`scan_session`と`inventory_movement`を同じtransaction（全部成功か全部取消にする処理単位）へ保存した場合だけ、DB triggerが在庫を移動します。格納APIはsessionへ署名されたworkspace以外を拒否し、同じidempotency key（同じ操作の再送を見分ける番号）と同じ内容は同じ結果を返し、内容が変わる再利用は409で拒否します。
+
+場所写真の画像本体は、Node.js標準機能だけの`LocalPrivateMediaStore`でPC内の絶対パス配下へ保存します。原本はSHA-256一致と排他的作成で不変にし、表示用は別ファイルへJPEG/PNGの位置情報を含むmetadataを除去してから保存します。未対応形式・壊れた画像・書出し失敗は表示ファイル0件で停止します。API upload/PWA撮影との接続は未完了です。
