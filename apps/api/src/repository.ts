@@ -1,15 +1,18 @@
 import { createHash, randomUUID } from "node:crypto";
 import postgres from "postgres";
 import type {
+  ApproveLocationPhotoRequest,
   AdvanceP0WorkflowRequest,
   CaptureSummary,
   CreateSkuRequest,
   InventorySummary,
+  LocationPhotoResponse,
   MeasurementResponse,
   MediaAssetResponse,
   P0WorkflowResponse,
   PutawayInventoryRequest,
   PutawayInventoryResponse,
+  RegisterLocationPhotoRequest,
   RecordMeasurementRequest,
   RegisterMediaAssetRequest,
   SessionContextResponse,
@@ -45,6 +48,24 @@ export interface WorkflowRepository {
     actor: RequestActor,
     input: PutawayInventoryRequest,
   ): Promise<PutawayInventoryResponse>;
+  registerLocationPhoto(
+    workspaceId: string,
+    locationId: string,
+    actor: RequestActor,
+    input: RegisterLocationPhotoRequest,
+  ): Promise<LocationPhotoResponse>;
+  approveLocationPhoto(
+    workspaceId: string,
+    locationId: string,
+    photoId: string,
+    actor: RequestActor,
+    input: ApproveLocationPhotoRequest,
+  ): Promise<LocationPhotoResponse>;
+  approvedLocationPhotos(
+    workspaceId: string,
+    locationId: string,
+    actor: RequestActor,
+  ): Promise<LocationPhotoResponse[]>;
   advanceP0Workflow(
     workspaceId: string,
     skuId: string,
@@ -86,6 +107,7 @@ export class InMemoryWorkflowRepository implements WorkflowRepository {
     string,
     { payloadHash: string; result: PutawayInventoryResponse }
   >();
+  private readonly locationPhotos = new Map<string, LocationPhotoResponse>();
 
   sessionContext(actor: RequestActor): Promise<SessionContextResponse> {
     if (!actor.workspaceId) {
@@ -165,6 +187,81 @@ export class InMemoryWorkflowRepository implements WorkflowRepository {
     };
     this.putaways.set(replayKey, { payloadHash, result });
     return Promise.resolve(result);
+  }
+
+  registerLocationPhoto(
+    workspaceId: string,
+    locationId: string,
+    actor: RequestActor,
+    input: RegisterLocationPhotoRequest,
+  ): Promise<LocationPhotoResponse> {
+    const key = `${workspaceId}:${input.photoId}`;
+    if (this.locationPhotos.has(key)) {
+      throw new RepositoryError("conflict", "The location photo ID already exists");
+    }
+    const response: LocationPhotoResponse = {
+      photoId: input.photoId,
+      workspaceId,
+      locationId,
+      photoKind: input.photoKind,
+      reviewState: "pending",
+      originalAssetId: input.originalAssetId,
+      originalSha256: input.originalSha256,
+      derivativeAssetId: null,
+      derivativeSha256: null,
+      derivativeStorageKey: null,
+      gpsExifCount: 0,
+      capturedBy: actor.identityId,
+      capturedAt: input.capturedAt,
+      reviewedBy: null,
+      reviewedAt: null,
+    };
+    this.locationPhotos.set(key, response);
+    return Promise.resolve(response);
+  }
+
+  approveLocationPhoto(
+    workspaceId: string,
+    locationId: string,
+    photoId: string,
+    actor: RequestActor,
+    input: ApproveLocationPhotoRequest,
+  ): Promise<LocationPhotoResponse> {
+    const key = `${workspaceId}:${photoId}`;
+    const current = this.locationPhotos.get(key);
+    if (!current || current.locationId !== locationId) {
+      throw new RepositoryError("forbidden", "The location photo is not available");
+    }
+    if (current.capturedBy === actor.identityId) {
+      throw new RepositoryError("conflict", "The photographer cannot approve the display image");
+    }
+    const approved: LocationPhotoResponse = {
+      ...current,
+      reviewState: "approved",
+      derivativeAssetId: input.derivativeAssetId,
+      derivativeSha256: input.derivativeSha256,
+      derivativeStorageKey: input.derivativeStorageKey,
+      reviewedBy: actor.identityId,
+      reviewedAt: input.reviewedAt,
+    };
+    this.locationPhotos.set(key, approved);
+    return Promise.resolve(approved);
+  }
+
+  approvedLocationPhotos(
+    workspaceId: string,
+    locationId: string,
+    actor: RequestActor,
+  ): Promise<LocationPhotoResponse[]> {
+    void actor;
+    return Promise.resolve(
+      [...this.locationPhotos.values()].filter(
+        (photo) =>
+          photo.workspaceId === workspaceId &&
+          photo.locationId === locationId &&
+          photo.reviewState === "approved",
+      ),
+    );
   }
 
   advanceP0Workflow(
@@ -437,6 +534,24 @@ interface PutawayReplayRow {
   moved_at: Date;
 }
 
+interface LocationPhotoRow {
+  id: string;
+  workspace_id: string;
+  location_id: string;
+  photo_kind: "room" | "shelf" | "exact_position";
+  review_state: "pending" | "approved" | "rejected";
+  original_asset_id: string;
+  original_sha256: string;
+  derivative_asset_id: string | null;
+  derivative_sha256: string | null;
+  derivative_storage_key: string | null;
+  gps_exif_count: number;
+  captured_by: string;
+  captured_at: Date;
+  reviewed_by: string | null;
+  reviewed_at: Date | null;
+}
+
 export class PostgresWorkflowRepository implements WorkflowRepository {
   private readonly sql: postgres.Sql;
 
@@ -682,6 +797,181 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
           idempotencyKey: input.idempotencyKey,
           syncedAt: movedAt.toISOString(),
         };
+      });
+    } catch (error) {
+      throw normalizeDatabaseError(error);
+    }
+  }
+
+  async registerLocationPhoto(
+    workspaceId: string,
+    locationId: string,
+    actor: RequestActor,
+    input: RegisterLocationPhotoRequest,
+  ): Promise<LocationPhotoResponse> {
+    assertLocationPhotoStorageKey(
+      input.originalStorageKey,
+      `workspaces/${workspaceId}/location-originals/`,
+    );
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId);
+        const role = await requireRole(transaction, workspaceId, actor.identityId, [
+          "owner",
+          "inventory_manager",
+          "field_worker",
+        ]);
+        const locations = await transaction<Array<{ id: string }>>`
+          select id from location_node
+          where workspace_id = ${workspaceId} and id = ${locationId}
+        `;
+        if (!locations[0]) {
+          throw new RepositoryError("forbidden", "The location is not available");
+        }
+        if (role === "field_worker") {
+          const assignments = await transaction<Array<{ allowed: boolean }>>`
+            select has_active_work_assignment(
+              ${workspaceId}, ${actor.identityId}, 'photo', ${locationId}, now()
+            ) as allowed
+          `;
+          if (!assignments[0]?.allowed) {
+            throw new RepositoryError(
+              "forbidden",
+              "The field worker cannot photograph this branch",
+            );
+          }
+        }
+        const rows = await transaction<LocationPhotoRow[]>`
+          insert into location_photo (
+            id, workspace_id, location_id, photo_kind, original_asset_id,
+            review_state, gps_exif_count, captured_by, captured_at,
+            original_sha256, original_storage_key, original_mime_type,
+            original_size_bytes, original_width, original_height
+          ) values (
+            ${input.photoId}, ${workspaceId}, ${locationId}, ${input.photoKind},
+            ${input.originalAssetId}, 'pending', 0, ${actor.identityId}, ${input.capturedAt},
+            ${input.originalSha256}, ${input.originalStorageKey}, ${input.mimeType},
+            ${input.sizeBytes}, ${input.width}, ${input.height}
+          )
+          returning id, workspace_id, location_id, photo_kind, review_state,
+                    original_asset_id, original_sha256, derivative_asset_id,
+                    derivative_sha256, derivative_storage_key, gps_exif_count,
+                    captured_by, captured_at, reviewed_by, reviewed_at
+        `;
+        const row = rows[0];
+        if (!row) throw new RepositoryError("database_error", "Photo registration returned no row");
+        await transaction`
+          insert into audit_event (
+            workspace_id, actor_id, action, target_type, target_id,
+            field_names, redacted_changes, reference_ids
+          ) values (
+            ${workspaceId}, ${actor.identityId}, 'location_photo.captured',
+            'location_photo', ${input.photoId},
+            ${["review_state", "photo_kind"]},
+            ${transaction.json({ review_state: { to: "pending" } })},
+            ${[locationId, input.originalAssetId]}
+          )
+        `;
+        return toLocationPhotoResponse(row);
+      });
+    } catch (error) {
+      throw normalizeDatabaseError(error);
+    }
+  }
+
+  async approveLocationPhoto(
+    workspaceId: string,
+    locationId: string,
+    photoId: string,
+    actor: RequestActor,
+    input: ApproveLocationPhotoRequest,
+  ): Promise<LocationPhotoResponse> {
+    assertLocationPhotoStorageKey(
+      input.derivativeStorageKey,
+      `workspaces/${workspaceId}/location-display/`,
+    );
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId);
+        await requireRole(transaction, workspaceId, actor.identityId, [
+          "owner",
+          "inventory_manager",
+        ]);
+        const rows = await transaction<LocationPhotoRow[]>`
+          update location_photo
+          set review_state = 'approved', derivative_asset_id = ${input.derivativeAssetId},
+              derivative_sha256 = ${input.derivativeSha256},
+              derivative_storage_key = ${input.derivativeStorageKey},
+              gps_exif_count = ${input.gpsExifCount}, reviewed_by = ${actor.identityId},
+              reviewed_at = ${input.reviewedAt}, rejection_reason = null
+          where workspace_id = ${workspaceId} and location_id = ${locationId}
+            and id = ${photoId} and review_state = 'pending'
+          returning id, workspace_id, location_id, photo_kind, review_state,
+                    original_asset_id, original_sha256, derivative_asset_id,
+                    derivative_sha256, derivative_storage_key, gps_exif_count,
+                    captured_by, captured_at, reviewed_by, reviewed_at
+        `;
+        const row = rows[0];
+        if (!row) {
+          throw new RepositoryError("conflict", "Only a pending location photo can be approved");
+        }
+        await transaction`
+          insert into audit_event (
+            workspace_id, actor_id, action, target_type, target_id,
+            field_names, redacted_changes, reference_ids
+          ) values (
+            ${workspaceId}, ${actor.identityId}, 'location_photo.approved',
+            'location_photo', ${photoId},
+            ${["review_state", "gps_exif_count"]},
+            ${transaction.json({ review_state: { from: "pending", to: "approved" }, gps_exif_count: { to: 0 } })},
+            ${[locationId, input.derivativeAssetId]}
+          )
+        `;
+        return toLocationPhotoResponse(row);
+      });
+    } catch (error) {
+      throw normalizeDatabaseError(error);
+    }
+  }
+
+  async approvedLocationPhotos(
+    workspaceId: string,
+    locationId: string,
+    actor: RequestActor,
+  ): Promise<LocationPhotoResponse[]> {
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId);
+        const role = await requireRole(transaction, workspaceId, actor.identityId, [
+          "owner",
+          "inventory_manager",
+          "field_worker",
+        ]);
+        if (role === "field_worker") {
+          const assignments = await transaction<Array<{ allowed: boolean }>>`
+            select (
+              has_active_work_assignment(
+                ${workspaceId}, ${actor.identityId}, 'putaway', ${locationId}, now()
+              ) or has_active_work_assignment(
+                ${workspaceId}, ${actor.identityId}, 'photo', ${locationId}, now()
+              )
+            ) as allowed
+          `;
+          if (!assignments[0]?.allowed) {
+            throw new RepositoryError("forbidden", "The location photo is outside this assignment");
+          }
+        }
+        const rows = await transaction<LocationPhotoRow[]>`
+          select id, workspace_id, location_id, photo_kind, review_state,
+                 original_asset_id, original_sha256, derivative_asset_id,
+                 derivative_sha256, derivative_storage_key, gps_exif_count,
+                 captured_by, captured_at, reviewed_by, reviewed_at
+          from location_photo
+          where workspace_id = ${workspaceId} and location_id = ${locationId}
+            and review_state = 'approved'
+          order by photo_kind, reviewed_at desc
+        `;
+        return rows.map(toLocationPhotoResponse);
       });
     } catch (error) {
       throw normalizeDatabaseError(error);
@@ -1104,6 +1394,35 @@ function toPutawayResponse(row: PutawayReplayRow): PutawayInventoryResponse {
     idempotencyKey: row.idempotency_key,
     syncedAt: row.moved_at.toISOString(),
   };
+}
+
+function toLocationPhotoResponse(row: LocationPhotoRow): LocationPhotoResponse {
+  return {
+    photoId: row.id,
+    workspaceId: row.workspace_id,
+    locationId: row.location_id,
+    photoKind: row.photo_kind,
+    reviewState: row.review_state,
+    originalAssetId: row.original_asset_id,
+    originalSha256: row.original_sha256,
+    derivativeAssetId: row.derivative_asset_id,
+    derivativeSha256: row.derivative_sha256,
+    derivativeStorageKey: row.derivative_storage_key,
+    gpsExifCount: 0,
+    capturedBy: row.captured_by,
+    capturedAt: row.captured_at.toISOString(),
+    reviewedBy: row.reviewed_by,
+    reviewedAt: row.reviewed_at?.toISOString() ?? null,
+  };
+}
+
+function assertLocationPhotoStorageKey(value: string, expectedPrefix: string): void {
+  if (!value.startsWith(expectedPrefix) || value.includes("..")) {
+    throw new RepositoryError(
+      "forbidden",
+      "The location photo storage key is outside its workspace",
+    );
+  }
 }
 
 const requiredCaptureRoles: MediaAssetResponse["role"][] = [

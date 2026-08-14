@@ -619,4 +619,79 @@ describe("P0 workspace API", () => {
     });
     expect(foreignEvidence.statusCode).toBe(403);
   });
+
+  it("shows only a separately approved zero-GPS location photo", async () => {
+    const app = buildTestApp();
+    apps.push(app);
+    const locationId = "50000000-0000-4000-8000-000000000001";
+    const photoId = "50000000-0000-4000-8000-000000000002";
+    const captureUrl = `/v1/workspaces/${workspaceId}/locations/${locationId}/photos`;
+    const captured = await app.inject({
+      method: "POST",
+      url: captureUrl,
+      headers: { "x-actor-id": actorId },
+      payload: {
+        photoId,
+        originalAssetId: "50000000-0000-4000-8000-000000000003",
+        photoKind: "exact_position",
+        originalSha256: "a".repeat(64),
+        originalStorageKey: `workspaces/${workspaceId}/location-originals/${photoId}.jpg`,
+        mimeType: "image/jpeg",
+        sizeBytes: 4096,
+        width: 2000,
+        height: 2000,
+        capturedAt: "2026-08-15T01:00:00.000Z",
+        humanConfirmed: true,
+      },
+    });
+    expect(captured.statusCode, captured.body).toBe(201);
+    expect(captured.json()).toMatchObject({ reviewState: "pending", derivativeAssetId: null });
+
+    const beforeApproval = await app.inject({
+      method: "GET",
+      url: captureUrl,
+      headers: { "x-actor-id": actorId },
+    });
+    expect(beforeApproval.json()).toEqual([]);
+
+    const approvalUrl = `${captureUrl}/${photoId}/approval`;
+    const approval = {
+      derivativeAssetId: "50000000-0000-4000-8000-000000000004",
+      derivativeSha256: "b".repeat(64),
+      derivativeStorageKey: `workspaces/${workspaceId}/location-display/${photoId}.jpg`,
+      gpsExifCount: 0,
+      reviewedAt: "2026-08-15T01:05:00.000Z",
+      humanApproved: true,
+    };
+    const selfApproval = await app.inject({
+      method: "POST",
+      url: approvalUrl,
+      headers: { "x-actor-id": actorId },
+      payload: approval,
+    });
+    expect(selfApproval.statusCode).toBe(409);
+
+    const reviewerId = "50000000-0000-4000-8000-000000000005";
+    const approved = await app.inject({
+      method: "POST",
+      url: approvalUrl,
+      headers: { "x-actor-id": reviewerId },
+      payload: approval,
+    });
+    expect(approved.statusCode, approved.body).toBe(200);
+    expect(approved.json()).toMatchObject({
+      reviewState: "approved",
+      gpsExifCount: 0,
+      reviewedBy: reviewerId,
+    });
+
+    const visible = await app.inject({
+      method: "GET",
+      url: captureUrl,
+      headers: { "x-actor-id": actorId },
+    });
+    expect(visible.statusCode).toBe(200);
+    expect(visible.json()).toHaveLength(1);
+    expect(visible.json()[0]).not.toHaveProperty("originalStorageKey");
+  });
 });

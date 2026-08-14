@@ -338,10 +338,15 @@ try {
         insert into work_assignment (
           workspace_id, identity_id, location_root_id, operation,
           starts_at, expires_at, created_by
-        ) values (
-          ${owner.workspaceId}, ${workerId}, ${binBId}, 'putaway',
-          now() - interval '1 minute', now() + interval '1 hour', ${owner.identityId}
-        )
+        ) values
+          (
+            ${owner.workspaceId}, ${workerId}, ${binBId}, 'putaway',
+            now() - interval '1 minute', now() + interval '1 hour', ${owner.identityId}
+          ),
+          (
+            ${owner.workspaceId}, ${workerId}, ${binBId}, 'photo',
+            now() - interval '1 minute', now() + interval '1 hour', ${owner.identityId}
+          )
       `;
     } finally {
       await assignmentAdmin.end({ timeout: 5 });
@@ -392,6 +397,88 @@ try {
       payload: { ...apiPutawayPayload, locationCode: "BIN-A" },
     });
     assert.equal(apiPutawayConflict.statusCode, 409, apiPutawayConflict.body);
+
+    const locationPhotoId = randomUUID();
+    const locationPhotoPayload = {
+      photoId: locationPhotoId,
+      originalAssetId: randomUUID(),
+      photoKind: "exact_position",
+      originalSha256: hashFixture("location-original-bin-b"),
+      originalStorageKey: `workspaces/${owner.workspaceId}/location-originals/${locationPhotoId}.jpg`,
+      mimeType: "image/jpeg",
+      sizeBytes: 4096,
+      width: 2000,
+      height: 2000,
+      capturedAt: new Date().toISOString(),
+      humanConfirmed: true,
+    } as const;
+    const outsidePhotoId = randomUUID();
+    const outsideLocationPhoto = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/locations/${binAId}/photos`,
+      headers: { cookie: workerCookie },
+      payload: {
+        ...locationPhotoPayload,
+        photoId: outsidePhotoId,
+        originalAssetId: randomUUID(),
+        originalStorageKey: `workspaces/${owner.workspaceId}/location-originals/${outsidePhotoId}.jpg`,
+      },
+    });
+    assert.equal(outsideLocationPhoto.statusCode, 403, outsideLocationPhoto.body);
+    const photoCollectionUrl = `/v1/workspaces/${owner.workspaceId}/locations/${binBId}/photos`;
+    const capturedLocationPhoto = await app.inject({
+      method: "POST",
+      url: photoCollectionUrl,
+      headers: { cookie: workerCookie },
+      payload: locationPhotoPayload,
+    });
+    assert.equal(capturedLocationPhoto.statusCode, 201, capturedLocationPhoto.body);
+    assert.equal(capturedLocationPhoto.json<{ reviewState: string }>().reviewState, "pending");
+    const pendingLocationPhotos = await app.inject({
+      method: "GET",
+      url: photoCollectionUrl,
+      headers: { cookie: workerCookie },
+    });
+    assert.deepEqual(pendingLocationPhotos.json(), []);
+    const derivativeAssetId = randomUUID();
+    const approvedLocationPhoto = await app.inject({
+      method: "POST",
+      url: `${photoCollectionUrl}/${locationPhotoId}/approval`,
+      headers: { cookie },
+      payload: {
+        derivativeAssetId,
+        derivativeSha256: hashFixture("location-display-bin-b"),
+        derivativeStorageKey: `workspaces/${owner.workspaceId}/location-display/${locationPhotoId}.jpg`,
+        gpsExifCount: 0,
+        reviewedAt: new Date().toISOString(),
+        humanApproved: true,
+      },
+    });
+    assert.equal(approvedLocationPhoto.statusCode, 200, approvedLocationPhoto.body);
+    assert.deepEqual(approvedLocationPhoto.json<{ reviewState: string; gpsExifCount: number }>(), {
+      ...approvedLocationPhoto.json(),
+      reviewState: "approved",
+      gpsExifCount: 0,
+    });
+    const visibleLocationPhotos = await app.inject({
+      method: "GET",
+      url: photoCollectionUrl,
+      headers: { cookie: workerCookie },
+    });
+    assert.equal(visibleLocationPhotos.statusCode, 200, visibleLocationPhotos.body);
+    assert.equal(visibleLocationPhotos.json<unknown[]>().length, 1);
+    assert.equal(visibleLocationPhotos.body.includes("originalStorageKey"), false);
+    await assert.rejects(
+      () =>
+        inventory.begin(async (transaction) => {
+          await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+          await transaction`
+            update location_photo set original_sha256 = ${hashFixture("tampered")}
+            where workspace_id = ${owner.workspaceId} and id = ${locationPhotoId}
+          `;
+        }),
+      /location photo original metadata is immutable/u,
+    );
 
     async function putaway(
       unitId: string,
@@ -600,5 +687,5 @@ try {
 }
 
 process.stdout.write(
-  "postgres-integration: PASS (restricted role, 22-table RLS matrix, assignment-scoped field worker, login, double scan, capacity, allocation, stocktake, logout)\n",
+  "postgres-integration: PASS (restricted role, 22-table RLS matrix, assignment-scoped field worker, reviewed zero-GPS location photo, login, double scan, capacity, allocation, stocktake, logout)\n",
 );

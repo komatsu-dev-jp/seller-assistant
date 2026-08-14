@@ -92,6 +92,60 @@ export const putawayInventoryResponseSchema = z.object({
   syncedAt: z.iso.datetime(),
 });
 
+export const locationPhotoKindSchema = z.enum(["room", "shelf", "exact_position"]);
+
+export const registerLocationPhotoRequestSchema = z
+  .object({
+    photoId: z.string().uuid(),
+    originalAssetId: z.string().uuid(),
+    photoKind: locationPhotoKindSchema,
+    originalSha256: z.string().regex(/^[a-f0-9]{64}$/u),
+    originalStorageKey: z.string().trim().min(1).max(500),
+    mimeType: z.enum(["image/jpeg", "image/png", "image/webp", "image/heic"]),
+    sizeBytes: z
+      .number()
+      .int()
+      .positive()
+      .max(25 * 1024 * 1024),
+    width: z.number().int().positive().max(12_000),
+    height: z.number().int().positive().max(12_000),
+    capturedAt: z.iso.datetime(),
+    humanConfirmed: z.literal(true),
+  })
+  .strict();
+
+export const approveLocationPhotoRequestSchema = z
+  .object({
+    derivativeAssetId: z.string().uuid(),
+    derivativeSha256: z.string().regex(/^[a-f0-9]{64}$/u),
+    derivativeStorageKey: z.string().trim().min(1).max(500),
+    gpsExifCount: z.literal(0),
+    reviewedAt: z.iso.datetime(),
+    humanApproved: z.literal(true),
+  })
+  .strict();
+
+export const locationPhotoResponseSchema = z.object({
+  photoId: z.string().uuid(),
+  workspaceId: workspaceIdSchema,
+  locationId: z.string().uuid(),
+  photoKind: locationPhotoKindSchema,
+  reviewState: z.enum(["pending", "approved", "rejected"]),
+  originalAssetId: z.string().uuid(),
+  originalSha256: z.string().regex(/^[a-f0-9]{64}$/u),
+  derivativeAssetId: z.string().uuid().nullable(),
+  derivativeSha256: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/u)
+    .nullable(),
+  derivativeStorageKey: z.string().nullable(),
+  gpsExifCount: z.literal(0),
+  capturedBy: z.string().uuid(),
+  capturedAt: z.iso.datetime(),
+  reviewedBy: z.string().uuid().nullable(),
+  reviewedAt: z.iso.datetime().nullable(),
+});
+
 export const apiErrorSchema = z.object({
   code: z.string(),
   message: z.string(),
@@ -220,6 +274,9 @@ export type WorkspaceRole = z.infer<typeof workspaceRoleSchema>;
 export type SessionContextResponse = z.infer<typeof sessionContextResponseSchema>;
 export type PutawayInventoryRequest = z.infer<typeof putawayInventoryRequestSchema>;
 export type PutawayInventoryResponse = z.infer<typeof putawayInventoryResponseSchema>;
+export type RegisterLocationPhotoRequest = z.infer<typeof registerLocationPhotoRequestSchema>;
+export type ApproveLocationPhotoRequest = z.infer<typeof approveLocationPhotoRequestSchema>;
+export type LocationPhotoResponse = z.infer<typeof locationPhotoResponseSchema>;
 export type ApiError = z.infer<typeof apiErrorSchema>;
 export type LoginRequest = z.infer<typeof loginRequestSchema>;
 export type AdvanceP0WorkflowRequest = z.infer<typeof advanceP0WorkflowRequestSchema>;

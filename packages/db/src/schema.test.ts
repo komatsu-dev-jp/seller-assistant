@@ -36,6 +36,10 @@ const workAssignmentMigrationPath = fileURLToPath(
   new URL("../migrations/0009_work_assignment.sql", import.meta.url),
 );
 const workAssignmentSql = readFileSync(workAssignmentMigrationPath, "utf8");
+const locationPhotoReviewMigrationPath = fileURLToPath(
+  new URL("../migrations/0010_location_photo_review.sql", import.meta.url),
+);
+const locationPhotoReviewSql = readFileSync(locationPhotoReviewMigrationPath, "utf8");
 
 describe("P0 PostgreSQL migration contract", () => {
   it("enables and forces workspace RLS for business tables", () => {
@@ -148,5 +152,15 @@ describe("P0 PostgreSQL migration contract", () => {
     expect(workAssignmentSql).toContain("assignment.expires_at > requested_at");
     expect(workAssignmentSql).toContain("assignment.revoked_at is null");
     expect(workAssignmentSql).toContain("grant select on work_assignment to resale_app_runtime");
+  });
+
+  it("keeps location originals immutable and display derivatives separately approved", () => {
+    expect(locationPhotoReviewSql).toContain("original_sha256 text not null");
+    expect(locationPhotoReviewSql).toContain("location-originals/%");
+    expect(locationPhotoReviewSql).toContain("location-display/%");
+    expect(locationPhotoReviewSql).toContain("gps_exif_count = 0");
+    expect(locationPhotoReviewSql).toContain("reviewed_by <> captured_by");
+    expect(locationPhotoReviewSql).toContain("location_photo_original_immutable");
+    expect(locationPhotoReviewSql).toContain("location photo original metadata is immutable");
   });
 });

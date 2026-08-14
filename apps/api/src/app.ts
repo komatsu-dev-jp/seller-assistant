@@ -2,17 +2,20 @@ import Fastify from "fastify";
 import type { IncomingHttpHeaders } from "node:http";
 import {
   apiErrorSchema,
+  approveLocationPhotoRequestSchema,
   advanceP0WorkflowRequestSchema,
   captureSummarySchema,
   createSkuRequestSchema,
   inventorySummarySchema,
   loginRequestSchema,
+  locationPhotoResponseSchema,
   measurementResponseSchema,
   mediaAssetResponseSchema,
   p0WorkflowResponseSchema,
   putawayInventoryRequestSchema,
   putawayInventoryResponseSchema,
   recordMeasurementRequestSchema,
+  registerLocationPhotoRequestSchema,
   registerMediaAssetRequestSchema,
   sessionContextResponseSchema,
   skuResponseSchema,
@@ -215,6 +218,109 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const result = await repository.putawayInventory(workspace.data, actor, input.data);
       return reply.code(201).send(putawayInventoryResponseSchema.parse(result));
+    } catch (error) {
+      const mapped = mapRepositoryError(error, request.id);
+      return reply.code(mapped.status).send(mapped.payload);
+    }
+  });
+
+  app.post<{
+    Params: { workspaceId: string; locationId: string };
+    Body: unknown;
+    Reply: ReturnType<typeof locationPhotoResponseSchema.parse> | ApiError;
+  }>("/v1/workspaces/:workspaceId/locations/:locationId/photos", async (request, reply) => {
+    const workspace = workspaceIdSchema.safeParse(request.params.workspaceId);
+    const location = workspaceIdSchema.safeParse(request.params.locationId);
+    const input = registerLocationPhotoRequestSchema.safeParse(request.body);
+    const actor = await authenticate(request.headers);
+    if (!actor) return reply.code(401).send(authenticationError(request.id));
+    if (!workspace.success || !location.success || !input.success) {
+      return reply.code(400).send(
+        apiErrorSchema.parse({
+          code: "invalid_request",
+          message: "場所、原本写真情報、人の確認を確認してください。",
+          requestId: request.id,
+        }),
+      );
+    }
+    const actorWorkspace = actorWorkspaceError(actor, workspace.data, request.id);
+    if (actorWorkspace) return reply.code(403).send(actorWorkspace);
+    try {
+      const result = await repository.registerLocationPhoto(
+        workspace.data,
+        location.data,
+        actor,
+        input.data,
+      );
+      return reply.code(201).send(locationPhotoResponseSchema.parse(result));
+    } catch (error) {
+      const mapped = mapRepositoryError(error, request.id);
+      return reply.code(mapped.status).send(mapped.payload);
+    }
+  });
+
+  app.post<{
+    Params: { workspaceId: string; locationId: string; photoId: string };
+    Body: unknown;
+    Reply: ReturnType<typeof locationPhotoResponseSchema.parse> | ApiError;
+  }>(
+    "/v1/workspaces/:workspaceId/locations/:locationId/photos/:photoId/approval",
+    async (request, reply) => {
+      const workspace = workspaceIdSchema.safeParse(request.params.workspaceId);
+      const location = workspaceIdSchema.safeParse(request.params.locationId);
+      const photo = workspaceIdSchema.safeParse(request.params.photoId);
+      const input = approveLocationPhotoRequestSchema.safeParse(request.body);
+      const actor = await authenticate(request.headers);
+      if (!actor) return reply.code(401).send(authenticationError(request.id));
+      if (!workspace.success || !location.success || !photo.success || !input.success) {
+        return reply.code(400).send(
+          apiErrorSchema.parse({
+            code: "invalid_request",
+            message: "審査対象、位置情報除去済み派生、人の承認を確認してください。",
+            requestId: request.id,
+          }),
+        );
+      }
+      const actorWorkspace = actorWorkspaceError(actor, workspace.data, request.id);
+      if (actorWorkspace) return reply.code(403).send(actorWorkspace);
+      try {
+        const result = await repository.approveLocationPhoto(
+          workspace.data,
+          location.data,
+          photo.data,
+          actor,
+          input.data,
+        );
+        return reply.send(locationPhotoResponseSchema.parse(result));
+      } catch (error) {
+        const mapped = mapRepositoryError(error, request.id);
+        return reply.code(mapped.status).send(mapped.payload);
+      }
+    },
+  );
+
+  app.get<{
+    Params: { workspaceId: string; locationId: string };
+    Reply: ReturnType<ReturnType<typeof locationPhotoResponseSchema.array>["parse"]> | ApiError;
+  }>("/v1/workspaces/:workspaceId/locations/:locationId/photos", async (request, reply) => {
+    const workspace = workspaceIdSchema.safeParse(request.params.workspaceId);
+    const location = workspaceIdSchema.safeParse(request.params.locationId);
+    const actor = await authenticate(request.headers);
+    if (!actor) return reply.code(401).send(authenticationError(request.id));
+    if (!workspace.success || !location.success) {
+      return reply.code(400).send(
+        apiErrorSchema.parse({
+          code: "invalid_request",
+          message: "場所を確認してください。",
+          requestId: request.id,
+        }),
+      );
+    }
+    const actorWorkspace = actorWorkspaceError(actor, workspace.data, request.id);
+    if (actorWorkspace) return reply.code(403).send(actorWorkspace);
+    try {
+      const result = await repository.approvedLocationPhotos(workspace.data, location.data, actor);
+      return reply.send(locationPhotoResponseSchema.array().parse(result));
     } catch (error) {
       const mapped = mapRepositoryError(error, request.id);
       return reply.code(mapped.status).send(mapped.payload);

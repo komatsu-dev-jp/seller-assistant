@@ -123,3 +123,13 @@ P0の必須ACは AC-001、003〜008、013〜014、018〜023、025〜026、028〜
 - console: 意図的な`/v1/session/context` 403が1件。アプリ例外、画面崩れ、予期しない警告0件。
 - 全体検証: 16 test files / 77 tests、format/lint/type/build合格。外部費用0円。
 - 残り: 場所写真の承認/取得、住所期限、注文等の実API、実iPhone Safari。
+
+## Iteration 15の実証範囲
+
+- 原本: 場所写真ID、原本asset ID/SHA-256/非公開key/形式/容量/画素、撮影者/時刻を保存し、update triggerで変更を拒否。
+- 審査: 撮影時は`pending`で派生なし。撮影者本人は承認不可。owner/inventory_managerが別assetの派生SHA/key、GPS EXIF 0件、人承認を揃えた場合だけ`approved`。
+- 表示: 一覧APIは`approved`だけを返し、原本storage keyを返さない。field_workerは`photo`または`putaway`の有効な担当枝内だけ取得可能。
+- 実DB/API: 担当外撮影403、担当内撮影201、審査中一覧0件、別担当承認200、承認後一覧1件、原本SHA変更拒否を確認。
+- 全体検証: 16 test files / 79 tests、line 91.36%、branch 81.81%、functions 100%、format/lint/type/build合格。0001〜0010結合テストPASS。
+- 費用: Windows PC内だけ、外部費用・外部CI・公開0件。
+- 未完了: 画像本体の無料PC内非公開Storage、実ファイルのEXIF除去/書出し失敗停止、PWA撮影UI、住所期限、注文等の実API、実iPhone Safari。

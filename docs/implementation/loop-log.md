@@ -155,3 +155,14 @@
 - 費用: Windows PC内だけ。外部費用、有料API、外部CI、公開、デプロイ0件。
 - 残る問題: 場所写真の承認/取得、住所期限、注文等の実API、実iPhone Safariは未完了。
 - 次の一手: 場所写真の原本・審査・GPS除去済み派生・担当枝内取得を実装する。
+
+## Iteration 15 — 2026-08-15 場所写真の原本・審査・担当枝内表示
+
+- 基準値: 在庫画面に部屋/位置写真のモックはあったが、実API/DBでは原本不変、審査中非表示、別担当承認、GPS除去済み派生、担当枝を一つに結合していなかった。
+- 実装: 場所写真の原本/派生metadata、撮影者/承認者、審査状態をlocation_photoへ追加。原本変更拒否trigger、workspace内key、原本/表示用prefix分離、承認時GPS 0件と撮影者≠承認者をDB制約化した。
+- API: 担当枝の`photo`作業だけ撮影登録、owner/inventory_managerだけ承認、担当枝内だけ承認済み一覧取得。審査中/差戻しは一覧0件で、原本storage keyも応答しない。
+- 実DB: field_workerの担当外BIN-A撮影403、担当内BIN-B撮影201、pending一覧0、owner承認200、approved一覧1、原本SHA update拒否。0001〜0010を新規DBへ適用して結合テストPASS。
+- 自動検証: 16 test files / 79 tests、line 91.36%、branch 81.81%、functions 100%、format/lint/type/build合格。
+- 費用: Windows PC内だけ。有料画像API、SaaS、外部CI、公開、デプロイ0件。
+- 未完了: 画像本体の無料PC内非公開Storage、実ファイルの位置EXIF除去と失敗時書出し0件、PWA撮影UI、住所期限、注文等の実API、実iPhone Safari。
+- 次の一手: PC内private mediaディレクトリへ原本を不変保存し、無料の画像処理で位置EXIFを除去した表示派生だけを作るadapterを実装する。
