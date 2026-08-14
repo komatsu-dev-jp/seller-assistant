@@ -55,8 +55,12 @@
 
 ## 実装と検証
 
-- 現時点では、実装方式や `package.json` などのpackage manifest（依存関係と実行コマンドを定義するファイル）が未確定です。存在しないlint・test・buildコマンドを作りません。
-- Goal開始時に実際のpackage manifestと技術構成を確認し、この節へ正しいセットアップ、lint、test、build、安全確認コマンドを追記します。
+- Node.js 24以上とnpm 11以上を使い、最初に `npm install` で固定済み依存を導入します。
+- Web開発画面は `npm run dev:web`、API開発サーバーは `npm run dev:api` で起動します。
+- 整形確認は `npm run format:check`、静的解析は `npm run lint`、型確認は `npm run typecheck` です。
+- 単体・契約テストと網羅率は `npm run test`、本番用ビルドは `npm run build` です。
+- 提出前は `npm run check` を実行し、整形、静的解析、型、テスト、Web/API buildを連続で合格させます。
+- iOSはmacOS上のXcodeでSwiftコンパイル、XCTest、シミュレーター、iPhone 16 Pro実機確認を行います。Windows上の未実行を合格扱いしません。
 - コードや設定を変更した場合は、影響に応じた実際の検証を行い、コマンド、結果、未確認範囲を報告します。
 - ドキュメントだけの変更では、対象パス、Markdown構造、参照先、機密情報の不在を確認します。
 - 実行できなかった検証を成功扱いにしません。

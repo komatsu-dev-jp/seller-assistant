@@ -1,0 +1,18 @@
+name: iOS validation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Explain current gate
+        run: |
+          echo "iOS project and XCTest command will be enabled after the SwiftUI target is added."
+          echo "This workflow is manual so it cannot consume paid macOS minutes without an explicit run."

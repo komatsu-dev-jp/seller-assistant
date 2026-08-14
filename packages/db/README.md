@@ -1,0 +1,5 @@
+# Database
+
+PostgreSQLを確定データの正本として使います。`migrations/0001_p0_core.sql` がP0の初期migration（データベース構造を再現可能に変更するSQL）です。
+
+現時点の自動テストは、必須テーブル・RLS・一意制約・監査禁止列がmigrationに含まれることを検査します。実際のPostgreSQLでの構文、同時transaction、RLS越境否定テストは、接続先を決定した後のP0ゲートで必ず実行します。静的なSQL検査だけをDB合格証拠にはしません。

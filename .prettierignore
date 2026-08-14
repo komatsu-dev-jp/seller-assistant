@@ -1,0 +1,7 @@
+docs/design/*.png
+node_modules
+.next
+dist
+coverage
+_worktrees
+package-lock.json

@@ -1,6 +1,6 @@
 # フリマ物販業務アプリ（仮称）｜技術アーキテクチャ v1
 
-- 状態: Goal開始前・在庫ロケーション反映済み・Notion同期/独立再レビューPASS・ユーザー最終確認待ち
+- 状態: Goal開始・P0実装中（Slack最終承認 `1786721887.034329`、2026-08-15 JST）
 - 更新日: 2026-08-14（JST）
 - 方針: iOSは現場作業、PC Webは高密度管理、サーバーを唯一の確定データ源にする
 
@@ -11,7 +11,7 @@
 | 領域 | 推奨 | 理由 | 弱点・確認点 |
 |---|---|---|---|
 | iOS | SwiftUI + VisionKit DataScanner/Vision/AVFoundation/Photos/App Intents | iPhoneのOCR、商品・場所コード読取、カメラ、写真、ショートカットを公式機能で扱いやすい | Windowsではビルド不可。対応端末確認とmacOS CIまたはMacが必要 |
-| Web | Next.js + React + TypeScript | PC業務画面、認証、サーバー描画、テスト資産が豊富 | バージョンはGoal開始時に公式サポート状況を確認 |
+| Web | Next.js 16.3.1 + React 19.2.8 + TypeScript 5.9.3 | PC業務画面、認証、サーバー描画、テスト資産が豊富 | `package-lock.json`で固定。更新時に互換性を再確認 |
 | API | Node.js + TypeScriptの独立API | iOSとWebで同じ業務ルールを使える | Webだけより構成要素が増える |
 | 契約 | OpenAPI + JSON Schema | APIの入出力を機械検証し、Swiftクライアントも生成可能 | 生成物の版管理が必要 |
 | DB | PostgreSQL | 取引、在庫、監査、権限、集計を一貫して扱える | 運用・バックアップが必要 |
@@ -26,7 +26,7 @@
 - WebをPWAだけにする: Windowsで検証しやすいが、ショートカット・端末内OCR・写真処理の体験が弱く、iOS要件を満たしにくい。
 - Firebase: モバイル連携は強いが、在庫・会計・監査の関係データと複雑な集計はPostgreSQLの方が自然。
 
-正確なバージョン、料金、利用可能リージョンは未固定。Goal開始時に公式資料を再確認し、lockfile（依存版を固定するファイル）で固定する。
+実装依存は `package-lock.json`（依存版を固定するファイル）で固定した。PostgreSQL/Auth/Storage/AIの提供事業者、料金、利用可能リージョンは未決定で、契約・接続前に公式資料を再確認する。
 
 ## 2. モノレポ構成案
 

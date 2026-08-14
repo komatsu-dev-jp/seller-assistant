@@ -1,0 +1,41 @@
+{
+  "name": "resale-ops-app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0",
+    "npm": ">=11.0.0"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace @resale/web",
+    "dev:web": "npm run dev --workspace @resale/web",
+    "dev:api": "npm run dev --workspace @resale/api",
+    "build:packages": "npm run build --workspace @resale/domain && npm run build --workspace @resale/contracts",
+    "lint": "npm run build:packages && eslint .",
+    "format:check": "prettier --check \"apps/**/*.{ts,tsx,css,json,md}\" \"packages/**/*.{ts,tsx,json,md}\" \"docs/implementation/**/*.md\" \".github/**/*.yml\" package.json tsconfig.base.json vitest.config.ts eslint.config.mjs README.md",
+    "format": "prettier --write \"apps/**/*.{ts,tsx,css,json,md}\" \"packages/**/*.{ts,tsx,json,md}\" \"docs/implementation/**/*.md\" \".github/**/*.yml\" package.json tsconfig.base.json vitest.config.ts eslint.config.mjs README.md",
+    "typecheck": "npm run build:packages && npm run typecheck --workspaces --if-present",
+    "test": "vitest run --coverage",
+    "test:watch": "vitest",
+    "build": "npm run build --workspace @resale/domain && npm run build --workspace @resale/contracts && npm run build --workspace @resale/api && npm run build --workspace @resale/web",
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm run test && npm run build"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "24.10.2",
+    "@vitest/coverage-v8": "4.1.10",
+    "eslint": "10.8.1",
+    "prettier": "3.9.6",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.67.0",
+    "vitest": "4.1.10"
+  },
+  "overrides": {
+    "esbuild": "0.28.2"
+  }
+}
