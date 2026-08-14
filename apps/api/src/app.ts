@@ -6,6 +6,7 @@ import {
   captureSummarySchema,
   createSkuRequestSchema,
   inventorySummarySchema,
+  loginRequestSchema,
   measurementResponseSchema,
   mediaAssetResponseSchema,
   p0WorkflowResponseSchema,
@@ -23,6 +24,7 @@ import {
   type WorkflowRepository,
 } from "./repository.js";
 import { serializeClearedSessionCookie } from "./session.js";
+import type { LoginService } from "./auth.js";
 
 interface BuildAppOptions {
   repository?: WorkflowRepository;
@@ -32,6 +34,7 @@ interface BuildAppOptions {
   revokeSession?: (actor: RequestActor) => Promise<void>;
   closeAuthentication?: () => Promise<void>;
   validateWriteOrigin?: (headers: IncomingHttpHeaders) => boolean;
+  loginService?: LoginService;
 }
 
 export function buildApp(options: BuildAppOptions = {}) {
@@ -59,6 +62,7 @@ export function buildApp(options: BuildAppOptions = {}) {
   app.addHook("onClose", async () => {
     await repository.close();
     await options.closeAuthentication?.();
+    await options.loginService?.close();
   });
 
   app.get<{ Reply: HealthResponse }>("/health", () => ({
@@ -66,6 +70,54 @@ export function buildApp(options: BuildAppOptions = {}) {
     service: "resale-ops-api",
     time: new Date().toISOString(),
   }));
+
+  app.post<{ Body: unknown; Reply: ApiError | undefined }>(
+    "/v1/session/login",
+    async (request, reply) => {
+      const input = loginRequestSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(
+          apiErrorSchema.parse({
+            code: "invalid_request",
+            message: "メールアドレスと12〜128文字のパスワードを確認してください。",
+            requestId: request.id,
+          }),
+        );
+      }
+      if (!options.loginService) {
+        return reply.code(503).send(
+          apiErrorSchema.parse({
+            code: "login_unavailable",
+            message: "ログイン基盤が未接続です。",
+            requestId: request.id,
+          }),
+        );
+      }
+      const result = await options.loginService.login(input.data, request.ip);
+      if (result.kind === "rate_limited") {
+        return reply
+          .header("retry-after", String(result.retryAfterSeconds ?? 900))
+          .code(429)
+          .send(
+            apiErrorSchema.parse({
+              code: "login_rate_limited",
+              message: "ログイン試行が多いため、時間を置いて再実行してください。",
+              requestId: request.id,
+            }),
+          );
+      }
+      if (result.kind === "invalid" || !result.setCookie) {
+        return reply.code(401).send(
+          apiErrorSchema.parse({
+            code: "invalid_credentials",
+            message: "メールアドレスまたはパスワードを確認してください。",
+            requestId: request.id,
+          }),
+        );
+      }
+      return reply.header("set-cookie", result.setCookie).code(204).send(undefined);
+    },
+  );
 
   app.post<{
     Params: { workspaceId: string };

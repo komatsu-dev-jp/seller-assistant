@@ -2,6 +2,7 @@ import { buildApp } from "./app.js";
 import { PostgresWorkflowRepository } from "./repository.js";
 import { createCookieAuthenticator, PostgresSessionRegistry } from "./session.js";
 import { createWriteOriginValidator } from "./security.js";
+import { PostgresLoginService } from "./auth.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 const sessionSecret = process.env.SESSION_SECRET;
@@ -28,6 +29,7 @@ const app = buildApp({
   },
   closeAuthentication: async () => sessionRegistry.close(),
   validateWriteOrigin: createWriteOriginValidator(appOrigin),
+  loginService: new PostgresLoginService(databaseUrl, sessionSecret),
 });
 const port = Number(process.env.PORT ?? 3100);
 

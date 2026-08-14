@@ -13,6 +13,107 @@
   font-family: Inter, "Hiragino Sans", "Yu Gothic UI", sans-serif;
 }
 
+/* Zero-cost login */
+.loginPage {
+  min-height: 100dvh;
+  padding: 28px 18px;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 10% 10%, rgb(45 105 246 / 16%), transparent 35%), #f2f5f9;
+}
+.loginCard {
+  width: min(440px, 100%);
+  padding: 34px;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  box-shadow: 0 24px 70px rgb(19 33 58 / 14%);
+}
+.loginBrand {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  color: white;
+  background: var(--ink);
+  border-radius: 13px;
+  font-size: 21px;
+  font-weight: 1000;
+}
+.loginBrand span {
+  color: #75a6ff;
+}
+.loginCard h1 {
+  margin: 7px 0 9px;
+  font-size: 28px;
+}
+.loginLead,
+.loginSafety {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+.loginForm {
+  margin-top: 24px;
+  display: grid;
+  gap: 16px;
+}
+.loginForm label {
+  display: grid;
+  gap: 7px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 900;
+}
+.loginForm input {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 13px;
+  border: 1px solid #b8c3d2;
+  border-radius: 10px;
+  font: inherit;
+  font-size: 16px;
+}
+.loginForm input:focus-visible {
+  outline: 3px solid rgb(42 103 246 / 30%);
+  border-color: var(--blue);
+}
+.loginForm button {
+  min-height: 48px;
+  color: white;
+  background: var(--blue);
+  border: 0;
+  border-radius: 10px;
+  font-weight: 900;
+}
+.loginForm button:disabled {
+  background: #91a6c4;
+}
+.loginForm [role="alert"] {
+  margin: 0;
+  padding: 10px 12px;
+  color: #a42727;
+  background: #fff0f0;
+  border-radius: 9px;
+  font-size: 12px;
+  font-weight: 800;
+}
+.loginSafety {
+  margin: 18px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  text-align: center;
+}
+
+@media (max-width: 480px) {
+  .loginPage {
+    padding: 16px;
+  }
+  .loginCard {
+    padding: 25px 20px;
+  }
+}
+
 * {
   box-sizing: border-box;
 }

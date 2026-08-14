@@ -105,3 +105,14 @@ APIキー、トークン、個人情報、生ログ、会話全文、一時的�
 - Applies to: 製品仕様、技術設計、Goal、モバイルUI、オフライン、カメラ、QR/手入力、CI、受け入れ条件
 - Supersedes: ネイティブiOSを前提にした技術選定・macOS開始条件・iOS固有のAC/TA。承認済みモバイル画面の情報設計はPWAへ移植する。
 - Evidence: ユーザー会話「絶対無料でお願いします。あとiOSアプリと言いましたが、まだMacがないので Webサイトをアプリとして表示レベルで構いません」
+
+### 2026-08-15 — P0ログインをNode.js標準scryptで無料実装する
+
+- Type: decision
+- Context: 外部認証SaaSを使わず、PWA/Webへ安全なログインを追加する。
+- Decision or rule: Node.js標準`crypto.scrypt`をN=2^17、r=8、p=1、16-byte random salt、32-byte hashで使う。平文passwordを保存・記録せず、5回失敗は15分停止する。CookieはHttpOnly/Secure/SameSite=Strictとする。
+- Why: 外部費用0円を守りつつ、高速hashではなくメモリ負荷のあるpassword専用hashを使い、DB流出時の推測攻撃を難しくするため。
+- Applies to: `apps/api/src/auth.ts`、認証migration、ログインAPI/Web中継、初期owner作成。
+- Verification: 公式Node.js Crypto文書とOWASP Password Storage Cheat Sheetを2026-08-15に確認。自動testと実画面で平文非保存、共通失敗、rate limit、Cookie、未接続停止を確認する。
+- Sources: https://nodejs.org/api/crypto.html / https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html
+- Follow-up: 実PostgreSQLを無料のローカル環境へ用意し、初期owner、session、rate limit、membership/RLSを結合検証する。

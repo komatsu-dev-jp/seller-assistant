@@ -72,3 +72,15 @@
 - 検証: Origin欠落、攻撃者origin、似たドメインを403拒否。正確なoriginだけ201。13 test files / 60 tests合格、typecheck、lint合格。
 - 残る問題: 実リバースプロキシ構成、ログイン発行、実DB membership/RLSは未確認。
 - 次の一手: 初期ownerとログイン発行を実装し、role別の許可/拒否をsessionからDBまで通す。
+
+## Iteration 8 — 2026-08-15 無料ログイン発行
+
+- 基準値: 署名済みsessionの検証と失効はあったが、利用者がpasswordでsessionを発行する入口がなかった。
+- 最大の問題: 外部認証SaaSなしで平文passwordを保存せず、総当たりを抑止する必要があった。
+- 根拠: Node.js公式`crypto.scrypt`とOWASP Password Storage Cheat Sheetを確認し、scrypt N=2^17/r=8/p=1、16-byte random saltを採用した。
+- 実装: `auth_credential`、HMAC化した`auth_login_bucket`、password hash/verify、共通401、5回/15分rate limit、8時間session発行、同一URLのWeb中継、`/login`を追加した。公開bootstrap APIは作らず、DB lock付きの対話型CLIで最初のownerを1人だけ作る。
+- 安全境界: passwordをURL、localStorage、sessionStorage、IndexedDB、Service Worker cache、応答本文、ログへ保存しない。API/Origin未接続は503で停止する。
+- 自動検証: `npm.cmd run check`と`git diff --check`が合格。15 test files / 69 tests、line 91.36%、branch 81.81%、function 100%。
+- 実画面: PCと390×844で表示・入力・未接続エラーを確認。`role=alert`あり、横あふれなし。証拠は`output/playwright/login-desktop.png`、`login-mobile.png`、`login-mobile-api-error.png`。
+- 残る問題: 実PostgreSQLがないためbootstrap/credential/session/rate-limitの結合動作は未確認。認証後の画面保護も未実装。
+- 次の一手: 無料の実PostgreSQL検証方法を確保し、sessionからmembership/RLSまで結合確認する。

@@ -43,6 +43,17 @@ describe("zero-cost PWA contract", () => {
     expect(proxy).not.toMatch(/console\.|localStorage|sessionStorage/u);
   });
 
+  it("keeps login passwords out of URL and browser storage", () => {
+    const form = readFileSync(resolve("apps/web/src/components/login-form.tsx"), "utf8");
+    const proxy = readFileSync(resolve("apps/web/src/app/v1/session/login/route.ts"), "utf8");
+    expect(form).toContain('type="password"');
+    expect(form).toContain('fetch("/v1/session/login"');
+    expect(form).toContain('method: "POST"');
+    expect(form).not.toMatch(/localStorage|sessionStorage|indexedDB|URLSearchParams/u);
+    expect(proxy).not.toMatch(/console\.|localStorage|sessionStorage/u);
+    expect(proxy).toContain('cache: "no-store"');
+  });
+
   it("keeps external CI manual and free of macOS jobs", () => {
     const workflow = readFileSync(resolve(".github/workflows/ci.yml"), "utf8");
     expect(workflow).toContain("workflow_dispatch:");

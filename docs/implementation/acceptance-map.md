@@ -8,16 +8,16 @@
 
 P0の必須ACは AC-001、003〜008、013〜014、018〜023、025〜026、028〜034、042〜055。各行へ実装、テスト、実画面証拠を追加し、すべて合格するまでP1へ進まない。
 
-| 範囲        | 実装先                         | 自動検証                      | 手動・画面証拠       | 状態                   |
-| ----------- | ------------------------------ | ----------------------------- | -------------------- | ---------------------- |
-| AC-001〜009 | domain/contracts、API、Web/PWA | unit/API                      | P0仕入・撮影・採寸   | 原本/採寸APIまで実装   |
-| AC-010〜017 | media/listing/price adapters   | unit/contract                 | 原本比較・本人引渡し | 未着手                 |
-| AC-018〜020 | inventory/order/shipping       | concurrency/API               | 二重読取・発送・返品 | 注文〜発送縦導線実装済 |
-| AC-021〜024 | finance/accounting/Notion      | fixture/schema                | 収益・CSV・同期確認  | 収支/会計CSV部分実装   |
-| AC-025〜028 | UI/監査/品質                   | a11y/security/all suites      | PC/iPhone PWA実画面  | 署名Cookie/画面部分済  |
-| AC-029〜041 | 財務・冪等・機密・CSV・旧資産  | fixture/contract/security     | 出力内容確認         | 財務/冪等/API部分実装  |
-| AC-042〜055 | inventory/location/count       | DB/domain/concurrency         | M12/W10導線          | domain/SQL/W10部分実装 |
-| TA-001〜037 | architecture/CI/security       | type/lint/test/build/contract | platform checklist   | 基盤/SQL部分実装       |
+| 範囲        | 実装先                         | 自動検証                      | 手動・画面証拠       | 状態                      |
+| ----------- | ------------------------------ | ----------------------------- | -------------------- | ------------------------- |
+| AC-001〜009 | domain/contracts、API、Web/PWA | unit/API                      | P0仕入・撮影・採寸   | 原本/採寸APIまで実装      |
+| AC-010〜017 | media/listing/price adapters   | unit/contract                 | 原本比較・本人引渡し | 未着手                    |
+| AC-018〜020 | inventory/order/shipping       | concurrency/API               | 二重読取・発送・返品 | 注文〜発送縦導線実装済    |
+| AC-021〜024 | finance/accounting/Notion      | fixture/schema                | 収益・CSV・同期確認  | 収支/会計CSV部分実装      |
+| AC-025〜028 | UI/監査/品質                   | a11y/security/all suites      | PC/iPhone PWA実画面  | ログイン/署名Cookie部分済 |
+| AC-029〜041 | 財務・冪等・機密・CSV・旧資産  | fixture/contract/security     | 出力内容確認         | 財務/冪等/API部分実装     |
+| AC-042〜055 | inventory/location/count       | DB/domain/concurrency         | M12/W10導線          | domain/SQL/W10部分実装    |
+| TA-001〜037 | architecture/CI/security       | type/lint/test/build/contract | platform checklist   | 基盤/SQL部分実装          |
 
 ## 合格条件
 
@@ -47,10 +47,20 @@ P0の必須ACは AC-001、003〜008、013〜014、018〜023、025〜026、028〜
 - Cookie: 改ざん、期限切れ、未来発行、重複を拒否。HttpOnly / Secure / SameSite=Strictを固定。
 - 起動: DB接続先または32バイト以上のsession秘密鍵がなければ停止。
 - Logout: DB session失効→Cookie削除→PWA同期待ち/cache削除の順序を固定。失効未確認なら削除しない。
-- 未完了: login発行、CSRF総合確認、実DB session/membership/RLS。
+- 未完了: 初期owner作成、実DB session/membership/RLS。
 
 ## Iteration 7の実証範囲
 
 - 変更API: `APP_ORIGIN`完全一致とsame-originだけを許可。欠落/cross-site/類似domainは403。
 - Web中継: browser origin照合後だけCookieを内部APIへ渡す。接続先はserver環境変数限定。
-- 未完了: 実配置でのproxy/Origin確認、login、実DB role/RLS。
+- 未完了: 実配置でのproxy/Origin確認、実DB role/RLS。
+
+## Iteration 8の実証範囲
+
+- Password: Node.js標準scrypt、N=2^17/r=8/p=1、16-byte random salt、32-byte hash。平文保存なし。
+- Login: 同一の汎用401、5回失敗で15分停止、HttpOnly/Secure/SameSite=Strict Cookie発行。
+- Web中継: URL/ブラウザ保存領域へpasswordを置かず、API未接続は503で停止。
+- 自動検証: 15 test files / 69 tests、line 91.36%、branch 81.81%、function 100%、format/lint/type/build合格。
+- 実画面: PCおよび390×844で横あふれなし。未接続エラーを`role=alert`で表示。
+- 初期owner: 公開APIを設けず、対話型CLIで一度だけ作成。passwordは非表示、同時実行はDB lock、2人目は拒否。
+- 未完了: 実PostgreSQLでのbootstrap/hash/session/rate-limit、認証後の画面保護。

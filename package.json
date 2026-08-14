@@ -15,6 +15,7 @@
     "dev": "npm run dev --workspace @resale/web",
     "dev:web": "npm run dev --workspace @resale/web",
     "dev:api": "npm run dev --workspace @resale/api",
+    "bootstrap:owner": "npm run bootstrap:owner --workspace @resale/api",
     "build:packages": "npm run build --workspace @resale/domain && npm run build --workspace @resale/contracts",
     "lint": "npm run build:packages && eslint .",
     "format:check": "prettier --check \"apps/**/*.{js,ts,tsx,css,json,md}\" \"packages/**/*.{ts,tsx,json,md}\" \"docs/implementation/**/*.md\" \".github/**/*.yml\" package.json tsconfig.base.json vitest.config.ts eslint.config.mjs README.md",

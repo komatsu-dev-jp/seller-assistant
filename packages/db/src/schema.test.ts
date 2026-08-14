@@ -16,6 +16,10 @@ const sessionMigrationPath = fileURLToPath(
   new URL("../migrations/0004_auth_session.sql", import.meta.url),
 );
 const sessionSql = readFileSync(sessionMigrationPath, "utf8");
+const credentialMigrationPath = fileURLToPath(
+  new URL("../migrations/0005_auth_credential.sql", import.meta.url),
+);
+const credentialSql = readFileSync(credentialMigrationPath, "utf8");
 
 describe("P0 PostgreSQL migration contract", () => {
   it("enables and forces workspace RLS for business tables", () => {
@@ -78,5 +82,14 @@ describe("P0 PostgreSQL migration contract", () => {
     expect(sessionSql).toContain("expires_at > issued_at");
     expect(sessionSql).toContain("revoked_at is null");
     expect(sessionSql).toContain("Server-only session registry");
+  });
+
+  it("stores only strong scrypt credentials and HMAC login buckets", () => {
+    expect(credentialSql).toContain("create table auth_credential");
+    expect(credentialSql).toContain("hash_algorithm = 'scrypt-v1'");
+    expect(credentialSql).toContain("scrypt_n = 131072");
+    expect(credentialSql).toContain("octet_length(password_salt) >= 16");
+    expect(credentialSql).toContain("create table auth_login_bucket");
+    expect(credentialSql).not.toMatch(/plaintext_password|raw_ip/u);
   });
 });

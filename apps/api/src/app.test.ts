@@ -4,6 +4,7 @@ import { buildApp } from "./app.js";
 import { InMemoryWorkflowRepository } from "./repository.js";
 import { createWriteOriginValidator } from "./security.js";
 import { createCookieAuthenticator, createSignedSession } from "./session.js";
+import type { LoginService } from "./auth.js";
 
 const apps: ReturnType<typeof buildApp>[] = [];
 
@@ -20,6 +21,74 @@ function buildTestApp() {
 
 afterEach(async () => {
   await Promise.all(apps.splice(0).map(async (app) => app.close()));
+});
+
+describe("POST /v1/session/login", () => {
+  function appWithLogin(login: LoginService["login"]) {
+    const loginService: LoginService = { login, close: () => Promise.resolve() };
+    const app = buildApp({ loginService, validateWriteOrigin: () => true });
+    apps.push(app);
+    return app;
+  }
+
+  it("sets only the secure session cookie after valid credentials", async () => {
+    const app = appWithLogin(() =>
+      Promise.resolve({
+        kind: "success",
+        setCookie:
+          "resale_session=signed; Path=/; Max-Age=28800; HttpOnly; Secure; SameSite=Strict",
+      }),
+    );
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/session/login",
+      payload: { email: "owner@example.test", password: "a-safe-test-password" },
+    });
+    expect(response.statusCode).toBe(204);
+    expect(response.headers["set-cookie"]).toBe(
+      "resale_session=signed; Path=/; Max-Age=28800; HttpOnly; Secure; SameSite=Strict",
+    );
+    expect(response.body).toBe("");
+  });
+
+  it("returns the same generic failure without exposing which credential was wrong", async () => {
+    const app = appWithLogin(() => Promise.resolve({ kind: "invalid" }));
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/session/login",
+      payload: { email: "missing@example.test", password: "wrong-password-value" },
+    });
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toMatchObject({
+      code: "invalid_credentials",
+      message: "メールアドレスまたはパスワードを確認してください。",
+    });
+    expect(response.body).not.toContain("missing@example.test");
+    expect(response.body).not.toContain("wrong-password-value");
+  });
+
+  it("rate limits repeated failures and rejects malformed input before password work", async () => {
+    let called = 0;
+    const app = appWithLogin(() => {
+      called += 1;
+      return Promise.resolve({ kind: "rate_limited", retryAfterSeconds: 900 });
+    });
+    const malformed = await app.inject({
+      method: "POST",
+      url: "/v1/session/login",
+      payload: { email: "not-an-email", password: "short" },
+    });
+    expect(malformed.statusCode).toBe(400);
+    expect(called).toBe(0);
+
+    const limited = await app.inject({
+      method: "POST",
+      url: "/v1/session/login",
+      payload: { email: "owner@example.test", password: "wrong-password-value" },
+    });
+    expect(limited.statusCode).toBe(429);
+    expect(limited.headers["retry-after"]).toBe("900");
+  });
 });
 
 describe("GET /health", () => {

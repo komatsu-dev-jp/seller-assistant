@@ -201,7 +201,8 @@ validate(job, result) -> checks
 
 ## 8. 認証・権限・個人情報
 
-- 初期認証候補はメールOTP/招待。外部ログイン追加時はApple要件を再確認する。
+- P0の初期認証は、外部費用0円のためNode.js標準scryptによるメール/パスワードとする。N=2^17、r=8、p=1、salt 16 bytes以上、hash 32 bytesを下限とし、平文は保存しない。失敗応答を共通化し、同一識別子+接続元の5回失敗を15分停止する。初期ownerは公開APIではなくローカルの一回限りCLIで作成する。
+- 将来メールOTP/外部ログインを追加する場合は送信費、可用性、契約、Apple要件を再承認する。
 - 短命なsession tokenを使い、APIキーや外部サービス認証情報を端末へ埋め込まない。
 - APIで役割を判定し、PostgreSQL RLS（行単位のアクセス制御）でもworkspace越境を遮断する。
 - 実行roleは `app_user`、`worker_limited`、`migration_admin` に分け、通常API/workerへRLS bypass、table owner、service-role相当の常用権限を与えない。

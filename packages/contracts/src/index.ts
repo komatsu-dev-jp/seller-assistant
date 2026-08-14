@@ -46,6 +46,13 @@ export const apiErrorSchema = z.object({
   requestId: z.string(),
 });
 
+export const loginRequestSchema = z
+  .object({
+    email: z.string().trim().toLowerCase().email().max(254),
+    password: z.string().min(12).max(128),
+  })
+  .strict();
+
 export const p0WorkflowStateSchema = z.enum([
   "sku_created",
   "purchase_confirmed",
@@ -158,6 +165,7 @@ export type CreateSkuRequest = z.infer<typeof createSkuRequestSchema>;
 export type SkuResponse = z.infer<typeof skuResponseSchema>;
 export type InventorySummary = z.infer<typeof inventorySummarySchema>;
 export type ApiError = z.infer<typeof apiErrorSchema>;
+export type LoginRequest = z.infer<typeof loginRequestSchema>;
 export type AdvanceP0WorkflowRequest = z.infer<typeof advanceP0WorkflowRequestSchema>;
 export type P0WorkflowResponse = z.infer<typeof p0WorkflowResponseSchema>;
 export type RegisterMediaAssetRequest = z.infer<typeof registerMediaAssetRequestSchema>;
