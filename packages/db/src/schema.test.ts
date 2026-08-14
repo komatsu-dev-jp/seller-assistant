@@ -24,6 +24,10 @@ const runtimeRoleMigrationPath = fileURLToPath(
   new URL("../migrations/0006_runtime_role.sql", import.meta.url),
 );
 const runtimeRoleSql = readFileSync(runtimeRoleMigrationPath, "utf8");
+const inventoryGuardsMigrationPath = fileURLToPath(
+  new URL("../migrations/0007_inventory_transaction_guards.sql", import.meta.url),
+);
+const inventoryGuardsSql = readFileSync(inventoryGuardsMigrationPath, "utf8");
 
 describe("P0 PostgreSQL migration contract", () => {
   it("enables and forces workspace RLS for business tables", () => {
@@ -103,5 +107,18 @@ describe("P0 PostgreSQL migration contract", () => {
     expect(runtimeRoleSql).toContain("nobypassrls");
     expect(runtimeRoleSql).toContain("grant select, insert on audit_event");
     expect(runtimeRoleSql).not.toContain("grant all");
+  });
+
+  it("requires scan-backed movements and two-person discrepancy resolution", () => {
+    expect(inventoryGuardsSql).toContain("inventory_unit_entry_guard");
+    expect(inventoryGuardsSql).toContain("inventory_label_target_guard");
+    expect(inventoryGuardsSql).toContain("scan_session_guard");
+    expect(inventoryGuardsSql).toContain("inventory_movement_finalize");
+    expect(inventoryGuardsSql).toContain("order_allocation_state_guard");
+    expect(inventoryGuardsSql).toContain(
+      "initial counter and reconfirmer must be different people",
+    );
+    expect(inventoryGuardsSql).toContain("requester and approver must be different people");
+    expect(inventoryGuardsSql).toContain("revoke update on inventory_unit, scan_session");
   });
 });

@@ -95,3 +95,14 @@
 - 失敗と修正: 最初のZIP展開が5分上限で途中終了し、`postgres.bki`不足でinitdbが安全停止。公式ZIPを同じ一時領域へ再展開し、必要ファイル確認後に再実行した。
 - 残る問題: 全RLS表/全roleの越境マトリクス、同時格納/引当、在庫不変条件の実DB検査、実HTTP経由のWebログイン。
 - 次の一手: P0で重要な在庫二重読取、場所制約、同時操作、監査の実DB fixtureを追加する。
+
+## Iteration 10 — 2026-08-15 在庫不変条件の実DB検証
+
+- 基準値: 場所容量と注文引当の制約はSQLにあったが、商品/場所scanから在庫更新までを1 transactionに固定せず、通常API roleが在庫状態を直接更新できた。
+- 実装: 在庫現物は`putaway_pending`・場所なしでだけ作成可能にし、label対象/版、scan session、現在地、移動番号、idempotency key、payload hashを検査してからsecurity-definer triggerで移動を確定する。通常API roleからInventoryUnit/ScanSession/Movement等の直接更新権限を削除した。
+- 同時操作: 容量1の場所への2件同時格納、同一現物への2注文同時引当を実行し、どちらも成功1件・拒否1件。棚卸差異はinitial counterとreconfirmer、requesterとapproverを分離し、2人以上を必須にした。
+- 失敗と修正1: scan作成時の`FOR UPDATE`が最小権限roleで拒否された。権限を追加せず、scan時は参照、movement確定時にsecurity-definer内で再検査・行lockする方式へ修正した。
+- 失敗と修正2: PostgreSQLの`bigint`がtest runnerへ文字列で返り、値1の比較だけが失敗した。fixture queryでintegerへ明示変換し、業務データやDB定義は変更していない。
+- 検証: PostgreSQL 18.6の新規使い捨てDBへ0001〜0007を適用。誤ラベル、scan再利用、在庫直接更新、同一人物再確認を拒否し、`postgres-integration: PASS`。全体は16 files / 72 tests、line 91.36%、branch 81.81%、functions 100%、format/lint/type/build合格。
+- 残る問題: API契約としての在庫操作入口、全role/RLS表のマトリクス、オフライン再同期競合、実HTTP経由Webログイン、iPhone実機PWAは未完了。
+- 次の一手: 在庫API契約とrepositoryを追加し、同じDB関数をPWAの二重読取画面から呼ぶ。

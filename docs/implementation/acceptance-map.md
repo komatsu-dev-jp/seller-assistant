@@ -72,3 +72,14 @@ P0の必須ACは AC-001、003〜008、013〜014、018〜023、025〜026、028〜
 - 結合導線: owner bootstrap、実scrypt login、session Cookie、SKU作成、別workspace 403、5回失敗429、logout後401がPASS。
 - 一時DB: 127.0.0.1:55432限定、架空データのみ、外部費用・外部CI・公開0件。
 - 残り: 全RLS表/全roleの越境マトリクス、同時transaction、不変条件、実サーバー経由Webログイン。
+
+## Iteration 10の実証範囲
+
+- 二重読取: 商品ラベル、場所ラベル、版、対象workspace、現在地、人の確認をscan sessionで検査し、誤商品ラベルを拒否。
+- 原子的移動: scan sessionとmovementを同じtransactionで確定し、使用済みscan、古い現在地/移動番号、直接の在庫状態更新を拒否。
+- 同時格納: 容量1の場所へ2件を同時格納し、成功1件・拒否1件。在庫の二重格納0件。
+- 同時引当: availableな同一現物を2注文へ同時引当し、成功1件・拒否1件。引当成功時だけreservedへ変更。
+- 棚卸: initial counterとreconfirmer、requesterとapproverの分離、2人以上、resolution/resolved_atをDBで必須化。
+- 実DB: PostgreSQL 18.6へ0001〜0007を適用し、`postgres-integration: PASS`。架空データ、127.0.0.1、外部費用0円。
+- 全体検証: 16 test files / 72 tests、line 91.36%、branch 81.81%、functions 100%、format/lint/type/build合格。
+- 残り: 全表/全roleのRLSマトリクス、API経由の在庫操作、オフライン競合復旧、実HTTPログイン、実iPhone PWA。
