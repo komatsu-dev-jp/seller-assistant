@@ -14,7 +14,7 @@ P0の必須ACは AC-001、003〜008、013〜014、018〜023、025〜026、028〜
 | AC-010〜017 | media/listing/price adapters   | unit/contract                 | 原本比較・本人引渡し | 未着手                 |
 | AC-018〜020 | inventory/order/shipping       | concurrency/API               | 二重読取・発送・返品 | 注文〜発送縦導線実装済 |
 | AC-021〜024 | finance/accounting/Notion      | fixture/schema                | 収益・CSV・同期確認  | 収支/会計CSV部分実装   |
-| AC-025〜028 | UI/監査/品質                   | a11y/security/all suites      | PC/iPhone PWA実画面  | PC/iPhone幅確認済み    |
+| AC-025〜028 | UI/監査/品質                   | a11y/security/all suites      | PC/iPhone PWA実画面  | 署名Cookie/画面部分済  |
 | AC-029〜041 | 財務・冪等・機密・CSV・旧資産  | fixture/contract/security     | 出力内容確認         | 財務/冪等/API部分実装  |
 | AC-042〜055 | inventory/location/count       | DB/domain/concurrency         | M12/W10導線          | domain/SQL/W10部分実装 |
 | TA-001〜037 | architecture/CI/security       | type/lint/test/build/contract | platform checklist   | 基盤/SQL部分実装       |
@@ -40,3 +40,11 @@ P0の必須ACは AC-001、003〜008、013〜014、018〜023、025〜026、028〜
 - 採寸: 証拠写真必須、別SKU証拠は403拒否、2cm超差は再確認、AI確認経路なし。
 - サマリー: 写真4役割と必須採寸4項目が揃い警告0件のときだけ人レビュー可能。
 - DB: `media_asset` / `measurement_attempt` のRLSと複合FKを静的検査。実DB実行は未確認。
+
+## Iteration 6の実証範囲
+
+- 本番API: 署名Cookie以外のactor指定を拒否し、認証なしは401。
+- Cookie: 改ざん、期限切れ、未来発行、重複を拒否。HttpOnly / Secure / SameSite=Strictを固定。
+- 起動: DB接続先または32バイト以上のsession秘密鍵がなければ停止。
+- Logout: DB session失効→Cookie削除→PWA同期待ち/cache削除の順序を固定。失効未確認なら削除しない。
+- 未完了: login発行、CSRF総合確認、実DB session/membership/RLS。

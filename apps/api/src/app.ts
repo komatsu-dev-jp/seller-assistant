@@ -1,4 +1,5 @@
 import Fastify from "fastify";
+import type { IncomingHttpHeaders } from "node:http";
 import {
   apiErrorSchema,
   advanceP0WorkflowRequestSchema,
@@ -21,9 +22,15 @@ import {
   type RequestActor,
   type WorkflowRepository,
 } from "./repository.js";
+import { serializeClearedSessionCookie } from "./session.js";
 
 interface BuildAppOptions {
   repository?: WorkflowRepository;
+  authenticate?: (
+    headers: IncomingHttpHeaders,
+  ) => RequestActor | null | Promise<RequestActor | null>;
+  revokeSession?: (actor: RequestActor) => Promise<void>;
+  closeAuthentication?: () => Promise<void>;
 }
 
 export function buildApp(options: BuildAppOptions = {}) {
@@ -32,8 +39,12 @@ export function buildApp(options: BuildAppOptions = {}) {
     requestIdHeader: "x-request-id",
   });
   const repository = options.repository ?? new InMemoryWorkflowRepository();
+  const authenticate = options.authenticate ?? (() => null);
 
-  app.addHook("onClose", async () => repository.close());
+  app.addHook("onClose", async () => {
+    await repository.close();
+    await options.closeAuthentication?.();
+  });
 
   app.get<{ Reply: HealthResponse }>("/health", () => ({
     status: "ok",
@@ -48,8 +59,9 @@ export function buildApp(options: BuildAppOptions = {}) {
   }>("/v1/workspaces/:workspaceId/skus", async (request, reply) => {
     const workspace = workspaceIdSchema.safeParse(request.params.workspaceId);
     const input = createSkuRequestSchema.safeParse(request.body);
-    const actor = parseActor(request.headers["x-actor-id"]);
-    if (!workspace.success || !input.success || !actor) {
+    const actor = await authenticate(request.headers);
+    if (!actor) return reply.code(401).send(authenticationError(request.id));
+    if (!workspace.success || !input.success) {
       return reply.code(400).send(
         apiErrorSchema.parse({
           code: "invalid_request",
@@ -72,8 +84,9 @@ export function buildApp(options: BuildAppOptions = {}) {
     Reply: ReturnType<typeof inventorySummarySchema.parse> | ApiError;
   }>("/v1/workspaces/:workspaceId/inventory/summary", async (request, reply) => {
     const workspace = workspaceIdSchema.safeParse(request.params.workspaceId);
-    const actor = parseActor(request.headers["x-actor-id"]);
-    if (!workspace.success || !actor) {
+    const actor = await authenticate(request.headers);
+    if (!actor) return reply.code(401).send(authenticationError(request.id));
+    if (!workspace.success) {
       return reply.code(400).send(
         apiErrorSchema.parse({
           code: "invalid_request",
@@ -99,8 +112,9 @@ export function buildApp(options: BuildAppOptions = {}) {
     const workspace = workspaceIdSchema.safeParse(request.params.workspaceId);
     const sku = workspaceIdSchema.safeParse(request.params.skuId);
     const input = advanceP0WorkflowRequestSchema.safeParse(request.body);
-    const actor = parseActor(request.headers["x-actor-id"]);
-    if (!workspace.success || !sku.success || !input.success || !actor) {
+    const actor = await authenticate(request.headers);
+    if (!actor) return reply.code(401).send(authenticationError(request.id));
+    if (!workspace.success || !sku.success || !input.success) {
       return reply.code(400).send(
         apiErrorSchema.parse({
           code: "invalid_request",
@@ -131,8 +145,9 @@ export function buildApp(options: BuildAppOptions = {}) {
     const workspace = workspaceIdSchema.safeParse(request.params.workspaceId);
     const sku = workspaceIdSchema.safeParse(request.params.skuId);
     const input = registerMediaAssetRequestSchema.safeParse(request.body);
-    const actor = parseActor(request.headers["x-actor-id"]);
-    if (!workspace.success || !sku.success || !input.success || !actor) {
+    const actor = await authenticate(request.headers);
+    if (!actor) return reply.code(401).send(authenticationError(request.id));
+    if (!workspace.success || !sku.success || !input.success) {
       return reply.code(400).send(
         apiErrorSchema.parse({
           code: "invalid_request",
@@ -163,8 +178,9 @@ export function buildApp(options: BuildAppOptions = {}) {
     const workspace = workspaceIdSchema.safeParse(request.params.workspaceId);
     const sku = workspaceIdSchema.safeParse(request.params.skuId);
     const input = recordMeasurementRequestSchema.safeParse(request.body);
-    const actor = parseActor(request.headers["x-actor-id"]);
-    if (!workspace.success || !sku.success || !input.success || !actor) {
+    const actor = await authenticate(request.headers);
+    if (!actor) return reply.code(401).send(authenticationError(request.id));
+    if (!workspace.success || !sku.success || !input.success) {
       return reply.code(400).send(
         apiErrorSchema.parse({
           code: "invalid_request",
@@ -193,8 +209,9 @@ export function buildApp(options: BuildAppOptions = {}) {
   }>("/v1/workspaces/:workspaceId/skus/:skuId/capture-summary", async (request, reply) => {
     const workspace = workspaceIdSchema.safeParse(request.params.workspaceId);
     const sku = workspaceIdSchema.safeParse(request.params.skuId);
-    const actor = parseActor(request.headers["x-actor-id"]);
-    if (!workspace.success || !sku.success || !actor) {
+    const actor = await authenticate(request.headers);
+    if (!actor) return reply.code(401).send(authenticationError(request.id));
+    if (!workspace.success || !sku.success) {
       return reply.code(400).send(
         apiErrorSchema.parse({
           code: "invalid_request",
@@ -212,12 +229,31 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
   });
 
+  app.post("/v1/session/logout", async (request, reply) => {
+    const actor = await authenticate(request.headers);
+    if (!actor) return reply.code(401).send(authenticationError(request.id));
+    if (!actor.sessionId || !options.revokeSession) {
+      return reply.code(503).send(
+        apiErrorSchema.parse({
+          code: "session_registry_unavailable",
+          message: "session失効を確認できないため、安全のためログアウトを停止しました。",
+          requestId: request.id,
+        }),
+      );
+    }
+    await options.revokeSession(actor);
+    return reply.header("set-cookie", serializeClearedSessionCookie()).code(204).send();
+  });
+
   return app;
 }
 
-function parseActor(value: string | string[] | undefined): RequestActor | null {
-  if (typeof value !== "string" || !workspaceIdSchema.safeParse(value).success) return null;
-  return { identityId: value };
+function authenticationError(requestId: string): ApiError {
+  return apiErrorSchema.parse({
+    code: "authentication_required",
+    message: "有効な署名付きセッションが必要です。",
+    requestId,
+  });
 }
 
 function mapRepositoryError(

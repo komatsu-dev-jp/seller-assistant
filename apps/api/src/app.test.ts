@@ -2,8 +2,19 @@ import { afterEach, describe, expect, it } from "vitest";
 import { healthResponseSchema } from "@resale/contracts";
 import { buildApp } from "./app.js";
 import { InMemoryWorkflowRepository } from "./repository.js";
+import { createCookieAuthenticator, createSignedSession } from "./session.js";
 
 const apps: ReturnType<typeof buildApp>[] = [];
+
+function buildTestApp() {
+  return buildApp({
+    repository: new InMemoryWorkflowRepository(),
+    authenticate: (headers) => {
+      const identityId = headers["x-actor-id"];
+      return typeof identityId === "string" ? { identityId } : null;
+    },
+  });
+}
 
 afterEach(async () => {
   await Promise.all(apps.splice(0).map(async (app) => app.close()));
@@ -26,7 +37,7 @@ describe("P0 workspace API", () => {
   const actorId = "22222222-2222-4222-8222-222222222222";
 
   it("creates a SKU and includes it in putaway pending summary", async () => {
-    const app = buildApp({ repository: new InMemoryWorkflowRepository() });
+    const app = buildTestApp();
     apps.push(app);
     const created = await app.inject({
       method: "POST",
@@ -47,14 +58,14 @@ describe("P0 workspace API", () => {
   });
 
   it("rejects invalid actors and duplicate SKU codes", async () => {
-    const app = buildApp({ repository: new InMemoryWorkflowRepository() });
+    const app = buildTestApp();
     apps.push(app);
     const invalid = await app.inject({
       method: "POST",
       url: `/v1/workspaces/${workspaceId}/skus`,
       payload: { skuCode: "SKU-000001", title: "商品", category: "トップス" },
     });
-    expect(invalid.statusCode).toBe(400);
+    expect(invalid.statusCode).toBe(401);
 
     const request = {
       method: "POST" as const,
@@ -66,8 +77,85 @@ describe("P0 workspace API", () => {
     expect((await app.inject(request)).statusCode).toBe(409);
   });
 
+  it("accepts a signed session cookie and ignores unsigned actor headers by default", async () => {
+    const secret = "test-only-session-secret-with-at-least-32-bytes";
+    const app = buildApp({
+      repository: new InMemoryWorkflowRepository(),
+      authenticate: createCookieAuthenticator(secret, () => 1_500),
+    });
+    apps.push(app);
+    const payload = { skuCode: "SKU-000008", title: "認証試験", category: "トップス" };
+    const unsigned = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceId}/skus`,
+      headers: { "x-actor-id": actorId },
+      payload,
+    });
+    expect(unsigned.statusCode).toBe(401);
+
+    const token = createSignedSession(
+      {
+        sessionId: "91000000-0000-4000-8000-000000000001",
+        identityId: actorId,
+        issuedAt: 1_000,
+        expiresAt: 2_000,
+      },
+      secret,
+    );
+    const signed = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceId}/skus`,
+      headers: { cookie: `resale_session=${token}` },
+      payload,
+    });
+    expect(signed.statusCode).toBe(201);
+  });
+
+  it("revokes the server session and clears the cookie on logout", async () => {
+    const secret = "test-only-session-secret-with-at-least-32-bytes";
+    const sessionId = "92000000-0000-4000-8000-000000000001";
+    const active = new Set([sessionId]);
+    const registry = {
+      isActive: (candidateSessionId: string) => Promise.resolve(active.has(candidateSessionId)),
+      revoke: (candidateSessionId: string) => {
+        active.delete(candidateSessionId);
+        return Promise.resolve();
+      },
+      close: () => Promise.resolve(),
+    };
+    const app = buildApp({
+      repository: new InMemoryWorkflowRepository(),
+      authenticate: createCookieAuthenticator(secret, () => 1_500, registry),
+      revokeSession: async (actor) => {
+        if (!actor.sessionId) throw new Error("session ID missing");
+        await registry.revoke(actor.sessionId);
+      },
+    });
+    apps.push(app);
+    const token = createSignedSession(
+      { sessionId, identityId: actorId, issuedAt: 1_000, expiresAt: 2_000 },
+      secret,
+    );
+    const cookie = `resale_session=${token}`;
+    const logout = await app.inject({
+      method: "POST",
+      url: "/v1/session/logout",
+      headers: { cookie },
+    });
+    expect(logout.statusCode).toBe(204);
+    expect(logout.headers["set-cookie"]).toContain("Max-Age=0; HttpOnly; Secure; SameSite=Strict");
+
+    const reuse = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceId}/skus`,
+      headers: { cookie },
+      payload: { skuCode: "SKU-000009", title: "失効試験", category: "トップス" },
+    });
+    expect(reuse.statusCode).toBe(401);
+  });
+
   it("advances the P0 workflow in order and replays the same idempotent request", async () => {
-    const app = buildApp({ repository: new InMemoryWorkflowRepository() });
+    const app = buildTestApp();
     apps.push(app);
     const created = await app.inject({
       method: "POST",
@@ -96,7 +184,7 @@ describe("P0 workspace API", () => {
   });
 
   it("completes the representative P0 journey without skipping a human gate", async () => {
-    const app = buildApp({ repository: new InMemoryWorkflowRepository() });
+    const app = buildTestApp();
     apps.push(app);
     const created = await app.inject({
       method: "POST",
@@ -153,7 +241,7 @@ describe("P0 workspace API", () => {
   });
 
   it("rejects workflow skips and idempotency payload conflicts", async () => {
-    const app = buildApp({ repository: new InMemoryWorkflowRepository() });
+    const app = buildTestApp();
     apps.push(app);
     const created = await app.inject({
       method: "POST",
@@ -204,7 +292,7 @@ describe("P0 workspace API", () => {
   });
 
   it("registers immutable photo evidence and human measurements for capture readiness", async () => {
-    const app = buildApp({ repository: new InMemoryWorkflowRepository() });
+    const app = buildTestApp();
     apps.push(app);
     const created = await app.inject({
       method: "POST",
@@ -318,7 +406,7 @@ describe("P0 workspace API", () => {
   });
 
   it("rejects media path changes and measurement evidence from another SKU", async () => {
-    const app = buildApp({ repository: new InMemoryWorkflowRepository() });
+    const app = buildTestApp();
     apps.push(app);
     const first = await app.inject({
       method: "POST",

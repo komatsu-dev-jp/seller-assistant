@@ -52,3 +52,14 @@
 - 検証: 11 test files / 50 tests合格、行91.36%、分岐81.81%、関数100%。typecheck、lint、`git diff --check`合格。
 - 残る問題: 実オブジェクトStorageと署名URLは未実装。実PostgreSQLがないためmigration実行、RLS越境、transactionは未確認。Web画面からAPIへの接続も未完了。
 - 次の一手: 認証sessionとworkspace/role境界をAPI入口へ追加し、秘密情報をPWA storageへ置かないことをテストする。
+
+## Iteration 6 — 2026-08-15 署名付きsession入口
+
+- 基準値: APIテスト用actor headerと本番認証の境界が分離されておらず、そのままでは利用者IDを偽装できた。
+- 実装: HMAC-SHA-256署名session、期限/未来時刻/改ざん/重複Cookie拒否、32バイト未満の秘密鍵拒否、HttpOnly・Secure・SameSite=Strict Cookieを追加。
+- 本番fail-closed: `DATABASE_URL`と`SESSION_SECRET`を両方必須にし、未設定時はAPI起動停止。`buildApp`の既定認証は全拒否し、サーバーだけがCookie認証を明示注入する。
+- 追加実装: server-only `auth_session` 台帳、logout失効、Cookie削除、PWA端末データ削除、同一URLのNext.js中継口を追加。API失効204を確認できない場合は端末データを消さない。
+- 検証: 未署名actor headerは401、署名Cookieは201。失効後の同じCookieは401。12 test files / 57 tests合格、typecheck、lint、本番build、`git diff --check`合格。
+- 実画面: PC/iPhone幅でログアウト表示、横overflow 0。API未接続は503で停止し、エラー表示する。
+- 残る問題: ログイン発行、実PostgreSQL上のsession失効、CSRF総合確認は未実装。本番利用不可。
+- 次の一手: ローカル専用の初期owner作成/ログイン手順とCSRF・role境界を実装する。

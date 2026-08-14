@@ -64,4 +64,5 @@
 - タスク: `Build: iOS P0現場導線` を `Build: モバイルPWA P0現場導線` へ変更し、進捗を `進行中` に更新。Page ID `3bc1548a-971b-811c-9aad-fc9bcb44317a`。
 - タスク本文: SwiftUI固有のObjective/Acceptance Criteria/Technical DetailsをPWAへ置換し、47テストとP0画面完走、残るAPI/DB/iPhone実機項目を再取得確認済み。
 - 写真・採寸API: 原本変更不可、別SKU証拠拒否、再測定警告、50テスト、実Storage/実PostgreSQL未確認を実装計画へ追記し、再取得確認済み。
+- 認証・ログアウト: 署名Cookie、server session失効、失効成功後だけのPWA端末データ削除、57テスト、API未接続503停止を実装計画へ追記し、再取得確認済み。
 - 外部費用: 有料API、有料SaaS、従量課金、外部CI、デプロイ0件。

@@ -12,6 +12,10 @@ const captureMigrationPath = fileURLToPath(
   new URL("../migrations/0003_capture_evidence.sql", import.meta.url),
 );
 const captureSql = readFileSync(captureMigrationPath, "utf8");
+const sessionMigrationPath = fileURLToPath(
+  new URL("../migrations/0004_auth_session.sql", import.meta.url),
+);
+const sessionSql = readFileSync(sessionMigrationPath, "utf8");
 
 describe("P0 PostgreSQL migration contract", () => {
   it("enables and forces workspace RLS for business tables", () => {
@@ -67,5 +71,12 @@ describe("P0 PostgreSQL migration contract", () => {
     expect(captureSql).toContain("foreign key (workspace_id, evidence_asset_id)");
     expect(captureSql.match(/force row level security/g)).toHaveLength(2);
     expect(captureSql).toContain("workspace_id = app_workspace_id()");
+  });
+
+  it("keeps a server-side session registry for expiry and logout revocation", () => {
+    expect(sessionSql).toContain("create table auth_session");
+    expect(sessionSql).toContain("expires_at > issued_at");
+    expect(sessionSql).toContain("revoked_at is null");
+    expect(sessionSql).toContain("Server-only session registry");
   });
 });

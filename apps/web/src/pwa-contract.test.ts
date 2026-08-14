@@ -27,6 +27,20 @@ describe("zero-cost PWA contract", () => {
     expect(registration).toContain('register("/sw.js"');
   });
 
+  it("clears offline data only after server-side logout succeeds", () => {
+    const logout = readFileSync(resolve("apps/web/src/components/logout-button.tsx"), "utf8");
+    const requestIndex = logout.indexOf('fetch("/v1/session/logout"');
+    const statusIndex = logout.indexOf("response.status !== 204");
+    const clearIndex = logout.indexOf("await clearOfflineBusinessData()");
+    expect(requestIndex).toBeGreaterThan(-1);
+    expect(statusIndex).toBeGreaterThan(requestIndex);
+    expect(clearIndex).toBeGreaterThan(statusIndex);
+    const proxy = readFileSync(resolve("apps/web/src/app/v1/session/logout/route.ts"), "utf8");
+    expect(proxy).toContain("API_INTERNAL_ORIGIN");
+    expect(proxy).toContain("sessionと端末データは変更していません");
+    expect(proxy).not.toMatch(/console\.|localStorage|sessionStorage/u);
+  });
+
   it("keeps external CI manual and free of macOS jobs", () => {
     const workflow = readFileSync(resolve(".github/workflows/ci.yml"), "utf8");
     expect(workflow).toContain("workflow_dispatch:");

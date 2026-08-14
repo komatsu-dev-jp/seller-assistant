@@ -90,6 +90,37 @@ a {
   line-height: 1.7;
 }
 
+.logoutArea {
+  margin-top: auto;
+}
+.logoutArea button {
+  width: 100%;
+  padding: 10px 12px;
+  color: #dce7f8;
+  background: transparent;
+  border: 1px solid #3d5375;
+  border-radius: 10px;
+}
+.logoutArea button:hover,
+.logoutArea button:focus-visible {
+  color: white;
+  border-color: #7aa8ee;
+  outline: none;
+}
+.logoutArea button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+.logoutArea p {
+  margin: 8px 2px 0;
+  color: #ffd8c8;
+  font-size: 10px;
+  line-height: 1.5;
+}
+.logoutArea + .safety {
+  margin-top: 12px;
+}
+
 .content {
   width: min(1180px, 100%);
   padding: 46px 48px 72px;

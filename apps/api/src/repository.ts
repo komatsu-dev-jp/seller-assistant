@@ -25,6 +25,7 @@ export type WorkspaceRole =
 
 export interface RequestActor {
   identityId: string;
+  sessionId?: string;
 }
 
 export interface WorkflowRepository {

@@ -1,3 +1,5 @@
+import { LogoutButton } from "./logout-button";
+
 const links = [
   ["/", "ホーム"],
   ["/workflow", "P0商品作業"],
@@ -30,6 +32,7 @@ export function AppSidebar({ current }: AppSidebarProps) {
           );
         })}
       </nav>
+      <LogoutButton />
       <div className="safety">重要操作は人が確認して確定します</div>
     </aside>
   );
