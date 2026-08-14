@@ -20,6 +20,10 @@ const credentialMigrationPath = fileURLToPath(
   new URL("../migrations/0005_auth_credential.sql", import.meta.url),
 );
 const credentialSql = readFileSync(credentialMigrationPath, "utf8");
+const runtimeRoleMigrationPath = fileURLToPath(
+  new URL("../migrations/0006_runtime_role.sql", import.meta.url),
+);
+const runtimeRoleSql = readFileSync(runtimeRoleMigrationPath, "utf8");
 
 describe("P0 PostgreSQL migration contract", () => {
   it("enables and forces workspace RLS for business tables", () => {
@@ -91,5 +95,13 @@ describe("P0 PostgreSQL migration contract", () => {
     expect(credentialSql).toContain("octet_length(password_salt) >= 16");
     expect(credentialSql).toContain("create table auth_login_bucket");
     expect(credentialSql).not.toMatch(/plaintext_password|raw_ip/u);
+  });
+
+  it("creates a non-login capability role without superuser or RLS bypass", () => {
+    expect(runtimeRoleSql).toContain("create role resale_app_runtime nologin");
+    expect(runtimeRoleSql).toContain("nosuperuser");
+    expect(runtimeRoleSql).toContain("nobypassrls");
+    expect(runtimeRoleSql).toContain("grant select, insert on audit_event");
+    expect(runtimeRoleSql).not.toContain("grant all");
   });
 });

@@ -3,6 +3,7 @@ import { PostgresWorkflowRepository } from "./repository.js";
 import { createCookieAuthenticator, PostgresSessionRegistry } from "./session.js";
 import { createWriteOriginValidator } from "./security.js";
 import { PostgresLoginService } from "./auth.js";
+import { assertRestrictedDatabaseRole } from "./db-security.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 const sessionSecret = process.env.SESSION_SECRET;
@@ -18,6 +19,8 @@ if (!sessionSecret) {
 if (!appOrigin) {
   throw new Error("APP_ORIGIN is required. Write requests will not accept an unknown origin.");
 }
+
+await assertRestrictedDatabaseRole(databaseUrl);
 
 const sessionRegistry = new PostgresSessionRegistry(databaseUrl);
 const app = buildApp({

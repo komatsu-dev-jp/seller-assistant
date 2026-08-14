@@ -84,3 +84,14 @@
 - 実画面: PCと390×844で表示・入力・未接続エラーを確認。`role=alert`あり、横あふれなし。証拠は`output/playwright/login-desktop.png`、`login-mobile.png`、`login-mobile-api-error.png`。
 - 残る問題: 実PostgreSQLがないためbootstrap/credential/session/rate-limitの結合動作は未確認。認証後の画面保護も未実装。
 - 次の一手: 無料の実PostgreSQL検証方法を確保し、sessionからmembership/RLSまで結合確認する。
+
+## Iteration 9 — 2026-08-15 実PostgreSQLと制限ロール
+
+- 基準値: migrationは文字列検査だけで、管理者接続でもAPIが起動でき、実DBのRLS/session/loginは未確認だった。
+- 最大の問題: PostgreSQL管理者と`BYPASSRLS`は強制RLSを迂回するため、誤った接続URLがworkspace越境を起こし得た。
+- 実装: `resale_app_runtime`をNOLOGIN/NOSUPERUSER/NOBYPASSRLSで作り、必要操作だけをgrant。API起動時に管理者、BYPASSRLS、runtime未所属を拒否する。
+- 実DB: PostgreSQL公式Windowsページから案内されたEDB 18.6 ZIPを一時領域へ取得。SHA-256 `FBE23DA234EE31547BF8A36D29DFD81E82B849DF2D2B78D2EECB43D360252F8C`。実行ファイルのWindows署名はなしのため、127.0.0.1限定・架空データ・検証後停止に限定した。
+- 検証: 0001〜0006 migration実適用。管理者接続拒否、制限LOGIN許可、owner bootstrap、実login、SKU作成、別workspace 403、5回失敗429、logout後401が`postgres-integration: PASS`。
+- 失敗と修正: 最初のZIP展開が5分上限で途中終了し、`postgres.bki`不足でinitdbが安全停止。公式ZIPを同じ一時領域へ再展開し、必要ファイル確認後に再実行した。
+- 残る問題: 全RLS表/全roleの越境マトリクス、同時格納/引当、在庫不変条件の実DB検査、実HTTP経由のWebログイン。
+- 次の一手: P0で重要な在庫二重読取、場所制約、同時操作、監査の実DB fixtureを追加する。

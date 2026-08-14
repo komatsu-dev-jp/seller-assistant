@@ -188,6 +188,7 @@ validate(job, result) -> checks
 
 - PWAはIndexedDBへ、操作ID、在庫管理番号、場所コード、作成日時だけを固定schemaで保存する。画像、住所、原価、証憑本文、税務資料、外部API秘密を同期待ちへ保存しない。
 - session/refresh tokenはHttpOnly・Secure・SameSite Cookie（画面のJavaScriptから読めない認証Cookie）だけで扱い、localStorage、sessionStorage、IndexedDB、Cache Storageへ保存しない。
+- APIのDB接続は`resale_app_runtime`を付与されたLOGINロールだけを許可し、起動前に`SUPERUSER`、`BYPASSRLS`、runtime未所属を拒否する。migration/初期owner用の管理接続を通常APIへ渡さない。
 - Service Workerは画面のapp shellだけをCache Storageへ保存し、`/api/`応答と業務データをキャッシュしない。サーバー確定前は現在地を確定表示しない。
 - ログアウトは最初にサーバーsessionを失効させ、Cache Storage、IndexedDB、Service Workerが保持する業務データを削除して0件を確認する。送信済み原本はサーバー正本を残す。
 - 割当解除はサーバーで即時拒否し、次回同期時に対象キャッシュを消す。オフライン端末へ即時到達できないため、外注assignment leaseは最大24時間、住所表示grantは最大5分にする。

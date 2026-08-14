@@ -17,7 +17,7 @@ P0の必須ACは AC-001、003〜008、013〜014、018〜023、025〜026、028〜
 | AC-025〜028 | UI/監査/品質                   | a11y/security/all suites      | PC/iPhone PWA実画面  | ログイン/署名Cookie部分済 |
 | AC-029〜041 | 財務・冪等・機密・CSV・旧資産  | fixture/contract/security     | 出力内容確認         | 財務/冪等/API部分実装     |
 | AC-042〜055 | inventory/location/count       | DB/domain/concurrency         | M12/W10導線          | domain/SQL/W10部分実装    |
-| TA-001〜037 | architecture/CI/security       | type/lint/test/build/contract | platform checklist   | 基盤/SQL部分実装          |
+| TA-001〜037 | architecture/CI/security       | type/lint/test/build/contract | platform checklist   | 実DB/RLS部分まで実装      |
 
 ## 合格条件
 
@@ -64,3 +64,11 @@ P0の必須ACは AC-001、003〜008、013〜014、018〜023、025〜026、028〜
 - 実画面: PCおよび390×844で横あふれなし。未接続エラーを`role=alert`で表示。
 - 初期owner: 公開APIを設けず、対話型CLIで一度だけ作成。passwordは非表示、同時実行はDB lock、2人目は拒否。
 - 未完了: 実PostgreSQLでのbootstrap/hash/session/rate-limit、認証後の画面保護。
+
+## Iteration 9の実証範囲
+
+- PostgreSQL: 公式案内のEDB Windows ZIP 18.6を一時領域へ展開し、0001〜0006 migrationを実適用。
+- 制限ロール: `NOLOGIN/NOSUPERUSER/NOBYPASSRLS` capability roleと必要操作だけのgrant。管理者URLはAPI起動前に拒否。
+- 結合導線: owner bootstrap、実scrypt login、session Cookie、SKU作成、別workspace 403、5回失敗429、logout後401がPASS。
+- 一時DB: 127.0.0.1:55432限定、架空データのみ、外部費用・外部CI・公開0件。
+- 残り: 全RLS表/全roleの越境マトリクス、同時transaction、不変条件、実サーバー経由Webログイン。

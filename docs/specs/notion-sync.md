@@ -67,4 +67,5 @@
 - 認証・ログアウト: 署名Cookie、server session失効、失効成功後だけのPWA端末データ削除、57テスト、API未接続503停止を実装計画へ追記し、再取得確認済み。
 - CSRF/Origin: APP_ORIGIN完全一致、cross-site拒否、Web中継の固定Origin、60テスト、実配置未確認を実装計画へ追記し、再取得確認済み。
 - 無料ログイン: Node.js標準scrypt、平文保存0件、5回/15分停止、署名Cookie、一回限りowner CLI、69テスト、PC/390×844画面、実PostgreSQL未確認を実装計画へ追記し、再取得確認済み。
+- 実PostgreSQL: 0001〜0006、制限runtime role、管理者接続拒否、初期owner、login、workspace越境拒否、rate limit、logout後拒否、71テストを実装計画へ追記し、再取得確認済み。
 - 外部費用: 有料API、有料SaaS、従量課金、外部CI、デプロイ0件。

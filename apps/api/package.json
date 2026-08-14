@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "bootstrap:owner": "tsx src/bootstrap-owner.ts",
+    "test:postgres": "tsx src/postgres-integration.ts",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/server.js"

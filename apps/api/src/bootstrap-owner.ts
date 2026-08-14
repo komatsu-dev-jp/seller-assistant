@@ -13,16 +13,20 @@ const ownerInputSchema = z.object({
 });
 
 export type OwnerBootstrapInput = z.infer<typeof ownerInputSchema>;
+export interface OwnerBootstrapResult {
+  identityId: string;
+  workspaceId: string;
+}
 
 export async function bootstrapInitialOwner(
   databaseUrl: string,
   rawInput: OwnerBootstrapInput,
-): Promise<void> {
+): Promise<OwnerBootstrapResult> {
   const input = ownerInputSchema.parse(rawInput);
   const credential = await hashPassword(input.password);
   const sql = postgres(databaseUrl, { max: 1, connect_timeout: 10 });
   try {
-    await sql.begin(async (transaction) => {
+    return await sql.begin(async (transaction) => {
       await transaction`select pg_advisory_xact_lock(2026081501)`;
       const existing = await transaction<Array<{ count: number }>>`
         select count(*)::integer as count from auth_credential
@@ -53,6 +57,7 @@ export async function bootstrapInitialOwner(
           'scrypt-v1', ${credential.n}, ${credential.r}, ${credential.p}
         )
       `;
+      return { identityId, workspaceId };
     });
   } finally {
     credential.hash.fill(0);
