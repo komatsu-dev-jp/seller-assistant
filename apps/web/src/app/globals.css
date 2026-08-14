@@ -1007,6 +1007,42 @@ a {
   font-size: 11px;
   font-weight: 800;
 }
+.mobileSyncStatus {
+  padding: 14px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 12px;
+  align-items: center;
+}
+.mobileSyncStatus div {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+.mobileSyncStatus div span,
+.mobileSyncStatus p {
+  color: var(--muted);
+  font-size: 11px;
+}
+.mobileSyncStatus p {
+  grid-column: 1 / -1;
+  margin: 0;
+  line-height: 1.5;
+}
+.mobileSyncStatus button {
+  min-height: 34px;
+  padding: 0 11px;
+  color: white;
+  background: var(--blue);
+  border: 0;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 800;
+}
+.mobileSyncStatus button:disabled {
+  color: var(--muted);
+  background: #edf1f7;
+}
 .mobileTaskGrid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

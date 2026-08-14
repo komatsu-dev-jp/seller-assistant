@@ -13,7 +13,11 @@ function buildTestApp() {
     repository: new InMemoryWorkflowRepository(),
     authenticate: (headers) => {
       const identityId = headers["x-actor-id"];
-      return typeof identityId === "string" ? { identityId } : null;
+      const activeWorkspaceId = headers["x-workspace-id"];
+      if (typeof identityId !== "string") return null;
+      return typeof activeWorkspaceId === "string"
+        ? { identityId, workspaceId: activeWorkspaceId }
+        : { identityId };
     },
     validateWriteOrigin: () => true,
   });
@@ -128,6 +132,57 @@ describe("P0 workspace API", () => {
     expect(summary.json()).toMatchObject({ putawayPending: 1, available: 0 });
   });
 
+  it("binds session context and putaway writes to the signed active workspace", async () => {
+    const app = buildTestApp();
+    apps.push(app);
+    const headers = { "x-actor-id": actorId, "x-workspace-id": workspaceId };
+    const context = await app.inject({ method: "GET", url: "/v1/session/context", headers });
+    expect(context.statusCode).toBe(200);
+    expect(context.json()).toEqual({ identityId: actorId, workspaceId, role: "owner" });
+
+    const request = {
+      inventoryNumber: "INV-000123",
+      locationCode: "BX-014-3",
+      inventoryLabelVersion: 1,
+      locationLabelVersion: 1,
+      inventoryScannedAt: "2026-08-15T01:00:00.000Z",
+      locationScannedAt: "2026-08-15T01:00:01.000Z",
+      confirmedAt: "2026-08-15T01:00:02.000Z",
+      idempotencyKey: "33333333-3333-4333-8333-333333333333",
+      humanConfirmed: true,
+    } as const;
+    const first = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceId}/inventory/putaway`,
+      headers,
+      payload: request,
+    });
+    expect(first.statusCode).toBe(201);
+    expect(first.json()).toMatchObject({
+      inventoryNumber: request.inventoryNumber,
+      locationCode: request.locationCode,
+      status: "available",
+    });
+    const replay = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceId}/inventory/putaway`,
+      headers,
+      payload: request,
+    });
+    expect(replay.statusCode).toBe(201);
+    expect(replay.body).toBe(first.body);
+
+    const otherWorkspace = "44444444-4444-4444-8444-444444444444";
+    const forbidden = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${otherWorkspace}/inventory/putaway`,
+      headers,
+      payload: request,
+    });
+    expect(forbidden.statusCode).toBe(403);
+    expect(forbidden.json()).toMatchObject({ code: "active_workspace_mismatch" });
+  });
+
   it("rejects invalid actors and duplicate SKU codes", async () => {
     const app = buildTestApp();
     apps.push(app);
@@ -169,6 +224,7 @@ describe("P0 workspace API", () => {
       {
         sessionId: "91000000-0000-4000-8000-000000000001",
         identityId: actorId,
+        workspaceId,
         issuedAt: 1_000,
         expiresAt: 2_000,
       },
@@ -225,7 +281,7 @@ describe("P0 workspace API", () => {
     });
     apps.push(app);
     const token = createSignedSession(
-      { sessionId, identityId: actorId, issuedAt: 1_000, expiresAt: 2_000 },
+      { sessionId, identityId: actorId, workspaceId, issuedAt: 1_000, expiresAt: 2_000 },
       secret,
     );
     const cookie = `resale_session=${token}`;

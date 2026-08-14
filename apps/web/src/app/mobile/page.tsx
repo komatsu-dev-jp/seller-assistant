@@ -1,4 +1,5 @@
 import { InstallAppCard } from "../../components/install-app-card";
+import { OfflineSyncStatus } from "../../components/offline-sync-status";
 
 const mobileTasks = [
   ["格納待ち", "12", "orange"],
@@ -27,6 +28,8 @@ export default function MobileHomePage() {
         </div>
 
         <InstallAppCard />
+
+        <OfflineSyncStatus />
 
         <section className="mobileTaskGrid" aria-label="担当作業">
           {mobileTasks.map(([label, count, tone]) => (

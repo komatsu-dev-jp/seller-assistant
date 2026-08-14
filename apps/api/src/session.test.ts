@@ -11,6 +11,7 @@ const secret = "test-only-session-secret-with-at-least-32-bytes";
 const claims = {
   sessionId: "90000000-0000-4000-8000-000000000001",
   identityId: "90000000-0000-4000-8000-000000000002",
+  workspaceId: "90000000-0000-4000-8000-000000000003",
   issuedAt: 1_000,
   expiresAt: 2_000,
 };
@@ -23,6 +24,7 @@ describe("signed HttpOnly sessions", () => {
     await expect(authenticate({ cookie: `resale_session=${token}` })).resolves.toEqual({
       identityId: claims.identityId,
       sessionId: claims.sessionId,
+      workspaceId: claims.workspaceId,
     });
   });
 

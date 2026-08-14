@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 
-import { queuePutaway } from "../lib/offline-outbox";
+import { createPendingPutaway, savePutawayOnlineFirst } from "../lib/offline-outbox";
 
 type Step = "inventory" | "location" | "confirm" | "saved";
 
@@ -14,6 +14,9 @@ export function MobileScanWorkflow() {
   const [value, setValue] = useState("");
   const [inventoryNumber, setInventoryNumber] = useState<string | null>(null);
   const [locationCode, setLocationCode] = useState<string | null>(null);
+  const [inventoryScannedAt, setInventoryScannedAt] = useState<string | null>(null);
+  const [locationScannedAt, setLocationScannedAt] = useState<string | null>(null);
+  const [saveMode, setSaveMode] = useState<"synced" | "queued" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -40,9 +43,13 @@ export function MobileScanWorkflow() {
     }
     if (step === "inventory") {
       setInventoryNumber(normalized);
+      setInventoryScannedAt(new Date().toISOString());
+      setLocationCode(null);
+      setLocationScannedAt(null);
       setStep("location");
     } else {
       setLocationCode(normalized);
+      setLocationScannedAt(new Date().toISOString());
       setStep("confirm");
     }
     setValue("");
@@ -53,9 +60,13 @@ export function MobileScanWorkflow() {
     return (
       <main className="mobileScanPage successScreen">
         <div className="successIcon">✓</div>
-        <p className="eyebrow">OFFLINE READY</p>
-        <h1>同期待ちに保存しました</h1>
-        <p>接続後に現在地を再確認します。競合時は自動上書きしません。</p>
+        <p className="eyebrow">{saveMode === "synced" ? "SERVER CONFIRMED" : "OFFLINE READY"}</p>
+        <h1>{saveMode === "synced" ? "サーバーへ格納しました" : "同期待ちに保存しました"}</h1>
+        <p>
+          {saveMode === "synced"
+            ? "商品と場所の二重読取をDBで再確認し、格納履歴を保存しました。"
+            : "接続後に現在地を再確認します。競合時は自動上書きしません。"}
+        </p>
         <a className="primaryButton" href="/mobile">
           今日の作業へ戻る
         </a>
@@ -137,14 +148,26 @@ export function MobileScanWorkflow() {
             type="button"
             disabled={isSaving}
             onClick={() => {
-              if (!inventoryNumber || !locationCode) return;
+              if (!inventoryNumber || !locationCode || !inventoryScannedAt || !locationScannedAt)
+                return;
               setIsSaving(true);
               setError(null);
-              void queuePutaway(inventoryNumber, locationCode)
-                .then(() => setStep("saved"))
-                .catch(() =>
+              const operation = createPendingPutaway(
+                inventoryNumber,
+                locationCode,
+                inventoryScannedAt,
+                locationScannedAt,
+              );
+              void savePutawayOnlineFirst(operation)
+                .then((mode) => {
+                  setSaveMode(mode);
+                  setStep("saved");
+                })
+                .catch((saveError) =>
                   setError(
-                    "端末内へ保存できませんでした。通信状態とブラウザ設定をご確認ください。",
+                    saveError instanceof Error
+                      ? saveError.message
+                      : "格納を確認できませんでした。最初から読み直してください。",
                   ),
                 )
                 .finally(() => setIsSaving(false));
@@ -152,7 +175,17 @@ export function MobileScanWorkflow() {
           >
             {isSaving ? "端末内へ保存中…" : "一致を確認して保存"}
           </button>
-          <button type="button" className="secondaryButton" onClick={() => setStep("inventory")}>
+          <button
+            type="button"
+            className="secondaryButton"
+            onClick={() => {
+              setInventoryNumber(null);
+              setLocationCode(null);
+              setInventoryScannedAt(null);
+              setLocationScannedAt(null);
+              setStep("inventory");
+            }}
+          >
             最初から読み直す
           </button>
         </section>

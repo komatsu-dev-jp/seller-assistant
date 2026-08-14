@@ -28,6 +28,10 @@ const inventoryGuardsMigrationPath = fileURLToPath(
   new URL("../migrations/0007_inventory_transaction_guards.sql", import.meta.url),
 );
 const inventoryGuardsSql = readFileSync(inventoryGuardsMigrationPath, "utf8");
+const sessionWorkspaceMigrationPath = fileURLToPath(
+  new URL("../migrations/0008_session_workspace.sql", import.meta.url),
+);
+const sessionWorkspaceSql = readFileSync(sessionWorkspaceMigrationPath, "utf8");
 
 describe("P0 PostgreSQL migration contract", () => {
   it("enables and forces workspace RLS for business tables", () => {
@@ -120,5 +124,13 @@ describe("P0 PostgreSQL migration contract", () => {
     );
     expect(inventoryGuardsSql).toContain("requester and approver must be different people");
     expect(inventoryGuardsSql).toContain("revoke update on inventory_unit, scan_session");
+  });
+
+  it("binds each signed server session to one active workspace", () => {
+    expect(sessionWorkspaceSql).toContain("login_default_workspace");
+    expect(sessionWorkspaceSql).toContain("security definer");
+    expect(sessionWorkspaceSql).toContain("revoke all on function");
+    expect(sessionWorkspaceSql).toContain("auth_session_workspace_fk");
+    expect(sessionWorkspaceSql).toContain("alter column workspace_id set not null");
   });
 });

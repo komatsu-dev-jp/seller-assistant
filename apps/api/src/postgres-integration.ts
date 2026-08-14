@@ -41,8 +41,8 @@ const app = buildApp({
   loginService: new PostgresLoginService(runtimeUrl, sessionSecret),
   authenticate: createCookieAuthenticator(sessionSecret, undefined, registry),
   revokeSession: async (actor) => {
-    assert.ok(actor.sessionId);
-    await registry.revoke(actor.sessionId, actor.identityId);
+    assert.ok(actor.sessionId && actor.workspaceId);
+    await registry.revoke(actor.sessionId, actor.identityId, actor.workspaceId);
   },
   closeAuthentication: () => registry.close(),
   validateWriteOrigin: () => true,
@@ -174,6 +174,52 @@ try {
         }),
       /inventory label is invalid/u,
     );
+
+    const apiPutawayStart = Date.now();
+    const apiPutawayPayload = {
+      inventoryNumber: "INV-900002",
+      locationCode: "BIN-B",
+      inventoryLabelVersion: 1,
+      locationLabelVersion: 1,
+      inventoryScannedAt: new Date(apiPutawayStart).toISOString(),
+      locationScannedAt: new Date(apiPutawayStart + 1).toISOString(),
+      confirmedAt: new Date(apiPutawayStart + 2).toISOString(),
+      idempotencyKey: "88888888-8888-4888-8888-888888888888",
+      humanConfirmed: true,
+    } as const;
+    const apiPutaway = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/inventory/putaway`,
+      headers: { cookie },
+      payload: apiPutawayPayload,
+    });
+    assert.equal(apiPutaway.statusCode, 201, apiPutaway.body);
+    assert.deepEqual(apiPutaway.json(), {
+      inventoryUnitId: unitTwoId,
+      inventoryNumber: "INV-900002",
+      status: "available",
+      locationId: binBId,
+      locationCode: "BIN-B",
+      movementSequence: 1,
+      scanSessionId: apiPutaway.json<{ scanSessionId: string }>().scanSessionId,
+      idempotencyKey: apiPutawayPayload.idempotencyKey,
+      syncedAt: apiPutaway.json<{ syncedAt: string }>().syncedAt,
+    });
+    const apiPutawayReplay = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/inventory/putaway`,
+      headers: { cookie },
+      payload: apiPutawayPayload,
+    });
+    assert.equal(apiPutawayReplay.statusCode, 201, apiPutawayReplay.body);
+    assert.deepEqual(apiPutawayReplay.json(), apiPutaway.json());
+    const apiPutawayConflict = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/inventory/putaway`,
+      headers: { cookie },
+      payload: { ...apiPutawayPayload, locationCode: "BIN-A" },
+    });
+    assert.equal(apiPutawayConflict.statusCode, 409, apiPutawayConflict.body);
 
     async function putaway(
       unitId: string,

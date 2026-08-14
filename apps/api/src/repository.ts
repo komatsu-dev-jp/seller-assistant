@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import postgres from "postgres";
 import type {
   AdvanceP0WorkflowRequest,
@@ -8,8 +8,11 @@ import type {
   MeasurementResponse,
   MediaAssetResponse,
   P0WorkflowResponse,
+  PutawayInventoryRequest,
+  PutawayInventoryResponse,
   RecordMeasurementRequest,
   RegisterMediaAssetRequest,
+  SessionContextResponse,
   SkuResponse,
 } from "@resale/contracts";
 import {
@@ -26,15 +29,22 @@ export type WorkspaceRole =
 export interface RequestActor {
   identityId: string;
   sessionId?: string;
+  workspaceId?: string;
 }
 
 export interface WorkflowRepository {
+  sessionContext(actor: RequestActor): Promise<SessionContextResponse>;
   createSku(
     workspaceId: string,
     actor: RequestActor,
     input: CreateSkuRequest,
   ): Promise<SkuResponse>;
   inventorySummary(workspaceId: string, actor: RequestActor): Promise<InventorySummary>;
+  putawayInventory(
+    workspaceId: string,
+    actor: RequestActor,
+    input: PutawayInventoryRequest,
+  ): Promise<PutawayInventoryResponse>;
   advanceP0Workflow(
     workspaceId: string,
     skuId: string,
@@ -72,6 +82,21 @@ export class InMemoryWorkflowRepository implements WorkflowRepository {
   private readonly replays = new Map<string, { payloadHash: string; result: P0WorkflowResponse }>();
   private readonly mediaAssets = new Map<string, MediaAssetResponse>();
   private readonly measurements = new Map<string, MeasurementResponse>();
+  private readonly putaways = new Map<
+    string,
+    { payloadHash: string; result: PutawayInventoryResponse }
+  >();
+
+  sessionContext(actor: RequestActor): Promise<SessionContextResponse> {
+    if (!actor.workspaceId) {
+      throw new RepositoryError("forbidden", "The signed session has no active workspace");
+    }
+    return Promise.resolve({
+      identityId: actor.identityId,
+      workspaceId: actor.workspaceId,
+      role: "owner",
+    });
+  }
 
   createSku(
     workspaceId: string,
@@ -111,6 +136,35 @@ export class InMemoryWorkflowRepository implements WorkflowRepository {
       olderThan90Days: 0,
       lastSyncedAt: new Date().toISOString(),
     });
+  }
+
+  putawayInventory(
+    workspaceId: string,
+    _actor: RequestActor,
+    input: PutawayInventoryRequest,
+  ): Promise<PutawayInventoryResponse> {
+    const replayKey = `${workspaceId}:${input.idempotencyKey}`;
+    const payloadHash = hashPutawayInput(input);
+    const existing = this.putaways.get(replayKey);
+    if (existing) {
+      if (existing.payloadHash !== payloadHash) {
+        throw new RepositoryError("conflict", "The idempotency key has another payload");
+      }
+      return Promise.resolve(existing.result);
+    }
+    const result: PutawayInventoryResponse = {
+      inventoryUnitId: randomUUID(),
+      inventoryNumber: input.inventoryNumber,
+      status: "available",
+      locationId: randomUUID(),
+      locationCode: input.locationCode,
+      movementSequence: 1,
+      scanSessionId: randomUUID(),
+      idempotencyKey: input.idempotencyKey,
+      syncedAt: new Date().toISOString(),
+    };
+    this.putaways.set(replayKey, { payloadHash, result });
+    return Promise.resolve(result);
   }
 
   advanceP0Workflow(
@@ -356,6 +410,33 @@ interface MeasurementRow {
   created_at: Date;
 }
 
+interface PutawayUnitRow {
+  id: string;
+  inventory_number: string;
+  movement_seq: string;
+  inventory_label_id: string;
+  inventory_label_version: number;
+}
+
+interface PutawayLocationRow {
+  id: string;
+  code: string;
+  location_label_id: string;
+  location_label_version: number;
+}
+
+interface PutawayReplayRow {
+  inventory_unit_id: string;
+  inventory_number: string;
+  location_id: string;
+  location_code: string;
+  movement_seq: number;
+  scan_session_id: string;
+  idempotency_key: string;
+  payload_hash: string;
+  moved_at: Date;
+}
+
 export class PostgresWorkflowRepository implements WorkflowRepository {
   private readonly sql: postgres.Sql;
 
@@ -365,6 +446,24 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
       idle_timeout: 20,
       connect_timeout: 10,
       transform: { undefined: null },
+    });
+  }
+
+  async sessionContext(actor: RequestActor): Promise<SessionContextResponse> {
+    const workspaceId = actor.workspaceId;
+    if (!workspaceId) {
+      throw new RepositoryError("forbidden", "The signed session has no active workspace");
+    }
+    return this.sql.begin(async (transaction) => {
+      await setWorkspace(transaction, workspaceId);
+      const role = await requireRole(transaction, workspaceId, actor.identityId, [
+        "owner",
+        "inventory_manager",
+        "field_worker",
+        "shipping",
+        "accounting",
+      ]);
+      return { identityId: actor.identityId, workspaceId, role };
     });
   }
 
@@ -426,6 +525,154 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
         lastSyncedAt: new Date().toISOString(),
       };
     });
+  }
+
+  async putawayInventory(
+    workspaceId: string,
+    actor: RequestActor,
+    input: PutawayInventoryRequest,
+  ): Promise<PutawayInventoryResponse> {
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId);
+        await requireRole(transaction, workspaceId, actor.identityId, [
+          "owner",
+          "inventory_manager",
+          "field_worker",
+        ]);
+        const payloadHash = hashPutawayInput(input);
+        const replay = await transaction<PutawayReplayRow[]>`
+          select movement.inventory_unit_id, unit.inventory_number,
+                 movement.to_location_id as location_id, location.code as location_code,
+                 movement.movement_seq::integer as movement_seq,
+                 movement.scan_session_id, movement.idempotency_key,
+                 movement.payload_hash, movement.moved_at
+          from inventory_movement movement
+          join inventory_unit unit
+            on unit.workspace_id = movement.workspace_id
+           and unit.id = movement.inventory_unit_id
+          join location_node location
+            on location.workspace_id = movement.workspace_id
+           and location.id = movement.to_location_id
+          where movement.workspace_id = ${workspaceId}
+            and movement.idempotency_key = ${input.idempotencyKey}
+        `;
+        if (replay[0]) {
+          if (replay[0].payload_hash !== payloadHash) {
+            throw new RepositoryError(
+              "conflict",
+              "The idempotency key was reused with another putaway payload",
+            );
+          }
+          return toPutawayResponse(replay[0]);
+        }
+
+        const units = await transaction<PutawayUnitRow[]>`
+          select unit.id, unit.inventory_number, unit.movement_seq,
+                 label.id as inventory_label_id, label.version as inventory_label_version
+          from inventory_unit unit
+          join lateral (
+            select active_label.id, active_label.version
+            from inventory_label active_label
+            where active_label.workspace_id = unit.workspace_id
+              and active_label.target_type = 'inventory_unit'
+              and active_label.target_id = unit.id
+              and active_label.active
+            order by case active_label.label_kind when 'qr' then 0 else 1 end
+            limit 1
+          ) label on true
+          where unit.workspace_id = ${workspaceId}
+            and unit.inventory_number = ${input.inventoryNumber}
+        `;
+        const locations = await transaction<PutawayLocationRow[]>`
+          select location.id, location.code,
+                 label.id as location_label_id, label.version as location_label_version
+          from location_node location
+          join lateral (
+            select active_label.id, active_label.version
+            from inventory_label active_label
+            where active_label.workspace_id = location.workspace_id
+              and active_label.target_type = 'location'
+              and active_label.target_id = location.id
+              and active_label.active
+            order by case active_label.label_kind when 'qr' then 0 else 1 end
+            limit 1
+          ) label on true
+          where location.workspace_id = ${workspaceId} and location.code = ${input.locationCode}
+        `;
+        const unit = units[0];
+        const location = locations[0];
+        if (!unit || !location) {
+          throw new RepositoryError(
+            "conflict",
+            "The inventory item or active storage location could not be confirmed",
+          );
+        }
+        if (
+          unit.inventory_label_version !== input.inventoryLabelVersion ||
+          location.location_label_version !== input.locationLabelVersion
+        ) {
+          throw new RepositoryError(
+            "conflict",
+            "A label version changed; both labels must be read again",
+          );
+        }
+
+        const scanSessionId = randomUUID();
+        await transaction`
+          insert into scan_session (
+            id, workspace_id, operation, inventory_unit_id, expected_location_id,
+            destination_location_id, inventory_label_id, inventory_label_version,
+            location_label_id, location_label_version, inventory_scanned_at,
+            location_scanned_at, confirmed_by, confirmed_at
+          ) values (
+            ${scanSessionId}, ${workspaceId}, 'putaway', ${unit.id}, null,
+            ${location.id}, ${unit.inventory_label_id}, ${input.inventoryLabelVersion},
+            ${location.location_label_id}, ${input.locationLabelVersion},
+            ${input.inventoryScannedAt}, ${input.locationScannedAt},
+            ${actor.identityId}, ${input.confirmedAt}
+          )
+        `;
+        const movements = await transaction<Array<{ moved_at: Date }>>`
+          insert into inventory_movement (
+            workspace_id, inventory_unit_id, movement_seq, from_location_id,
+            to_location_id, movement_kind, scan_session_id, idempotency_key,
+            payload_hash, moved_by
+          ) values (
+            ${workspaceId}, ${unit.id}, ${Number(unit.movement_seq) + 1}, null,
+            ${location.id}, 'putaway', ${scanSessionId}, ${input.idempotencyKey},
+            ${payloadHash}, ${actor.identityId}
+          )
+          returning moved_at
+        `;
+        const movedAt = movements[0]?.moved_at;
+        if (!movedAt) throw new RepositoryError("database_error", "Movement returned no timestamp");
+        await transaction`
+          insert into audit_event (
+            workspace_id, actor_id, action, target_type, target_id,
+            field_names, redacted_changes, reference_ids
+          ) values (
+            ${workspaceId}, ${actor.identityId}, 'inventory.putaway', 'inventory_unit',
+            ${unit.id}, ${["status", "location_id", "movement_seq"]},
+            ${transaction.json({ status: { to: "available" } })},
+            ${[scanSessionId, location.id]}
+          )
+        `;
+        return {
+          inventoryUnitId: unit.id,
+          inventoryNumber: unit.inventory_number,
+          status: "available",
+          locationId: location.id,
+          locationCode: location.code,
+          movementSequence: Number(unit.movement_seq) + 1,
+          scanSessionId,
+          idempotencyKey: input.idempotencyKey,
+          syncedAt: movedAt.toISOString(),
+        };
+      });
+    } catch (error) {
+      throw normalizeDatabaseError(error);
+    }
   }
 
   async advanceP0Workflow(
@@ -832,6 +1079,20 @@ function toDomainMeasurement(response: MeasurementResponse): Measurement {
   };
 }
 
+function toPutawayResponse(row: PutawayReplayRow): PutawayInventoryResponse {
+  return {
+    inventoryUnitId: row.inventory_unit_id,
+    inventoryNumber: row.inventory_number,
+    status: "available",
+    locationId: row.location_id,
+    locationCode: row.location_code,
+    movementSequence: row.movement_seq,
+    scanSessionId: row.scan_session_id,
+    idempotencyKey: row.idempotency_key,
+    syncedAt: row.moved_at.toISOString(),
+  };
+}
+
 const requiredCaptureRoles: MediaAssetResponse["role"][] = [
   "front",
   "back",
@@ -904,10 +1165,30 @@ function hashWorkflowInput(input: AdvanceP0WorkflowRequest): string {
     .digest("hex");
 }
 
+function hashPutawayInput(input: PutawayInventoryRequest): string {
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        inventoryNumber: input.inventoryNumber,
+        locationCode: input.locationCode,
+        inventoryLabelVersion: input.inventoryLabelVersion,
+        locationLabelVersion: input.locationLabelVersion,
+        inventoryScannedAt: input.inventoryScannedAt,
+        locationScannedAt: input.locationScannedAt,
+        confirmedAt: input.confirmedAt,
+        humanConfirmed: input.humanConfirmed,
+      }),
+      "utf8",
+    )
+    .digest("hex");
+}
+
 function normalizeDatabaseError(error: unknown): RepositoryError {
   if (error instanceof RepositoryError) return error;
-  if (typeof error === "object" && error && "code" in error && error.code === "23505") {
-    return new RepositoryError("conflict", "The requested unique value already exists");
+  if (typeof error === "object" && error && "code" in error) {
+    if (["23505", "23514", "P0001", "40001", "40P01"].includes(String(error.code))) {
+      return new RepositoryError("conflict", "The operation conflicts with current server state");
+    }
   }
   return new RepositoryError("database_error", "The database operation failed safely");
 }

@@ -117,6 +117,15 @@ export class PostgresLoginService implements LoginService {
       return result;
     }
 
+    const workspaceRows = await this.sql<Array<{ workspace_id: string | null }>>`
+      select login_default_workspace(${credential.identity_id}) as workspace_id
+    `;
+    const workspaceId = workspaceRows[0]?.workspace_id;
+    if (!workspaceId) {
+      const result = await this.registerFailure(identifierHash, now);
+      return result;
+    }
+
     const sessionId = randomUUID();
     const issuedAt = Math.floor(now.getTime() / 1000);
     const expiresAt = issuedAt + SESSION_SECONDS;
@@ -125,12 +134,12 @@ export class PostgresLoginService implements LoginService {
         delete from auth_login_bucket where identifier_hash = ${identifierHash}
       `;
       await transaction`
-        insert into auth_session (id, identity_id, issued_at, expires_at)
-        values (${sessionId}, ${credential.identity_id}, ${new Date(issuedAt * 1000)}, ${new Date(expiresAt * 1000)})
+        insert into auth_session (id, identity_id, workspace_id, issued_at, expires_at)
+        values (${sessionId}, ${credential.identity_id}, ${workspaceId}, ${new Date(issuedAt * 1000)}, ${new Date(expiresAt * 1000)})
       `;
     });
     const token = createSignedSession(
-      { sessionId, identityId: credential.identity_id, issuedAt, expiresAt },
+      { sessionId, identityId: credential.identity_id, workspaceId, issuedAt, expiresAt },
       this.sessionSecret,
     );
     return { kind: "success", setCookie: serializeSessionCookie(token, SESSION_SECONDS) };

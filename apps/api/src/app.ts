@@ -10,8 +10,11 @@ import {
   measurementResponseSchema,
   mediaAssetResponseSchema,
   p0WorkflowResponseSchema,
+  putawayInventoryRequestSchema,
+  putawayInventoryResponseSchema,
   recordMeasurementRequestSchema,
   registerMediaAssetRequestSchema,
+  sessionContextResponseSchema,
   skuResponseSchema,
   workspaceIdSchema,
   type ApiError,
@@ -119,6 +122,20 @@ export function buildApp(options: BuildAppOptions = {}) {
     },
   );
 
+  app.get<{
+    Reply: ReturnType<typeof sessionContextResponseSchema.parse> | ApiError;
+  }>("/v1/session/context", async (request, reply) => {
+    const actor = await authenticate(request.headers);
+    if (!actor) return reply.code(401).send(authenticationError(request.id));
+    try {
+      const context = await repository.sessionContext(actor);
+      return reply.send(sessionContextResponseSchema.parse(context));
+    } catch (error) {
+      const mapped = mapRepositoryError(error, request.id);
+      return reply.code(mapped.status).send(mapped.payload);
+    }
+  });
+
   app.post<{
     Params: { workspaceId: string };
     Body: unknown;
@@ -137,6 +154,8 @@ export function buildApp(options: BuildAppOptions = {}) {
         }),
       );
     }
+    const actorWorkspace = actorWorkspaceError(actor, workspace.data, request.id);
+    if (actorWorkspace) return reply.code(403).send(actorWorkspace);
     try {
       const row = await repository.createSku(workspace.data, actor, input.data);
       return reply.code(201).send(skuResponseSchema.parse(row));
@@ -162,9 +181,40 @@ export function buildApp(options: BuildAppOptions = {}) {
         }),
       );
     }
+    const actorWorkspace = actorWorkspaceError(actor, workspace.data, request.id);
+    if (actorWorkspace) return reply.code(403).send(actorWorkspace);
     try {
       const summary = await repository.inventorySummary(workspace.data, actor);
       return reply.send(inventorySummarySchema.parse(summary));
+    } catch (error) {
+      const mapped = mapRepositoryError(error, request.id);
+      return reply.code(mapped.status).send(mapped.payload);
+    }
+  });
+
+  app.post<{
+    Params: { workspaceId: string };
+    Body: unknown;
+    Reply: ReturnType<typeof putawayInventoryResponseSchema.parse> | ApiError;
+  }>("/v1/workspaces/:workspaceId/inventory/putaway", async (request, reply) => {
+    const workspace = workspaceIdSchema.safeParse(request.params.workspaceId);
+    const input = putawayInventoryRequestSchema.safeParse(request.body);
+    const actor = await authenticate(request.headers);
+    if (!actor) return reply.code(401).send(authenticationError(request.id));
+    if (!workspace.success || !input.success) {
+      return reply.code(400).send(
+        apiErrorSchema.parse({
+          code: "invalid_request",
+          message: "商品・場所ラベルと人の確認時刻を確認してください。",
+          requestId: request.id,
+        }),
+      );
+    }
+    const actorWorkspace = actorWorkspaceError(actor, workspace.data, request.id);
+    if (actorWorkspace) return reply.code(403).send(actorWorkspace);
+    try {
+      const result = await repository.putawayInventory(workspace.data, actor, input.data);
+      return reply.code(201).send(putawayInventoryResponseSchema.parse(result));
     } catch (error) {
       const mapped = mapRepositoryError(error, request.id);
       return reply.code(mapped.status).send(mapped.payload);
@@ -190,6 +240,8 @@ export function buildApp(options: BuildAppOptions = {}) {
         }),
       );
     }
+    const actorWorkspace = actorWorkspaceError(actor, workspace.data, request.id);
+    if (actorWorkspace) return reply.code(403).send(actorWorkspace);
     try {
       const result = await repository.advanceP0Workflow(
         workspace.data,
@@ -223,6 +275,8 @@ export function buildApp(options: BuildAppOptions = {}) {
         }),
       );
     }
+    const actorWorkspace = actorWorkspaceError(actor, workspace.data, request.id);
+    if (actorWorkspace) return reply.code(403).send(actorWorkspace);
     try {
       const result = await repository.registerMediaAsset(
         workspace.data,
@@ -256,6 +310,8 @@ export function buildApp(options: BuildAppOptions = {}) {
         }),
       );
     }
+    const actorWorkspace = actorWorkspaceError(actor, workspace.data, request.id);
+    if (actorWorkspace) return reply.code(403).send(actorWorkspace);
     try {
       const result = await repository.recordMeasurement(
         workspace.data,
@@ -287,6 +343,8 @@ export function buildApp(options: BuildAppOptions = {}) {
         }),
       );
     }
+    const actorWorkspace = actorWorkspaceError(actor, workspace.data, request.id);
+    if (actorWorkspace) return reply.code(403).send(actorWorkspace);
     try {
       const result = await repository.captureSummary(workspace.data, sku.data, actor);
       return reply.send(captureSummarySchema.parse(result));
@@ -319,6 +377,19 @@ function authenticationError(requestId: string): ApiError {
   return apiErrorSchema.parse({
     code: "authentication_required",
     message: "有効な署名付きセッションが必要です。",
+    requestId,
+  });
+}
+
+function actorWorkspaceError(
+  actor: RequestActor,
+  requestedWorkspaceId: string,
+  requestId: string,
+): ApiError | null {
+  if (!actor.workspaceId || actor.workspaceId === requestedWorkspaceId) return null;
+  return apiErrorSchema.parse({
+    code: "active_workspace_mismatch",
+    message: "ログイン中の事業所と操作対象が一致しません。",
     requestId,
   });
 }

@@ -1,4 +1,4 @@
-const CACHE_VERSION = "resale-ops-v1";
+const CACHE_VERSION = "resale-ops-v2";
 const APP_SHELL = ["/", "/inventory", "/mobile", "/offline", "/icon.svg", "/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
@@ -23,7 +23,8 @@ self.addEventListener("fetch", (event) => {
   if (
     request.method !== "GET" ||
     url.origin !== self.location.origin ||
-    url.pathname.startsWith("/api/")
+    url.pathname.startsWith("/api/") ||
+    url.pathname.startsWith("/v1/")
   )
     return;
 

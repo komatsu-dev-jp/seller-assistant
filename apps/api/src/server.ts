@@ -27,8 +27,10 @@ const app = buildApp({
   repository: new PostgresWorkflowRepository(databaseUrl),
   authenticate: createCookieAuthenticator(sessionSecret, undefined, sessionRegistry),
   revokeSession: async (actor) => {
-    if (!actor.sessionId) throw new Error("Authenticated session ID is required for logout");
-    await sessionRegistry.revoke(actor.sessionId, actor.identityId);
+    if (!actor.sessionId || !actor.workspaceId) {
+      throw new Error("Authenticated session and workspace are required for logout");
+    }
+    await sessionRegistry.revoke(actor.sessionId, actor.identityId, actor.workspaceId);
   },
   closeAuthentication: async () => sessionRegistry.close(),
   validateWriteOrigin: createWriteOriginValidator(appOrigin),

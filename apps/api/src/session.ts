@@ -8,6 +8,7 @@ const sessionClaimsSchema = z
   .object({
     sessionId: z.string().uuid(),
     identityId: z.string().uuid(),
+    workspaceId: z.string().uuid(),
     issuedAt: z.number().int().nonnegative(),
     expiresAt: z.number().int().positive(),
   })
@@ -17,8 +18,8 @@ const sessionClaimsSchema = z
 export type SessionClaims = z.infer<typeof sessionClaimsSchema>;
 
 export interface SessionRegistry {
-  isActive(sessionId: string, identityId: string): Promise<boolean>;
-  revoke(sessionId: string, identityId: string): Promise<void>;
+  isActive(sessionId: string, identityId: string, workspaceId: string): Promise<boolean>;
+  revoke(sessionId: string, identityId: string, workspaceId: string): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -72,8 +73,16 @@ export function createCookieAuthenticator(
     if (!token) return null;
     const claims = verifySignedSession(token, secret, nowEpochSeconds?.());
     if (!claims) return null;
-    if (registry && !(await registry.isActive(claims.sessionId, claims.identityId))) return null;
-    return { identityId: claims.identityId, sessionId: claims.sessionId };
+    if (
+      registry &&
+      !(await registry.isActive(claims.sessionId, claims.identityId, claims.workspaceId))
+    )
+      return null;
+    return {
+      identityId: claims.identityId,
+      sessionId: claims.sessionId,
+      workspaceId: claims.workspaceId,
+    };
   };
 }
 
@@ -95,19 +104,19 @@ export class PostgresSessionRegistry implements SessionRegistry {
     this.sql = postgres(databaseUrl, { max: 2, idle_timeout: 20, connect_timeout: 10 });
   }
 
-  async isActive(sessionId: string, identityId: string): Promise<boolean> {
+  async isActive(sessionId: string, identityId: string, workspaceId: string): Promise<boolean> {
     const rows = await this.sql<Array<{ active: boolean }>>`
       select (revoked_at is null and expires_at > now()) as active
       from auth_session
-      where id = ${sessionId} and identity_id = ${identityId}
+      where id = ${sessionId} and identity_id = ${identityId} and workspace_id = ${workspaceId}
     `;
     return rows[0]?.active === true;
   }
 
-  async revoke(sessionId: string, identityId: string): Promise<void> {
+  async revoke(sessionId: string, identityId: string, workspaceId: string): Promise<void> {
     await this.sql`
       update auth_session set revoked_at = coalesce(revoked_at, now())
-      where id = ${sessionId} and identity_id = ${identityId}
+      where id = ${sessionId} and identity_id = ${identityId} and workspace_id = ${workspaceId}
     `;
   }
 

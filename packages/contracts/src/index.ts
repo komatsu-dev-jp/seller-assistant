@@ -40,6 +40,58 @@ export const inventorySummarySchema = z.object({
   lastSyncedAt: z.iso.datetime(),
 });
 
+export const workspaceRoleSchema = z.enum([
+  "owner",
+  "inventory_manager",
+  "field_worker",
+  "shipping",
+  "accounting",
+]);
+
+export const sessionContextResponseSchema = z.object({
+  identityId: z.string().uuid(),
+  workspaceId: workspaceIdSchema,
+  role: workspaceRoleSchema,
+});
+
+export const putawayInventoryRequestSchema = z
+  .object({
+    inventoryNumber: inventoryNumberSchema,
+    locationCode: z
+      .string()
+      .trim()
+      .toUpperCase()
+      .min(3)
+      .max(64)
+      .regex(/^[A-Z0-9]+(?:-[A-Z0-9]+)+$/u),
+    inventoryLabelVersion: z.number().int().positive().max(10_000),
+    locationLabelVersion: z.number().int().positive().max(10_000),
+    inventoryScannedAt: z.iso.datetime(),
+    locationScannedAt: z.iso.datetime(),
+    confirmedAt: z.iso.datetime(),
+    idempotencyKey: z.string().uuid(),
+    humanConfirmed: z.literal(true),
+  })
+  .strict()
+  .refine(
+    (value) =>
+      Date.parse(value.confirmedAt) >=
+      Math.max(Date.parse(value.inventoryScannedAt), Date.parse(value.locationScannedAt)),
+    { message: "Human confirmation must follow both label scans", path: ["confirmedAt"] },
+  );
+
+export const putawayInventoryResponseSchema = z.object({
+  inventoryUnitId: z.string().uuid(),
+  inventoryNumber: inventoryNumberSchema,
+  status: z.literal("available"),
+  locationId: z.string().uuid(),
+  locationCode: z.string(),
+  movementSequence: z.number().int().positive(),
+  scanSessionId: z.string().uuid(),
+  idempotencyKey: z.string().uuid(),
+  syncedAt: z.iso.datetime(),
+});
+
 export const apiErrorSchema = z.object({
   code: z.string(),
   message: z.string(),
@@ -164,6 +216,10 @@ export const captureSummarySchema = z.object({
 export type CreateSkuRequest = z.infer<typeof createSkuRequestSchema>;
 export type SkuResponse = z.infer<typeof skuResponseSchema>;
 export type InventorySummary = z.infer<typeof inventorySummarySchema>;
+export type WorkspaceRole = z.infer<typeof workspaceRoleSchema>;
+export type SessionContextResponse = z.infer<typeof sessionContextResponseSchema>;
+export type PutawayInventoryRequest = z.infer<typeof putawayInventoryRequestSchema>;
+export type PutawayInventoryResponse = z.infer<typeof putawayInventoryResponseSchema>;
 export type ApiError = z.infer<typeof apiErrorSchema>;
 export type LoginRequest = z.infer<typeof loginRequestSchema>;
 export type AdvanceP0WorkflowRequest = z.infer<typeof advanceP0WorkflowRequestSchema>;

@@ -15,6 +15,7 @@ describe("zero-cost PWA contract", () => {
   it("never puts API responses into the service worker cache", () => {
     const worker = readFileSync(resolve("apps/web/public/sw.js"), "utf8");
     expect(worker).toContain('url.pathname.startsWith("/api/")');
+    expect(worker).toContain('url.pathname.startsWith("/v1/")');
     expect(worker).toContain("CLEAR_BUSINESS_CACHE");
   });
 
@@ -52,6 +53,17 @@ describe("zero-cost PWA contract", () => {
     expect(form).not.toMatch(/localStorage|sessionStorage|indexedDB|URLSearchParams/u);
     expect(proxy).not.toMatch(/console\.|localStorage|sessionStorage/u);
     expect(proxy).toContain('cache: "no-store"');
+  });
+
+  it("keeps offline putaway minimal and never auto-overwrites a conflict", () => {
+    const outbox = readFileSync(resolve("apps/web/src/lib/offline-outbox.ts"), "utf8");
+    const status = readFileSync(resolve("apps/web/src/components/offline-sync-status.tsx"), "utf8");
+    expect(outbox).toContain("syncPendingPutaways");
+    expect(outbox).toContain('if (response.status >= 500) return "unavailable"');
+    expect(outbox).toContain("throw new Error(body?.message");
+    expect(outbox).not.toMatch(/address|receiptText|purchasePrice|taxDocument/u);
+    expect(status).toContain('addEventListener("online"');
+    expect(status).toContain("自動上書きせず、再読取してください");
   });
 
   it("keeps external CI manual and free of macOS jobs", () => {

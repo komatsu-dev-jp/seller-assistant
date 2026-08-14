@@ -106,3 +106,17 @@
 - 検証: PostgreSQL 18.6の新規使い捨てDBへ0001〜0007を適用。誤ラベル、scan再利用、在庫直接更新、同一人物再確認を拒否し、`postgres-integration: PASS`。全体は16 files / 72 tests、line 91.36%、branch 81.81%、functions 100%、format/lint/type/build合格。
 - 残る問題: API契約としての在庫操作入口、全role/RLS表のマトリクス、オフライン再同期競合、実HTTP経由Webログイン、iPhone実機PWAは未完了。
 - 次の一手: 在庫API契約とrepositoryを追加し、同じDB関数をPWAの二重読取画面から呼ぶ。
+
+## Iteration 11 — 2026-08-15 PWA格納APIと圏外復旧
+
+- 基準値: 在庫不変条件は実DBで通ったが、PWAは端末内保存だけで、認証sessionのworkspaceと格納APIへ接続していなかった。
+- 実装: login時のactive workspace固定、session context、格納repository/API、同一URLのWeb中継、オンライン優先送信、IndexedDB outbox、online復帰/手動同期、保留件数表示を追加した。
+- 安全境界: URL指定workspaceとsession workspaceが一致しない操作を403拒否。格納は人の最終確認後だけ。端末保存は在庫番号、場所コード、ラベル版、冪等キー、読取/確認日時だけ。競合や入力エラーを自動上書きしない。
+- 発見と修正1: Service WorkerのAPI除外が旧`/api/`だけで、実際の同一URL中継`/v1/`を含んでいなかった。両方をcache対象外にし、契約テストを追加した。
+- 発見と修正2: IndexedDB upgrade時の旧版番号をrequestから参照して型検査が停止した。upgrade eventの`oldVersion`へ修正し、旧schemaの保留データを安全に消去する挙動を維持した。
+- 実HTTP/実画面: 架空SKUをオンラインで格納し「SERVER CONFIRMED」を確認。別の架空SKUをbrowser offlineで保留し、online復帰後の手動再送で残り0件を確認。各操作のmovement/auditが1件だけであることをDB照合した。
+- 証拠: `output/playwright/pwa-putaway-server-confirmed.png`、`output/playwright/pwa-offline-resync-complete.png`。390×844、横あふれなし。
+- 自動検証: `npm.cmd run check`合格。16 test files / 76 tests、line 91.36%、branch 81.81%、functions 100%、format/lint/type/build合格。PostgreSQL 18.6の新規DBへ0001〜0008適用後、結合テストPASS。
+- 費用: PC内のNode.js、Next.js、PostgreSQL、Playwrightだけを使用。外部費用、Apple Developer、外部CI、公開、デプロイ0件。
+- 残る問題: 全表/全roleのRLSマトリクス、注文等の実API、写真原本Storage、実iPhone Safari確認は未完了。
+- 次の一手: role/RLS越境マトリクスを実DBへ追加し、P0の残る確定操作を同じsession境界へ接続する。

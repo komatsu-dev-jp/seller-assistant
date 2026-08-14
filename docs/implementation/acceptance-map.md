@@ -83,3 +83,15 @@ P0の必須ACは AC-001、003〜008、013〜014、018〜023、025〜026、028〜
 - 実DB: PostgreSQL 18.6へ0001〜0007を適用し、`postgres-integration: PASS`。架空データ、127.0.0.1、外部費用0円。
 - 全体検証: 16 test files / 72 tests、line 91.36%、branch 81.81%、functions 100%、format/lint/type/build合格。
 - 残り: 全表/全roleのRLSマトリクス、API経由の在庫操作、オフライン競合復旧、実HTTPログイン、実iPhone PWA。
+
+## Iteration 11の実証範囲
+
+- Session workspace: login時に所属workspaceをDBで決め、署名Cookieとsession台帳へ固定。URLだけ別workspaceへ変えても403拒否。
+- 格納API: 商品・場所ラベル、各ラベル版、二つの読取時刻、人確認、冪等キーを受け、scan・movement・auditを一つのtransactionで確定。同一内容の再送は同一結果、同じキーで内容変更は409拒否。
+- PWA: ブラウザから同一URLのWeb中継を通って実API/実PostgreSQLへ格納。オンライン成功時だけ「サーバーへ格納しました」を表示。
+- 圏外復旧: 必要最小項目だけをIndexedDB（ブラウザ内の保存領域）へ保留。復帰後に手動/onlineイベントで再送し、競合は自動上書きせず保留する。Service Workerは`/api/`と実中継の`/v1/`を保存しない。
+- 実画面: 390×844のPCブラウザでオンライン格納と圏外保存→復帰同期を完走。各SKUでmovement 1件・audit 1件・在庫場所一致を実DB確認。証拠は`output/playwright/pwa-putaway-server-confirmed.png`、`pwa-offline-resync-complete.png`。
+- 実DB: PostgreSQL 18.6の新規使い捨てDBへ0001〜0008を適用し、`postgres-integration: PASS`。
+- 全体検証: 16 test files / 76 tests、line 91.36%、branch 81.81%、functions 100%、format/lint/type/build合格。
+- 費用: 有料API、有料SaaS、外部CI、デプロイ、Apple Developer登録0件。Windows PC内のみ。
+- 残り: 全表/全roleのRLSマトリクス、注文等の実API、写真原本Storage、実iPhone Safariのホーム画面追加/カメラ/圏外復帰。
