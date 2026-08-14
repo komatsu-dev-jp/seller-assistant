@@ -203,3 +203,18 @@
 - 費用: Node.js標準機能、ローカルPostgreSQL、PC内ファイルだけ。外部費用・外部CI・公開0件。
 - 残る問題: 注文/住所lease/返品隔離/会計exportの実API、P0画面のDB接続、PWA場所写真UI、実iPhone Safari。
 - 次の一手: sales_order、scan/movement、financial_event、accounting_exportを同じSKU/注文IDでAPIへ接続する。
+
+## Iteration 20 — 2026-08-15 P0実保存・注文配送会計・在庫写真PWA
+
+- 基準値: workflow画面はReact内の固定状態、CSVは固定文字列、ホーム/在庫は架空表示で、注文・住所期限・返品・会計履歴の実APIがなかった。
+- 実装: 0012〜0014、注文/住所暗号化/返品/会計repository、仕入証憑/P0商品/場所repository、実画像upload、場所写真確認一覧、実データホーム、在庫画面、PWA二重読取catalogを追加した。
+- 役割: 管理画面はowner/inventory_managerだけ。field_workerは期限内の場所枝/SKU/作業だけ。撮影者と写真承認者を分離し、監査へreason/approverを保存する。
+- 発見と修正1: 場所read modelの複合主キーGROUP BY不足を新規DBテストで検出し修正した。
+- 発見と修正2: 商品写真upload応答に非公開storage keyが残り、strict schemaが停止した。公開応答を明示allowlistで再構築し、keyを返さないよう修正した。
+- 発見と修正3: Next.js内部URLによる同一生成元判定が本番サーバーで誤判定した。変更要求はブラウザOrigin完全一致、読取はforwarded host/protocol照合へ変更し、欠落/cross-site否定テストを追加した。
+- 発見と修正4: 390×844でPC用横ナビの在庫リンクが見えなかった。ホーム/P0/在庫/現場/ログアウトの固定下部ナビへ変更した。
+- 実画面: 架空データでログイン、場所登録、場所写真原本upload、自己承認拒否、仕入登録、在庫番号発行、DB実数ホームを確認。証拠は`output/playwright/p0-final/.playwright-cli/page-2026-08-14T23-12-40-157Z.png`。
+- 自動検証: `npm.cmd run check`合格、19 files / 96 tests。新規使い捨てPostgreSQLへ0001〜0014を適用し、32テーブルRLSと仕入〜返品/会計の結合テストPASS。
+- 費用: 外部API、有料SaaS、外部CI、デプロイ、Apple Developer契約0件。PC内だけ。
+- 残る問題: 実iPhone Safariはユーザー端末で未確認。P1、HEIC/WebP、Notion限定ミラー本実装はP0後。
+- 次の一手: 最終全check、独立実装レビュー、必要修正、Draft PRを行う。本番公開とPRマージは行わない。

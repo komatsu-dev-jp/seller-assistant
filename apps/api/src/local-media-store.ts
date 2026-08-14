@@ -6,6 +6,7 @@ export interface StoredMediaResult {
   sha256: string;
   sizeBytes: number;
   storageKey: string;
+  created: boolean;
 }
 
 export interface InspectedImage {
@@ -22,6 +23,7 @@ export interface PrivateMediaStore {
     mimeType: "image/jpeg" | "image/png",
   ): Promise<StoredMediaResult>;
   readDisplay(storageKey: string): Promise<Buffer>;
+  removeOriginal(storageKey: string, expectedSha256: string): Promise<void>;
   removeDisplay(storageKey: string, expectedSha256: string): Promise<void>;
 }
 
@@ -34,7 +36,10 @@ export class LocalPrivateMediaStore {
   }
 
   async saveOriginal(storageKey: string, bytes: Buffer): Promise<StoredMediaResult> {
-    const path = this.safePath(storageKey, "location-originals");
+    const requiredSegment = storageKey.includes("/location-originals/")
+      ? "location-originals"
+      : "originals";
+    const path = this.safePath(storageKey, requiredSegment);
     const actualSha256 = sha256(bytes);
     await mkdir(resolve(path, ".."), { recursive: true, mode: 0o700 });
     try {
@@ -42,7 +47,7 @@ export class LocalPrivateMediaStore {
       if (sha256(existing) !== actualSha256) {
         throw new Error("The immutable original key already contains different bytes");
       }
-      return { sha256: actualSha256, sizeBytes: existing.length, storageKey };
+      return { sha256: actualSha256, sizeBytes: existing.length, storageKey, created: false };
     } catch (error) {
       if (!isNotFound(error)) throw error;
     }
@@ -53,7 +58,7 @@ export class LocalPrivateMediaStore {
     } finally {
       await file.close();
     }
-    return { sha256: actualSha256, sizeBytes: bytes.length, storageKey };
+    return { sha256: actualSha256, sizeBytes: bytes.length, storageKey, created: true };
   }
 
   async createSanitizedDisplay(
@@ -98,6 +103,7 @@ export class LocalPrivateMediaStore {
       sha256: sha256(sanitized),
       sizeBytes: sanitized.length,
       storageKey: displayStorageKey,
+      created: createdDisplay,
     };
   }
 
@@ -120,9 +126,35 @@ export class LocalPrivateMediaStore {
     await unlink(path);
   }
 
+  async removeOriginal(storageKey: string, expectedSha256: string): Promise<void> {
+    const requiredSegment = storageKey.includes("/location-originals/")
+      ? "location-originals"
+      : "originals";
+    await this.removePrivateFile(storageKey, requiredSegment, expectedSha256);
+  }
+
+  private async removePrivateFile(
+    storageKey: string,
+    requiredSegment: string,
+    expectedSha256: string,
+  ): Promise<void> {
+    const path = this.safePath(storageKey, requiredSegment);
+    let existing: Buffer;
+    try {
+      existing = await readFile(path);
+    } catch (error) {
+      if (isNotFound(error)) return;
+      throw error;
+    }
+    if (sha256(existing) !== expectedSha256) {
+      throw new Error("Refusing to remove a private file with another hash");
+    }
+    await unlink(path);
+  }
+
   private safePath(storageKey: string, requiredSegment: string): string {
     if (
-      !/^workspaces\/[0-9a-f-]{36}\/location-(?:originals|display)\/[A-Za-z0-9._-]+$/u.test(
+      !/^workspaces\/[0-9a-f-]{36}\/(?:originals|location-originals|location-display)\/[A-Za-z0-9._-]+$/u.test(
         storageKey,
       ) ||
       storageKey.includes("..") ||

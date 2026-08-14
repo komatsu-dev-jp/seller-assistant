@@ -1,9 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import type {
+  AccountingExportResponse,
+  FinancialSummaryResponse,
+  OrderOperationResponse,
+  P0ItemResponse,
+} from "@resale/contracts";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 type Stage = "purchase" | "capture" | "listing" | "order" | "accounting";
 type MeasurementKey = "肩幅" | "身幅" | "袖丈" | "着丈";
+type PhotoRole = "front" | "back" | "brand_tag" | "care_label";
 
 const stages: ReadonlyArray<{ id: Stage; label: string }> = [
   { id: "purchase", label: "仕入" },
@@ -12,8 +19,18 @@ const stages: ReadonlyArray<{ id: Stage; label: string }> = [
   { id: "order", label: "注文・発送" },
   { id: "accounting", label: "収支・会計" },
 ];
-
-const photoRoles = ["正面", "背面", "ブランドタグ", "品質表示"] as const;
+const photoRoles: ReadonlyArray<{ id: PhotoRole; label: string }> = [
+  { id: "front", label: "正面" },
+  { id: "back", label: "背面" },
+  { id: "brand_tag", label: "ブランドタグ" },
+  { id: "care_label", label: "品質表示" },
+];
+const measurementDefinitions: Record<MeasurementKey, string> = {
+  肩幅: "shoulder_width",
+  身幅: "chest_width",
+  袖丈: "sleeve_length",
+  着丈: "body_length",
+};
 const emptyMeasurements: Record<MeasurementKey, string> = {
   肩幅: "",
   身幅: "",
@@ -21,154 +38,388 @@ const emptyMeasurements: Record<MeasurementKey, string> = {
   着丈: "",
 };
 
-export function P0Workspace() {
+export function P0Workspace({ workspaceId }: { workspaceId: string }) {
   const [stage, setStage] = useState<Stage>("purchase");
-  const [receiptConfirmed, setReceiptConfirmed] = useState(false);
-  const [photos, setPhotos] = useState<string[]>([]);
+  const [items, setItems] = useState<P0ItemResponse[]>([]);
+  const [selectedSkuId, setSelectedSkuId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [photos, setPhotos] = useState<Partial<Record<PhotoRole, File>>>({});
   const [measurements, setMeasurements] =
     useState<Record<MeasurementKey, string>>(emptyMeasurements);
-  const [measurementConfirmed, setMeasurementConfirmed] = useState(false);
-  const [listingConfirmed, setListingConfirmed] = useState(false);
-  const [orderState, setOrderState] = useState<"confirmed" | "picked" | "packed" | "shipped">(
-    "confirmed",
-  );
-  const [journalApproved, setJournalApproved] = useState(false);
+  const [financial, setFinancial] = useState<FinancialSummaryResponse | null>(null);
+  const [accountingExport, setAccountingExport] = useState<AccountingExportResponse | null>(null);
+  const [addressLeaseId, setAddressLeaseId] = useState<string | null>(null);
+  const [shippingAddressView, setShippingAddressView] = useState<string | null>(null);
 
+  const item = items.find((candidate) => candidate.skuId === selectedSkuId) ?? items[0] ?? null;
+  const refreshItems = useCallback(async () => {
+    const result = await requestJson<P0ItemResponse[]>(`/v1/workspaces/${workspaceId}/p0-items`);
+    setItems(result);
+    setSelectedSkuId((current) =>
+      current && result.some((candidate) => candidate.skuId === current)
+        ? current
+        : (result[0]?.skuId ?? null),
+    );
+  }, [workspaceId]);
+
+  useEffect(() => {
+    refreshItems()
+      .catch((reason: unknown) => setError(errorMessage(reason)))
+      .finally(() => setLoading(false));
+  }, [refreshItems]);
+
+  useEffect(() => {
+    if (loading || !item) return;
+    setStage((current) => (current === "purchase" ? nextStageForItem(item) : current));
+  }, [item, loading]);
+
+  const workflowRank = workflowStateRank(item?.workflowState);
+  const completed: Record<Stage, boolean> = {
+    purchase: Boolean(item),
+    capture: workflowRank >= workflowStateRank("capture_confirmed"),
+    listing: workflowRank >= workflowStateRank("listing_confirmed"),
+    order: item?.orderState === "shipped" || item?.orderState === "returned",
+    accounting: Boolean(accountingExport),
+  };
   const measurementComplete = Object.values(measurements).every(
     (value) => Number(value) > 0 && Number(value) <= 250,
   );
-  const captureComplete = photos.length === photoRoles.length && measurementConfirmed;
   const description = useMemo(
     () =>
-      `ネイビーの長袖シャツです。平置き実寸は肩幅${measurements.肩幅 || "—"}cm、身幅${measurements.身幅 || "—"}cm、袖丈${measurements.袖丈 || "—"}cm、着丈${measurements.着丈 || "—"}cmです。写真と実寸をご確認のうえ、購入をご検討ください。`,
-    [measurements],
+      `${item?.title ?? "商品"}です。平置き実寸は肩幅${measurements.肩幅 || "—"}cm、身幅${measurements.身幅 || "—"}cm、袖丈${measurements.袖丈 || "—"}cm、着丈${measurements.着丈 || "—"}cmです。写真と実寸をご確認のうえ、購入をご検討ください。`,
+    [item?.title, measurements],
   );
 
-  const completed: Record<Stage, boolean> = {
-    purchase: receiptConfirmed,
-    capture: captureComplete,
-    listing: listingConfirmed,
-    order: orderState === "shipped",
-    accounting: journalApproved,
-  };
+  async function run(action: () => Promise<void>) {
+    setBusy(true);
+    setError("");
+    try {
+      await action();
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function createPurchase(form: FormData) {
+    await run(async () => {
+      const created = await requestJson<P0ItemResponse>(`/v1/workspaces/${workspaceId}/p0-items`, {
+        method: "POST",
+        body: JSON.stringify({
+          skuCode: textField(form, "skuCode").toUpperCase(),
+          title: textField(form, "title"),
+          category: textField(form, "category"),
+          supplierName: textField(form, "supplierName"),
+          receiptReference: textField(form, "receiptReference"),
+          purchasedAt: new Date(textField(form, "purchasedAt")).toISOString(),
+          receiptAmountMinor: numberField(form, "receiptAmountMinor"),
+          allocatedCostMinor: numberField(form, "allocatedCostMinor"),
+          idempotencyKey: crypto.randomUUID(),
+          humanConfirmed: true,
+        }),
+      });
+      await refreshItems();
+      setSelectedSkuId(created.skuId);
+      setStage("capture");
+    });
+  }
+
+  async function confirmCapture() {
+    if (!item || !measurementComplete || photoRoles.some(({ id }) => !photos[id])) return;
+    await run(async () => {
+      const assetIds: string[] = [];
+      for (const { id: role } of photoRoles) {
+        const file = photos[role];
+        if (!file) throw new Error("写真4種を選択してください。");
+        const assetId = crypto.randomUUID();
+        await requestJson(
+          `/v1/workspaces/${workspaceId}/skus/${item.skuId}/media-uploads?assetId=${assetId}&role=${role}`,
+          { method: "POST", body: file, headers: { "content-type": file.type } },
+        );
+        assetIds.push(assetId);
+      }
+      const measuredAt = new Date().toISOString();
+      for (const key of Object.keys(measurements) as MeasurementKey[]) {
+        await requestJson(`/v1/workspaces/${workspaceId}/skus/${item.skuId}/measurements`, {
+          method: "POST",
+          body: JSON.stringify({
+            definitionId: measurementDefinitions[key],
+            definitionVersion: 1,
+            value: Number(measurements[key]),
+            unit: "cm",
+            basis: "flat_width",
+            state: "natural",
+            measuredAt,
+            evidenceAssetId: assetIds[0],
+            attempt: 1,
+            humanConfirmed: true,
+          }),
+        });
+      }
+      await advanceWorkflow(item.skuId, "confirm_capture", assetIds, false);
+      await refreshItems();
+      setStage("listing");
+    });
+  }
+
+  async function confirmListing() {
+    if (!item) return;
+    await run(async () => {
+      await advanceWorkflow(item.skuId, "confirm_listing", [item.receiptId], true);
+      await navigator.clipboard?.writeText(description).catch(() => undefined);
+      await refreshItems();
+      setStage("order");
+    });
+  }
+
+  async function advanceWorkflow(
+    skuId: string,
+    action: string,
+    evidenceReferenceIds: string[],
+    manualChannelHandoff: boolean,
+  ) {
+    return requestJson(`/v1/workspaces/${workspaceId}/skus/${skuId}/p0-actions`, {
+      method: "POST",
+      body: JSON.stringify({
+        action,
+        idempotencyKey: crypto.randomUUID(),
+        evidenceReferenceIds,
+        requiredFactsConfirmed: true,
+        manualChannelHandoff,
+      }),
+    });
+  }
+
+  async function createOrder(form: FormData) {
+    if (!item || item.inventoryStatus !== "available") return;
+    await run(async () => {
+      const result = await requestJson<OrderOperationResponse>(
+        `/v1/workspaces/${workspaceId}/orders`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            orderNumber: textField(form, "orderNumber").toUpperCase(),
+            skuId: item.skuId,
+            inventoryUnitId: item.inventoryUnitId,
+            saleAmountMinor: numberField(form, "saleAmountMinor"),
+            costAmountMinor: item.allocatedCostMinor,
+            sellingFeeMinor: numberField(form, "sellingFeeMinor"),
+            shippingCostMinor: numberField(form, "shippingCostMinor"),
+            packagingCostMinor: numberField(form, "packagingCostMinor"),
+            taxBasis: "tax_included",
+            sourceMeaning: "本人が公式販売画面と照合した手入力取引",
+            occurredAt: new Date().toISOString(),
+            shippingAddress: textField(form, "shippingAddress"),
+            idempotencyKey: crypto.randomUUID(),
+            humanConfirmed: true,
+          }),
+        },
+      );
+      await advanceWorkflow(item.skuId, "confirm_order", [result.orderId], false);
+      await refreshItems();
+    });
+  }
+
+  async function issueAddressLease(orderId: string): Promise<string> {
+    const result = await requestJson<{ leaseId: string }>(
+      `/v1/workspaces/${workspaceId}/orders/${orderId}/address-leases`,
+      {
+        method: "POST",
+        body: JSON.stringify({ purpose: "shipping_label", humanConfirmed: true }),
+      },
+    );
+    setAddressLeaseId(result.leaseId);
+    return result.leaseId;
+  }
+
+  async function progressOrder() {
+    if (!item?.orderId) return;
+    await run(async () => {
+      const orderId = item.orderId as string;
+      const leaseId = addressLeaseId ?? (await issueAddressLease(orderId));
+      if (item.orderState === "confirmed") {
+        if (!item.locationCode || !item.locationLabelVersion) {
+          throw new Error("現在の保管場所と有効な場所ラベルが必要です。");
+        }
+        const now = Date.now();
+        await requestJson(`/v1/workspaces/${workspaceId}/orders/${orderId}/pick`, {
+          method: "POST",
+          body: JSON.stringify({
+            inventoryNumber: item.inventoryNumber,
+            locationCode: item.locationCode,
+            inventoryLabelVersion: item.inventoryLabelVersion,
+            locationLabelVersion: item.locationLabelVersion,
+            addressLeaseId: leaseId,
+            inventoryScannedAt: new Date(now).toISOString(),
+            locationScannedAt: new Date(now + 1).toISOString(),
+            confirmedAt: new Date(now + 2).toISOString(),
+            idempotencyKey: crypto.randomUUID(),
+            humanConfirmed: true,
+          }),
+        });
+        await advanceWorkflow(item.skuId, "confirm_pick", [orderId], false);
+      } else if (item.orderState === "picking") {
+        await requestJson(`/v1/workspaces/${workspaceId}/orders/${orderId}/pack`, {
+          method: "POST",
+          body: JSON.stringify({
+            packingEvidenceReferenceId: crypto.randomUUID(),
+            addressLeaseId: leaseId,
+            confirmedAt: new Date().toISOString(),
+            idempotencyKey: crypto.randomUUID(),
+            humanConfirmed: true,
+          }),
+        });
+        await advanceWorkflow(item.skuId, "confirm_pack", [orderId], false);
+      } else if (item.orderState === "packed") {
+        await requestJson(`/v1/workspaces/${workspaceId}/orders/${orderId}/ship`, {
+          method: "POST",
+          body: JSON.stringify({
+            addressLeaseId: leaseId,
+            shippedAt: new Date().toISOString(),
+            idempotencyKey: crypto.randomUUID(),
+            humanConfirmed: true,
+          }),
+        });
+        await advanceWorkflow(item.skuId, "confirm_ship", [orderId], false);
+      }
+      await refreshItems();
+    });
+  }
+
+  async function revealShippingAddress() {
+    if (!item?.orderId) return;
+    await run(async () => {
+      const leaseId = addressLeaseId ?? (await issueAddressLease(item.orderId as string));
+      const result = await requestJson<{ shippingAddress: string; expiresAt: string }>(
+        `/v1/workspaces/${workspaceId}/orders/${item.orderId}/address?leaseId=${leaseId}`,
+      );
+      setShippingAddressView(result.shippingAddress);
+      const remaining = Math.max(0, Date.parse(result.expiresAt) - Date.now());
+      window.setTimeout(() => setShippingAddressView(null), Math.min(remaining, 300_000));
+    });
+  }
+
+  async function loadFinancial() {
+    if (!item?.orderId) return;
+    await run(async () => {
+      setFinancial(
+        await requestJson<FinancialSummaryResponse>(
+          `/v1/workspaces/${workspaceId}/orders/${item.orderId}/financial-summary`,
+        ),
+      );
+    });
+  }
+
+  async function createAccountingExport() {
+    if (!item?.orderId) return;
+    await run(async () => {
+      const result = await requestJson<AccountingExportResponse>(
+        `/v1/workspaces/${workspaceId}/orders/${item.orderId}/accounting-exports`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            approvedAt: new Date().toISOString(),
+            idempotencyKey: crypto.randomUUID(),
+            humanApproved: true,
+          }),
+        },
+      );
+      setAccountingExport(result);
+      await advanceWorkflow(item.skuId, "approve_journal", [result.exportId], false);
+      await refreshItems();
+    });
+  }
+
+  if (loading) return <p role="status">実データを読み込んでいます…</p>;
 
   return (
     <div className="workflowBoard">
+      {error ? (
+        <p className="accountingDisclaimer" role="alert">
+          {error}
+        </p>
+      ) : null}
       <nav className="workflowStages" aria-label="試験商品の工程">
-        {stages.map((item, index) => (
+        {stages.map((entry, index) => (
           <button
-            className={stage === item.id ? "active" : completed[item.id] ? "done" : ""}
-            disabled={!stages.slice(0, index).every((previous) => completed[previous.id])}
-            key={item.id}
+            className={stage === entry.id ? "active" : completed[entry.id] ? "done" : ""}
+            disabled={
+              busy ||
+              (entry.id !== "purchase" && !item) ||
+              (!stages.slice(0, index).every((previous) => completed[previous.id]) &&
+                entry.id !== "capture")
+            }
+            key={entry.id}
             type="button"
-            onClick={() => setStage(item.id)}
+            onClick={() => setStage(entry.id)}
           >
-            <span>{completed[item.id] ? "✓" : index + 1}</span>
-            {item.label}
+            <span>{completed[entry.id] ? "✓" : index + 1}</span>
+            {entry.label}
           </button>
         ))}
       </nav>
 
-      <section className="workflowItemSummary panel">
-        <div>
-          <span>SKU</span>
-          <strong>SKU-2608-0001</strong>
-        </div>
-        <div>
-          <span>在庫番号</span>
-          <strong>INV-000001</strong>
-        </div>
-        <div>
-          <span>商品</span>
-          <strong>ネイビーシャツ</strong>
-        </div>
-        <div>
-          <span>現在地</span>
-          <strong>箱014</strong>
-        </div>
-      </section>
-
-      {stage === "purchase" ? (
-        <section className="workflowPanel panel" aria-labelledby="purchase-heading">
-          <div className="workflowPanelHead">
-            <div>
-              <p className="eyebrow">PURCHASE</p>
-              <h2 id="purchase-heading">仕入証憑と原価事実</h2>
-            </div>
-            <span className={receiptConfirmed ? "safeBadge" : "status"}>
-              {receiptConfirmed ? "人が確認済み" : "確認待ち"}
-            </span>
+      {items.length > 0 ? (
+        <section className="workflowItemSummary panel">
+          <label>
+            対象商品
+            <select
+              value={item?.skuId ?? ""}
+              onChange={(event) => setSelectedSkuId(event.target.value)}
+            >
+              {items.map((entry) => (
+                <option key={entry.skuId} value={entry.skuId}>
+                  {entry.skuCode} / {entry.title}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div>
+            <span>在庫番号</span>
+            <strong>{item?.inventoryNumber}</strong>
           </div>
-          <div className="workflowSplit">
-            <div className="receiptPreview">
-              <span>架空の試験証憑</span>
-              <strong>REC-2026-0001</strong>
-              <p>個人情報・実取引データは使用していません。</p>
-            </div>
-            <dl className="factList">
-              <div>
-                <dt>仕入先</dt>
-                <dd>テスト仕入先A</dd>
-              </div>
-              <div>
-                <dt>購入日</dt>
-                <dd>2026-08-15</dd>
-              </div>
-              <div>
-                <dt>商品代</dt>
-                <dd>1,500円</dd>
-              </div>
-              <div>
-                <dt>配賦状態</dt>
-                <dd>SKU 1点へ100%</dd>
-              </div>
-            </dl>
+          <div>
+            <span>状態</span>
+            <strong>{item?.inventoryStatus}</strong>
           </div>
-          <div className="humanGate">
-            <div>
-              <strong>OCRは使わず、架空データを手入力した状態です</strong>
-              <p>金額と証憑の一致は人が確認します。AIが原価を確定しません。</p>
-            </div>
-            <button type="button" onClick={() => setReceiptConfirmed(true)}>
-              証憑と金額を確認
-            </button>
+          <div>
+            <span>現在地</span>
+            <strong>{item?.locationCode ?? "未格納"}</strong>
           </div>
-          <WorkflowNext
-            enabled={receiptConfirmed}
-            label="撮影・採寸へ"
-            onClick={() => setStage("capture")}
-          />
         </section>
       ) : null}
 
-      {stage === "capture" ? (
+      {stage === "purchase" ? (
+        <PurchasePanel busy={busy} onSubmit={createPurchase} item={item} />
+      ) : null}
+
+      {stage === "capture" && item ? (
         <section className="workflowPanel panel" aria-labelledby="capture-heading">
           <div className="workflowPanelHead">
             <div>
               <p className="eyebrow">CAPTURE</p>
-              <h2 id="capture-heading">写真チェックと平置き採寸</h2>
+              <h2 id="capture-heading">原本写真と平置き採寸</h2>
             </div>
-            <span className={captureComplete ? "safeBadge" : "status"}>
-              {captureComplete ? "完了" : `${photos.length}/4 写真`}
+            <span className={completed.capture ? "safeBadge" : "status"}>
+              {completed.capture ? "DB保存済み" : "確認待ち"}
             </span>
           </div>
           <div className="photoChecklist">
-            {photoRoles.map((role) => (
-              <label className={photos.includes(role) ? "checked" : ""} key={role}>
+            {photoRoles.map(({ id, label }) => (
+              <label className={photos[id] ? "checked" : ""} key={id}>
                 <input
-                  type="checkbox"
-                  checked={photos.includes(role)}
+                  type="file"
+                  accept="image/jpeg,image/png"
                   onChange={(event) =>
-                    setPhotos((current) =>
-                      event.target.checked
-                        ? [...current, role]
-                        : current.filter((item) => item !== role),
-                    )
+                    setPhotos((current) => ({ ...current, [id]: event.target.files?.[0] }))
                   }
                 />
-                <span aria-hidden="true">{photos.includes(role) ? "✓" : "＋"}</span>
-                <strong>{role}</strong>
-                <small>原本を上書きしない</small>
+                <span aria-hidden="true">{photos[id] ? "✓" : "＋"}</span>
+                <strong>{label}</strong>
+                <small>実ファイルを非公開保存</small>
               </label>
             ))}
           </div>
@@ -184,10 +435,9 @@ export function P0Workspace() {
                     max="250"
                     step="0.1"
                     value={measurements[key]}
-                    onChange={(event) => {
-                      setMeasurements((current) => ({ ...current, [key]: event.target.value }));
-                      setMeasurementConfirmed(false);
-                    }}
+                    onChange={(event) =>
+                      setMeasurements((current) => ({ ...current, [key]: event.target.value }))
+                    }
                   />
                   cm
                 </span>
@@ -196,218 +446,376 @@ export function P0Workspace() {
           </div>
           <div className="humanGate">
             <div>
-              <strong>平置き・自然な状態で、人が実測</strong>
-              <p>0以下または250cm超は完了できません。測定値をAIが確定しません。</p>
+              <strong>写真4種と実測値を人が確認</strong>
+              <p>サーバーがハッシュと寸法を計算し、原本を上書きしません。</p>
             </div>
             <button
               type="button"
-              disabled={!measurementComplete || photos.length !== photoRoles.length}
-              onClick={() => setMeasurementConfirmed(true)}
+              disabled={
+                busy ||
+                completed.capture ||
+                !measurementComplete ||
+                photoRoles.some(({ id }) => !photos[id])
+              }
+              onClick={() => void confirmCapture()}
             >
-              写真と採寸を確認
+              {completed.capture ? "保存済み" : "写真と採寸を保存"}
             </button>
           </div>
           <WorkflowNext
-            enabled={captureComplete}
+            enabled={completed.capture}
             label="出品準備へ"
             onClick={() => setStage("listing")}
           />
         </section>
       ) : null}
 
-      {stage === "listing" ? (
+      {stage === "listing" && item ? (
         <section className="workflowPanel panel" aria-labelledby="listing-heading">
           <div className="workflowPanelHead">
             <div>
               <p className="eyebrow">LISTING HANDOFF</p>
-              <h2 id="listing-heading">無料テンプレートの文章候補</h2>
+              <h2 id="listing-heading">確認済み事実から作る文章候補</h2>
             </div>
-            <span className={listingConfirmed ? "safeBadge" : "status"}>
-              {listingConfirmed ? "人が確認済み" : "候補"}
+            <span className={completed.listing ? "safeBadge" : "status"}>
+              {completed.listing ? "本人確認済み" : "候補"}
             </span>
           </div>
           <div className="candidateNotice">
-            <strong>AIではなく、確認済み項目を差し込む決定的テンプレートです</strong>
-            <p>外部API送信0件・費用0円。ブランド、素材、状態は未確認のため記載しません。</p>
+            <strong>自動出品はしません</strong>
+            <p>公式画面への貼り付けと公開は本人が行います。外部費用は0円です。</p>
           </div>
           <textarea aria-label="商品説明候補" readOnly rows={7} value={description} />
-          <div className="listingChecks">
-            <span className={photos.length === 4 ? "pass" : ""}>写真4種</span>
-            <span className={measurementConfirmed ? "pass" : ""}>採寸を人が確認</span>
-            <span className="pass">自動出品なし</span>
-          </div>
           <div className="humanGate">
             <div>
-              <strong>公式画面への貼り付けは本人が行います</strong>
-              <p>このアプリは公開ボタンを押さず、Cookieやパスワードも保存しません。</p>
+              <strong>コピー用内容を人が確認</strong>
+              <p>未確認事実は自動補完しません。</p>
             </div>
             <button
               type="button"
-              disabled={!captureComplete}
-              onClick={() => setListingConfirmed(true)}
+              disabled={busy || completed.listing}
+              onClick={() => void confirmListing()}
             >
-              コピー用内容を確認
+              {completed.listing ? "確認済み" : "確認してコピー"}
             </button>
           </div>
           <WorkflowNext
-            enabled={listingConfirmed}
+            enabled={completed.listing}
             label="注文・発送へ"
             onClick={() => setStage("order")}
           />
         </section>
       ) : null}
 
-      {stage === "order" ? (
-        <section className="workflowPanel panel" aria-labelledby="order-heading">
-          <div className="workflowPanelHead">
-            <div>
-              <p className="eyebrow">ORDER & SHIPPING</p>
-              <h2 id="order-heading">手入力注文と発送証拠</h2>
-            </div>
-            <span className={orderState === "shipped" ? "safeBadge" : "status"}>
-              {orderState === "confirmed"
-                ? "注文確認"
-                : orderState === "picked"
-                  ? "ピッキング済み"
-                  : orderState === "packed"
-                    ? "梱包済み"
-                    : "発送済み"}
-            </span>
-          </div>
-          <div className="orderTimeline">
-            {(
-              [
-                ["confirmed", "注文 ORD-000001", "手入力・現物を1点だけ引当"],
-                ["picked", "商品＋場所を確認", "INV-000001 / BX-014-3"],
-                ["packed", "梱包証拠", "架空の試験記録・住所は表示しない"],
-                ["shipped", "発送記録", "追跡番号は試験値を保存しない"],
-              ] as const
-            ).map(([stateValue, label, note]) => {
-              const order = ["confirmed", "picked", "packed", "shipped"] as const;
-              const done = order.indexOf(orderState) >= order.indexOf(stateValue);
-              return (
-                <div className={done ? "done" : ""} key={stateValue}>
-                  <span>{done ? "✓" : ""}</span>
-                  <div>
-                    <strong>{label}</strong>
-                    <small>{note}</small>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          <div className="humanGate">
-            <div>
-              <strong>次の状態へは順番に進みます</strong>
-              <p>二重引当や読取なしの梱包・発送はAPI/DBでも拒否する設計です。</p>
-            </div>
-            <button
-              type="button"
-              disabled={orderState === "shipped"}
-              onClick={() =>
-                setOrderState((current) =>
-                  current === "confirmed" ? "picked" : current === "picked" ? "packed" : "shipped",
-                )
-              }
-            >
-              {orderState === "confirmed"
-                ? "二重確認を記録"
-                : orderState === "picked"
-                  ? "梱包証拠を確認"
-                  : "発送を人が確定"}
-            </button>
-          </div>
-          <WorkflowNext
-            enabled={orderState === "shipped"}
-            label="収支・会計へ"
-            onClick={() => setStage("accounting")}
-          />
-        </section>
+      {stage === "order" && item ? (
+        <OrderPanel
+          item={item}
+          busy={busy}
+          addressLeaseId={addressLeaseId}
+          shippingAddressView={shippingAddressView}
+          onCreate={createOrder}
+          onProgress={progressOrder}
+          onIssueLease={() => {
+            const orderId = item.orderId;
+            if (orderId)
+              void run(async () => {
+                await issueAddressLease(orderId);
+              });
+          }}
+          onReveal={revealShippingAddress}
+          onNext={() => setStage("accounting")}
+        />
       ) : null}
 
-      {stage === "accounting" ? (
-        <section className="workflowPanel panel" aria-labelledby="accounting-heading">
-          <div className="workflowPanelHead">
-            <div>
-              <p className="eyebrow">ACCOUNTING CANDIDATE</p>
-              <h2 id="accounting-heading">運用収支と仕訳候補</h2>
-            </div>
-            <span className={journalApproved ? "safeBadge" : "status"}>
-              {journalApproved ? "人が承認済み" : "候補・未確定"}
-            </span>
-          </div>
-          <div className="profitWaterfall">
-            <div>
-              <span>販売額</span>
-              <strong>5,000円</strong>
-            </div>
-            <div>
-              <span>商品原価</span>
-              <strong>−1,500円</strong>
-            </div>
-            <div>
-              <span>販売手数料</span>
-              <strong>−500円</strong>
-            </div>
-            <div>
-              <span>出品者送料</span>
-              <strong>−750円</strong>
-            </div>
-            <div className="total">
-              <span>取引貢献利益</span>
-              <strong>2,250円</strong>
-            </div>
-          </div>
-          <p className="accountingDisclaimer">
-            運用分析の参考値です。会計上の売上・利益・所得・税額を示すものではありません。
-          </p>
-          <div className="journalCandidate">
-            <span>仕訳候補 JOURNAL-0001</span>
-            <strong>売掛金 5,000円 / 売上高 5,000円</strong>
-            <small>根拠: 手入力注文 ORD-000001・ルール版 v1</small>
-          </div>
-          <div className="humanGate">
-            <div>
-              <strong>帳簿へ直接登録しません</strong>
-              <p>人または税理士が根拠を確認してからCSV候補を出力します。</p>
-            </div>
-            <button type="button" onClick={() => setJournalApproved(true)}>
-              根拠を確認して承認
-            </button>
-          </div>
-          <button
-            className="exportButton"
-            type="button"
-            disabled={!journalApproved}
-            onClick={downloadTestAccountingCsv}
-          >
-            会計CSV候補を作成（ローカル）
-          </button>
-        </section>
+      {stage === "accounting" && item ? (
+        <AccountingPanel
+          item={item}
+          busy={busy}
+          financial={financial}
+          accountingExport={accountingExport}
+          onLoad={loadFinancial}
+          onExport={createAccountingExport}
+        />
       ) : null}
     </div>
   );
 }
 
-function downloadTestAccountingCsv() {
-  const header = ["日付", "借方勘定科目", "借方金額", "貸方勘定科目", "貸方金額", "摘要", "参照ID"];
-  const row = [
-    "2026-08-15",
-    "売掛金",
-    "5000",
-    "売上高",
-    "5000",
-    "試験商品の売上候補",
-    "ORD-000001",
-  ];
-  const csvCell = (value: string) => `"${value.replaceAll('"', '""')}"`;
-  const csv = `\uFEFF${header.map(csvCell).join(",")}\r\n${row.map(csvCell).join(",")}\r\n`;
-  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "test-journal-candidate.csv";
-  link.click();
-  URL.revokeObjectURL(url);
+function PurchasePanel({
+  busy,
+  onSubmit,
+  item,
+}: {
+  busy: boolean;
+  onSubmit: (form: FormData) => Promise<void>;
+  item: P0ItemResponse | null;
+}) {
+  return (
+    <section className="workflowPanel panel" aria-labelledby="purchase-heading">
+      <div className="workflowPanelHead">
+        <div>
+          <p className="eyebrow">PURCHASE</p>
+          <h2 id="purchase-heading">仕入証憑と現物1点を登録</h2>
+        </div>
+        <span className={item ? "safeBadge" : "status"}>{item ? "DB保存済み" : "未登録"}</span>
+      </div>
+      <form action={onSubmit}>
+        <div className="measurementGrid">
+          <label>
+            SKUコード
+            <input name="skuCode" required defaultValue="SKU-2608-0001" />
+          </label>
+          <label>
+            商品名
+            <input name="title" required defaultValue="ネイビーシャツ" />
+          </label>
+          <label>
+            カテゴリ
+            <input name="category" required defaultValue="トップス" />
+          </label>
+          <label>
+            仕入先
+            <input name="supplierName" required defaultValue="仕入先A" />
+          </label>
+          <label>
+            証憑参照番号
+            <input name="receiptReference" required defaultValue={`REC-${Date.now()}`} />
+          </label>
+          <label>
+            購入日時
+            <input
+              name="purchasedAt"
+              type="datetime-local"
+              required
+              defaultValue={localDateTimeValue()}
+            />
+          </label>
+          <label>
+            証憑合計（円）
+            <input name="receiptAmountMinor" type="number" min="0" required defaultValue="1500" />
+          </label>
+          <label>
+            このSKUの原価（円）
+            <input name="allocatedCostMinor" type="number" min="0" required defaultValue="1500" />
+          </label>
+        </div>
+        <div className="humanGate">
+          <div>
+            <strong>証憑参照と金額を人が照合</strong>
+            <p>AIは原価・税区分を確定しません。住所などの個人情報は入力しないでください。</p>
+          </div>
+          <button type="submit" disabled={busy}>
+            仕入を確認して在庫番号を発行
+          </button>
+        </div>
+      </form>
+    </section>
+  );
+}
+
+function OrderPanel({
+  item,
+  busy,
+  addressLeaseId,
+  shippingAddressView,
+  onCreate,
+  onProgress,
+  onIssueLease,
+  onReveal,
+  onNext,
+}: {
+  item: P0ItemResponse;
+  busy: boolean;
+  addressLeaseId: string | null;
+  shippingAddressView: string | null;
+  onCreate: (form: FormData) => Promise<void>;
+  onProgress: () => Promise<void>;
+  onIssueLease: () => void;
+  onReveal: () => Promise<void>;
+  onNext: () => void;
+}) {
+  const canCreate = item.inventoryStatus === "available" && !item.orderId;
+  const stateLabel = item.orderState ?? "未受注";
+  return (
+    <section className="workflowPanel panel" aria-labelledby="order-heading">
+      <div className="workflowPanelHead">
+        <div>
+          <p className="eyebrow">ORDER & SHIPPING</p>
+          <h2 id="order-heading">手入力注文・二重読取・発送</h2>
+        </div>
+        <span className={item.orderState === "shipped" ? "safeBadge" : "status"}>{stateLabel}</span>
+      </div>
+      {item.inventoryStatus === "putaway_pending" ? (
+        <div className="candidateNotice">
+          <strong>先に在庫を格納してください</strong>
+          <p>在庫番号 {item.inventoryNumber} を現場画面で商品→場所の順に確認します。</p>
+          <a href="/mobile/scan">格納画面を開く</a>
+        </div>
+      ) : null}
+      {canCreate ? (
+        <form action={onCreate}>
+          <div className="measurementGrid">
+            <label>
+              注文番号
+              <input name="orderNumber" required defaultValue={`ORD-${Date.now()}`} />
+            </label>
+            <label>
+              販売額
+              <input name="saleAmountMinor" type="number" min="1" required defaultValue="5000" />
+            </label>
+            <label>
+              販売手数料
+              <input name="sellingFeeMinor" type="number" min="0" required defaultValue="500" />
+            </label>
+            <label>
+              送料
+              <input name="shippingCostMinor" type="number" min="0" required defaultValue="750" />
+            </label>
+            <label>
+              梱包費
+              <input name="packagingCostMinor" type="number" min="0" required defaultValue="100" />
+            </label>
+            <label>
+              発送先（暗号化保存）
+              <textarea name="shippingAddress" required rows={3} />
+            </label>
+          </div>
+          <button type="submit" disabled={busy}>
+            公式画面と照合して注文を保存
+          </button>
+        </form>
+      ) : null}
+      {item.orderId ? (
+        <div className="humanGate">
+          <div>
+            <strong>現在: {stateLabel}</strong>
+            <p>住所閲覧許可は最大5分です。商品と場所を確認せず次へ進めません。</p>
+          </div>
+          <div>
+            <button type="button" disabled={busy || Boolean(addressLeaseId)} onClick={onIssueLease}>
+              {addressLeaseId ? "5分許可を発行済み" : "住所の5分許可"}
+            </button>
+            <button type="button" disabled={busy} onClick={() => void onReveal()}>
+              発送先を5分だけ表示
+            </button>
+            <button
+              type="button"
+              disabled={busy || item.orderState === "shipped" || item.orderState === "returned"}
+              onClick={() => void onProgress()}
+            >
+              {item.orderState === "confirmed"
+                ? "商品＋場所を確認"
+                : item.orderState === "picking"
+                  ? "梱包証拠を確認"
+                  : "発送を人が確定"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {shippingAddressView ? (
+        <div className="candidateNotice" aria-live="polite">
+          <strong>発送先（最大5分で非表示）</strong>
+          <p>{shippingAddressView}</p>
+        </div>
+      ) : null}
+      <WorkflowNext
+        enabled={item.orderState === "shipped" || item.orderState === "returned"}
+        label="収支・会計へ"
+        onClick={onNext}
+      />
+    </section>
+  );
+}
+
+function AccountingPanel({
+  item,
+  busy,
+  financial,
+  accountingExport,
+  onLoad,
+  onExport,
+}: {
+  item: P0ItemResponse;
+  busy: boolean;
+  financial: FinancialSummaryResponse | null;
+  accountingExport: AccountingExportResponse | null;
+  onLoad: () => Promise<void>;
+  onExport: () => Promise<void>;
+}) {
+  return (
+    <section className="workflowPanel panel" aria-labelledby="accounting-heading">
+      <div className="workflowPanelHead">
+        <div>
+          <p className="eyebrow">ACCOUNTING CANDIDATE</p>
+          <h2 id="accounting-heading">実取引の運用収支と仕訳候補</h2>
+        </div>
+        <span className={accountingExport ? "safeBadge" : "status"}>
+          {accountingExport ? "人が承認済み" : "候補・未確定"}
+        </span>
+      </div>
+      {financial ? (
+        <div className="profitWaterfall">
+          <div>
+            <span>販売額</span>
+            <strong>{yen(financial.saleAmountMinor)}</strong>
+          </div>
+          <div>
+            <span>商品原価</span>
+            <strong>−{yen(financial.costAmountMinor)}</strong>
+          </div>
+          <div>
+            <span>販売手数料</span>
+            <strong>−{yen(financial.sellingFeeMinor)}</strong>
+          </div>
+          <div>
+            <span>送料</span>
+            <strong>−{yen(financial.shippingCostMinor)}</strong>
+          </div>
+          <div>
+            <span>梱包費</span>
+            <strong>−{yen(financial.packagingCostMinor)}</strong>
+          </div>
+          <div className="total">
+            <span>取引貢献利益</span>
+            <strong>
+              {financial.contributionProfitMinor === null
+                ? "—"
+                : yen(financial.contributionProfitMinor)}
+            </strong>
+          </div>
+        </div>
+      ) : (
+        <button type="button" disabled={busy || !item.orderId} onClick={() => void onLoad()}>
+          DBから収支を読み込む
+        </button>
+      )}
+      <p className="accountingDisclaimer">
+        運用分析の参考値です。会計上の売上・利益・所得・税額を示すものではありません。
+      </p>
+      <div className="humanGate">
+        <div>
+          <strong>帳簿へ直接登録しません</strong>
+          <p>人または税理士が根拠を確認した仕訳候補だけをCSVにします。</p>
+        </div>
+        <button
+          type="button"
+          disabled={busy || !financial || Boolean(accountingExport)}
+          onClick={() => void onExport()}
+        >
+          {accountingExport ? "CSV履歴を保存済み" : "根拠を確認してCSV作成"}
+        </button>
+      </div>
+      {accountingExport ? (
+        <a
+          className="exportButton"
+          href={accountingExport.contentUrl}
+          download={accountingExport.filename}
+        >
+          検証済みCSV候補をダウンロード
+        </a>
+      ) : null}
+    </section>
+  );
 }
 
 function WorkflowNext({
@@ -427,4 +835,61 @@ function WorkflowNext({
       </button>
     </div>
   );
+}
+
+async function requestJson<T = unknown>(url: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(url, { cache: "no-store", ...init });
+  const payload = (await response.json().catch(() => null)) as { message?: string } | T | null;
+  if (!response.ok)
+    throw new Error(
+      (payload as { message?: string } | null)?.message ?? "操作を確認できませんでした。",
+    );
+  return payload as T;
+}
+function textField(form: FormData, name: string): string {
+  const value = form.get(name);
+  if (typeof value !== "string" || !value.trim()) throw new Error(`${name}を入力してください。`);
+  return value.trim();
+}
+function numberField(form: FormData, name: string): number {
+  const value = Number(textField(form, name));
+  if (!Number.isInteger(value) || value < 0)
+    throw new Error(`${name}は0以上の整数で入力してください。`);
+  return value;
+}
+function errorMessage(reason: unknown): string {
+  return reason instanceof Error ? reason.message : "操作を確認できませんでした。";
+}
+function localDateTimeValue(): string {
+  const now = new Date(Date.now() - new Date().getTimezoneOffset() * 60_000);
+  return now.toISOString().slice(0, 16);
+}
+function yen(value: number): string {
+  return `${new Intl.NumberFormat("ja-JP").format(value)}円`;
+}
+function workflowStateRank(state: P0ItemResponse["workflowState"] | undefined): number {
+  return [
+    "sku_created",
+    "purchase_confirmed",
+    "capture_confirmed",
+    "listing_confirmed",
+    "order_confirmed",
+    "picked",
+    "packed",
+    "shipped",
+    "journal_approved",
+  ].indexOf(state ?? "sku_created");
+}
+
+function nextStageForItem(item: P0ItemResponse): Stage {
+  if (item.workflowState === "journal_approved" || item.orderState === "shipped")
+    return "accounting";
+  if (
+    ["listing_confirmed", "order_confirmed", "picked", "packed", "shipped"].includes(
+      item.workflowState,
+    )
+  )
+    return "order";
+  if (item.workflowState === "capture_confirmed") return "listing";
+  return "capture";
 }

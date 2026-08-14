@@ -11,6 +11,9 @@ import { assertRestrictedDatabaseRole } from "./db-security.js";
 import { LocalPrivateMediaStore } from "./local-media-store.js";
 import { PostgresWorkflowRepository } from "./repository.js";
 import { createCookieAuthenticator, PostgresSessionRegistry } from "./session.js";
+import { AesGcmAddressCipher } from "./address-crypto.js";
+import { PostgresOrderRepository } from "./order-repository.js";
+import { PostgresP0ItemRepository } from "./p0-item-repository.js";
 
 const adminUrl = process.env.TEST_DATABASE_ADMIN_URL;
 const runtimeUrl = process.env.TEST_DATABASE_URL;
@@ -27,8 +30,11 @@ function hashFixture(value: string): string {
 
 const workspaceProtectedTables = [
   "audit_event",
+  "accounting_export",
+  "address_access_lease",
   "count_observation",
   "count_session",
+  "cost_allocation",
   "financial_event",
   "idempotency_record",
   "inventory_discrepancy",
@@ -40,10 +46,16 @@ const workspaceProtectedTables = [
   "measurement_attempt",
   "media_asset",
   "order_allocation",
+  "order_operation_record",
+  "order_private_address",
   "outbox_event",
   "p0_workflow",
   "p0_workflow_action",
   "product_sku",
+  "purchase_batch",
+  "packing_evidence",
+  "return_inspection",
+  "receipt",
   "sales_order",
   "scan_session",
   "sku_work_assignment",
@@ -126,6 +138,7 @@ const owner = await bootstrapInitialOwner(adminUrl, {
 
 const registry = new PostgresSessionRegistry(runtimeUrl);
 const mediaRoot = await mkdtemp(join(tmpdir(), "resale-postgres-media-"));
+const addressCipher = new AesGcmAddressCipher("7d".repeat(32));
 const app = buildApp({
   repository: new PostgresWorkflowRepository(runtimeUrl),
   loginService: new PostgresLoginService(runtimeUrl, sessionSecret),
@@ -137,6 +150,9 @@ const app = buildApp({
   closeAuthentication: () => registry.close(),
   validateWriteOrigin: () => true,
   mediaStore: new LocalPrivateMediaStore(mediaRoot),
+  orderRepository: new PostgresOrderRepository(runtimeUrl),
+  addressCipher,
+  p0ItemRepository: new PostgresP0ItemRepository(runtimeUrl),
 });
 
 try {
@@ -149,6 +165,163 @@ try {
   const setCookie = login.headers["set-cookie"];
   assert.equal(typeof setCookie, "string");
   const cookie = String(setCookie).split(";", 1)[0];
+
+  const acquisitionKey = randomUUID();
+  const acquisitionPayload = {
+    skuCode: "SKU-P0-ACQUIRED",
+    title: "架空の仕入証憑付きシャツ",
+    category: "トップス",
+    supplierName: "架空テスト仕入先",
+    receiptReference: "RECEIPT-P0-0001",
+    purchasedAt: new Date().toISOString(),
+    receiptAmountMinor: 1500,
+    allocatedCostMinor: 1500,
+    idempotencyKey: acquisitionKey,
+    humanConfirmed: true,
+  } as const;
+  const acquired = await app.inject({
+    method: "POST",
+    url: `/v1/workspaces/${owner.workspaceId}/p0-items`,
+    headers: { cookie },
+    payload: acquisitionPayload,
+  });
+  assert.equal(acquired.statusCode, 201, acquired.body);
+  const acquiredItem = acquired.json<{
+    skuId: string;
+    inventoryUnitId: string;
+    inventoryNumber: string;
+    receiptId: string;
+    workflowState: string;
+  }>();
+  assert.equal(acquiredItem.workflowState, "purchase_confirmed");
+  assert.equal(acquiredItem.inventoryNumber, "INV-000001");
+  const acquiredReplay = await app.inject({
+    method: "POST",
+    url: `/v1/workspaces/${owner.workspaceId}/p0-items`,
+    headers: { cookie },
+    payload: acquisitionPayload,
+  });
+  assert.deepEqual(acquiredReplay.json(), acquired.json());
+  const acquiredConflict = await app.inject({
+    method: "POST",
+    url: `/v1/workspaces/${owner.workspaceId}/p0-items`,
+    headers: { cookie },
+    payload: { ...acquisitionPayload, allocatedCostMinor: 1400 },
+  });
+  assert.equal(acquiredConflict.statusCode, 409, acquiredConflict.body);
+  const acquiredList = await app.inject({
+    method: "GET",
+    url: `/v1/workspaces/${owner.workspaceId}/p0-items`,
+    headers: { cookie },
+  });
+  assert.equal(acquiredList.statusCode, 200, acquiredList.body);
+  assert.equal(acquiredList.json<unknown[]>().length, 1);
+
+  const acquisitionRoot = await app.inject({
+    method: "POST",
+    url: `/v1/workspaces/${owner.workspaceId}/locations`,
+    headers: { cookie },
+    payload: {
+      parentId: null,
+      code: "SITE-01",
+      name: "架空P0保管拠点",
+      canStoreInventory: false,
+      singleItemOnly: false,
+      allowMixedSku: true,
+      maxUnits: null,
+      humanConfirmed: true,
+    },
+  });
+  assert.equal(acquisitionRoot.statusCode, 201, acquisitionRoot.body);
+  const acquisitionBin = await app.inject({
+    method: "POST",
+    url: `/v1/workspaces/${owner.workspaceId}/locations`,
+    headers: { cookie },
+    payload: {
+      parentId: acquisitionRoot.json<{ id: string }>().id,
+      code: "HOME-BIN-01",
+      name: "P0試験箱01",
+      canStoreInventory: true,
+      singleItemOnly: true,
+      allowMixedSku: false,
+      maxUnits: 1,
+      humanConfirmed: true,
+    },
+  });
+  assert.equal(acquisitionBin.statusCode, 201, acquisitionBin.body);
+  const acquisitionScanTime = Date.now();
+  const acquisitionPutaway = await app.inject({
+    method: "POST",
+    url: `/v1/workspaces/${owner.workspaceId}/inventory/putaway`,
+    headers: { cookie },
+    payload: {
+      inventoryNumber: acquiredItem.inventoryNumber,
+      locationCode: "HOME-BIN-01",
+      inventoryLabelVersion: 1,
+      locationLabelVersion: 1,
+      inventoryScannedAt: new Date(acquisitionScanTime).toISOString(),
+      locationScannedAt: new Date(acquisitionScanTime + 1).toISOString(),
+      confirmedAt: new Date(acquisitionScanTime + 2).toISOString(),
+      idempotencyKey: randomUUID(),
+      humanConfirmed: true,
+    },
+  });
+  assert.equal(acquisitionPutaway.statusCode, 201, acquisitionPutaway.body);
+  const acquisitionAssets: string[] = [];
+  for (const role of ["front", "back", "brand_tag", "care_label"] as const) {
+    const assetId = randomUUID();
+    const upload = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/media-uploads?assetId=${assetId}&role=${role}`,
+      headers: { cookie, "content-type": "image/jpeg" },
+      payload: jpegWithGpsMetadata(),
+    });
+    assert.equal(upload.statusCode, 201, upload.body);
+    acquisitionAssets.push(assetId);
+  }
+  for (const [definitionId, value] of [
+    ["shoulder_width", 44],
+    ["chest_width", 52],
+    ["sleeve_length", 60],
+    ["body_length", 70],
+  ] as const) {
+    const measurement = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/measurements`,
+      headers: { cookie },
+      payload: {
+        definitionId,
+        definitionVersion: 1,
+        value,
+        unit: "cm",
+        basis: "flat_width",
+        state: "natural",
+        measuredAt: new Date().toISOString(),
+        evidenceAssetId: acquisitionAssets[0],
+        attempt: 1,
+        humanConfirmed: true,
+      },
+    });
+    assert.equal(measurement.statusCode, 201, measurement.body);
+  }
+  for (const [action, evidenceReferenceIds, manualChannelHandoff] of [
+    ["confirm_capture", acquisitionAssets, false],
+    ["confirm_listing", [acquiredItem.receiptId], true],
+  ] as const) {
+    const advanced = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/p0-actions`,
+      headers: { cookie },
+      payload: {
+        action,
+        evidenceReferenceIds,
+        manualChannelHandoff,
+        idempotencyKey: randomUUID(),
+        requiredFactsConfirmed: true,
+      },
+    });
+    assert.equal(advanced.statusCode, 200, advanced.body);
+  }
 
   const created = await app.inject({
     method: "POST",
@@ -183,6 +356,7 @@ try {
   const binAId = randomUUID();
   const binBId = randomUUID();
   const capacityBinId = randomUUID();
+  const returnBinId = randomUUID();
   const unitOneId = randomUUID();
   const unitTwoId = randomUUID();
   const unitThreeId = randomUUID();
@@ -194,6 +368,7 @@ try {
   const binALabelId = randomUUID();
   const binBLabelId = randomUUID();
   const capacityBinLabelId = randomUUID();
+  const returnBinLabelId = randomUUID();
   const workerPassword = "fictional-field-worker-password";
   const workerPasswordRecord = await hashPassword(workerPassword);
   const fixtureAdmin = postgres(adminUrl, { max: 1 });
@@ -329,11 +504,12 @@ try {
   }
   const workerMediaWithAssignment = await app.inject({
     method: "POST",
-    url: captureAssetUrl,
-    headers: { cookie: workerCookie },
-    payload: captureAssetPayload,
+    url: `/v1/workspaces/${owner.workspaceId}/skus/${skuId}/media-uploads?assetId=${captureAssetId}&role=front`,
+    headers: { cookie: workerCookie, "content-type": "image/jpeg" },
+    payload: jpegWithGpsMetadata(),
   });
   assert.equal(workerMediaWithAssignment.statusCode, 201, workerMediaWithAssignment.body);
+  assert.equal(workerMediaWithAssignment.body.includes("originalStorageKey"), false);
   const workerMeasurementWithAssignment = await app.inject({
     method: "POST",
     url: `/v1/workspaces/${owner.workspaceId}/skus/${skuId}/measurements`,
@@ -396,7 +572,8 @@ try {
           (${rootLocationId}, ${owner.workspaceId}, null, 'ROOM-01', '架空保管室', 0, false, false, true, null),
           (${binAId}, ${owner.workspaceId}, ${rootLocationId}, 'BIN-A', '棚A-1', 1, true, true, false, 1),
           (${binBId}, ${owner.workspaceId}, ${rootLocationId}, 'BIN-B', '棚B-1', 1, true, true, false, 1),
-          (${capacityBinId}, ${owner.workspaceId}, ${rootLocationId}, 'BIN-C', '同時格納試験棚', 1, true, true, false, 1)
+          (${capacityBinId}, ${owner.workspaceId}, ${rootLocationId}, 'BIN-C', '同時格納試験棚', 1, true, true, false, 1),
+          (${returnBinId}, ${owner.workspaceId}, ${rootLocationId}, 'RETURN-01', '返品隔離棚', 1, true, false, true, 20)
       `;
       await transaction`
         insert into inventory_unit (id, workspace_id, sku_id, inventory_number) values
@@ -416,7 +593,8 @@ try {
           (${itemLabelFourId}, ${owner.workspaceId}, 'inventory_unit', ${unitFourId}, 'qr', 1, ${hashFixture("item-4")}, 'ITEM-900004', ${owner.identityId}),
           (${binALabelId}, ${owner.workspaceId}, 'location', ${binAId}, 'qr', 1, ${hashFixture("bin-a")}, 'PLACE-BIN-A', ${owner.identityId}),
           (${binBLabelId}, ${owner.workspaceId}, 'location', ${binBId}, 'qr', 1, ${hashFixture("bin-b")}, 'PLACE-BIN-B', ${owner.identityId}),
-          (${capacityBinLabelId}, ${owner.workspaceId}, 'location', ${capacityBinId}, 'qr', 1, ${hashFixture("bin-c")}, 'PLACE-BIN-C', ${owner.identityId})
+          (${capacityBinLabelId}, ${owner.workspaceId}, 'location', ${capacityBinId}, 'qr', 1, ${hashFixture("bin-c")}, 'PLACE-BIN-C', ${owner.identityId}),
+          (${returnBinLabelId}, ${owner.workspaceId}, 'location', ${returnBinId}, 'qr', 1, ${hashFixture("return-bin")}, 'PLACE-RETURN-01', ${owner.identityId})
       `;
     });
 
@@ -483,6 +661,18 @@ try {
     } finally {
       await assignmentAdmin.end({ timeout: 5 });
     }
+    const workerPutawayCatalog = await app.inject({
+      method: "GET",
+      url: `/v1/workspaces/${owner.workspaceId}/inventory/putaway-catalog`,
+      headers: { cookie: workerCookie },
+    });
+    assert.equal(workerPutawayCatalog.statusCode, 200, workerPutawayCatalog.body);
+    assert.deepEqual(
+      workerPutawayCatalog
+        .json<{ locations: Array<{ code: string }> }>()
+        .locations.map((row) => row.code),
+      ["BIN-B"],
+    );
     const workerPutawayOutsideBranch = await app.inject({
       method: "POST",
       url: `/v1/workspaces/${owner.workspaceId}/inventory/putaway`,
@@ -557,6 +747,14 @@ try {
     });
     assert.equal(capturedLocationPhoto.statusCode, 201, capturedLocationPhoto.body);
     assert.equal(capturedLocationPhoto.json<{ reviewState: string }>().reviewState, "pending");
+    const reviewQueue = await app.inject({
+      method: "GET",
+      url: `/v1/workspaces/${owner.workspaceId}/locations/${binBId}/photo-review-queue`,
+      headers: { cookie },
+    });
+    assert.equal(reviewQueue.statusCode, 200, reviewQueue.body);
+    assert.equal(reviewQueue.json<Array<{ reviewState: string }>>()[0]?.reviewState, "pending");
+    assert.equal(reviewQueue.body.includes("StorageKey"), false);
     const pendingLocationPhotos = await app.inject({
       method: "GET",
       url: photoCollectionUrl,
@@ -787,6 +985,338 @@ try {
         where workspace_id = ${owner.workspaceId} and id = ${discrepancyId}
       `;
     });
+
+    const fictionalAddress = "〒100-0000 架空県テスト市サンプル1-2-3 架空太郎";
+    const orderCreateKey = randomUUID();
+    const orderCreatePayload = {
+      orderNumber: "ORDER-P0-0001",
+      skuId: acquiredItem.skuId,
+      inventoryUnitId: acquiredItem.inventoryUnitId,
+      saleAmountMinor: 5000,
+      costAmountMinor: 1500,
+      sellingFeeMinor: 500,
+      shippingCostMinor: 750,
+      packagingCostMinor: 100,
+      taxBasis: "tax_included",
+      sourceMeaning: "架空P0結合試験で人が確認した取引事実",
+      occurredAt: new Date().toISOString(),
+      shippingAddress: fictionalAddress,
+      idempotencyKey: orderCreateKey,
+      humanConfirmed: true,
+    } as const;
+    const createdOrder = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders`,
+      headers: { cookie },
+      payload: orderCreatePayload,
+    });
+    assert.equal(createdOrder.statusCode, 201, createdOrder.body);
+    const orderResult = createdOrder.json<{
+      orderId: string;
+      state: string;
+      inventoryStatus: string;
+    }>();
+    assert.equal(orderResult.state, "confirmed");
+    assert.equal(orderResult.inventoryStatus, "reserved");
+    const orderId = orderResult.orderId;
+    const orderWorkflow = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/p0-actions`,
+      headers: { cookie },
+      payload: {
+        action: "confirm_order",
+        evidenceReferenceIds: [orderId],
+        manualChannelHandoff: false,
+        idempotencyKey: randomUUID(),
+        requiredFactsConfirmed: true,
+      },
+    });
+    assert.equal(orderWorkflow.statusCode, 200, orderWorkflow.body);
+    const createReplay = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders`,
+      headers: { cookie },
+      payload: orderCreatePayload,
+    });
+    assert.equal(createReplay.statusCode, 201, createReplay.body);
+    assert.equal(createReplay.json<{ orderId: string }>().orderId, orderId);
+    const createConflict = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders`,
+      headers: { cookie },
+      payload: { ...orderCreatePayload, saleAmountMinor: 5001 },
+    });
+    assert.equal(createConflict.statusCode, 409, createConflict.body);
+
+    const firstLease = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/address-leases`,
+      headers: { cookie },
+      payload: { purpose: "shipping_label", humanConfirmed: true },
+    });
+    assert.equal(firstLease.statusCode, 201, firstLease.body);
+    const firstLeaseId = firstLease.json<{ leaseId: string }>().leaseId;
+    const addressView = await app.inject({
+      method: "GET",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/address?leaseId=${firstLeaseId}`,
+      headers: { cookie },
+    });
+    assert.equal(addressView.statusCode, 200, addressView.body);
+    assert.equal(addressView.headers["cache-control"], "private, no-store");
+    assert.equal(addressView.json<{ shippingAddress: string }>().shippingAddress, fictionalAddress);
+
+    const addressAdmin = postgres(adminUrl, { max: 1 });
+    try {
+      const stored = await addressAdmin<Array<{ ciphertext_text: string; lease_seconds: number }>>`
+        select encode(address.ciphertext, 'escape') as ciphertext_text,
+               extract(epoch from (lease.expires_at - lease.issued_at))::integer as lease_seconds
+        from order_private_address address
+        join address_access_lease lease
+          on lease.workspace_id = address.workspace_id and lease.order_id = address.order_id
+        where address.workspace_id = ${owner.workspaceId} and address.order_id = ${orderId}
+          and lease.id = ${firstLeaseId}
+      `;
+      assert.equal(stored[0]?.lease_seconds, 300);
+      assert.equal(stored[0]?.ciphertext_text.includes("架空県"), false);
+      await addressAdmin`
+        update address_access_lease set issued_at = now() - interval '2 seconds',
+          expires_at = now() - interval '1 second'
+        where workspace_id = ${owner.workspaceId} and id = ${firstLeaseId}
+      `;
+    } finally {
+      await addressAdmin.end({ timeout: 5 });
+    }
+    const expiredAddress = await app.inject({
+      method: "GET",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/address?leaseId=${firstLeaseId}`,
+      headers: { cookie },
+    });
+    assert.equal(expiredAddress.statusCode, 403, expiredAddress.body);
+
+    const activeLease = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/address-leases`,
+      headers: { cookie },
+      payload: { purpose: "shipping_label", humanConfirmed: true },
+    });
+    assert.equal(activeLease.statusCode, 201, activeLease.body);
+    const activeLeaseId = activeLease.json<{ leaseId: string }>().leaseId;
+    const scanBase = Date.now();
+    const pickPayload = {
+      inventoryNumber: acquiredItem.inventoryNumber,
+      locationCode: "HOME-BIN-01",
+      inventoryLabelVersion: 1,
+      locationLabelVersion: 1,
+      addressLeaseId: activeLeaseId,
+      inventoryScannedAt: new Date(scanBase).toISOString(),
+      locationScannedAt: new Date(scanBase + 1).toISOString(),
+      confirmedAt: new Date(scanBase + 2).toISOString(),
+      idempotencyKey: randomUUID(),
+      humanConfirmed: true,
+    } as const;
+    const picked = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/pick`,
+      headers: { cookie },
+      payload: pickPayload,
+    });
+    assert.equal(picked.statusCode, 200, picked.body);
+    assert.equal(picked.json<{ inventoryStatus: string }>().inventoryStatus, "picked");
+    const pickWorkflow = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/p0-actions`,
+      headers: { cookie },
+      payload: {
+        action: "confirm_pick",
+        evidenceReferenceIds: [orderId],
+        manualChannelHandoff: false,
+        idempotencyKey: randomUUID(),
+        requiredFactsConfirmed: true,
+      },
+    });
+    assert.equal(pickWorkflow.statusCode, 200, pickWorkflow.body);
+    const pickedReplay = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/pick`,
+      headers: { cookie },
+      payload: pickPayload,
+    });
+    assert.deepEqual(pickedReplay.json(), picked.json());
+
+    const packed = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/pack`,
+      headers: { cookie },
+      payload: {
+        packingEvidenceReferenceId: randomUUID(),
+        addressLeaseId: activeLeaseId,
+        confirmedAt: new Date().toISOString(),
+        idempotencyKey: randomUUID(),
+        humanConfirmed: true,
+      },
+    });
+    assert.equal(packed.statusCode, 200, packed.body);
+    assert.equal(packed.json<{ inventoryStatus: string }>().inventoryStatus, "packed");
+    const packWorkflow = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/p0-actions`,
+      headers: { cookie },
+      payload: {
+        action: "confirm_pack",
+        evidenceReferenceIds: [orderId],
+        manualChannelHandoff: false,
+        idempotencyKey: randomUUID(),
+        requiredFactsConfirmed: true,
+      },
+    });
+    assert.equal(packWorkflow.statusCode, 200, packWorkflow.body);
+    const shipped = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/ship`,
+      headers: { cookie },
+      payload: {
+        addressLeaseId: activeLeaseId,
+        shippedAt: new Date().toISOString(),
+        idempotencyKey: randomUUID(),
+        humanConfirmed: true,
+      },
+    });
+    assert.equal(shipped.statusCode, 200, shipped.body);
+    assert.equal(shipped.json<{ inventoryStatus: string }>().inventoryStatus, "shipped");
+    const shipWorkflow = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/p0-actions`,
+      headers: { cookie },
+      payload: {
+        action: "confirm_ship",
+        evidenceReferenceIds: [orderId],
+        manualChannelHandoff: false,
+        idempotencyKey: randomUUID(),
+        requiredFactsConfirmed: true,
+      },
+    });
+    assert.equal(shipWorkflow.statusCode, 200, shipWorkflow.body);
+
+    const financial = await app.inject({
+      method: "GET",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/financial-summary`,
+      headers: { cookie },
+    });
+    assert.equal(financial.statusCode, 200, financial.body);
+    assert.equal(
+      financial.json<{ contributionProfitMinor: number }>().contributionProfitMinor,
+      2150,
+    );
+    const exportKey = randomUUID();
+    const accountingExport = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/accounting-exports`,
+      headers: { cookie },
+      payload: {
+        approvedAt: new Date().toISOString(),
+        idempotencyKey: exportKey,
+        humanApproved: true,
+      },
+    });
+    assert.equal(accountingExport.statusCode, 201, accountingExport.body);
+    assert.equal(accountingExport.json<{ rowCount: number }>().rowCount, 5);
+    const csvContent = await app.inject({
+      method: "GET",
+      url: accountingExport.json<{ contentUrl: string }>().contentUrl,
+      headers: { cookie },
+    });
+    assert.equal(csvContent.statusCode, 200, csvContent.body);
+    assert.equal(csvContent.headers["cache-control"], "private, no-store");
+    assert.equal(
+      csvContent.headers["x-content-sha256"],
+      accountingExport.json<{ sha256: string }>().sha256,
+    );
+    assert.equal(csvContent.body.includes("販売額の仕訳候補"), true);
+    const journalWorkflow = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/p0-actions`,
+      headers: { cookie },
+      payload: {
+        action: "approve_journal",
+        evidenceReferenceIds: [accountingExport.json<{ exportId: string }>().exportId],
+        manualChannelHandoff: false,
+        idempotencyKey: randomUUID(),
+        requiredFactsConfirmed: true,
+      },
+    });
+    assert.equal(journalWorkflow.statusCode, 200, journalWorkflow.body);
+
+    const returned = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/return`,
+      headers: { cookie },
+      payload: {
+        returnedAt: new Date().toISOString(),
+        idempotencyKey: randomUUID(),
+        humanConfirmed: true,
+      },
+    });
+    assert.equal(returned.statusCode, 200, returned.body);
+    const prematureInspection = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/return-inspection`,
+      headers: { cookie },
+      payload: {
+        resolution: "restock",
+        inspectedAt: new Date().toISOString(),
+        idempotencyKey: randomUUID(),
+        humanConfirmed: true,
+      },
+    });
+    assert.equal(prematureInspection.statusCode, 409, prematureInspection.body);
+    const returnScanBase = Date.now();
+    const quarantined = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/return-quarantine`,
+      headers: { cookie },
+      payload: {
+        orderId,
+        inventoryNumber: acquiredItem.inventoryNumber,
+        locationCode: "RETURN-01",
+        inventoryLabelVersion: 1,
+        locationLabelVersion: 1,
+        inventoryScannedAt: new Date(returnScanBase).toISOString(),
+        locationScannedAt: new Date(returnScanBase + 1).toISOString(),
+        confirmedAt: new Date(returnScanBase + 2).toISOString(),
+        idempotencyKey: randomUUID(),
+        humanConfirmed: true,
+      },
+    });
+    assert.equal(quarantined.statusCode, 200, quarantined.body);
+    assert.equal(quarantined.json<{ inventoryStatus: string }>().inventoryStatus, "quarantined");
+    const inspected = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/return-inspection`,
+      headers: { cookie },
+      payload: {
+        resolution: "restock",
+        inspectedAt: new Date().toISOString(),
+        idempotencyKey: randomUUID(),
+        humanConfirmed: true,
+      },
+    });
+    assert.equal(inspected.statusCode, 200, inspected.body);
+    assert.equal(inspected.json<{ inventoryStatus: string }>().inventoryStatus, "available");
+
+    const secrecyAdmin = postgres(adminUrl, { max: 1 });
+    try {
+      const leaks = await secrecyAdmin<Array<{ leaked: boolean }>>`
+        select exists (
+          select 1 from audit_event
+          where workspace_id = ${owner.workspaceId}
+            and (redacted_changes::text ilike ${`%${fictionalAddress}%`}
+              or array_to_string(field_names, ',') ilike '%shippingAddress%')
+        ) as leaked
+      `;
+      assert.equal(leaks[0]?.leaked, false);
+    } finally {
+      await secrecyAdmin.end({ timeout: 5 });
+    }
   } finally {
     await inventory.end({ timeout: 5 });
   }
@@ -818,7 +1348,7 @@ try {
 }
 
 process.stdout.write(
-  "postgres-integration: PASS (restricted role, 23-table RLS matrix, location/SKU assignment-scoped field worker, reviewed zero-GPS location photo, login, double scan, capacity, allocation, stocktake, logout)\n",
+  "postgres-integration: PASS (restricted role, 32-table RLS matrix, purchase-to-accounting order flow, encrypted 5-minute address lease, location/SKU assignment-scoped field worker, reviewed zero-GPS location photo, double scan, return quarantine, stocktake, logout)\n",
 );
 
 function jpegWithGpsMetadata(): Buffer {

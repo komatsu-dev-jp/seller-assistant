@@ -75,6 +75,21 @@ describe("zero-cost local private media store", () => {
     });
   });
 
+  it("stores product originals privately and removes only the matching new file", async () => {
+    const root = await mkdtemp(join(tmpdir(), "resale-media-test-"));
+    roots.push(root);
+    const store = new LocalPrivateMediaStore(root);
+    const bytes = jpegWithGpsMetadata();
+    const key = `workspaces/${workspaceId}/originals/product.jpg`;
+    const saved = await store.saveOriginal(key, bytes);
+    expect(saved.created).toBe(true);
+    await expect(store.removeOriginal(key, sha256(Buffer.from("another")))).rejects.toThrow(
+      /another hash/u,
+    );
+    await store.removeOriginal(key, saved.sha256);
+    await expect(stat(join(root, ...key.split("/")))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it("rejects PNG metadata without changing image chunks", () => {
     expect(() => stripLocationMetadata(Buffer.from("not-png"), "image/png")).toThrow(
       /Invalid PNG/u,

@@ -1,15 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import type { PutawayCatalogResponse } from "@resale/contracts";
+import { useEffect, useMemo, useState } from "react";
 
 import { createPendingPutaway, savePutawayOnlineFirst } from "../lib/offline-outbox";
 
 type Step = "inventory" | "location" | "confirm" | "saved";
 
 const inventoryPattern = /^INV-[0-9]{6}$/u;
-const locationPattern = /^[A-Z]{2,4}-[0-9]{3,6}-[0-9]$/u;
+const locationPattern = /^[A-Z0-9]+(?:-[A-Z0-9]+)+$/u;
 
-export function MobileScanWorkflow() {
+export function MobileScanWorkflow({ workspaceId }: { workspaceId: string }) {
   const [step, setStep] = useState<Step>("inventory");
   const [value, setValue] = useState("");
   const [inventoryNumber, setInventoryNumber] = useState<string | null>(null);
@@ -19,6 +20,21 @@ export function MobileScanWorkflow() {
   const [saveMode, setSaveMode] = useState<"synced" | "queued" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [catalog, setCatalog] = useState<PutawayCatalogResponse | null>(null);
+  const [inventoryLabelVersion, setInventoryLabelVersion] = useState<number | null>(null);
+  const [locationLabelVersion, setLocationLabelVersion] = useState<number | null>(null);
+
+  useEffect(() => {
+    fetch(`/v1/workspaces/${workspaceId}/inventory/putaway-catalog`, { cache: "no-store" })
+      .then(async (response) => {
+        const payload = (await response.json()) as PutawayCatalogResponse | { message?: string };
+        if (!response.ok) throw new Error("message" in payload ? payload.message : undefined);
+        setCatalog(payload as PutawayCatalogResponse);
+      })
+      .catch((reason: unknown) =>
+        setError(reason instanceof Error ? reason.message : "有効なラベル版を取得できません。"),
+      );
+  }, [workspaceId]);
 
   const title = useMemo(() => {
     if (step === "inventory") return "商品ラベルを確認";
@@ -38,17 +54,30 @@ export function MobileScanWorkflow() {
       return;
     }
     if (step === "location" && !locationPattern.test(normalized)) {
-      setError("場所コードは BX-014-3 のようなチェック値付き形式です。");
+      setError("場所コードは ROOM-A や BOX-014-3 の形式で入力してください。");
       return;
     }
     if (step === "inventory") {
+      const match = catalog?.inventory.find((entry) => entry.inventoryNumber === normalized);
+      if (!match) {
+        setError("未格納かつ有効な商品ラベルを確認できません。画面を更新してください。");
+        return;
+      }
       setInventoryNumber(normalized);
+      setInventoryLabelVersion(match.labelVersion);
       setInventoryScannedAt(new Date().toISOString());
       setLocationCode(null);
       setLocationScannedAt(null);
+      setLocationLabelVersion(null);
       setStep("location");
     } else {
+      const match = catalog?.locations.find((entry) => entry.code === normalized);
+      if (!match) {
+        setError("担当範囲内の有効な場所ラベルを確認できません。画面を更新してください。");
+        return;
+      }
       setLocationCode(normalized);
+      setLocationLabelVersion(match.labelVersion);
       setLocationScannedAt(new Date().toISOString());
       setStep("confirm");
     }
@@ -148,13 +177,22 @@ export function MobileScanWorkflow() {
             type="button"
             disabled={isSaving}
             onClick={() => {
-              if (!inventoryNumber || !locationCode || !inventoryScannedAt || !locationScannedAt)
+              if (
+                !inventoryNumber ||
+                !locationCode ||
+                !inventoryScannedAt ||
+                !locationScannedAt ||
+                !inventoryLabelVersion ||
+                !locationLabelVersion
+              )
                 return;
               setIsSaving(true);
               setError(null);
               const operation = createPendingPutaway(
                 inventoryNumber,
                 locationCode,
+                inventoryLabelVersion,
+                locationLabelVersion,
                 inventoryScannedAt,
                 locationScannedAt,
               );
@@ -183,6 +221,8 @@ export function MobileScanWorkflow() {
               setLocationCode(null);
               setInventoryScannedAt(null);
               setLocationScannedAt(null);
+              setInventoryLabelVersion(null);
+              setLocationLabelVersion(null);
               setStep("inventory");
             }}
           >

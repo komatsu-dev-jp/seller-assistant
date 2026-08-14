@@ -4,6 +4,6 @@ import { requirePageSession } from "../../../lib/server-session";
 export const dynamic = "force-dynamic";
 
 export default async function MobileScanPage() {
-  await requirePageSession(["owner", "inventory_manager", "field_worker"]);
-  return <MobileScanWorkflow />;
+  const session = await requirePageSession(["owner", "inventory_manager", "field_worker"]);
+  return <MobileScanWorkflow workspaceId={session.workspaceId} />;
 }

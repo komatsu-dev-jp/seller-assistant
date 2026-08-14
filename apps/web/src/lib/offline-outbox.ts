@@ -90,6 +90,8 @@ function waitForTransaction(transaction: IDBTransaction): Promise<void> {
 export function createPendingPutaway(
   inventoryNumber: string,
   locationCode: string,
+  inventoryLabelVersion: number,
+  locationLabelVersion: number,
   inventoryScannedAt: string,
   locationScannedAt: string,
 ): PendingPutawayOperation {
@@ -98,8 +100,8 @@ export function createPendingPutaway(
     idempotencyKey: crypto.randomUUID(),
     inventoryNumber,
     locationCode,
-    inventoryLabelVersion: 1,
-    locationLabelVersion: 1,
+    inventoryLabelVersion,
+    locationLabelVersion,
     inventoryScannedAt,
     locationScannedAt,
     confirmedAt: new Date().toISOString(),
@@ -232,8 +234,24 @@ async function deletePendingPutaway(idempotencyKey: string): Promise<void> {
 }
 
 export async function clearOfflineBusinessData(): Promise<void> {
-  if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.controller?.postMessage({ type: "CLEAR_BUSINESS_CACHE" });
+  if ("serviceWorker" in navigator && navigator.serviceWorker.controller) {
+    await new Promise<void>((resolve, reject) => {
+      const channel = new MessageChannel();
+      const timeout = window.setTimeout(
+        () => reject(new Error("端末キャッシュの消去確認が時間切れになりました。")),
+        5_000,
+      );
+      channel.port1.onmessage = (event) => {
+        window.clearTimeout(timeout);
+        const data: unknown = event.data;
+        if (typeof data === "object" && data !== null && "cleared" in data && data.cleared === true)
+          resolve();
+        else reject(new Error("端末キャッシュの消去を確認できませんでした。"));
+      };
+      navigator.serviceWorker.controller?.postMessage({ type: "CLEAR_BUSINESS_CACHE" }, [
+        channel.port2,
+      ]);
+    });
   }
   await new Promise<void>((resolve, reject) => {
     const request = indexedDB.deleteDatabase(DATABASE_NAME);

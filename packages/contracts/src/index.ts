@@ -92,6 +92,25 @@ export const putawayInventoryResponseSchema = z.object({
   syncedAt: z.iso.datetime(),
 });
 
+export const putawayCatalogResponseSchema = z.object({
+  workspaceId: workspaceIdSchema,
+  inventory: z.array(
+    z.object({
+      inventoryNumber: inventoryNumberSchema,
+      labelVersion: z.number().int().positive(),
+      status: z.literal("putaway_pending"),
+    }),
+  ),
+  locations: z.array(
+    z.object({
+      code: z.string(),
+      name: z.string(),
+      labelVersion: z.number().int().positive(),
+    }),
+  ),
+  loadedAt: z.iso.datetime(),
+});
+
 export const locationPhotoKindSchema = z.enum(["room", "shelf", "exact_position"]);
 
 export const uploadLocationPhotoQuerySchema = z
@@ -237,10 +256,21 @@ export const registerMediaAssetRequestSchema = z
   })
   .strict();
 
+export const uploadProductMediaQuerySchema = z
+  .object({
+    assetId: z.string().uuid(),
+    role: z.enum(["front", "back", "brand_tag", "care_label", "flaw"]),
+  })
+  .strict();
+
 export const mediaAssetResponseSchema = registerMediaAssetRequestSchema.extend({
   workspaceId: workspaceIdSchema,
   skuId: z.string().uuid(),
   createdAt: z.iso.datetime(),
+});
+
+export const productMediaUploadResponseSchema = mediaAssetResponseSchema.omit({
+  originalStorageKey: true,
 });
 
 export const recordMeasurementRequestSchema = z
@@ -284,9 +314,261 @@ export const captureSummarySchema = z.object({
   updatedAt: z.iso.datetime(),
 });
 
+export const createOrderRequestSchema = z
+  .object({
+    orderNumber: z
+      .string()
+      .trim()
+      .min(1)
+      .max(80)
+      .regex(/^[A-Z0-9-]+$/u),
+    skuId: z.string().uuid(),
+    inventoryUnitId: z.string().uuid(),
+    saleAmountMinor: z.number().int().positive().max(100_000_000),
+    costAmountMinor: z.number().int().nonnegative().max(100_000_000),
+    sellingFeeMinor: z.number().int().nonnegative().max(100_000_000),
+    shippingCostMinor: z.number().int().nonnegative().max(100_000_000),
+    packagingCostMinor: z.number().int().nonnegative().max(100_000_000),
+    taxBasis: z.enum(["tax_included", "tax_excluded", "unknown"]),
+    sourceMeaning: z.string().trim().min(1).max(160),
+    occurredAt: z.iso.datetime(),
+    shippingAddress: z.string().trim().min(1).max(1000),
+    idempotencyKey: z.string().uuid(),
+    humanConfirmed: z.literal(true),
+  })
+  .strict();
+
+export const createP0ItemRequestSchema = z
+  .object({
+    skuCode: z
+      .string()
+      .trim()
+      .min(1)
+      .max(64)
+      .regex(/^[A-Z0-9-]+$/u),
+    title: z.string().trim().min(1).max(160),
+    category: z.string().trim().min(1).max(80),
+    supplierName: z.string().trim().min(1).max(160),
+    receiptReference: z.string().trim().min(1).max(120),
+    purchasedAt: z.iso.datetime(),
+    receiptAmountMinor: z.number().int().nonnegative().max(100_000_000),
+    allocatedCostMinor: z.number().int().nonnegative().max(100_000_000),
+    idempotencyKey: z.string().uuid(),
+    humanConfirmed: z.literal(true),
+  })
+  .strict()
+  .refine((value) => value.allocatedCostMinor <= value.receiptAmountMinor, {
+    message: "Allocated cost cannot exceed the receipt amount",
+    path: ["allocatedCostMinor"],
+  });
+
+export const p0ItemResponseSchema = z.object({
+  workspaceId: workspaceIdSchema,
+  skuId: z.string().uuid(),
+  skuCode: z.string(),
+  title: z.string(),
+  category: z.string().nullable(),
+  inventoryUnitId: z.string().uuid(),
+  inventoryNumber: inventoryNumberSchema,
+  inventoryStatus: z.enum([
+    "putaway_pending",
+    "available",
+    "reserved",
+    "picked",
+    "packed",
+    "shipped",
+    "quarantined",
+    "lost",
+    "disposed",
+  ]),
+  locationCode: z.string().nullable(),
+  inventoryLabelVersion: z.number().int().positive(),
+  locationLabelVersion: z.number().int().positive().nullable(),
+  receiptId: z.string().uuid(),
+  receiptReference: z.string(),
+  purchasedAt: z.iso.datetime(),
+  allocatedCostMinor: z.number().int().nonnegative(),
+  workflowState: z.enum([
+    "sku_created",
+    "purchase_confirmed",
+    "capture_confirmed",
+    "listing_confirmed",
+    "order_confirmed",
+    "picked",
+    "packed",
+    "shipped",
+    "journal_approved",
+  ]),
+  orderId: z.string().uuid().nullable(),
+  orderNumber: z.string().nullable(),
+  orderState: z.enum(["confirmed", "picking", "packed", "shipped", "returned"]).nullable(),
+  updatedAt: z.iso.datetime(),
+});
+
+export const createLocationRequestSchema = z
+  .object({
+    parentId: z.string().uuid().nullable(),
+    code: z
+      .string()
+      .trim()
+      .toUpperCase()
+      .min(3)
+      .max(64)
+      .regex(/^[A-Z0-9]+(?:-[A-Z0-9]+)*$/u),
+    name: z.string().trim().min(1).max(120),
+    canStoreInventory: z.boolean(),
+    singleItemOnly: z.boolean(),
+    allowMixedSku: z.boolean(),
+    maxUnits: z.number().int().positive().max(100_000).nullable(),
+    humanConfirmed: z.literal(true),
+  })
+  .strict()
+  .refine((value) => value.canStoreInventory || value.maxUnits === null, {
+    message: "A non-storage location cannot have inventory capacity",
+    path: ["maxUnits"],
+  });
+
+export const locationNodeResponseSchema = z.object({
+  id: z.string().uuid(),
+  workspaceId: workspaceIdSchema,
+  parentId: z.string().uuid().nullable(),
+  code: z.string(),
+  name: z.string(),
+  depth: z.number().int().min(0).max(7),
+  state: z.literal("active"),
+  canStoreInventory: z.boolean(),
+  singleItemOnly: z.boolean(),
+  allowMixedSku: z.boolean(),
+  maxUnits: z.number().int().positive().nullable(),
+  activeInventoryCount: z.number().int().nonnegative(),
+  approvedPhotoCount: z.number().int().nonnegative(),
+  labelVersion: z.number().int().positive(),
+  createdAt: z.iso.datetime(),
+});
+
+export const orderOperationResponseSchema = z.object({
+  workspaceId: workspaceIdSchema,
+  orderId: z.string().uuid(),
+  orderNumber: z.string(),
+  skuId: z.string().uuid(),
+  inventoryUnitId: z.string().uuid(),
+  state: z.enum(["confirmed", "picking", "packed", "shipped", "returned"]),
+  inventoryStatus: z.enum([
+    "reserved",
+    "picked",
+    "packed",
+    "shipped",
+    "quarantined",
+    "available",
+    "disposed",
+  ]),
+  updatedAt: z.iso.datetime(),
+});
+
+export const createAddressLeaseRequestSchema = z
+  .object({ purpose: z.literal("shipping_label"), humanConfirmed: z.literal(true) })
+  .strict();
+
+export const addressLeaseResponseSchema = z.object({
+  leaseId: z.string().uuid(),
+  workspaceId: workspaceIdSchema,
+  orderId: z.string().uuid(),
+  expiresAt: z.iso.datetime(),
+});
+
+export const addressLeaseQuerySchema = z.object({ leaseId: z.string().uuid() }).strict();
+
+export const shippingAddressResponseSchema = z.object({
+  orderId: z.string().uuid(),
+  shippingAddress: z.string(),
+  expiresAt: z.iso.datetime(),
+});
+
+export const pickOrderRequestSchema = putawayInventoryRequestSchema
+  .safeExtend({
+    addressLeaseId: z.string().uuid().nullable(),
+  })
+  .strict();
+
+export const packOrderRequestSchema = z
+  .object({
+    packingEvidenceReferenceId: z.string().uuid(),
+    addressLeaseId: z.string().uuid().nullable(),
+    confirmedAt: z.iso.datetime(),
+    idempotencyKey: z.string().uuid(),
+    humanConfirmed: z.literal(true),
+  })
+  .strict();
+
+export const shipOrderRequestSchema = z
+  .object({
+    addressLeaseId: z.string().uuid().nullable(),
+    shippedAt: z.iso.datetime(),
+    idempotencyKey: z.string().uuid(),
+    humanConfirmed: z.literal(true),
+  })
+  .strict();
+
+export const returnOrderRequestSchema = z
+  .object({
+    returnedAt: z.iso.datetime(),
+    idempotencyKey: z.string().uuid(),
+    humanConfirmed: z.literal(true),
+  })
+  .strict();
+
+export const quarantineReturnRequestSchema = putawayInventoryRequestSchema
+  .safeExtend({ orderId: z.string().uuid() })
+  .strict();
+
+export const inspectReturnRequestSchema = z
+  .object({
+    resolution: z.enum(["restock", "dispose"]),
+    inspectedAt: z.iso.datetime(),
+    idempotencyKey: z.string().uuid(),
+    humanConfirmed: z.literal(true),
+  })
+  .strict();
+
+export const financialSummaryResponseSchema = z.object({
+  workspaceId: workspaceIdSchema,
+  orderId: z.string().uuid(),
+  skuId: z.string().uuid(),
+  saleAmountMinor: z.number().int(),
+  costAmountMinor: z.number().int(),
+  sellingFeeMinor: z.number().int(),
+  shippingCostMinor: z.number().int(),
+  packagingCostMinor: z.number().int(),
+  netRevenueMinor: z.number().int(),
+  contributionProfitMinor: z.number().int().nullable(),
+  currency: z.literal("JPY"),
+  disclaimer: z.literal(
+    "運用分析の参考値です。会計上の売上・利益・所得・税額を示すものではありません。",
+  ),
+});
+
+export const createAccountingExportRequestSchema = z
+  .object({
+    approvedAt: z.iso.datetime(),
+    idempotencyKey: z.string().uuid(),
+    humanApproved: z.literal(true),
+  })
+  .strict();
+
+export const accountingExportResponseSchema = z.object({
+  exportId: z.string().uuid(),
+  orderId: z.string().uuid(),
+  filename: z.literal("journal-candidates.csv"),
+  sha256: z.string().regex(/^[a-f0-9]{64}$/u),
+  rowCount: z.number().int().positive(),
+  contentUrl: z.string().startsWith("/v1/workspaces/"),
+  createdAt: z.iso.datetime(),
+});
+
 export type CreateSkuRequest = z.infer<typeof createSkuRequestSchema>;
 export type SkuResponse = z.infer<typeof skuResponseSchema>;
 export type InventorySummary = z.infer<typeof inventorySummarySchema>;
+export type PutawayCatalogResponse = z.infer<typeof putawayCatalogResponseSchema>;
 export type WorkspaceRole = z.infer<typeof workspaceRoleSchema>;
 export type SessionContextResponse = z.infer<typeof sessionContextResponseSchema>;
 export type PutawayInventoryRequest = z.infer<typeof putawayInventoryRequestSchema>;
@@ -305,3 +587,21 @@ export type MediaAssetResponse = z.infer<typeof mediaAssetResponseSchema>;
 export type RecordMeasurementRequest = z.infer<typeof recordMeasurementRequestSchema>;
 export type MeasurementResponse = z.infer<typeof measurementResponseSchema>;
 export type CaptureSummary = z.infer<typeof captureSummarySchema>;
+export type CreateOrderRequest = z.infer<typeof createOrderRequestSchema>;
+export type CreateP0ItemRequest = z.infer<typeof createP0ItemRequestSchema>;
+export type P0ItemResponse = z.infer<typeof p0ItemResponseSchema>;
+export type CreateLocationRequest = z.infer<typeof createLocationRequestSchema>;
+export type LocationNodeResponse = z.infer<typeof locationNodeResponseSchema>;
+export type OrderOperationResponse = z.infer<typeof orderOperationResponseSchema>;
+export type CreateAddressLeaseRequest = z.infer<typeof createAddressLeaseRequestSchema>;
+export type AddressLeaseResponse = z.infer<typeof addressLeaseResponseSchema>;
+export type ShippingAddressResponse = z.infer<typeof shippingAddressResponseSchema>;
+export type PickOrderRequest = z.infer<typeof pickOrderRequestSchema>;
+export type PackOrderRequest = z.infer<typeof packOrderRequestSchema>;
+export type ShipOrderRequest = z.infer<typeof shipOrderRequestSchema>;
+export type ReturnOrderRequest = z.infer<typeof returnOrderRequestSchema>;
+export type QuarantineReturnRequest = z.infer<typeof quarantineReturnRequestSchema>;
+export type InspectReturnRequest = z.infer<typeof inspectReturnRequestSchema>;
+export type FinancialSummaryResponse = z.infer<typeof financialSummaryResponseSchema>;
+export type CreateAccountingExportRequest = z.infer<typeof createAccountingExportRequestSchema>;
+export type AccountingExportResponse = z.infer<typeof accountingExportResponseSchema>;

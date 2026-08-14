@@ -44,6 +44,18 @@ const skuWorkAssignmentMigrationPath = fileURLToPath(
   new URL("../migrations/0011_sku_work_assignment.sql", import.meta.url),
 );
 const skuWorkAssignmentSql = readFileSync(skuWorkAssignmentMigrationPath, "utf8");
+const orderAccountingMigrationPath = fileURLToPath(
+  new URL("../migrations/0012_order_accounting_return.sql", import.meta.url),
+);
+const orderAccountingSql = readFileSync(orderAccountingMigrationPath, "utf8");
+const purchaseEvidenceMigrationPath = fileURLToPath(
+  new URL("../migrations/0013_purchase_evidence.sql", import.meta.url),
+);
+const purchaseEvidenceSql = readFileSync(purchaseEvidenceMigrationPath, "utf8");
+const auditContextMigrationPath = fileURLToPath(
+  new URL("../migrations/0014_audit_context.sql", import.meta.url),
+);
+const auditContextSql = readFileSync(auditContextMigrationPath, "utf8");
 
 describe("P0 PostgreSQL migration contract", () => {
   it("enables and forces workspace RLS for business tables", () => {
@@ -184,5 +196,45 @@ describe("P0 PostgreSQL migration contract", () => {
     expect(skuWorkAssignmentSql).toContain(
       "grant select on sku_work_assignment to resale_app_runtime",
     );
+  });
+
+  it("encrypts addresses and limits each viewing lease to five minutes", () => {
+    expect(orderAccountingSql).toContain("create table order_private_address");
+    expect(orderAccountingSql).toContain("ciphertext bytea not null");
+    expect(orderAccountingSql).not.toContain("shipping_address text");
+    expect(orderAccountingSql).toContain("create table address_access_lease");
+    expect(orderAccountingSql).toContain("expires_at <= issued_at + interval '5 minutes'");
+  });
+
+  it("stores idempotent order operations, accounting evidence and return inspection", () => {
+    expect(orderAccountingSql).toContain("create table order_operation_record");
+    expect(orderAccountingSql).toContain("primary key (workspace_id, operation, idempotency_key)");
+    expect(orderAccountingSql).toContain("create table accounting_export");
+    expect(orderAccountingSql).toContain("csv_sha256");
+    expect(orderAccountingSql).toContain("create table return_inspection");
+    expect(orderAccountingSql).toContain("return quarantine requires shipped inventory");
+    expect(orderAccountingSql).toContain(
+      "return inspection requires quarantined inventory and returned order",
+    );
+    expect(orderAccountingSql.match(/force row level security/g)).toHaveLength(1);
+  });
+
+  it("keeps purchase evidence and SKU cost allocation as separate workspace records", () => {
+    expect(purchaseEvidenceSql).toContain("create table purchase_batch");
+    expect(purchaseEvidenceSql).toContain("create table receipt");
+    expect(purchaseEvidenceSql).toContain("create table cost_allocation");
+    expect(purchaseEvidenceSql).toContain(
+      "foreign key (workspace_id, receipt_id) references receipt(workspace_id, id)",
+    );
+    expect(purchaseEvidenceSql).toContain(
+      "foreign key (workspace_id, sku_id) references product_sku(workspace_id, id)",
+    );
+    expect(purchaseEvidenceSql).toContain("force row level security");
+  });
+
+  it("records a stable reason and optional human approver without sensitive free text", () => {
+    expect(auditContextSql).toContain("reason_code text not null");
+    expect(auditContextSql).toContain("approved_by uuid references app_identity(id)");
+    expect(auditContextSql).toContain("never store free-form addresses");
   });
 });

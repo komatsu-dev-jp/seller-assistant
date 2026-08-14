@@ -61,7 +61,10 @@ self.addEventListener("fetch", (event) => {
 self.addEventListener("message", (event) => {
   if (event.data?.type === "CLEAR_BUSINESS_CACHE") {
     event.waitUntil(
-      caches.keys().then((keys) => Promise.all(keys.map((key) => caches.delete(key)))),
+      caches
+        .keys()
+        .then((keys) => Promise.all(keys.map((key) => caches.delete(key))))
+        .then(() => event.ports[0]?.postMessage({ cleared: true })),
     );
   }
 });

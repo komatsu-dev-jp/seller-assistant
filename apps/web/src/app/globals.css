@@ -881,6 +881,48 @@ a {
 }
 
 @media (max-width: 560px) {
+  .shell {
+    padding-bottom: 68px;
+  }
+  .sidebar {
+    position: fixed;
+    z-index: 50;
+    inset: auto 0 0;
+    height: 64px;
+    padding: 6px 8px max(6px, env(safe-area-inset-bottom));
+    overflow: visible;
+    border-top: 1px solid #31496f;
+  }
+  .sidebar .brand,
+  .sidebar .safety,
+  .sidebar nav .nav-secondary {
+    display: none;
+  }
+  .sidebar nav {
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 2px;
+  }
+  .sidebar nav a {
+    padding: 8px 3px;
+    display: grid;
+    place-items: center;
+    font-size: 10px;
+    text-align: center;
+  }
+  .sidebar .logoutArea {
+    width: 58px;
+    margin: 0 0 0 2px;
+  }
+  .sidebar .logoutArea button {
+    min-height: 42px;
+    padding: 5px 3px;
+    font-size: 9px;
+  }
+  .sidebar .logoutArea p {
+    display: none;
+  }
   .topbar,
   .nextAction {
     flex-direction: column;

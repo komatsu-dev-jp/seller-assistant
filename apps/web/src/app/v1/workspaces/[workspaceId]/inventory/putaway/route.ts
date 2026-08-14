@@ -1,4 +1,5 @@
 import type { NextRequest } from "next/server";
+import { matchesConfiguredAppOrigin } from "../../../../../../lib/request-origin";
 
 export async function POST(
   request: NextRequest,
@@ -12,7 +13,7 @@ export async function POST(
       { status: 503 },
     );
   }
-  if (!appOrigin || request.nextUrl.origin !== appOrigin) {
+  if (!appOrigin || !matchesConfiguredAppOrigin(request, appOrigin, true)) {
     return Response.json(
       { code: "app_origin_rejected", message: "アプリのURLを確認できません。" },
       { status: 403 },

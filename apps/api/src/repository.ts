@@ -81,6 +81,11 @@ export interface WorkflowRepository {
     locationId: string,
     actor: RequestActor,
   ): Promise<LocationPhotoResponse[]>;
+  locationPhotosForManagement(
+    workspaceId: string,
+    locationId: string,
+    actor: RequestActor,
+  ): Promise<LocationPhotoResponse[]>;
   locationPhotoForReview(
     workspaceId: string,
     locationId: string,
@@ -280,7 +285,10 @@ export class InMemoryWorkflowRepository implements WorkflowRepository {
       throw new RepositoryError("forbidden", "The location photo is not available");
     }
     if (current.capturedBy === actor.identityId) {
-      throw new RepositoryError("conflict", "The photographer cannot approve the display image");
+      throw new RepositoryError(
+        "conflict",
+        "撮影した本人は承認できません。別の担当者で確認してください。",
+      );
     }
     const approved: LocationPhotoResponse = {
       ...current,
@@ -318,6 +326,19 @@ export class InMemoryWorkflowRepository implements WorkflowRepository {
     );
   }
 
+  locationPhotosForManagement(
+    workspaceId: string,
+    locationId: string,
+    actor: RequestActor,
+  ): Promise<LocationPhotoResponse[]> {
+    void actor;
+    return Promise.resolve(
+      [...this.locationPhotos.values()].filter(
+        (photo) => photo.workspaceId === workspaceId && photo.locationId === locationId,
+      ),
+    );
+  }
+
   locationPhotoForReview(
     workspaceId: string,
     locationId: string,
@@ -334,7 +355,10 @@ export class InMemoryWorkflowRepository implements WorkflowRepository {
       throw new RepositoryError("conflict", "Only a pending location photo can be approved");
     }
     if (photo.capturedBy === actor.identityId) {
-      throw new RepositoryError("conflict", "The photographer cannot approve the display image");
+      throw new RepositoryError(
+        "conflict",
+        "撮影した本人は承認できません。別の担当者で確認してください。",
+      );
     }
     return Promise.resolve(original);
   }
@@ -869,12 +893,12 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
         await transaction`
           insert into audit_event (
             workspace_id, actor_id, action, target_type, target_id,
-            field_names, redacted_changes, reference_ids
+            field_names, redacted_changes, reference_ids, reason_code, approved_by
           ) values (
             ${workspaceId}, ${actor.identityId}, 'inventory.putaway', 'inventory_unit',
             ${unit.id}, ${["status", "location_id", "movement_seq"]},
             ${transaction.json({ status: { to: "available" } })},
-            ${[scanSessionId, location.id]}
+            ${[scanSessionId, location.id]}, 'product_and_location_double_scan', ${actor.identityId}
           )
         `;
         return {
@@ -991,13 +1015,13 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
         await transaction`
           insert into audit_event (
             workspace_id, actor_id, action, target_type, target_id,
-            field_names, redacted_changes, reference_ids
+            field_names, redacted_changes, reference_ids, reason_code
           ) values (
             ${workspaceId}, ${actor.identityId}, 'location_photo.captured',
             'location_photo', ${input.photoId},
             ${["review_state", "photo_kind"]},
             ${transaction.json({ review_state: { to: "pending" } })},
-            ${[locationId, input.originalAssetId]}
+            ${[locationId, input.originalAssetId]}, 'location_photo_submitted_for_review'
           )
         `;
         return toLocationPhotoResponse(row);
@@ -1046,13 +1070,13 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
         await transaction`
           insert into audit_event (
             workspace_id, actor_id, action, target_type, target_id,
-            field_names, redacted_changes, reference_ids
+            field_names, redacted_changes, reference_ids, reason_code, approved_by
           ) values (
             ${workspaceId}, ${actor.identityId}, 'location_photo.approved',
             'location_photo', ${photoId},
             ${["review_state", "gps_exif_count"]},
             ${transaction.json({ review_state: { from: "pending", to: "approved" }, gps_exif_count: { to: 0 } })},
-            ${[locationId, input.derivativeAssetId]}
+            ${[locationId, input.derivativeAssetId]}, 'separate_reviewer_approved', ${actor.identityId}
           )
         `;
         return toLocationPhotoResponse(row);
@@ -1106,6 +1130,34 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
     }
   }
 
+  async locationPhotosForManagement(
+    workspaceId: string,
+    locationId: string,
+    actor: RequestActor,
+  ): Promise<LocationPhotoResponse[]> {
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId);
+        await requireRole(transaction, workspaceId, actor.identityId, [
+          "owner",
+          "inventory_manager",
+        ]);
+        const rows = await transaction<LocationPhotoRow[]>`
+          select id, workspace_id, location_id, photo_kind, review_state,
+                 original_asset_id, original_sha256, derivative_asset_id,
+                 derivative_sha256, derivative_storage_key, gps_exif_count,
+                 captured_by, captured_at, reviewed_by, reviewed_at
+          from location_photo
+          where workspace_id = ${workspaceId} and location_id = ${locationId}
+          order by (review_state = 'pending') desc, captured_at desc
+        `;
+        return rows.map(toLocationPhotoResponse);
+      });
+    } catch (error) {
+      throw normalizeDatabaseError(error);
+    }
+  }
+
   async locationPhotoForReview(
     workspaceId: string,
     locationId: string,
@@ -1139,7 +1191,7 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
         if (row.captured_by === actor.identityId) {
           throw new RepositoryError(
             "conflict",
-            "The photographer cannot approve the display image",
+            "撮影した本人は承認できません。別の担当者で確認してください。",
           );
         }
         if (row.original_mime_type !== "image/jpeg" && row.original_mime_type !== "image/png") {
@@ -1311,8 +1363,14 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
           )
         `;
         await transaction`
-          insert into audit_event (workspace_id, actor_id, action, target_type, target_id, field_names, redacted_changes)
-          values (${workspaceId}, ${actor.identityId}, ${input.action}, 'p0_workflow', ${skuId}, array['state'], ${transaction.json({ state: decision.nextState, version: nextVersion })})
+          insert into audit_event (
+            workspace_id, actor_id, action, target_type, target_id, field_names,
+            redacted_changes, reason_code, approved_by
+          ) values (
+            ${workspaceId}, ${actor.identityId}, ${input.action}, 'p0_workflow', ${skuId},
+            array['state'], ${transaction.json({ state: decision.nextState, version: nextVersion })},
+            'human_workflow_confirmation', ${actor.identityId}
+          )
         `;
         await transaction`
           insert into outbox_event (workspace_id, event_type, aggregate_type, aggregate_id, payload)
@@ -1400,9 +1458,13 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
         const row = rows[0];
         if (!row) throw new RepositoryError("database_error", "Media insert returned no row");
         await transaction`
-          insert into audit_event (workspace_id, actor_id, action, target_type, target_id, field_names, reference_ids)
+          insert into audit_event (
+            workspace_id, actor_id, action, target_type, target_id, field_names,
+            reference_ids, reason_code, approved_by
+          )
           values (${workspaceId}, ${actor.identityId}, 'media.original.registered', 'media_asset', ${input.assetId},
-                  array['role','originalSha256','mimeType','sizeBytes','width','height'], array[${skuId}::uuid])
+                  array['role','originalSha256','mimeType','sizeBytes','width','height'], array[${skuId}::uuid],
+                  'server_verified_original_bytes', ${actor.identityId})
         `;
         return toMediaAssetResponse(row);
       });

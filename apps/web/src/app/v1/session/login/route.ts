@@ -1,4 +1,5 @@
 import type { NextRequest } from "next/server";
+import { matchesConfiguredAppOrigin } from "../../../../lib/request-origin";
 
 export async function POST(request: NextRequest) {
   const apiOrigin = process.env.API_INTERNAL_ORIGIN;
@@ -9,7 +10,7 @@ export async function POST(request: NextRequest) {
       { status: 503 },
     );
   }
-  if (!appOrigin || request.nextUrl.origin !== appOrigin) {
+  if (!appOrigin || !matchesConfiguredAppOrigin(request, appOrigin, true)) {
     return Response.json(
       { code: "app_origin_rejected", message: "アプリの公開URLを確認できません。" },
       { status: 403 },

@@ -166,3 +166,14 @@ P0の必須ACは AC-001、003〜008、013〜014、018〜023、025〜026、028〜
 - 検証: 17 files / 86 tests、line 91.36%、branch 81.81%、functions 100%、format/lint/type/build合格。0001〜0011の新規DBと実ファイル結合テストPASS。
 - 費用: 新しい外部依存0件、PC内のみ。有料API/SaaS、外部CI、公開0件。
 - 未完了: PWA場所写真撮影UI、HEIC/WebP、住所期限、注文/返品/会計の実API、実iPhone Safari。
+
+## Iteration 20の実証範囲
+
+- P0実保存: 仕入証憑、SKU、在庫番号、場所、商品写真4種、採寸4項目、出品用候補、人の公式画面引継ぎ、注文、5分住所lease、商品＋場所のピッキング、梱包、発送、収支、会計CSV履歴、返品隔離/再入庫を同一IDでDB追跡。
+- 在庫UI: 部屋/棚/位置の階層、場所ラベル、容量/混載設定、実在庫一覧、部屋全景/棚/正確な位置写真をWeb/PWAから登録。原本は非公開、管理者の確認待ち一覧を追加し、撮影者本人の承認を拒否。
+- 安全な写真/住所: 画像bytesからAPIがSHA-256・形式・寸法を算出し、表示用位置metadata 0件。住所はAES-256-GCM暗号化、表示権限は最大5分、応答/監査へ平文を残さない。
+- 実画面: 架空ownerで実HTTPログイン、場所`ROOM-A`、写真確認待ち、自己承認拒否、仕入商品、`INV-000001`発行を確認。390×844でDB実数ホームと固定下部ナビを確認。
+- Web防御: 変更要求はブラウザ`Origin`と`APP_ORIGIN`の完全一致を必須化。欠落/cross-siteを拒否し、読取要求はforwarded host/protocolを検査。
+- 検証: 19 files / 96 tests、line 91.36%、branch 81.81%、functions 100%、format/lint/type/build合格。0001〜0014、32業務テーブルRLSの新規使い捨てPostgreSQL結合テストPASS。
+- 費用: Node.js、Next.js、PostgreSQL、PC内ファイル、ローカルPlaywrightだけ。外部API/SaaS/CI/デプロイ/Apple契約0件。
+- 未確認: 実iPhone Safariでのホーム画面追加、カメラ撮影、圏外復帰。HEIC/WebP。P1は未着手。

@@ -5,7 +5,7 @@ import { requirePageSession } from "../../lib/server-session";
 export const dynamic = "force-dynamic";
 
 export default async function WorkflowPage() {
-  await requirePageSession(["owner", "inventory_manager"]);
+  const session = await requirePageSession(["owner", "inventory_manager"]);
 
   return (
     <main className="shell">
@@ -19,7 +19,7 @@ export default async function WorkflowPage() {
           </div>
           <span className="zeroCostBadge">外部費用 0円</span>
         </header>
-        <P0Workspace />
+        <P0Workspace workspaceId={session.workspaceId} />
       </section>
     </main>
   );

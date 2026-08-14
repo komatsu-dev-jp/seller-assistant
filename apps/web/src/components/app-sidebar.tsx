@@ -1,12 +1,13 @@
 import { LogoutButton } from "./logout-button";
 
 const links = [
-  ["/", "ホーム"],
-  ["/workflow", "P0商品作業"],
-  ["/inventory", "在庫"],
-  ["/workflow", "仕入・出品"],
-  ["/workflow", "注文・配送"],
-  ["/workflow", "収支・会計"],
+  ["/", "ホーム", "primary"],
+  ["/workflow", "P0商品作業", "primary"],
+  ["/inventory", "在庫", "primary"],
+  ["/mobile", "現場", "primary"],
+  ["/workflow", "仕入・出品", "secondary"],
+  ["/workflow", "注文・配送", "secondary"],
+  ["/workflow", "収支・会計", "secondary"],
 ] as const;
 
 interface AppSidebarProps {
@@ -20,13 +21,18 @@ export function AppSidebar({ current }: AppSidebarProps) {
         R<span>O</span>
       </a>
       <nav>
-        {links.map(([href, label]) => {
+        {links.map(([href, label, mobilePriority]) => {
           const isCurrent =
             (current === "home" && label === "ホーム") ||
             (current === "inventory" && label === "在庫") ||
             (current === "workflow" && label === "P0商品作業");
           return (
-            <a aria-current={isCurrent ? "page" : undefined} href={href} key={label}>
+            <a
+              aria-current={isCurrent ? "page" : undefined}
+              className={`nav-${mobilePriority}`}
+              href={href}
+              key={label}
+            >
               {label}
             </a>
           );
