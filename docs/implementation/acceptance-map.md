@@ -10,11 +10,11 @@ P0の必須ACは AC-001、003〜008、013〜014、018〜023、025〜026、028〜
 
 | 範囲        | 実装先                         | 自動検証                      | 手動・画面証拠       | 状態                   |
 | ----------- | ------------------------------ | ----------------------------- | -------------------- | ---------------------- |
-| AC-001〜009 | domain/contracts、API、Web/iOS | unit/API                      | P0仕入・撮影・採寸   | 基盤実装中             |
+| AC-001〜009 | domain/contracts、API、Web/PWA | unit/API                      | P0仕入・撮影・採寸   | 基盤実装中             |
 | AC-010〜017 | media/listing/price adapters   | unit/contract                 | 原本比較・本人引渡し | 未着手                 |
 | AC-018〜020 | inventory/order/shipping       | concurrency/API               | 二重読取・発送・返品 | domain/DB部分実装      |
 | AC-021〜024 | finance/accounting/Notion      | fixture/schema                | 収益・CSV・同期確認  | 金額fixture部分実装    |
-| AC-025〜028 | UI/監査/品質                   | a11y/security/all suites      | PC/iPhone実画面      | 未着手                 |
+| AC-025〜028 | UI/監査/品質                   | a11y/security/all suites      | PC/iPhone PWA実画面  | PWA基盤実装中          |
 | AC-029〜041 | 財務・冪等・機密・CSV・旧資産  | fixture/contract/security     | 出力内容確認         | 財務/冪等/監査部分実装 |
 | AC-042〜055 | inventory/location/count       | DB/domain/concurrency         | M12/W10導線          | domain/SQL/W10部分実装 |
 | TA-001〜037 | architecture/CI/security       | type/lint/test/build/contract | platform checklist   | 基盤/SQL部分実装       |

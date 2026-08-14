@@ -97,3 +97,11 @@ APIキー、トークン、個人情報、生ログ、会話全文、一時的�
 - Applies to: iOS M12、Web W10、在庫/注文/返品データ、権限、監査、オフライン、AC-042〜AC-055、TA-029〜TA-037
 - Verification: workspace境界、場所ツリー不変条件、二重読取、冪等移動、非公開写真、外注の場所枝権限、棚卸再確認、返品隔離、fallbackを自動/実機テストする。
 - Follow-up: 可動container一括移動、複数拠点、最短ピッキング順、専用プリンター、RFID、GS1識別キーはP1または契約・機器確認後に別判断する。
+
+### 2026-08-15 — ネイティブiOSをPWAへ変更し、外部計算費用を0円に固定する
+
+- Context: ユーザーはMacを未保有で、WebサイトをiPhoneのホーム画面からアプリ表示できればよいと明示した。また「絶対無料」を要求した。
+- Decision or rule: MVPのモバイル版はPWA（インストールできるWebサイト）とし、SwiftUI/Xcode/App Store/Apple Developer契約/macOS CIを対象外にする。GitHub Actionsは自動実行せず、ローカルWindows検証を正とする。有料API・有料SaaS・従量課金・本番公開は別途明示承認がない限り0件とする。
+- Applies to: 製品仕様、技術設計、Goal、モバイルUI、オフライン、カメラ、QR/手入力、CI、受け入れ条件
+- Supersedes: ネイティブiOSを前提にした技術選定・macOS開始条件・iOS固有のAC/TA。承認済みモバイル画面の情報設計はPWAへ移植する。
+- Evidence: ユーザー会話「絶対無料でお願いします。あとiOSアプリと言いましたが、まだMacがないので Webサイトをアプリとして表示レベルで構いません」

@@ -60,7 +60,8 @@
 - 整形確認は `npm run format:check`、静的解析は `npm run lint`、型確認は `npm run typecheck` です。
 - 単体・契約テストと網羅率は `npm run test`、本番用ビルドは `npm run build` です。
 - 提出前は `npm run check` を実行し、整形、静的解析、型、テスト、Web/API buildを連続で合格させます。
-- iOSはmacOS上のXcodeでSwiftコンパイル、XCTest、シミュレーター、iPhone 16 Pro実機確認を行います。Windows上の未実行を合格扱いしません。
+- モバイル版はPWA（ホーム画面へ追加できるWebアプリ）として検証し、Mac/Xcode、Apple Developer契約、有料macOS CIを使いません。
+- 外部CIは費用0円を保証するため手動起動だけにし、通常の検証はこのWindows環境で実行します。
 - コードや設定を変更した場合は、影響に応じた実際の検証を行い、コマンド、結果、未確認範囲を報告します。
 - ドキュメントだけの変更では、対象パス、Markdown構造、参照先、機密情報の不在を確認します。
 - 実行できなかった検証を成功扱いにしません。

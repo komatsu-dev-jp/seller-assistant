@@ -32,6 +32,17 @@ export default tseslint.config(
   },
   {
     ...tseslint.configs.disableTypeChecked,
-    files: ["**/*.test.ts"],
+    files: ["**/*.test.ts", "apps/*/public/**/*.js"],
+  },
+  {
+    files: ["apps/*/public/**/*.js"],
+    languageOptions: {
+      globals: {
+        self: "readonly",
+        caches: "readonly",
+        fetch: "readonly",
+        URL: "readonly",
+      },
+    },
   },
 );

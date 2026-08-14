@@ -13,6 +13,7 @@
     "@resale/contracts": "0.1.0",
     "@resale/domain": "0.1.0",
     "fastify": "5.12.0",
+    "postgres": "^3.4.9",
     "zod": "4.4.3"
   },
   "devDependencies": {
