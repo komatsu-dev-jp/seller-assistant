@@ -42,3 +42,13 @@
 - 画面証拠: `output/playwright/p0-workflow-purchase.png`、`p0-workflow-mobile.png`、`p0-workflow-accounting.png`、`p0-workflow-accounting-mobile.png`。CSV証拠は架空データの `test-journal-candidate.csv`。
 - 残る問題: Web画面はまだAPI/DBへ接続していない。SQLは静的契約検査のみ。実PostgreSQL/RLS、認証/ログアウト、写真原本アップロード、PWA同期待ち送信、iPhone Safari実機は未確認。
 - 次の一手: P0のサーバー正本接続、権限/監査/メディア契約を実装し、実DBがなくても安全境界を自動検査できる範囲を拡張する。
+
+## Iteration 5 — 2026-08-15 写真原本・採寸証拠API
+
+- 基準値: 写真4種と採寸4項目は画面状態だけで、サーバー契約とDB保存制約がなかった。
+- 実装: 原本メタデータ登録、採寸試行登録、撮影採寸サマリーAPIを追加。写真ID、役割、SHA-256、workspace原本prefix、形式、容量、画素を固定し、採寸へ定義版、基準、状態、測定者、証拠写真、試行、確認者を保存する。
+- 安全境界: 同じ写真IDの変更不可項目が変わる登録を409拒否。別SKUの写真を採寸証拠に使う操作を403拒否。2cm超の再測定差は値を消さず`requiresReview`へする。
+- DB契約: `media_asset` と `measurement_attempt`、複合FK、原本prefix、変更不可hash、採寸範囲、人確認、workspace RLSをmigrationへ追加。
+- 検証: 11 test files / 50 tests合格、行91.36%、分岐81.81%、関数100%。typecheck、lint、`git diff --check`合格。
+- 残る問題: 実オブジェクトStorageと署名URLは未実装。実PostgreSQLがないためmigration実行、RLS越境、transactionは未確認。Web画面からAPIへの接続も未完了。
+- 次の一手: 認証sessionとworkspace/role境界をAPI入口へ追加し、秘密情報をPWA storageへ置かないことをテストする。

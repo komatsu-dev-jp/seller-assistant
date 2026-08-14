@@ -37,6 +37,7 @@ describe("media originals", () => {
     expect(registerMediaAsset(asset, { ...asset, originalSha256: "b".repeat(64) }).kind).toBe(
       "conflict",
     );
+    expect(registerMediaAsset(asset, { ...asset, role: "back" }).kind).toBe("conflict");
   });
 });
 

@@ -88,9 +88,80 @@ export const p0WorkflowResponseSchema = z.object({
   updatedAt: z.iso.datetime(),
 });
 
+export const photoRoleSchema = z.enum(["front", "back", "brand_tag", "care_label", "flaw"]);
+
+export const registerMediaAssetRequestSchema = z
+  .object({
+    assetId: z.string().uuid(),
+    role: photoRoleSchema,
+    originalSha256: z.string().regex(/^[a-f0-9]{64}$/u),
+    originalStorageKey: z.string().trim().min(1).max(500),
+    mimeType: z.enum(["image/jpeg", "image/png", "image/webp", "image/heic"]),
+    sizeBytes: z
+      .number()
+      .int()
+      .positive()
+      .max(25 * 1024 * 1024),
+    width: z.number().int().positive().max(12_000),
+    height: z.number().int().positive().max(12_000),
+  })
+  .strict();
+
+export const mediaAssetResponseSchema = registerMediaAssetRequestSchema.extend({
+  workspaceId: workspaceIdSchema,
+  skuId: z.string().uuid(),
+  createdAt: z.iso.datetime(),
+});
+
+export const recordMeasurementRequestSchema = z
+  .object({
+    definitionId: z.string().regex(/^[a-z][a-z0-9_]{1,63}$/u),
+    definitionVersion: z.number().int().positive().max(100),
+    value: z.number().positive().max(250),
+    unit: z.literal("cm"),
+    basis: z.enum(["flat_width", "circumference", "length"]),
+    state: z.enum(["natural", "closed", "unstretched"]),
+    measuredAt: z.iso.datetime(),
+    evidenceAssetId: z.string().uuid(),
+    attempt: z.number().int().positive().max(20),
+    humanConfirmed: z.literal(true),
+  })
+  .strict();
+
+export const measurementResponseSchema = recordMeasurementRequestSchema
+  .omit({ humanConfirmed: true })
+  .extend({
+    id: z.string().uuid(),
+    workspaceId: workspaceIdSchema,
+    skuId: z.string().uuid(),
+    measuredBy: z.string().uuid(),
+    confirmedBy: z.string().uuid(),
+    requiresReview: z.boolean(),
+    differenceCm: z.number().nonnegative().nullable(),
+    violations: z.array(z.string()),
+    createdAt: z.iso.datetime(),
+  });
+
+export const captureSummarySchema = z.object({
+  workspaceId: workspaceIdSchema,
+  skuId: z.string().uuid(),
+  photoRoles: z.array(photoRoleSchema),
+  measurementDefinitionIds: z.array(z.string()),
+  requiredPhotoRolesComplete: z.boolean(),
+  requiredMeasurementsComplete: z.boolean(),
+  hasReviewWarnings: z.boolean(),
+  readyForHumanReview: z.boolean(),
+  updatedAt: z.iso.datetime(),
+});
+
 export type CreateSkuRequest = z.infer<typeof createSkuRequestSchema>;
 export type SkuResponse = z.infer<typeof skuResponseSchema>;
 export type InventorySummary = z.infer<typeof inventorySummarySchema>;
 export type ApiError = z.infer<typeof apiErrorSchema>;
 export type AdvanceP0WorkflowRequest = z.infer<typeof advanceP0WorkflowRequestSchema>;
 export type P0WorkflowResponse = z.infer<typeof p0WorkflowResponseSchema>;
+export type RegisterMediaAssetRequest = z.infer<typeof registerMediaAssetRequestSchema>;
+export type MediaAssetResponse = z.infer<typeof mediaAssetResponseSchema>;
+export type RecordMeasurementRequest = z.infer<typeof recordMeasurementRequestSchema>;
+export type MeasurementResponse = z.infer<typeof measurementResponseSchema>;
+export type CaptureSummary = z.infer<typeof captureSummarySchema>;

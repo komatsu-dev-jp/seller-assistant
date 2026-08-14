@@ -13,7 +13,7 @@ export interface MediaAsset {
 export type MediaRegistration =
   | { kind: "created"; asset: MediaAsset }
   | { kind: "replay"; asset: MediaAsset }
-  | { kind: "conflict"; reason: "same_id_different_hash" };
+  | { kind: "conflict"; reason: "same_id_different_immutable_fields" };
 
 export function registerMediaAsset(
   existingById: MediaAsset | undefined,
@@ -26,10 +26,16 @@ export function registerMediaAsset(
     throw new Error("original storage key is outside the workspace prefix");
   }
   if (!existingById) return { kind: "created", asset: candidate };
-  if (existingById.originalSha256 === candidate.originalSha256) {
+  if (
+    existingById.workspaceId === candidate.workspaceId &&
+    existingById.skuId === candidate.skuId &&
+    existingById.role === candidate.role &&
+    existingById.originalSha256 === candidate.originalSha256 &&
+    existingById.originalStorageKey === candidate.originalStorageKey
+  ) {
     return { kind: "replay", asset: existingById };
   }
-  return { kind: "conflict", reason: "same_id_different_hash" };
+  return { kind: "conflict", reason: "same_id_different_immutable_fields" };
 }
 
 export type MeasurementBasis = "flat_width" | "circumference" | "length";

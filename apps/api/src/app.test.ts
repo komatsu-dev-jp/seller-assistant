@@ -202,4 +202,185 @@ describe("P0 workspace API", () => {
     });
     expect(conflict.statusCode).toBe(409);
   });
+
+  it("registers immutable photo evidence and human measurements for capture readiness", async () => {
+    const app = buildApp({ repository: new InMemoryWorkflowRepository() });
+    apps.push(app);
+    const created = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceId}/skus`,
+      headers: { "x-actor-id": actorId },
+      payload: { skuCode: "SKU-000005", title: "撮影採寸試験", category: "トップス" },
+    });
+    const skuId = (created.json() as { id: string }).id;
+    const roles = ["front", "back", "brand_tag", "care_label"] as const;
+    const assetIds = [
+      "30000000-0000-4000-8000-000000000001",
+      "30000000-0000-4000-8000-000000000002",
+      "30000000-0000-4000-8000-000000000003",
+      "30000000-0000-4000-8000-000000000004",
+    ];
+
+    for (const [index, role] of roles.entries()) {
+      const response = await app.inject({
+        method: "POST",
+        url: `/v1/workspaces/${workspaceId}/skus/${skuId}/media-assets`,
+        headers: { "x-actor-id": actorId },
+        payload: {
+          assetId: assetIds[index],
+          role,
+          originalSha256: String(index + 1).repeat(64),
+          originalStorageKey: `workspaces/${workspaceId}/originals/${assetIds[index]}.jpg`,
+          mimeType: "image/jpeg",
+          sizeBytes: 1_024,
+          width: 2_000,
+          height: 2_000,
+        },
+      });
+      expect(response.statusCode, response.body).toBe(201);
+    }
+
+    const definitions = [
+      ["shoulder_width", 42],
+      ["chest_width", 52],
+      ["sleeve_length", 61],
+      ["garment_length", 70],
+    ] as const;
+    for (const [definitionId, value] of definitions) {
+      const response = await app.inject({
+        method: "POST",
+        url: `/v1/workspaces/${workspaceId}/skus/${skuId}/measurements`,
+        headers: { "x-actor-id": actorId },
+        payload: {
+          definitionId,
+          definitionVersion: 1,
+          value,
+          unit: "cm",
+          basis: definitionId === "chest_width" ? "flat_width" : "length",
+          state: "natural",
+          measuredAt: "2026-08-15T00:00:00.000Z",
+          evidenceAssetId: assetIds[0],
+          attempt: 1,
+          humanConfirmed: true,
+        },
+      });
+      expect(response.statusCode, response.body).toBe(201);
+      expect(response.json()).toMatchObject({ requiresReview: false, confirmedBy: actorId });
+    }
+
+    const ready = await app.inject({
+      method: "GET",
+      url: `/v1/workspaces/${workspaceId}/skus/${skuId}/capture-summary`,
+      headers: { "x-actor-id": actorId },
+    });
+    expect(ready.statusCode).toBe(200);
+    expect(ready.json()).toMatchObject({
+      requiredPhotoRolesComplete: true,
+      requiredMeasurementsComplete: true,
+      hasReviewWarnings: false,
+      readyForHumanReview: true,
+    });
+
+    const repeat = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceId}/skus/${skuId}/measurements`,
+      headers: { "x-actor-id": actorId },
+      payload: {
+        definitionId: "chest_width",
+        definitionVersion: 1,
+        value: 55,
+        unit: "cm",
+        basis: "flat_width",
+        state: "natural",
+        measuredAt: "2026-08-15T00:05:00.000Z",
+        evidenceAssetId: assetIds[0],
+        attempt: 2,
+        humanConfirmed: true,
+      },
+    });
+    expect(repeat.statusCode).toBe(201);
+    expect(repeat.json()).toMatchObject({
+      requiresReview: true,
+      differenceCm: 3,
+      violations: ["repeat_difference_exceeded"],
+    });
+
+    const warning = await app.inject({
+      method: "GET",
+      url: `/v1/workspaces/${workspaceId}/skus/${skuId}/capture-summary`,
+      headers: { "x-actor-id": actorId },
+    });
+    expect(warning.json()).toMatchObject({
+      requiredMeasurementsComplete: false,
+      hasReviewWarnings: true,
+      readyForHumanReview: false,
+    });
+  });
+
+  it("rejects media path changes and measurement evidence from another SKU", async () => {
+    const app = buildApp({ repository: new InMemoryWorkflowRepository() });
+    apps.push(app);
+    const first = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceId}/skus`,
+      headers: { "x-actor-id": actorId },
+      payload: { skuCode: "SKU-000006", title: "商品A", category: "トップス" },
+    });
+    const second = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceId}/skus`,
+      headers: { "x-actor-id": actorId },
+      payload: { skuCode: "SKU-000007", title: "商品B", category: "トップス" },
+    });
+    const firstSkuId = (first.json() as { id: string }).id;
+    const secondSkuId = (second.json() as { id: string }).id;
+    const assetId = "40000000-0000-4000-8000-000000000001";
+    const assetPayload = {
+      assetId,
+      role: "front",
+      originalSha256: "a".repeat(64),
+      originalStorageKey: `workspaces/${workspaceId}/originals/${assetId}.jpg`,
+      mimeType: "image/jpeg",
+      sizeBytes: 2_048,
+      width: 2_000,
+      height: 2_000,
+    };
+    const mediaUrl = `/v1/workspaces/${workspaceId}/skus/${firstSkuId}/media-assets`;
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: mediaUrl,
+          headers: { "x-actor-id": actorId },
+          payload: assetPayload,
+        })
+      ).statusCode,
+    ).toBe(201);
+    const changed = await app.inject({
+      method: "POST",
+      url: mediaUrl,
+      headers: { "x-actor-id": actorId },
+      payload: { ...assetPayload, role: "back" },
+    });
+    expect(changed.statusCode).toBe(409);
+
+    const foreignEvidence = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceId}/skus/${secondSkuId}/measurements`,
+      headers: { "x-actor-id": actorId },
+      payload: {
+        definitionId: "chest_width",
+        definitionVersion: 1,
+        value: 52,
+        unit: "cm",
+        basis: "flat_width",
+        state: "natural",
+        measuredAt: "2026-08-15T00:00:00.000Z",
+        evidenceAssetId: assetId,
+        attempt: 1,
+        humanConfirmed: true,
+      },
+    });
+    expect(foreignEvidence.statusCode).toBe(403);
+  });
 });

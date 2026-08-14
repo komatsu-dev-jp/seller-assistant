@@ -2,12 +2,23 @@ import { createHash } from "node:crypto";
 import postgres from "postgres";
 import type {
   AdvanceP0WorkflowRequest,
+  CaptureSummary,
   CreateSkuRequest,
   InventorySummary,
+  MeasurementResponse,
+  MediaAssetResponse,
   P0WorkflowResponse,
+  RecordMeasurementRequest,
+  RegisterMediaAssetRequest,
   SkuResponse,
 } from "@resale/contracts";
-import { decideP0WorkflowAction, type P0WorkflowState } from "@resale/domain";
+import {
+  decideP0WorkflowAction,
+  registerMediaAsset,
+  reviewMeasurement,
+  type Measurement,
+  type P0WorkflowState,
+} from "@resale/domain";
 
 export type WorkspaceRole =
   "owner" | "inventory_manager" | "field_worker" | "shipping" | "accounting";
@@ -29,6 +40,19 @@ export interface WorkflowRepository {
     actor: RequestActor,
     input: AdvanceP0WorkflowRequest,
   ): Promise<P0WorkflowResponse>;
+  registerMediaAsset(
+    workspaceId: string,
+    skuId: string,
+    actor: RequestActor,
+    input: RegisterMediaAssetRequest,
+  ): Promise<MediaAssetResponse>;
+  recordMeasurement(
+    workspaceId: string,
+    skuId: string,
+    actor: RequestActor,
+    input: RecordMeasurementRequest,
+  ): Promise<MeasurementResponse>;
+  captureSummary(workspaceId: string, skuId: string, actor: RequestActor): Promise<CaptureSummary>;
   close(): Promise<void>;
 }
 
@@ -45,6 +69,8 @@ export class InMemoryWorkflowRepository implements WorkflowRepository {
   private readonly skus = new Map<string, SkuResponse>();
   private readonly workflow = new Map<string, P0WorkflowResponse>();
   private readonly replays = new Map<string, { payloadHash: string; result: P0WorkflowResponse }>();
+  private readonly mediaAssets = new Map<string, MediaAssetResponse>();
+  private readonly measurements = new Map<string, MeasurementResponse>();
 
   createSku(
     workspaceId: string,
@@ -133,6 +159,145 @@ export class InMemoryWorkflowRepository implements WorkflowRepository {
     return Promise.resolve(result);
   }
 
+  registerMediaAsset(
+    workspaceId: string,
+    skuId: string,
+    _actor: RequestActor,
+    input: RegisterMediaAssetRequest,
+  ): Promise<MediaAssetResponse> {
+    this.requireSku(workspaceId, skuId);
+    const key = `${workspaceId}:${input.assetId}`;
+    const existing = this.mediaAssets.get(key);
+    const candidate = {
+      id: input.assetId,
+      workspaceId,
+      skuId,
+      role: input.role,
+      originalSha256: input.originalSha256,
+      originalStorageKey: input.originalStorageKey,
+      createdAt: new Date().toISOString(),
+    };
+    let registration;
+    try {
+      registration = registerMediaAsset(
+        existing
+          ? {
+              id: existing.assetId,
+              workspaceId: existing.workspaceId,
+              skuId: existing.skuId,
+              role: existing.role,
+              originalSha256: existing.originalSha256,
+              originalStorageKey: existing.originalStorageKey,
+              createdAt: existing.createdAt,
+            }
+          : undefined,
+        candidate,
+      );
+    } catch {
+      throw new RepositoryError("conflict", "The media metadata failed safety validation");
+    }
+    if (registration.kind === "conflict") {
+      throw new RepositoryError("conflict", "The asset ID has different immutable metadata");
+    }
+    if (registration.kind === "replay" && existing) return Promise.resolve(existing);
+    const response: MediaAssetResponse = {
+      ...input,
+      workspaceId,
+      skuId,
+      createdAt: candidate.createdAt,
+    };
+    this.mediaAssets.set(key, response);
+    return Promise.resolve(response);
+  }
+
+  recordMeasurement(
+    workspaceId: string,
+    skuId: string,
+    actor: RequestActor,
+    input: RecordMeasurementRequest,
+  ): Promise<MeasurementResponse> {
+    this.requireSku(workspaceId, skuId);
+    const evidence = this.mediaAssets.get(`${workspaceId}:${input.evidenceAssetId}`);
+    if (!evidence || evidence.skuId !== skuId) {
+      throw new RepositoryError("forbidden", "Measurement evidence is not available for this SKU");
+    }
+    const key = `${workspaceId}:${skuId}:${input.definitionId}:${input.attempt}`;
+    if (this.measurements.has(key)) {
+      throw new RepositoryError("conflict", "The measurement attempt already exists");
+    }
+    const previous = this.latestMeasurement(workspaceId, skuId, input.definitionId);
+    const measurement: Measurement = {
+      definitionId: input.definitionId,
+      definitionVersion: input.definitionVersion,
+      value: input.value,
+      unit: input.unit,
+      basis: input.basis,
+      state: input.state,
+      measuredBy: actor.identityId,
+      measuredAt: input.measuredAt,
+      evidenceAssetId: input.evidenceAssetId,
+      attempt: input.attempt,
+      confirmedBy: actor.identityId,
+      confirmationReason: null,
+    };
+    const actualReview = reviewMeasurement(
+      measurement,
+      previous ? toDomainMeasurement(previous) : undefined,
+      2,
+    );
+    const { humanConfirmed, ...responseInput } = input;
+    void humanConfirmed;
+    const response: MeasurementResponse = {
+      ...responseInput,
+      id: crypto.randomUUID(),
+      workspaceId,
+      skuId,
+      measuredBy: actor.identityId,
+      confirmedBy: actor.identityId,
+      requiresReview: actualReview.requiresReview,
+      differenceCm: actualReview.difference,
+      violations: actualReview.violations,
+      createdAt: new Date().toISOString(),
+    };
+    this.measurements.set(key, response);
+    return Promise.resolve(response);
+  }
+
+  captureSummary(workspaceId: string, skuId: string, actor: RequestActor): Promise<CaptureSummary> {
+    void actor;
+    this.requireSku(workspaceId, skuId);
+    const assets = [...this.mediaAssets.values()].filter(
+      (asset) => asset.workspaceId === workspaceId && asset.skuId === skuId,
+    );
+    const measurements = [...this.measurements.values()].filter(
+      (measurement) => measurement.workspaceId === workspaceId && measurement.skuId === skuId,
+    );
+    return Promise.resolve(buildCaptureSummary(workspaceId, skuId, assets, measurements));
+  }
+
+  private requireSku(workspaceId: string, skuId: string): SkuResponse {
+    const sku = [...this.skus.values()].find(
+      (candidate) => candidate.workspaceId === workspaceId && candidate.id === skuId,
+    );
+    if (!sku) throw new RepositoryError("forbidden", "The SKU is not available in this workspace");
+    return sku;
+  }
+
+  private latestMeasurement(
+    workspaceId: string,
+    skuId: string,
+    definitionId: string,
+  ): MeasurementResponse | undefined {
+    return [...this.measurements.values()]
+      .filter(
+        (item) =>
+          item.workspaceId === workspaceId &&
+          item.skuId === skuId &&
+          item.definitionId === definitionId,
+      )
+      .sort((left, right) => right.attempt - left.attempt)[0];
+  }
+
   close(): Promise<void> {
     return Promise.resolve();
   }
@@ -153,6 +318,41 @@ interface P0WorkflowRow {
   last_action: AdvanceP0WorkflowRequest["action"] | null;
   version: number;
   updated_at: Date;
+}
+
+interface MediaAssetRow {
+  id: string;
+  workspace_id: string;
+  sku_id: string;
+  role: MediaAssetResponse["role"];
+  original_sha256: string;
+  original_storage_key: string;
+  mime_type: MediaAssetResponse["mimeType"];
+  size_bytes: number;
+  width: number;
+  height: number;
+  created_at: Date;
+}
+
+interface MeasurementRow {
+  id: string;
+  workspace_id: string;
+  sku_id: string;
+  definition_id: string;
+  definition_version: number;
+  value: string;
+  unit: "cm";
+  basis: MeasurementResponse["basis"];
+  state: MeasurementResponse["state"];
+  measured_by: string;
+  measured_at: Date;
+  evidence_asset_id: string;
+  attempt: number;
+  confirmed_by: string;
+  requires_review: boolean;
+  difference_cm: string | null;
+  violations: string[];
+  created_at: Date;
 }
 
 export class PostgresWorkflowRepository implements WorkflowRepository {
@@ -337,6 +537,195 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
     }
   }
 
+  async registerMediaAsset(
+    workspaceId: string,
+    skuId: string,
+    actor: RequestActor,
+    input: RegisterMediaAssetRequest,
+  ): Promise<MediaAssetResponse> {
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId);
+        await requireRole(transaction, workspaceId, actor.identityId, [
+          "owner",
+          "inventory_manager",
+          "field_worker",
+        ]);
+        const existingRows = await transaction<MediaAssetRow[]>`
+          select id, workspace_id, sku_id, role, original_sha256, original_storage_key,
+                 mime_type, size_bytes, width, height, created_at
+          from media_asset
+          where workspace_id = ${workspaceId} and id = ${input.assetId}
+        `;
+        const existing = existingRows[0];
+        const candidate = {
+          id: input.assetId,
+          workspaceId,
+          skuId,
+          role: input.role,
+          originalSha256: input.originalSha256,
+          originalStorageKey: input.originalStorageKey,
+          createdAt: new Date().toISOString(),
+        };
+        let registration;
+        try {
+          registration = registerMediaAsset(
+            existing
+              ? {
+                  id: existing.id,
+                  workspaceId: existing.workspace_id,
+                  skuId: existing.sku_id,
+                  role: existing.role,
+                  originalSha256: existing.original_sha256,
+                  originalStorageKey: existing.original_storage_key,
+                  createdAt: existing.created_at.toISOString(),
+                }
+              : undefined,
+            candidate,
+          );
+        } catch {
+          throw new RepositoryError("conflict", "The media metadata failed safety validation");
+        }
+        if (registration.kind === "conflict") {
+          throw new RepositoryError("conflict", "The asset ID has different immutable metadata");
+        }
+        if (registration.kind === "replay" && existing) return toMediaAssetResponse(existing);
+        const rows = await transaction<MediaAssetRow[]>`
+          insert into media_asset (
+            id, workspace_id, sku_id, role, original_sha256, original_storage_key,
+            mime_type, size_bytes, width, height, created_by
+          ) values (
+            ${input.assetId}, ${workspaceId}, ${skuId}, ${input.role}, ${input.originalSha256},
+            ${input.originalStorageKey}, ${input.mimeType}, ${input.sizeBytes}, ${input.width},
+            ${input.height}, ${actor.identityId}
+          )
+          returning id, workspace_id, sku_id, role, original_sha256, original_storage_key,
+                    mime_type, size_bytes, width, height, created_at
+        `;
+        const row = rows[0];
+        if (!row) throw new RepositoryError("database_error", "Media insert returned no row");
+        await transaction`
+          insert into audit_event (workspace_id, actor_id, action, target_type, target_id, field_names, reference_ids)
+          values (${workspaceId}, ${actor.identityId}, 'media.original.registered', 'media_asset', ${input.assetId},
+                  array['role','originalSha256','mimeType','sizeBytes','width','height'], array[${skuId}::uuid])
+        `;
+        return toMediaAssetResponse(row);
+      });
+    } catch (error) {
+      throw normalizeDatabaseError(error);
+    }
+  }
+
+  async recordMeasurement(
+    workspaceId: string,
+    skuId: string,
+    actor: RequestActor,
+    input: RecordMeasurementRequest,
+  ): Promise<MeasurementResponse> {
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId);
+        await requireRole(transaction, workspaceId, actor.identityId, [
+          "owner",
+          "inventory_manager",
+          "field_worker",
+        ]);
+        const evidence = await transaction<Array<{ id: string }>>`
+          select id from media_asset
+          where workspace_id = ${workspaceId} and sku_id = ${skuId}
+            and id = ${input.evidenceAssetId}
+        `;
+        if (!evidence[0]) {
+          throw new RepositoryError(
+            "forbidden",
+            "Measurement evidence is not available for this SKU",
+          );
+        }
+        const previousRows = await transaction<MeasurementRow[]>`
+          select id, workspace_id, sku_id, definition_id, definition_version, value, unit,
+                 basis, state, measured_by, measured_at, evidence_asset_id, attempt,
+                 confirmed_by, requires_review, difference_cm, violations, created_at
+          from measurement_attempt
+          where workspace_id = ${workspaceId} and sku_id = ${skuId}
+            and definition_id = ${input.definitionId}
+          order by attempt desc
+          limit 1
+        `;
+        const measurement: Measurement = {
+          definitionId: input.definitionId,
+          definitionVersion: input.definitionVersion,
+          value: input.value,
+          unit: input.unit,
+          basis: input.basis,
+          state: input.state,
+          measuredBy: actor.identityId,
+          measuredAt: input.measuredAt,
+          evidenceAssetId: input.evidenceAssetId,
+          attempt: input.attempt,
+          confirmedBy: actor.identityId,
+          confirmationReason: null,
+        };
+        const review = reviewMeasurement(
+          measurement,
+          previousRows[0] ? toDomainMeasurement(toMeasurementResponse(previousRows[0])) : undefined,
+          2,
+        );
+        const rows = await transaction<MeasurementRow[]>`
+          insert into measurement_attempt (
+            workspace_id, sku_id, definition_id, definition_version, value, unit,
+            basis, state, measured_by, measured_at, evidence_asset_id, attempt,
+            confirmed_by, confirmed_at, requires_review, difference_cm, violations
+          ) values (
+            ${workspaceId}, ${skuId}, ${input.definitionId}, ${input.definitionVersion},
+            ${input.value}, ${input.unit}, ${input.basis}, ${input.state}, ${actor.identityId},
+            ${input.measuredAt}, ${input.evidenceAssetId}, ${input.attempt}, ${actor.identityId},
+            now(), ${review.requiresReview}, ${review.difference}, ${review.violations}
+          )
+          returning id, workspace_id, sku_id, definition_id, definition_version, value, unit,
+                    basis, state, measured_by, measured_at, evidence_asset_id, attempt,
+                    confirmed_by, requires_review, difference_cm, violations, created_at
+        `;
+        const row = rows[0];
+        if (!row) throw new RepositoryError("database_error", "Measurement insert returned no row");
+        return toMeasurementResponse(row);
+      });
+    } catch (error) {
+      throw normalizeDatabaseError(error);
+    }
+  }
+
+  async captureSummary(
+    workspaceId: string,
+    skuId: string,
+    actor: RequestActor,
+  ): Promise<CaptureSummary> {
+    return this.sql.begin(async (transaction) => {
+      await setWorkspace(transaction, workspaceId);
+      await requireRole(transaction, workspaceId, actor.identityId, [
+        "owner",
+        "inventory_manager",
+        "field_worker",
+      ]);
+      const assets = await transaction<MediaAssetRow[]>`
+        select id, workspace_id, sku_id, role, original_sha256, original_storage_key,
+               mime_type, size_bytes, width, height, created_at
+        from media_asset where workspace_id = ${workspaceId} and sku_id = ${skuId}
+      `;
+      const measurements = await transaction<MeasurementRow[]>`
+        select id, workspace_id, sku_id, definition_id, definition_version, value, unit,
+               basis, state, measured_by, measured_at, evidence_asset_id, attempt,
+               confirmed_by, requires_review, difference_cm, violations, created_at
+        from measurement_attempt where workspace_id = ${workspaceId} and sku_id = ${skuId}
+      `;
+      return buildCaptureSummary(
+        workspaceId,
+        skuId,
+        assets.map(toMediaAssetResponse),
+        measurements.map(toMeasurementResponse),
+      );
+    });
+  }
+
   async close(): Promise<void> {
     await this.sql.end({ timeout: 5 });
   }
@@ -383,6 +772,120 @@ function toP0WorkflowResponse(workspaceId: string, row: P0WorkflowRow): P0Workfl
     lastAction: row.last_action,
     version: row.version,
     updatedAt: row.updated_at.toISOString(),
+  };
+}
+
+function toMediaAssetResponse(row: MediaAssetRow): MediaAssetResponse {
+  return {
+    assetId: row.id,
+    workspaceId: row.workspace_id,
+    skuId: row.sku_id,
+    role: row.role,
+    originalSha256: row.original_sha256,
+    originalStorageKey: row.original_storage_key,
+    mimeType: row.mime_type,
+    sizeBytes: row.size_bytes,
+    width: row.width,
+    height: row.height,
+    createdAt: row.created_at.toISOString(),
+  };
+}
+
+function toMeasurementResponse(row: MeasurementRow): MeasurementResponse {
+  return {
+    id: row.id,
+    workspaceId: row.workspace_id,
+    skuId: row.sku_id,
+    definitionId: row.definition_id,
+    definitionVersion: row.definition_version,
+    value: Number(row.value),
+    unit: row.unit,
+    basis: row.basis,
+    state: row.state,
+    measuredAt: row.measured_at.toISOString(),
+    evidenceAssetId: row.evidence_asset_id,
+    attempt: row.attempt,
+    measuredBy: row.measured_by,
+    confirmedBy: row.confirmed_by,
+    requiresReview: row.requires_review,
+    differenceCm: row.difference_cm === null ? null : Number(row.difference_cm),
+    violations: row.violations,
+    createdAt: row.created_at.toISOString(),
+  };
+}
+
+function toDomainMeasurement(response: MeasurementResponse): Measurement {
+  return {
+    definitionId: response.definitionId,
+    definitionVersion: response.definitionVersion,
+    value: response.value,
+    unit: response.unit,
+    basis: response.basis,
+    state: response.state,
+    measuredBy: response.measuredBy,
+    measuredAt: response.measuredAt,
+    evidenceAssetId: response.evidenceAssetId,
+    attempt: response.attempt,
+    confirmedBy: response.confirmedBy,
+    confirmationReason: null,
+  };
+}
+
+const requiredCaptureRoles: MediaAssetResponse["role"][] = [
+  "front",
+  "back",
+  "brand_tag",
+  "care_label",
+];
+const requiredCaptureMeasurements = [
+  "shoulder_width",
+  "chest_width",
+  "sleeve_length",
+  "garment_length",
+];
+
+function buildCaptureSummary(
+  workspaceId: string,
+  skuId: string,
+  assets: MediaAssetResponse[],
+  measurements: MeasurementResponse[],
+): CaptureSummary {
+  const photoRoles = [...new Set(assets.map((asset) => asset.role))].sort();
+  const latestByDefinition = new Map<string, MeasurementResponse>();
+  for (const measurement of measurements) {
+    const current = latestByDefinition.get(measurement.definitionId);
+    if (!current || current.attempt < measurement.attempt) {
+      latestByDefinition.set(measurement.definitionId, measurement);
+    }
+  }
+  const latest = [...latestByDefinition.values()];
+  const measurementDefinitionIds = latest.map((item) => item.definitionId).sort();
+  const requiredPhotoRolesComplete = requiredCaptureRoles.every((role) =>
+    photoRoles.includes(role),
+  );
+  const requiredMeasurementsComplete = requiredCaptureMeasurements.every((definitionId) => {
+    const measurement = latestByDefinition.get(definitionId);
+    return Boolean(measurement && !measurement.requiresReview);
+  });
+  const hasReviewWarnings = latest.some((measurement) => measurement.requiresReview);
+  const timestamps = [
+    ...assets.map((asset) => asset.createdAt),
+    ...measurements.map((measurement) => measurement.createdAt),
+  ];
+  return {
+    workspaceId,
+    skuId,
+    photoRoles,
+    measurementDefinitionIds,
+    requiredPhotoRolesComplete,
+    requiredMeasurementsComplete,
+    hasReviewWarnings,
+    readyForHumanReview:
+      requiredPhotoRolesComplete && requiredMeasurementsComplete && !hasReviewWarnings,
+    updatedAt:
+      timestamps.length === 0
+        ? new Date().toISOString()
+        : new Date(Math.max(...timestamps.map((value) => Date.parse(value)))).toISOString(),
   };
 }
 

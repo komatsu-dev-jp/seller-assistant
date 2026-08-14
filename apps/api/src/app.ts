@@ -2,9 +2,14 @@ import Fastify from "fastify";
 import {
   apiErrorSchema,
   advanceP0WorkflowRequestSchema,
+  captureSummarySchema,
   createSkuRequestSchema,
   inventorySummarySchema,
+  measurementResponseSchema,
+  mediaAssetResponseSchema,
   p0WorkflowResponseSchema,
+  recordMeasurementRequestSchema,
+  registerMediaAssetRequestSchema,
   skuResponseSchema,
   workspaceIdSchema,
   type ApiError,
@@ -112,6 +117,95 @@ export function buildApp(options: BuildAppOptions = {}) {
         input.data,
       );
       return reply.send(p0WorkflowResponseSchema.parse(result));
+    } catch (error) {
+      const mapped = mapRepositoryError(error, request.id);
+      return reply.code(mapped.status).send(mapped.payload);
+    }
+  });
+
+  app.post<{
+    Params: { workspaceId: string; skuId: string };
+    Body: unknown;
+    Reply: ReturnType<typeof mediaAssetResponseSchema.parse> | ApiError;
+  }>("/v1/workspaces/:workspaceId/skus/:skuId/media-assets", async (request, reply) => {
+    const workspace = workspaceIdSchema.safeParse(request.params.workspaceId);
+    const sku = workspaceIdSchema.safeParse(request.params.skuId);
+    const input = registerMediaAssetRequestSchema.safeParse(request.body);
+    const actor = parseActor(request.headers["x-actor-id"]);
+    if (!workspace.success || !sku.success || !input.success || !actor) {
+      return reply.code(400).send(
+        apiErrorSchema.parse({
+          code: "invalid_request",
+          message: "workspace、SKU、actor、または原本メタデータを確認してください。",
+          requestId: request.id,
+        }),
+      );
+    }
+    try {
+      const result = await repository.registerMediaAsset(
+        workspace.data,
+        sku.data,
+        actor,
+        input.data,
+      );
+      return reply.code(201).send(mediaAssetResponseSchema.parse(result));
+    } catch (error) {
+      const mapped = mapRepositoryError(error, request.id);
+      return reply.code(mapped.status).send(mapped.payload);
+    }
+  });
+
+  app.post<{
+    Params: { workspaceId: string; skuId: string };
+    Body: unknown;
+    Reply: ReturnType<typeof measurementResponseSchema.parse> | ApiError;
+  }>("/v1/workspaces/:workspaceId/skus/:skuId/measurements", async (request, reply) => {
+    const workspace = workspaceIdSchema.safeParse(request.params.workspaceId);
+    const sku = workspaceIdSchema.safeParse(request.params.skuId);
+    const input = recordMeasurementRequestSchema.safeParse(request.body);
+    const actor = parseActor(request.headers["x-actor-id"]);
+    if (!workspace.success || !sku.success || !input.success || !actor) {
+      return reply.code(400).send(
+        apiErrorSchema.parse({
+          code: "invalid_request",
+          message: "workspace、SKU、actor、または採寸入力を確認してください。",
+          requestId: request.id,
+        }),
+      );
+    }
+    try {
+      const result = await repository.recordMeasurement(
+        workspace.data,
+        sku.data,
+        actor,
+        input.data,
+      );
+      return reply.code(201).send(measurementResponseSchema.parse(result));
+    } catch (error) {
+      const mapped = mapRepositoryError(error, request.id);
+      return reply.code(mapped.status).send(mapped.payload);
+    }
+  });
+
+  app.get<{
+    Params: { workspaceId: string; skuId: string };
+    Reply: ReturnType<typeof captureSummarySchema.parse> | ApiError;
+  }>("/v1/workspaces/:workspaceId/skus/:skuId/capture-summary", async (request, reply) => {
+    const workspace = workspaceIdSchema.safeParse(request.params.workspaceId);
+    const sku = workspaceIdSchema.safeParse(request.params.skuId);
+    const actor = parseActor(request.headers["x-actor-id"]);
+    if (!workspace.success || !sku.success || !actor) {
+      return reply.code(400).send(
+        apiErrorSchema.parse({
+          code: "invalid_request",
+          message: "workspace、SKU、actorを確認してください。",
+          requestId: request.id,
+        }),
+      );
+    }
+    try {
+      const result = await repository.captureSummary(workspace.data, sku.data, actor);
+      return reply.send(captureSummarySchema.parse(result));
     } catch (error) {
       const mapped = mapRepositoryError(error, request.id);
       return reply.code(mapped.status).send(mapped.payload);
