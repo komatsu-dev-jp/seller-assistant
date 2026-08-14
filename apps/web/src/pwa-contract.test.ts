@@ -37,6 +37,8 @@ describe("zero-cost PWA contract", () => {
     expect(clearIndex).toBeGreaterThan(statusIndex);
     const proxy = readFileSync(resolve("apps/web/src/app/v1/session/logout/route.ts"), "utf8");
     expect(proxy).toContain("API_INTERNAL_ORIGIN");
+    expect(proxy).toContain("APP_ORIGIN");
+    expect(proxy).toContain('"sec-fetch-site": "same-origin"');
     expect(proxy).toContain("sessionと端末データは変更していません");
     expect(proxy).not.toMatch(/console\.|localStorage|sessionStorage/u);
   });

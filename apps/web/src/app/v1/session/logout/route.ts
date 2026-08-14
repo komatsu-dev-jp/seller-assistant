@@ -12,6 +12,14 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const appOrigin = process.env.APP_ORIGIN;
+  if (!appOrigin || request.nextUrl.origin !== appOrigin) {
+    return Response.json(
+      { code: "app_origin_rejected", message: "アプリの公開URLを確認できません。" },
+      { status: 403 },
+    );
+  }
+
   let endpoint: URL;
   try {
     endpoint = new URL("/v1/session/logout", apiOrigin);
@@ -27,6 +35,8 @@ export async function POST(request: NextRequest) {
       headers: {
         accept: "application/json",
         cookie: request.headers.get("cookie") ?? "",
+        origin: appOrigin,
+        "sec-fetch-site": "same-origin",
       },
       cache: "no-store",
       redirect: "manual",

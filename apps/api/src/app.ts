@@ -31,6 +31,7 @@ interface BuildAppOptions {
   ) => RequestActor | null | Promise<RequestActor | null>;
   revokeSession?: (actor: RequestActor) => Promise<void>;
   closeAuthentication?: () => Promise<void>;
+  validateWriteOrigin?: (headers: IncomingHttpHeaders) => boolean;
 }
 
 export function buildApp(options: BuildAppOptions = {}) {
@@ -40,6 +41,20 @@ export function buildApp(options: BuildAppOptions = {}) {
   });
   const repository = options.repository ?? new InMemoryWorkflowRepository();
   const authenticate = options.authenticate ?? (() => null);
+  const validateWriteOrigin = options.validateWriteOrigin ?? (() => false);
+
+  app.addHook("preHandler", async (request, reply) => {
+    if (["GET", "HEAD", "OPTIONS"].includes(request.method)) return;
+    if (!validateWriteOrigin(request.headers)) {
+      return reply.code(403).send(
+        apiErrorSchema.parse({
+          code: "write_origin_rejected",
+          message: "変更操作の送信元を確認できませんでした。",
+          requestId: request.id,
+        }),
+      );
+    }
+  });
 
   app.addHook("onClose", async () => {
     await repository.close();

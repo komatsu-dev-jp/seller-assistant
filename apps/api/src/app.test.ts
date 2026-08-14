@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { healthResponseSchema } from "@resale/contracts";
 import { buildApp } from "./app.js";
 import { InMemoryWorkflowRepository } from "./repository.js";
+import { createWriteOriginValidator } from "./security.js";
 import { createCookieAuthenticator, createSignedSession } from "./session.js";
 
 const apps: ReturnType<typeof buildApp>[] = [];
@@ -13,6 +14,7 @@ function buildTestApp() {
       const identityId = headers["x-actor-id"];
       return typeof identityId === "string" ? { identityId } : null;
     },
+    validateWriteOrigin: () => true,
   });
 }
 
@@ -82,6 +84,7 @@ describe("P0 workspace API", () => {
     const app = buildApp({
       repository: new InMemoryWorkflowRepository(),
       authenticate: createCookieAuthenticator(secret, () => 1_500),
+      validateWriteOrigin: () => true,
     });
     apps.push(app);
     const payload = { skuCode: "SKU-000008", title: "認証試験", category: "トップス" };
@@ -111,6 +114,25 @@ describe("P0 workspace API", () => {
     expect(signed.statusCode).toBe(201);
   });
 
+  it("rejects writes without the exact configured app origin", async () => {
+    const app = buildApp({
+      repository: new InMemoryWorkflowRepository(),
+      authenticate: () => ({ identityId: actorId }),
+      validateWriteOrigin: createWriteOriginValidator("https://resale.example"),
+    });
+    apps.push(app);
+    const request = (origin?: string) =>
+      app.inject({
+        method: "POST",
+        url: `/v1/workspaces/${workspaceId}/skus`,
+        headers: origin ? { origin, "sec-fetch-site": "same-origin" } : {},
+        payload: { skuCode: "SKU-000010", title: "Origin試験", category: "トップス" },
+      });
+    expect((await request()).statusCode).toBe(403);
+    expect((await request("https://evil.example")).statusCode).toBe(403);
+    expect((await request("https://resale.example")).statusCode).toBe(201);
+  });
+
   it("revokes the server session and clears the cookie on logout", async () => {
     const secret = "test-only-session-secret-with-at-least-32-bytes";
     const sessionId = "92000000-0000-4000-8000-000000000001";
@@ -130,6 +152,7 @@ describe("P0 workspace API", () => {
         if (!actor.sessionId) throw new Error("session ID missing");
         await registry.revoke(actor.sessionId);
       },
+      validateWriteOrigin: () => true,
     });
     apps.push(app);
     const token = createSignedSession(

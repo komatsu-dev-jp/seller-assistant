@@ -1,9 +1,11 @@
 import { buildApp } from "./app.js";
 import { PostgresWorkflowRepository } from "./repository.js";
 import { createCookieAuthenticator, PostgresSessionRegistry } from "./session.js";
+import { createWriteOriginValidator } from "./security.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 const sessionSecret = process.env.SESSION_SECRET;
+const appOrigin = process.env.APP_ORIGIN;
 if (!databaseUrl) {
   throw new Error(
     "DATABASE_URL is required. The API will not silently use temporary memory storage.",
@@ -11,6 +13,9 @@ if (!databaseUrl) {
 }
 if (!sessionSecret) {
   throw new Error("SESSION_SECRET is required. The API will not accept unsigned actor identity.");
+}
+if (!appOrigin) {
+  throw new Error("APP_ORIGIN is required. Write requests will not accept an unknown origin.");
 }
 
 const sessionRegistry = new PostgresSessionRegistry(databaseUrl);
@@ -22,6 +27,7 @@ const app = buildApp({
     await sessionRegistry.revoke(actor.sessionId, actor.identityId);
   },
   closeAuthentication: async () => sessionRegistry.close(),
+  validateWriteOrigin: createWriteOriginValidator(appOrigin),
 });
 const port = Number(process.env.PORT ?? 3100);
 

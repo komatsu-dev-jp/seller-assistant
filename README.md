@@ -32,7 +32,7 @@ APIは `DATABASE_URL`（PostgreSQLの接続先）と、32バイト以上の `SES
 
 認証は `HttpOnly; Secure; SameSite=Strict` の署名付きCookieだけを受け付けます。利用者IDを直接書いたヘッダー、localStorage、IndexedDB、Service Worker cacheを認証情報の保存先にしません。ログアウトはDBのsession失効成功後だけCookieとPWA端末データを消します。ログイン発行、実PostgreSQL接続、CSRF総合検証は未実装のため、本番利用はまだできません。
 
-WebからAPIへ同一URLで安全に中継するときだけ `API_INTERNAL_ORIGIN`（Webサーバーから見たAPI接続先）を設定します。未設定時のログアウトは503で停止し、sessionと端末データを変更しません。
+WebからAPIへ同一URLで安全に中継するときだけ `API_INTERNAL_ORIGIN`（Webサーバーから見たAPI接続先）を設定します。`APP_ORIGIN`（利用者が開くWebアプリの正確なURL）も必須で、変更操作はこのURLと完全一致する送信元だけを許可します。未設定時のログアウトは503で停止し、sessionと端末データを変更しません。
 
 ## 構成
 

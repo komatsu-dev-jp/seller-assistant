@@ -63,3 +63,12 @@
 - 実画面: PC/iPhone幅でログアウト表示、横overflow 0。API未接続は503で停止し、エラー表示する。
 - 残る問題: ログイン発行、実PostgreSQL上のsession失効、CSRF総合確認は未実装。本番利用不可。
 - 次の一手: ローカル専用の初期owner作成/ログイン手順とCSRF・role境界を実装する。
+
+## Iteration 7 — 2026-08-15 変更操作の送信元制限
+
+- 基準値: SameSite Cookieはあったが、APIが変更操作の送信元URLを独立確認していなかった。
+- 実装: `APP_ORIGIN`の完全一致、http(s) originだけ、資格情報/パス付き設定拒否、`Sec-Fetch-Site`のcross-site拒否を追加。GET/HEAD/OPTIONS以外へ適用。
+- Web中継: ブラウザURLと`APP_ORIGIN`を照合し、一致後だけCookieと固定Originを内部APIへ転送。API接続先/公開URLは環境変数以外から受け取らない。
+- 検証: Origin欠落、攻撃者origin、似たドメインを403拒否。正確なoriginだけ201。13 test files / 60 tests合格、typecheck、lint合格。
+- 残る問題: 実リバースプロキシ構成、ログイン発行、実DB membership/RLSは未確認。
+- 次の一手: 初期ownerとログイン発行を実装し、role別の許可/拒否をsessionからDBまで通す。

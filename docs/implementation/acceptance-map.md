@@ -48,3 +48,9 @@ P0の必須ACは AC-001、003〜008、013〜014、018〜023、025〜026、028〜
 - 起動: DB接続先または32バイト以上のsession秘密鍵がなければ停止。
 - Logout: DB session失効→Cookie削除→PWA同期待ち/cache削除の順序を固定。失効未確認なら削除しない。
 - 未完了: login発行、CSRF総合確認、実DB session/membership/RLS。
+
+## Iteration 7の実証範囲
+
+- 変更API: `APP_ORIGIN`完全一致とsame-originだけを許可。欠落/cross-site/類似domainは403。
+- Web中継: browser origin照合後だけCookieを内部APIへ渡す。接続先はserver環境変数限定。
+- 未完了: 実配置でのproxy/Origin確認、login、実DB role/RLS。
