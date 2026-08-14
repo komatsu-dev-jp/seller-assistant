@@ -1,0 +1,38 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.mobileprovision
+
+# JavaScript / TypeScript
+node_modules/
+.next/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+.turbo/
+
+# Tests and runtime data
+test-results/
+playwright-report/
+runtime/
+tmp/
+*.log
+
+# Apple / Xcode
+DerivedData/
+*.xcuserstate
+xcuserdata/
+.build/
+
+# Editors and OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Additional Git worktrees kept outside the tracked tree
+_worktrees/
