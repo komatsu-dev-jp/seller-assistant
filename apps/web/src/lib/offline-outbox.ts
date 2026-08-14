@@ -130,6 +130,9 @@ export async function savePutawayOnlineFirst(
   if (!validatePendingPutaway(operation)) throw new Error("保存内容が安全条件を満たしていません。");
   const result = await trySendPutaway(operation);
   if (result === "synced") return result;
+  if (result === "forbidden") {
+    throw new Error("担当が解除または変更されたため、この作業は保存しませんでした。");
+  }
   return queueAfterUnavailable(operation);
 }
 
@@ -137,21 +140,27 @@ export async function pendingPutawayCount(): Promise<number> {
   return (await readPendingPutaways()).length;
 }
 
-export async function syncPendingPutaways(): Promise<{ synced: number; remaining: number }> {
+export async function syncPendingPutaways(): Promise<{
+  synced: number;
+  discarded: number;
+  remaining: number;
+}> {
   const pending = await readPendingPutaways();
   let synced = 0;
+  let discarded = 0;
   for (const operation of pending) {
     const result = await trySendPutaway(operation);
     if (result === "unavailable") break;
     await deletePendingPutaway(operation.idempotencyKey);
-    synced += 1;
+    if (result === "synced") synced += 1;
+    else discarded += 1;
   }
-  return { synced, remaining: (await readPendingPutaways()).length };
+  return { synced, discarded, remaining: (await readPendingPutaways()).length };
 }
 
 async function trySendPutaway(
   operation: PendingPutawayOperation,
-): Promise<"synced" | "unavailable"> {
+): Promise<"synced" | "unavailable" | "forbidden"> {
   try {
     const context = await fetch("/v1/session/context", { cache: "no-store" });
     if (context.status >= 500) return "unavailable";
@@ -159,6 +168,7 @@ async function trySendPutaway(
       workspaceId?: string;
       message?: string;
     } | null;
+    if (context.status === 401 || context.status === 403) return "forbidden";
     if (!context.ok || !contextBody?.workspaceId) {
       throw new Error(contextBody?.message ?? "ログイン中の事業所を確認できませんでした。");
     }
@@ -172,6 +182,7 @@ async function trySendPutaway(
       },
     );
     if (response.status === 201) return "synced";
+    if (response.status === 401 || response.status === 403) return "forbidden";
     if (response.status >= 500) return "unavailable";
     const body = (await response.json().catch(() => null)) as { message?: string } | null;
     throw new Error(body?.message ?? "現在の在庫状態と一致しないため、再読取してください。");

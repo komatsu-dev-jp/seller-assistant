@@ -143,3 +143,15 @@
 - 費用: Windows PC内だけ。有料API、有料SaaS、外部CI、公開、デプロイ0件。
 - 残る問題: 割当解除後の端末cache消去、場所写真の承認/取得、住所期限、注文等の実API、実iPhone Safariは未完了。
 - 次の一手: 場所写真を原本/審査/位置EXIF除去済み派生へ分け、担当枝内だけ取得できる契約を追加する。
+
+## Iteration 14 — 2026-08-15 割当解除後の端末データ消去
+
+- 基準値: サーバーは担当なし/担当外を403拒否できたが、圏外中に作った同期待ちが担当解除後も端末に残った。
+- 実装: 同期時の401/403を権限失効として分類し、該当outboxレコードを削除して件数を表示。オンライン即時操作では端末保存せず停止する。409競合と5xx/通信不能は削除しない。
+- 実画面: IndexedDBへ架空の最小schema 1件を保存し、session contextを403へ固定して同期。表示が「消去1件・同期0件・残り0件」となり、同期待ち0件を確認した。
+- console: 想定したHTTP 403のresource error 1件だけ。React例外、未処理Promise、画面崩れ0件。
+- 証拠: `output/playwright/pwa-assignment-revoked-cleared.png`。
+- 検証: 16 test files / 77 tests、line 91.36%、branch 81.81%、functions 100%、format/lint/type/build合格。
+- 費用: Windows PC内だけ。外部費用、有料API、外部CI、公開、デプロイ0件。
+- 残る問題: 場所写真の承認/取得、住所期限、注文等の実API、実iPhone Safariは未完了。
+- 次の一手: 場所写真の原本・審査・GPS除去済み派生・担当枝内取得を実装する。

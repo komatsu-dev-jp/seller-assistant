@@ -114,3 +114,12 @@ P0の必須ACは AC-001、003〜008、013〜014、018〜023、025〜026、028〜
 - 全体検証: 16 test files / 77 tests、line 91.36%、branch 81.81%、functions 100%、format/lint/type/build合格。
 - 費用: Windows PC内だけ、外部費用・外部CI・公開0件。
 - 残り: 割当解除時の端末同期、場所写真の承認/取得、住所期限、注文等の実API、実iPhone Safari。
+
+## Iteration 14の実証範囲
+
+- 割当解除: 同期待ち再送時にsession/格納APIが401または403を返した操作は、割当解除・変更として端末outboxから消去。件数と理由を画面表示。
+- 競合分離: 409の現在地/ラベル版競合は消去せず、自動上書きもせず、再読取を要求。5xx/通信不能は端末に保持。
+- 実画面: 架空の同期待ち1件へ403を返し、「1件は担当解除・変更のため端末から消去」「残り0件」を390×844で確認。証拠は`output/playwright/pwa-assignment-revoked-cleared.png`。
+- console: 意図的な`/v1/session/context` 403が1件。アプリ例外、画面崩れ、予期しない警告0件。
+- 全体検証: 16 test files / 77 tests、format/lint/type/build合格。外部費用0円。
+- 残り: 場所写真の承認/取得、住所期限、注文等の実API、実iPhone Safari。

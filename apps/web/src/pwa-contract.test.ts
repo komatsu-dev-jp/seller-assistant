@@ -60,10 +60,13 @@ describe("zero-cost PWA contract", () => {
     const status = readFileSync(resolve("apps/web/src/components/offline-sync-status.tsx"), "utf8");
     expect(outbox).toContain("syncPendingPutaways");
     expect(outbox).toContain('if (response.status >= 500) return "unavailable"');
+    expect(outbox).toContain("response.status === 401 || response.status === 403");
+    expect(outbox).toContain("discarded += 1");
     expect(outbox).toContain("throw new Error(body?.message");
     expect(outbox).not.toMatch(/address|receiptText|purchasePrice|taxDocument/u);
     expect(status).toContain('addEventListener("online"');
     expect(status).toContain("自動上書きせず、再読取してください");
+    expect(status).toContain("担当解除・変更のため端末から消去しました");
   });
 
   it("keeps external CI manual and free of macOS jobs", () => {
