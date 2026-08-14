@@ -40,6 +40,10 @@ const locationPhotoReviewMigrationPath = fileURLToPath(
   new URL("../migrations/0010_location_photo_review.sql", import.meta.url),
 );
 const locationPhotoReviewSql = readFileSync(locationPhotoReviewMigrationPath, "utf8");
+const skuWorkAssignmentMigrationPath = fileURLToPath(
+  new URL("../migrations/0011_sku_work_assignment.sql", import.meta.url),
+);
+const skuWorkAssignmentSql = readFileSync(skuWorkAssignmentMigrationPath, "utf8");
 
 describe("P0 PostgreSQL migration contract", () => {
   it("enables and forces workspace RLS for business tables", () => {
@@ -162,5 +166,23 @@ describe("P0 PostgreSQL migration contract", () => {
     expect(locationPhotoReviewSql).toContain("reviewed_by <> captured_by");
     expect(locationPhotoReviewSql).toContain("location_photo_original_immutable");
     expect(locationPhotoReviewSql).toContain("location photo original metadata is immutable");
+  });
+
+  it("limits field capture by SKU, operation and time", () => {
+    expect(skuWorkAssignmentSql).toContain("create table sku_work_assignment");
+    expect(skuWorkAssignmentSql).toContain("sku_id uuid not null");
+    expect(skuWorkAssignmentSql).toContain("operation in ('capture')");
+    expect(skuWorkAssignmentSql).toContain(
+      "create policy workspace_isolation on sku_work_assignment",
+    );
+    expect(skuWorkAssignmentSql).toContain(
+      "create or replace function has_active_sku_work_assignment",
+    );
+    expect(skuWorkAssignmentSql).toContain("assignment.starts_at <= requested_at");
+    expect(skuWorkAssignmentSql).toContain("assignment.expires_at > requested_at");
+    expect(skuWorkAssignmentSql).toContain("assignment.revoked_at is null");
+    expect(skuWorkAssignmentSql).toContain(
+      "grant select on sku_work_assignment to resale_app_runtime",
+    );
   });
 });

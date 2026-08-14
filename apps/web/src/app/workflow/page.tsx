@@ -1,7 +1,12 @@
 import { AppSidebar } from "../../components/app-sidebar";
 import { P0Workspace } from "../../components/p0-workspace";
+import { requirePageSession } from "../../lib/server-session";
 
-export default function WorkflowPage() {
+export const dynamic = "force-dynamic";
+
+export default async function WorkflowPage() {
+  await requirePageSession(["owner", "inventory_manager"]);
+
   return (
     <main className="shell">
       <AppSidebar current="workflow" />

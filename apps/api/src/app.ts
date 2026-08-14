@@ -1,8 +1,8 @@
 import Fastify from "fastify";
+import { randomUUID } from "node:crypto";
 import type { IncomingHttpHeaders } from "node:http";
 import {
   apiErrorSchema,
-  approveLocationPhotoRequestSchema,
   advanceP0WorkflowRequestSchema,
   captureSummarySchema,
   createSkuRequestSchema,
@@ -15,10 +15,11 @@ import {
   putawayInventoryRequestSchema,
   putawayInventoryResponseSchema,
   recordMeasurementRequestSchema,
-  registerLocationPhotoRequestSchema,
+  reviewLocationPhotoRequestSchema,
   registerMediaAssetRequestSchema,
   sessionContextResponseSchema,
   skuResponseSchema,
+  uploadLocationPhotoQuerySchema,
   workspaceIdSchema,
   type ApiError,
   type HealthResponse,
@@ -31,6 +32,7 @@ import {
 } from "./repository.js";
 import { serializeClearedSessionCookie } from "./session.js";
 import type { LoginService } from "./auth.js";
+import { inspectImage, type PrivateMediaStore } from "./local-media-store.js";
 
 interface BuildAppOptions {
   repository?: WorkflowRepository;
@@ -41,6 +43,7 @@ interface BuildAppOptions {
   closeAuthentication?: () => Promise<void>;
   validateWriteOrigin?: (headers: IncomingHttpHeaders) => boolean;
   loginService?: LoginService;
+  mediaStore?: PrivateMediaStore;
 }
 
 export function buildApp(options: BuildAppOptions = {}) {
@@ -51,6 +54,12 @@ export function buildApp(options: BuildAppOptions = {}) {
   const repository = options.repository ?? new InMemoryWorkflowRepository();
   const authenticate = options.authenticate ?? (() => null);
   const validateWriteOrigin = options.validateWriteOrigin ?? (() => false);
+
+  app.addContentTypeParser(
+    ["image/jpeg", "image/png"],
+    { parseAs: "buffer", bodyLimit: 25 * 1024 * 1024 },
+    (_request, body, done) => done(null, body),
+  );
 
   app.addHook("preHandler", async (request, reply) => {
     if (["GET", "HEAD", "OPTIONS"].includes(request.method)) return;
@@ -226,34 +235,56 @@ export function buildApp(options: BuildAppOptions = {}) {
 
   app.post<{
     Params: { workspaceId: string; locationId: string };
-    Body: unknown;
+    Querystring: unknown;
+    Body: Buffer;
     Reply: ReturnType<typeof locationPhotoResponseSchema.parse> | ApiError;
   }>("/v1/workspaces/:workspaceId/locations/:locationId/photos", async (request, reply) => {
     const workspace = workspaceIdSchema.safeParse(request.params.workspaceId);
     const location = workspaceIdSchema.safeParse(request.params.locationId);
-    const input = registerLocationPhotoRequestSchema.safeParse(request.body);
+    const input = uploadLocationPhotoQuerySchema.safeParse(request.query);
     const actor = await authenticate(request.headers);
     if (!actor) return reply.code(401).send(authenticationError(request.id));
-    if (!workspace.success || !location.success || !input.success) {
+    if (
+      !workspace.success ||
+      !location.success ||
+      !input.success ||
+      !Buffer.isBuffer(request.body)
+    ) {
       return reply.code(400).send(
         apiErrorSchema.parse({
           code: "invalid_request",
-          message: "場所、原本写真情報、人の確認を確認してください。",
+          message: "場所、JPEG/PNG原本、人の確認を確認してください。",
           requestId: request.id,
         }),
       );
     }
     const actorWorkspace = actorWorkspaceError(actor, workspace.data, request.id);
     if (actorWorkspace) return reply.code(403).send(actorWorkspace);
+    if (!options.mediaStore) return reply.code(503).send(mediaStoreUnavailable(request.id));
     try {
-      const result = await repository.registerLocationPhoto(
-        workspace.data,
-        location.data,
-        actor,
-        input.data,
-      );
+      await repository.authorizeLocationPhotoCapture(workspace.data, location.data, actor);
+      const inspected = inspectImage(request.body);
+      const extension = inspected.mimeType === "image/jpeg" ? "jpg" : "png";
+      const originalStorageKey = `workspaces/${workspace.data}/location-originals/${input.data.photoId}.${extension}`;
+      const stored = await options.mediaStore.saveOriginal(originalStorageKey, request.body);
+      const result = await repository.registerLocationPhoto(workspace.data, location.data, actor, {
+        photoId: input.data.photoId,
+        originalAssetId: input.data.originalAssetId,
+        photoKind: input.data.photoKind,
+        originalSha256: stored.sha256,
+        originalStorageKey: stored.storageKey,
+        mimeType: inspected.mimeType,
+        sizeBytes: stored.sizeBytes,
+        width: inspected.width,
+        height: inspected.height,
+        capturedAt: input.data.capturedAt,
+        humanConfirmed: true,
+      });
       return reply.code(201).send(locationPhotoResponseSchema.parse(result));
     } catch (error) {
+      if (!(error instanceof RepositoryError)) {
+        return reply.code(400).send(mediaInputError(request.id));
+      }
       const mapped = mapRepositoryError(error, request.id);
       return reply.code(mapped.status).send(mapped.payload);
     }
@@ -269,29 +300,98 @@ export function buildApp(options: BuildAppOptions = {}) {
       const workspace = workspaceIdSchema.safeParse(request.params.workspaceId);
       const location = workspaceIdSchema.safeParse(request.params.locationId);
       const photo = workspaceIdSchema.safeParse(request.params.photoId);
-      const input = approveLocationPhotoRequestSchema.safeParse(request.body);
+      const input = reviewLocationPhotoRequestSchema.safeParse(request.body);
       const actor = await authenticate(request.headers);
       if (!actor) return reply.code(401).send(authenticationError(request.id));
       if (!workspace.success || !location.success || !photo.success || !input.success) {
         return reply.code(400).send(
           apiErrorSchema.parse({
             code: "invalid_request",
-            message: "審査対象、位置情報除去済み派生、人の承認を確認してください。",
+            message: "審査対象と人の承認を確認してください。",
             requestId: request.id,
           }),
         );
       }
       const actorWorkspace = actorWorkspaceError(actor, workspace.data, request.id);
       if (actorWorkspace) return reply.code(403).send(actorWorkspace);
+      if (!options.mediaStore) return reply.code(503).send(mediaStoreUnavailable(request.id));
       try {
-        const result = await repository.approveLocationPhoto(
+        const source = await repository.locationPhotoForReview(
           workspace.data,
           location.data,
           photo.data,
           actor,
-          input.data,
         );
+        const extension = source.mimeType === "image/jpeg" ? "jpg" : "png";
+        const displayStorageKey = `workspaces/${workspace.data}/location-display/${photo.data}.${extension}`;
+        const display = await options.mediaStore.createSanitizedDisplay(
+          source.originalStorageKey,
+          displayStorageKey,
+          source.mimeType,
+        );
+        let result;
+        try {
+          result = await repository.approveLocationPhoto(
+            workspace.data,
+            location.data,
+            photo.data,
+            actor,
+            {
+              derivativeAssetId: randomUUID(),
+              derivativeSha256: display.sha256,
+              derivativeStorageKey: display.storageKey,
+              gpsExifCount: 0,
+              reviewedAt: input.data.reviewedAt,
+              humanApproved: true,
+            },
+          );
+        } catch (error) {
+          await options.mediaStore.removeDisplay(display.storageKey, display.sha256);
+          throw error;
+        }
         return reply.send(locationPhotoResponseSchema.parse(result));
+      } catch (error) {
+        if (!(error instanceof RepositoryError)) {
+          return reply.code(400).send(mediaInputError(request.id));
+        }
+        const mapped = mapRepositoryError(error, request.id);
+        return reply.code(mapped.status).send(mapped.payload);
+      }
+    },
+  );
+
+  app.get<{
+    Params: { workspaceId: string; locationId: string; photoId: string };
+    Reply: Buffer | ApiError;
+  }>(
+    "/v1/workspaces/:workspaceId/locations/:locationId/photos/:photoId/content",
+    async (request, reply) => {
+      const workspace = workspaceIdSchema.safeParse(request.params.workspaceId);
+      const location = workspaceIdSchema.safeParse(request.params.locationId);
+      const photo = workspaceIdSchema.safeParse(request.params.photoId);
+      const actor = await authenticate(request.headers);
+      if (!actor) return reply.code(401).send(authenticationError(request.id));
+      if (!workspace.success || !location.success || !photo.success) {
+        return reply.code(400).send(
+          apiErrorSchema.parse({
+            code: "invalid_request",
+            message: "表示対象の場所写真を確認してください。",
+            requestId: request.id,
+          }),
+        );
+      }
+      const actorWorkspace = actorWorkspaceError(actor, workspace.data, request.id);
+      if (actorWorkspace) return reply.code(403).send(actorWorkspace);
+      if (!options.mediaStore) return reply.code(503).send(mediaStoreUnavailable(request.id));
+      try {
+        const source = await repository.approvedLocationPhotoContent(
+          workspace.data,
+          location.data,
+          photo.data,
+          actor,
+        );
+        const bytes = await options.mediaStore.readDisplay(source.displayStorageKey);
+        return reply.header("cache-control", "private, no-store").type(source.mimeType).send(bytes);
       } catch (error) {
         const mapped = mapRepositoryError(error, request.id);
         return reply.code(mapped.status).send(mapped.payload);
@@ -483,6 +583,22 @@ function authenticationError(requestId: string): ApiError {
   return apiErrorSchema.parse({
     code: "authentication_required",
     message: "有効な署名付きセッションが必要です。",
+    requestId,
+  });
+}
+
+function mediaStoreUnavailable(requestId: string): ApiError {
+  return apiErrorSchema.parse({
+    code: "media_store_unavailable",
+    message: "非公開の写真保存先を確認できないため、安全のため停止しました。",
+    requestId,
+  });
+}
+
+function mediaInputError(requestId: string): ApiError {
+  return apiErrorSchema.parse({
+    code: "invalid_image",
+    message: "画像本体を検証または位置情報除去できませんでした。",
     requestId,
   });
 }

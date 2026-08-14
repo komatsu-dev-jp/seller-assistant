@@ -4,7 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { LocalPrivateMediaStore, stripLocationMetadata } from "./local-media-store.js";
+import {
+  inspectImage,
+  LocalPrivateMediaStore,
+  stripLocationMetadata,
+} from "./local-media-store.js";
 
 const roots: string[] = [];
 const workspaceId = "11111111-1111-4111-8111-111111111111";
@@ -28,7 +32,7 @@ describe("zero-cost local private media store", () => {
     const originalHash = sha256(original);
     const originalKey = `workspaces/${workspaceId}/location-originals/photo.jpg`;
     const displayKey = `workspaces/${workspaceId}/location-display/photo.jpg`;
-    await store.saveOriginal(originalKey, original, originalHash);
+    await store.saveOriginal(originalKey, original);
     const result = await store.createSanitizedDisplay(originalKey, displayKey, "image/jpeg");
     const originalAfter = await readFile(join(root, ...originalKey.split("/")));
     const display = await readFile(join(root, ...displayKey.split("/")));
@@ -44,20 +48,14 @@ describe("zero-cost local private media store", () => {
     const store = new LocalPrivateMediaStore(root);
     const bytes = jpegWithGpsMetadata();
     const key = `workspaces/${workspaceId}/location-originals/photo.jpg`;
-    await store.saveOriginal(key, bytes, sha256(bytes));
-    await expect(store.saveOriginal(key, bytes, sha256(bytes))).resolves.toMatchObject({
+    await store.saveOriginal(key, bytes);
+    await expect(store.saveOriginal(key, bytes)).resolves.toMatchObject({
       storageKey: key,
     });
     const changed = Buffer.concat([bytes, Buffer.from("changed")]);
-    await expect(store.saveOriginal(key, changed, sha256(changed))).rejects.toThrow(
-      /different bytes/u,
-    );
+    await expect(store.saveOriginal(key, changed)).rejects.toThrow(/different bytes/u);
     await expect(
-      store.saveOriginal(
-        `workspaces/${workspaceId}/location-originals/../escape.jpg`,
-        bytes,
-        sha256(bytes),
-      ),
+      store.saveOriginal(`workspaces/${workspaceId}/location-originals/../escape.jpg`, bytes),
     ).rejects.toThrow(/invalid/u);
   });
 
@@ -68,7 +66,7 @@ describe("zero-cost local private media store", () => {
     const invalid = Buffer.from("not-a-jpeg");
     const originalKey = `workspaces/${workspaceId}/location-originals/bad.jpg`;
     const displayKey = `workspaces/${workspaceId}/location-display/bad.jpg`;
-    await store.saveOriginal(originalKey, invalid, sha256(invalid));
+    await store.saveOriginal(originalKey, invalid);
     await expect(
       store.createSanitizedDisplay(originalKey, displayKey, "image/jpeg"),
     ).rejects.toThrow(/Invalid JPEG/u);
@@ -82,14 +80,27 @@ describe("zero-cost local private media store", () => {
       /Invalid PNG/u,
     );
   });
+
+  it("derives MIME type and dimensions from server-received bytes", () => {
+    expect(inspectImage(jpegWithGpsMetadata())).toEqual({
+      mimeType: "image/jpeg",
+      width: 2000,
+      height: 1500,
+    });
+    expect(() => inspectImage(Buffer.from("claimed-image"))).toThrow(/JPEG and PNG/u);
+  });
 });
 
 function jpegWithGpsMetadata(): Buffer {
   const exif = Buffer.from("Exif\0\0GPSLatitude=35.0;GPSLongitude=139.0", "utf8");
   const app1Length = Buffer.alloc(2);
   app1Length.writeUInt16BE(exif.length + 2);
+  const dimensions = Buffer.from([
+    0xff, 0xc0, 0x00, 0x11, 0x08, 0x05, 0xdc, 0x07, 0xd0, 0x03, 0x01, 0x11, 0x00, 0x02, 0x11, 0x00,
+    0x03, 0x11, 0x00,
+  ]);
   const scan = Buffer.from([0xff, 0xda, 0x00, 0x02, 0x11, 0x22, 0xff, 0xd9]);
-  return Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe1]), app1Length, exif, scan]);
+  return Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe1]), app1Length, exif, dimensions, scan]);
 }
 
 function sha256(bytes: Buffer): string {

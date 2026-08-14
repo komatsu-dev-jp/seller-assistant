@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import postgres from "postgres";
 import { buildApp } from "./app.js";
 import { hashPassword, PostgresLoginService } from "./auth.js";
 import { bootstrapInitialOwner } from "./bootstrap-owner.js";
 import { assertRestrictedDatabaseRole } from "./db-security.js";
+import { LocalPrivateMediaStore } from "./local-media-store.js";
 import { PostgresWorkflowRepository } from "./repository.js";
 import { createCookieAuthenticator, PostgresSessionRegistry } from "./session.js";
 
@@ -42,6 +46,7 @@ const workspaceProtectedTables = [
   "product_sku",
   "sales_order",
   "scan_session",
+  "sku_work_assignment",
   "workspace_membership",
   "work_assignment",
 ] as const;
@@ -120,6 +125,7 @@ const owner = await bootstrapInitialOwner(adminUrl, {
 });
 
 const registry = new PostgresSessionRegistry(runtimeUrl);
+const mediaRoot = await mkdtemp(join(tmpdir(), "resale-postgres-media-"));
 const app = buildApp({
   repository: new PostgresWorkflowRepository(runtimeUrl),
   loginService: new PostgresLoginService(runtimeUrl, sessionSecret),
@@ -130,6 +136,7 @@ const app = buildApp({
   },
   closeAuthentication: () => registry.close(),
   validateWriteOrigin: () => true,
+  mediaStore: new LocalPrivateMediaStore(mediaRoot),
 });
 
 try {
@@ -138,7 +145,7 @@ try {
     url: "/v1/session/login",
     payload: { email: "owner@example.test", password: "zero-cost-test-password" },
   });
-  assert.equal(login.statusCode, 204);
+  assert.equal(login.statusCode, 204, login.body);
   const setCookie = login.headers["set-cookie"];
   assert.equal(typeof setCookie, "string");
   const cookie = String(setCookie).split(";", 1)[0];
@@ -238,6 +245,131 @@ try {
     payload: { skuCode: "SKU-WORKER-DENIED", title: "拒否確認", category: "試験" },
   });
   assert.equal(workerCreateSku.statusCode, 403, workerCreateSku.body);
+  const ownerPurchaseApproval = await app.inject({
+    method: "POST",
+    url: `/v1/workspaces/${owner.workspaceId}/skus/${skuId}/p0-actions`,
+    headers: { cookie },
+    payload: {
+      action: "confirm_purchase",
+      idempotencyKey: randomUUID(),
+      evidenceReferenceIds: [randomUUID()],
+      requiredFactsConfirmed: true,
+      manualChannelHandoff: false,
+    },
+  });
+  assert.equal(ownerPurchaseApproval.statusCode, 200, ownerPurchaseApproval.body);
+
+  const captureAssetId = randomUUID();
+  const captureAssetPayload = {
+    assetId: captureAssetId,
+    role: "front",
+    originalSha256: hashFixture("field-worker-capture"),
+    originalStorageKey: `workspaces/${owner.workspaceId}/originals/${captureAssetId}.jpg`,
+    mimeType: "image/jpeg",
+    sizeBytes: 4096,
+    width: 2000,
+    height: 2000,
+  } as const;
+  const captureAssetUrl = `/v1/workspaces/${owner.workspaceId}/skus/${skuId}/media-assets`;
+  const workerMediaWithoutAssignment = await app.inject({
+    method: "POST",
+    url: captureAssetUrl,
+    headers: { cookie: workerCookie },
+    payload: captureAssetPayload,
+  });
+  assert.equal(workerMediaWithoutAssignment.statusCode, 403, workerMediaWithoutAssignment.body);
+  const workerMeasurementWithoutAssignment = await app.inject({
+    method: "POST",
+    url: `/v1/workspaces/${owner.workspaceId}/skus/${skuId}/measurements`,
+    headers: { cookie: workerCookie },
+    payload: {
+      definitionId: "chest_width",
+      definitionVersion: 1,
+      value: 52,
+      unit: "cm",
+      basis: "flat_width",
+      state: "natural",
+      measuredAt: new Date().toISOString(),
+      evidenceAssetId: captureAssetId,
+      attempt: 1,
+      humanConfirmed: true,
+    },
+  });
+  assert.equal(
+    workerMeasurementWithoutAssignment.statusCode,
+    403,
+    workerMeasurementWithoutAssignment.body,
+  );
+  const workerCaptureWithoutAssignment = await app.inject({
+    method: "POST",
+    url: `/v1/workspaces/${owner.workspaceId}/skus/${skuId}/p0-actions`,
+    headers: { cookie: workerCookie },
+    payload: {
+      action: "confirm_capture",
+      idempotencyKey: randomUUID(),
+      evidenceReferenceIds: [captureAssetId],
+      requiredFactsConfirmed: true,
+      manualChannelHandoff: false,
+    },
+  });
+  assert.equal(workerCaptureWithoutAssignment.statusCode, 403, workerCaptureWithoutAssignment.body);
+
+  const skuAssignmentAdmin = postgres(adminUrl, { max: 1 });
+  try {
+    await skuAssignmentAdmin`
+      insert into sku_work_assignment (
+        workspace_id, identity_id, sku_id, operation, starts_at, expires_at, created_by
+      ) values (
+        ${owner.workspaceId}, ${workerId}, ${skuId}, 'capture',
+        now() - interval '1 minute', now() + interval '1 hour', ${owner.identityId}
+      )
+    `;
+  } finally {
+    await skuAssignmentAdmin.end({ timeout: 5 });
+  }
+  const workerMediaWithAssignment = await app.inject({
+    method: "POST",
+    url: captureAssetUrl,
+    headers: { cookie: workerCookie },
+    payload: captureAssetPayload,
+  });
+  assert.equal(workerMediaWithAssignment.statusCode, 201, workerMediaWithAssignment.body);
+  const workerMeasurementWithAssignment = await app.inject({
+    method: "POST",
+    url: `/v1/workspaces/${owner.workspaceId}/skus/${skuId}/measurements`,
+    headers: { cookie: workerCookie },
+    payload: {
+      definitionId: "chest_width",
+      definitionVersion: 1,
+      value: 52,
+      unit: "cm",
+      basis: "flat_width",
+      state: "natural",
+      measuredAt: new Date().toISOString(),
+      evidenceAssetId: captureAssetId,
+      attempt: 1,
+      humanConfirmed: true,
+    },
+  });
+  assert.equal(
+    workerMeasurementWithAssignment.statusCode,
+    201,
+    workerMeasurementWithAssignment.body,
+  );
+  const workerCaptureWithAssignment = await app.inject({
+    method: "POST",
+    url: `/v1/workspaces/${owner.workspaceId}/skus/${skuId}/p0-actions`,
+    headers: { cookie: workerCookie },
+    payload: {
+      action: "confirm_capture",
+      idempotencyKey: randomUUID(),
+      evidenceReferenceIds: [captureAssetId],
+      requiredFactsConfirmed: true,
+      manualChannelHandoff: false,
+    },
+  });
+  assert.equal(workerCaptureWithAssignment.statusCode, 200, workerCaptureWithAssignment.body);
+
   const workerPurchaseApproval = await app.inject({
     method: "POST",
     url: `/v1/workspaces/${owner.workspaceId}/skus/${skuId}/p0-actions`,
@@ -399,38 +531,29 @@ try {
     assert.equal(apiPutawayConflict.statusCode, 409, apiPutawayConflict.body);
 
     const locationPhotoId = randomUUID();
-    const locationPhotoPayload = {
-      photoId: locationPhotoId,
-      originalAssetId: randomUUID(),
-      photoKind: "exact_position",
-      originalSha256: hashFixture("location-original-bin-b"),
-      originalStorageKey: `workspaces/${owner.workspaceId}/location-originals/${locationPhotoId}.jpg`,
-      mimeType: "image/jpeg",
-      sizeBytes: 4096,
-      width: 2000,
-      height: 2000,
-      capturedAt: new Date().toISOString(),
-      humanConfirmed: true,
-    } as const;
+    const locationPhotoBytes = jpegWithGpsMetadata();
+    const locationPhotoQuery = (photoId: string, originalAssetId: string) =>
+      new URLSearchParams({
+        photoId,
+        originalAssetId,
+        photoKind: "exact_position",
+        capturedAt: new Date().toISOString(),
+        humanConfirmed: "true",
+      }).toString();
     const outsidePhotoId = randomUUID();
     const outsideLocationPhoto = await app.inject({
       method: "POST",
-      url: `/v1/workspaces/${owner.workspaceId}/locations/${binAId}/photos`,
-      headers: { cookie: workerCookie },
-      payload: {
-        ...locationPhotoPayload,
-        photoId: outsidePhotoId,
-        originalAssetId: randomUUID(),
-        originalStorageKey: `workspaces/${owner.workspaceId}/location-originals/${outsidePhotoId}.jpg`,
-      },
+      url: `/v1/workspaces/${owner.workspaceId}/locations/${binAId}/photos?${locationPhotoQuery(outsidePhotoId, randomUUID())}`,
+      headers: { cookie: workerCookie, "content-type": "image/jpeg" },
+      payload: locationPhotoBytes,
     });
     assert.equal(outsideLocationPhoto.statusCode, 403, outsideLocationPhoto.body);
     const photoCollectionUrl = `/v1/workspaces/${owner.workspaceId}/locations/${binBId}/photos`;
     const capturedLocationPhoto = await app.inject({
       method: "POST",
-      url: photoCollectionUrl,
-      headers: { cookie: workerCookie },
-      payload: locationPhotoPayload,
+      url: `${photoCollectionUrl}?${locationPhotoQuery(locationPhotoId, randomUUID())}`,
+      headers: { cookie: workerCookie, "content-type": "image/jpeg" },
+      payload: locationPhotoBytes,
     });
     assert.equal(capturedLocationPhoto.statusCode, 201, capturedLocationPhoto.body);
     assert.equal(capturedLocationPhoto.json<{ reviewState: string }>().reviewState, "pending");
@@ -440,16 +563,11 @@ try {
       headers: { cookie: workerCookie },
     });
     assert.deepEqual(pendingLocationPhotos.json(), []);
-    const derivativeAssetId = randomUUID();
     const approvedLocationPhoto = await app.inject({
       method: "POST",
       url: `${photoCollectionUrl}/${locationPhotoId}/approval`,
       headers: { cookie },
       payload: {
-        derivativeAssetId,
-        derivativeSha256: hashFixture("location-display-bin-b"),
-        derivativeStorageKey: `workspaces/${owner.workspaceId}/location-display/${locationPhotoId}.jpg`,
-        gpsExifCount: 0,
         reviewedAt: new Date().toISOString(),
         humanApproved: true,
       },
@@ -468,6 +586,18 @@ try {
     assert.equal(visibleLocationPhotos.statusCode, 200, visibleLocationPhotos.body);
     assert.equal(visibleLocationPhotos.json<unknown[]>().length, 1);
     assert.equal(visibleLocationPhotos.body.includes("originalStorageKey"), false);
+    assert.equal(visibleLocationPhotos.body.includes("derivativeStorageKey"), false);
+    const photoContentUrl =
+      visibleLocationPhotos.json<Array<{ contentUrl: string }>>()[0]?.contentUrl;
+    assert.ok(photoContentUrl);
+    const photoContent = await app.inject({
+      method: "GET",
+      url: photoContentUrl,
+      headers: { cookie: workerCookie },
+    });
+    assert.equal(photoContent.statusCode, 200, photoContent.body);
+    assert.equal(photoContent.headers["cache-control"], "private, no-store");
+    assert.equal(photoContent.rawPayload.toString("utf8").includes("GPSLatitude"), false);
     await assert.rejects(
       () =>
         inventory.begin(async (transaction) => {
@@ -684,8 +814,21 @@ try {
   assert.equal(reuse.statusCode, 401);
 } finally {
   await app.close();
+  await rm(mediaRoot, { recursive: true, force: true });
 }
 
 process.stdout.write(
-  "postgres-integration: PASS (restricted role, 22-table RLS matrix, assignment-scoped field worker, reviewed zero-GPS location photo, login, double scan, capacity, allocation, stocktake, logout)\n",
+  "postgres-integration: PASS (restricted role, 23-table RLS matrix, location/SKU assignment-scoped field worker, reviewed zero-GPS location photo, login, double scan, capacity, allocation, stocktake, logout)\n",
 );
+
+function jpegWithGpsMetadata(): Buffer {
+  const exif = Buffer.from("Exif\0\0GPSLatitude=35.0;GPSLongitude=139.0", "utf8");
+  const app1Length = Buffer.alloc(2);
+  app1Length.writeUInt16BE(exif.length + 2);
+  const dimensions = Buffer.from([
+    0xff, 0xc0, 0x00, 0x11, 0x08, 0x05, 0xdc, 0x07, 0xd0, 0x03, 0x01, 0x11, 0x00, 0x02, 0x11, 0x00,
+    0x03, 0x11, 0x00,
+  ]);
+  const scan = Buffer.from([0xff, 0xda, 0x00, 0x02, 0x11, 0x22, 0xff, 0xd9]);
+  return Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe1]), app1Length, exif, dimensions, scan]);
+}

@@ -28,7 +28,7 @@ npm.cmd run check
 
 ## APIの安全な起動
 
-APIは `DATABASE_URL`（PostgreSQLの接続先）と、32バイト以上の `SESSION_SECRET`（認証Cookieを署名する秘密鍵）の両方が必要です。`DATABASE_URL`はmigration 0006の`resale_app_runtime`を付与した制限LOGINロール専用です。管理者・RLS迂回権限・runtime未所属なら起動を停止します。値は `.env.example` には書かず、自分のPCの環境変数だけに設定します。未設定の場合も起動を停止し、一時メモリへ勝手に保存しません。
+APIは `DATABASE_URL`（PostgreSQLの接続先）、32バイト以上の `SESSION_SECRET`（認証Cookieを署名する秘密鍵）、`LOCAL_MEDIA_ROOT`（写真を非公開保存するPC内の絶対パス）が必要です。`DATABASE_URL`はmigration 0006の`resale_app_runtime`を付与した制限LOGINロール専用です。管理者・RLS迂回権限・runtime未所属なら起動を停止します。値は `.env.example` には書かず、自分のPCの環境変数だけに設定します。未設定の場合も起動を停止し、一時メモリや公開フォルダへ勝手に保存しません。
 
 認証は `HttpOnly; Secure; SameSite=Strict` の署名付きCookieだけを受け付けます。利用者IDを直接書いたヘッダー、localStorage、IndexedDB、Service Worker cacheを認証情報の保存先にしません。ログアウトはDBのsession失効成功後だけCookieとPWA端末データを消します。
 

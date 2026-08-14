@@ -74,4 +74,32 @@ describe("zero-cost PWA contract", () => {
     expect(workflow).toContain("workflow_dispatch:");
     expect(workflow).not.toMatch(/pull_request:|push:|macos-/u);
   });
+
+  it("protects sensitive pages with a server-side session and role allowlist", () => {
+    const guard = readFileSync(resolve("apps/web/src/lib/server-session.ts"), "utf8");
+    const home = readFileSync(resolve("apps/web/src/app/page.tsx"), "utf8");
+    const inventory = readFileSync(resolve("apps/web/src/app/inventory/page.tsx"), "utf8");
+    const workflow = readFileSync(resolve("apps/web/src/app/workflow/page.tsx"), "utf8");
+    const mobile = readFileSync(resolve("apps/web/src/app/mobile/page.tsx"), "utf8");
+    const scan = readFileSync(resolve("apps/web/src/app/mobile/scan/page.tsx"), "utf8");
+
+    expect(guard).toContain('import "server-only"');
+    expect(guard).toContain('cache: "no-store"');
+    expect(guard).toContain("sessionContextResponseSchema.safeParse");
+    expect(guard).toContain('redirect("/login")');
+    expect(guard).toContain('redirect("/forbidden")');
+    expect(guard).not.toMatch(/console\.|localStorage|sessionStorage/u);
+    for (const source of [home, inventory, workflow]) {
+      expect(source).toContain('export const dynamic = "force-dynamic"');
+      expect(source).toContain('requirePageSession(["owner", "inventory_manager"])');
+      expect(source).not.toContain('"field_worker"');
+    }
+    for (const source of [mobile, scan]) {
+      expect(source).toContain('export const dynamic = "force-dynamic"');
+      expect(source).toContain(
+        'requirePageSession(["owner", "inventory_manager", "field_worker"])',
+      );
+    }
+    expect(mobile).toContain("canViewManagement");
+  });
 });

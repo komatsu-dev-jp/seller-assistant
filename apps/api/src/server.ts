@@ -4,10 +4,12 @@ import { createCookieAuthenticator, PostgresSessionRegistry } from "./session.js
 import { createWriteOriginValidator } from "./security.js";
 import { PostgresLoginService } from "./auth.js";
 import { assertRestrictedDatabaseRole } from "./db-security.js";
+import { LocalPrivateMediaStore } from "./local-media-store.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 const sessionSecret = process.env.SESSION_SECRET;
 const appOrigin = process.env.APP_ORIGIN;
+const localMediaRoot = process.env.LOCAL_MEDIA_ROOT;
 if (!databaseUrl) {
   throw new Error(
     "DATABASE_URL is required. The API will not silently use temporary memory storage.",
@@ -18,6 +20,11 @@ if (!sessionSecret) {
 }
 if (!appOrigin) {
   throw new Error("APP_ORIGIN is required. Write requests will not accept an unknown origin.");
+}
+if (!localMediaRoot) {
+  throw new Error(
+    "LOCAL_MEDIA_ROOT is required. Photos will not use a public or temporary fallback.",
+  );
 }
 
 await assertRestrictedDatabaseRole(databaseUrl);
@@ -35,6 +42,7 @@ const app = buildApp({
   closeAuthentication: async () => sessionRegistry.close(),
   validateWriteOrigin: createWriteOriginValidator(appOrigin),
   loginService: new PostgresLoginService(databaseUrl, sessionSecret),
+  mediaStore: new LocalPrivateMediaStore(localMediaRoot),
 });
 const port = Number(process.env.PORT ?? 3100);
 

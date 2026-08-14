@@ -177,3 +177,29 @@
 - 費用: 新しい依存0件、Windows PC内のみ。有料画像API、SaaS、外部CI、公開、デプロイ0件。
 - 未完了: upload API/PWA撮影との接続、HEIC/WebPの無料安全変換、実iPhone写真fixture、住所期限、注文等の実API。
 - 次の一手: 認証済みbinary uploadをLocalPrivateMediaStoreへ接続し、保存成功後だけlocation_photo metadataを登録する一体処理を追加する。
+
+## Iteration 17 — 2026-08-15 Web画面のサーバー側role保護
+
+- 基準値: APIはsession/roleを検査していたが、Webの管理画面はURLを直接開くと固定の全在庫・利益・会計候補を表示できた。
+- 実装: `requirePageSession`でHttpOnly CookieをサーバーからAPIへだけ転送し、応答schemaとrole allowlistを検査。管理3画面からfield_workerを除外し、現場ナビもrole別にした。
+- fail-closed: API接続設定、session応答、roleのいずれも確認できない場合は管理画面を返さない。保護画面を`force-dynamic`にし、build時の固定HTML化を禁止した。
+- 検証: 全体buildで対象5画面がdynamic。Cookieなしの`/inventory`は307で`/login`へ転送。秘密値のログ/ブラウザ保存0件。
+
+## Iteration 18 — 2026-08-15 外注の商品別・期限付き撮影割当
+
+- 基準値: field_workerは場所作業だけ期限付きだったため、workspace内の任意SKUへ写真・採寸・撮影完了操作を送れた。
+- 実装: RLS付き`sku_work_assignment`と`has_active_sku_work_assignment`を追加。SKU、作業、開始、期限、取消をDBで照合し、写真/採寸/サマリー/workflowへ共通適用した。
+- 実DB: 未割当3操作は403。割当後の写真201、採寸201、撮影完了200。23業務テーブルのRLS/強制RLS/workspace policyと破壊的grant 0件を継続確認。
+- 発見と修正: 使い捨て試験用LOGIN roleを誤ってNOINHERITで作り、capability roleの権限を使えずログイン500になった。実運用契約どおりINHERITの制限LOGINへ直し、全結合を再実行した。
+
+## Iteration 19 — 2026-08-15 場所写真の実bytes upload・除去・認証付き取得
+
+- 基準値: DB/APIは写真metadataを守ったが、SHA、保存key、GPS 0件をクライアントが自己申告でき、実MediaStoreはAPI未接続だった。
+- 実装: JPEG/PNG binary parserと画像magic/dimension検査を追加。APIがSHA/key/容量/形式を決定して原本保存後だけDB登録する。担当外は保存処理より前に拒否する。
+- 承認: repositoryでpending・管理role・撮影者との分離を先に確認し、MediaStoreが位置metadataを除去した後だけDBをapprovedへ更新。DB失敗時は同一hashの表示用だけを補償削除する。
+- 取得: approvedかつ現在のrole/担当枝を再検査するcontent APIだけが表示bytesを返す。`private, no-store`、storage key非公開。pending/担当外は0件。
+- 競合修正: 既存表示keyへの同一bytes再送は再利用し、異bytesなら既存を削除せず停止するよう排他処理を修正した。
+- 検証: 合成GPS入りJPEGを実API→実ファイル→実PostgreSQLへ通し、外注担当外403、pending非表示、別担当承認、応答GPS文字0件、storage key 0件を確認。17 files / 86 testsと全check合格。
+- 費用: Node.js標準機能、ローカルPostgreSQL、PC内ファイルだけ。外部費用・外部CI・公開0件。
+- 残る問題: 注文/住所lease/返品隔離/会計exportの実API、P0画面のDB接続、PWA場所写真UI、実iPhone Safari。
+- 次の一手: sales_order、scan/movement、financial_event、accounting_exportを同じSKU/注文IDでAPIへ接続する。

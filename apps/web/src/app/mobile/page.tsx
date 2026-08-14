@@ -1,5 +1,8 @@
 import { InstallAppCard } from "../../components/install-app-card";
 import { OfflineSyncStatus } from "../../components/offline-sync-status";
+import { requirePageSession } from "../../lib/server-session";
+
+export const dynamic = "force-dynamic";
 
 const mobileTasks = [
   ["格納待ち", "12", "orange"],
@@ -7,7 +10,10 @@ const mobileTasks = [
   ["棚卸・再確認", "2", "red"],
 ] as const;
 
-export default function MobileHomePage() {
+export default async function MobileHomePage() {
+  const session = await requirePageSession(["owner", "inventory_manager", "field_worker"]);
+  const canViewManagement = session.role === "owner" || session.role === "inventory_manager";
+
   return (
     <main className="mobileAppShell">
       <header className="mobileAppHeader">
@@ -49,14 +55,16 @@ export default function MobileHomePage() {
           <span aria-hidden="true">›</span>
         </a>
 
-        <a className="mobileWorkflowAction" href="/workflow">
-          <span aria-hidden="true">▤</span>
-          <div>
-            <strong>仕入から会計候補まで進める</strong>
-            <small>無料テンプレート・人が確認・自動公開なし</small>
-          </div>
-          <span aria-hidden="true">›</span>
-        </a>
+        {canViewManagement ? (
+          <a className="mobileWorkflowAction" href="/workflow">
+            <span aria-hidden="true">▤</span>
+            <div>
+              <strong>仕入から会計候補まで進める</strong>
+              <small>無料テンプレート・人が確認・自動公開なし</small>
+            </div>
+            <span aria-hidden="true">›</span>
+          </a>
+        ) : null}
 
         <section className="mobileNext panel">
           <div className="panelHead">
@@ -79,8 +87,8 @@ export default function MobileHomePage() {
           今日
         </a>
         <a href="/mobile/scan">読取</a>
-        <a href="/inventory">在庫</a>
-        <a href="/workflow">商品</a>
+        {canViewManagement ? <a href="/inventory">在庫</a> : null}
+        {canViewManagement ? <a href="/workflow">商品</a> : null}
       </nav>
     </main>
   );

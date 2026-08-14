@@ -143,3 +143,26 @@ P0の必須ACは AC-001、003〜008、013〜014、018〜023、025〜026、028〜
 - 自動検証: 17 test files / 83 tests、line 91.36%、branch 81.81%、functions 100%、format/lint/type/build合格。
 - 費用: ライブラリ追加0件、外部費用・外部CI・公開0件。
 - 未完了: upload API/PWA撮影との接続、HEIC/WebPの無料安全変換、実iPhone写真fixture、住所期限、注文等の実API。
+
+## Iteration 17の実証範囲
+
+- 画面保護: ホーム、全在庫、P0商品作業はサーバー側sessionでowner/inventory_managerだけを許可。未ログインは本文を返さず`/login`へ307転送。
+- 現場画面: field_workerは`/mobile`と`/mobile/scan`だけを利用でき、全在庫・収支・会計へのリンクも表示しない。URL直打ちは`/forbidden`で停止。
+- 本番build: 保護5画面は静的HTMLへ埋め込まず、アクセスごとに動的なsession/role判定を行う。
+- 検証: Web契約テスト、型検査、本番build、Cookieなしの`/inventory`要求が`307 /login`を確認。
+
+## Iteration 18の実証範囲
+
+- SKU割当: `sku_work_assignment`へ外注担当、SKU、`capture`作業、開始、期限、取消を分離保存。workspace所属だけでは商品へ触れない。
+- API: field_workerの写真登録、採寸、撮影サマリー、`confirm_capture`へ同じ共通割当検査を適用。
+- 実DB: 未割当の写真・採寸・撮影完了をすべて403、期限内割当後だけ201/200。23業務テーブルのRLS matrixを継続PASS。
+
+## Iteration 19の実証範囲
+
+- Binary upload: 場所写真はJPEG/PNG本体だけを受け、APIがmagic bytes、25MB、各辺12,000px、SHA-256、保存keyを決定。端末自己申告のSHA/key/GPS件数を廃止。
+- 非公開処理: 担当範囲を保存前に検査し、原本をPC内private rootへ不変保存。撮影者と別の管理者が承認した時だけ位置metadataを除去した表示用を生成。
+- 取得: pending/担当外を拒否し、approvedだけ認証付きcontent APIから`private, no-store`で返す。原本/派生storage keyは公開応答0件。
+- fail-closed: 壊れた画像、未対応形式、異bytes再送、派生競合、DB承認失敗は公開を停止。補償削除は同じhashの表示ファイルだけを対象にする。
+- 検証: 17 files / 86 tests、line 91.36%、branch 81.81%、functions 100%、format/lint/type/build合格。0001〜0011の新規DBと実ファイル結合テストPASS。
+- 費用: 新しい外部依存0件、PC内のみ。有料API/SaaS、外部CI、公開0件。
+- 未完了: PWA場所写真撮影UI、HEIC/WebP、住所期限、注文/返品/会計の実API、実iPhone Safari。

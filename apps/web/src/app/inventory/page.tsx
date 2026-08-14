@@ -1,4 +1,7 @@
 import { AppSidebar } from "../../components/app-sidebar";
+import { requirePageSession } from "../../lib/server-session";
+
+export const dynamic = "force-dynamic";
 
 interface LocationItem {
   level: number;
@@ -27,7 +30,9 @@ const inventory = [
   ["INV-000127", "SKU-2608-0333", "カーキニット", "在庫中", "08/13 16:41"],
 ] as const;
 
-export default function InventoryPage() {
+export default async function InventoryPage() {
+  await requirePageSession(["owner", "inventory_manager"]);
+
   return (
     <main className="shell inventoryShell">
       <AppSidebar current="inventory" />

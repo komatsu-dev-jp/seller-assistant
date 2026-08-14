@@ -1,5 +1,9 @@
 import { MobileScanWorkflow } from "../../../components/mobile-scan-workflow";
+import { requirePageSession } from "../../../lib/server-session";
 
-export default function MobileScanPage() {
+export const dynamic = "force-dynamic";
+
+export default async function MobileScanPage() {
+  await requirePageSession(["owner", "inventory_manager", "field_worker"]);
   return <MobileScanWorkflow />;
 }

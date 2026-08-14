@@ -94,6 +94,23 @@ export const putawayInventoryResponseSchema = z.object({
 
 export const locationPhotoKindSchema = z.enum(["room", "shelf", "exact_position"]);
 
+export const uploadLocationPhotoQuerySchema = z
+  .object({
+    photoId: z.string().uuid(),
+    originalAssetId: z.string().uuid(),
+    photoKind: locationPhotoKindSchema,
+    capturedAt: z.iso.datetime(),
+    humanConfirmed: z.literal("true").transform(() => true as const),
+  })
+  .strict();
+
+export const reviewLocationPhotoRequestSchema = z
+  .object({
+    reviewedAt: z.iso.datetime(),
+    humanApproved: z.literal(true),
+  })
+  .strict();
+
 export const registerLocationPhotoRequestSchema = z
   .object({
     photoId: z.string().uuid(),
@@ -138,7 +155,7 @@ export const locationPhotoResponseSchema = z.object({
     .string()
     .regex(/^[a-f0-9]{64}$/u)
     .nullable(),
-  derivativeStorageKey: z.string().nullable(),
+  contentUrl: z.string().startsWith("/v1/workspaces/").nullable(),
   gpsExifCount: z.literal(0),
   capturedBy: z.string().uuid(),
   capturedAt: z.iso.datetime(),
@@ -276,6 +293,8 @@ export type PutawayInventoryRequest = z.infer<typeof putawayInventoryRequestSche
 export type PutawayInventoryResponse = z.infer<typeof putawayInventoryResponseSchema>;
 export type RegisterLocationPhotoRequest = z.infer<typeof registerLocationPhotoRequestSchema>;
 export type ApproveLocationPhotoRequest = z.infer<typeof approveLocationPhotoRequestSchema>;
+export type UploadLocationPhotoQuery = z.infer<typeof uploadLocationPhotoQuerySchema>;
+export type ReviewLocationPhotoRequest = z.infer<typeof reviewLocationPhotoRequestSchema>;
 export type LocationPhotoResponse = z.infer<typeof locationPhotoResponseSchema>;
 export type ApiError = z.infer<typeof apiErrorSchema>;
 export type LoginRequest = z.infer<typeof loginRequestSchema>;

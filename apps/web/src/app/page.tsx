@@ -1,3 +1,8 @@
+import { AppSidebar } from "../components/app-sidebar";
+import { requirePageSession } from "../lib/server-session";
+
+export const dynamic = "force-dynamic";
+
 const checks = [
   { label: "原価未配賦", count: 2, tone: "warning" },
   { label: "送料未確定", count: 1, tone: "warning" },
@@ -14,7 +19,9 @@ const flow = [
   ["会計CSV", "未着手"],
 ] as const;
 
-export default function Home() {
+export default async function Home() {
+  await requirePageSession(["owner", "inventory_manager"]);
+
   return (
     <main className="shell">
       <AppSidebar current="home" />
@@ -125,4 +132,3 @@ export default function Home() {
     </main>
   );
 }
-import { AppSidebar } from "../components/app-sidebar";

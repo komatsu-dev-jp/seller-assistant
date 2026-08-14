@@ -1,14 +1,19 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { healthResponseSchema } from "@resale/contracts";
 import { buildApp } from "./app.js";
 import { InMemoryWorkflowRepository } from "./repository.js";
 import { createWriteOriginValidator } from "./security.js";
 import { createCookieAuthenticator, createSignedSession } from "./session.js";
 import type { LoginService } from "./auth.js";
+import { LocalPrivateMediaStore, type PrivateMediaStore } from "./local-media-store.js";
 
 const apps: ReturnType<typeof buildApp>[] = [];
+const mediaRoots: string[] = [];
 
-function buildTestApp() {
+function buildTestApp(mediaStore?: PrivateMediaStore) {
   return buildApp({
     repository: new InMemoryWorkflowRepository(),
     authenticate: (headers) => {
@@ -20,11 +25,13 @@ function buildTestApp() {
         : { identityId };
     },
     validateWriteOrigin: () => true,
+    ...(mediaStore ? { mediaStore } : {}),
   });
 }
 
 afterEach(async () => {
   await Promise.all(apps.splice(0).map(async (app) => app.close()));
+  await Promise.all(mediaRoots.splice(0).map(async (root) => rm(root, { recursive: true })));
 });
 
 describe("POST /v1/session/login", () => {
@@ -621,31 +628,32 @@ describe("P0 workspace API", () => {
   });
 
   it("shows only a separately approved zero-GPS location photo", async () => {
-    const app = buildTestApp();
+    const mediaRoot = await mkdtemp(join(tmpdir(), "resale-app-media-"));
+    mediaRoots.push(mediaRoot);
+    const app = buildTestApp(new LocalPrivateMediaStore(mediaRoot));
     apps.push(app);
     const locationId = "50000000-0000-4000-8000-000000000001";
     const photoId = "50000000-0000-4000-8000-000000000002";
+    const query = new URLSearchParams({
+      photoId,
+      originalAssetId: "50000000-0000-4000-8000-000000000003",
+      photoKind: "exact_position",
+      capturedAt: "2026-08-15T01:00:00.000Z",
+      humanConfirmed: "true",
+    });
     const captureUrl = `/v1/workspaces/${workspaceId}/locations/${locationId}/photos`;
     const captured = await app.inject({
       method: "POST",
-      url: captureUrl,
-      headers: { "x-actor-id": actorId },
-      payload: {
-        photoId,
-        originalAssetId: "50000000-0000-4000-8000-000000000003",
-        photoKind: "exact_position",
-        originalSha256: "a".repeat(64),
-        originalStorageKey: `workspaces/${workspaceId}/location-originals/${photoId}.jpg`,
-        mimeType: "image/jpeg",
-        sizeBytes: 4096,
-        width: 2000,
-        height: 2000,
-        capturedAt: "2026-08-15T01:00:00.000Z",
-        humanConfirmed: true,
-      },
+      url: `${captureUrl}?${query.toString()}`,
+      headers: { "content-type": "image/jpeg", "x-actor-id": actorId },
+      payload: jpegWithGpsMetadata(),
     });
     expect(captured.statusCode, captured.body).toBe(201);
-    expect(captured.json()).toMatchObject({ reviewState: "pending", derivativeAssetId: null });
+    expect(captured.json()).toMatchObject({
+      reviewState: "pending",
+      derivativeAssetId: null,
+      contentUrl: null,
+    });
 
     const beforeApproval = await app.inject({
       method: "GET",
@@ -656,10 +664,6 @@ describe("P0 workspace API", () => {
 
     const approvalUrl = `${captureUrl}/${photoId}/approval`;
     const approval = {
-      derivativeAssetId: "50000000-0000-4000-8000-000000000004",
-      derivativeSha256: "b".repeat(64),
-      derivativeStorageKey: `workspaces/${workspaceId}/location-display/${photoId}.jpg`,
-      gpsExifCount: 0,
       reviewedAt: "2026-08-15T01:05:00.000Z",
       humanApproved: true,
     };
@@ -693,5 +697,26 @@ describe("P0 workspace API", () => {
     expect(visible.statusCode).toBe(200);
     expect(visible.json()).toHaveLength(1);
     expect(visible.json()[0]).not.toHaveProperty("originalStorageKey");
+    expect(visible.json()[0]).not.toHaveProperty("derivativeStorageKey");
+    const content = await app.inject({
+      method: "GET",
+      url: visible.json()[0].contentUrl as string,
+      headers: { "x-actor-id": actorId },
+    });
+    expect(content.statusCode).toBe(200);
+    expect(content.headers["cache-control"]).toBe("private, no-store");
+    expect(content.rawPayload.toString("utf8")).not.toContain("GPSLatitude");
   });
 });
+
+function jpegWithGpsMetadata(): Buffer {
+  const exif = Buffer.from("Exif\0\0GPSLatitude=35.0;GPSLongitude=139.0", "utf8");
+  const app1Length = Buffer.alloc(2);
+  app1Length.writeUInt16BE(exif.length + 2);
+  const dimensions = Buffer.from([
+    0xff, 0xc0, 0x00, 0x11, 0x08, 0x05, 0xdc, 0x07, 0xd0, 0x03, 0x01, 0x11, 0x00, 0x02, 0x11, 0x00,
+    0x03, 0x11, 0x00,
+  ]);
+  const scan = Buffer.from([0xff, 0xda, 0x00, 0x02, 0x11, 0x22, 0xff, 0xd9]);
+  return Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe1]), app1Length, exif, dimensions, scan]);
+}
