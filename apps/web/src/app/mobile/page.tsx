@@ -46,6 +46,15 @@ export default function MobileHomePage() {
           <span aria-hidden="true">›</span>
         </a>
 
+        <a className="mobileWorkflowAction" href="/workflow">
+          <span aria-hidden="true">▤</span>
+          <div>
+            <strong>仕入から会計候補まで進める</strong>
+            <small>無料テンプレート・人が確認・自動公開なし</small>
+          </div>
+          <span aria-hidden="true">›</span>
+        </a>
+
         <section className="mobileNext panel">
           <div className="panelHead">
             <h2>次の作業</h2>
@@ -68,7 +77,7 @@ export default function MobileHomePage() {
         </a>
         <a href="/mobile/scan">読取</a>
         <a href="/inventory">在庫</a>
-        <a href="/">PC</a>
+        <a href="/workflow">商品</a>
       </nav>
     </main>
   );

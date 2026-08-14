@@ -1,15 +1,14 @@
 const links = [
   ["/", "ホーム"],
-  ["/#purchase", "仕入"],
+  ["/workflow", "P0商品作業"],
   ["/inventory", "在庫"],
-  ["/#listing", "出品準備"],
-  ["/#orders", "注文・配送"],
-  ["/#finance", "収支・会計"],
-  ["/#team", "チーム"],
+  ["/workflow", "仕入・出品"],
+  ["/workflow", "注文・配送"],
+  ["/workflow", "収支・会計"],
 ] as const;
 
 interface AppSidebarProps {
-  current: "home" | "inventory";
+  current: "home" | "inventory" | "workflow";
 }
 
 export function AppSidebar({ current }: AppSidebarProps) {
@@ -22,7 +21,8 @@ export function AppSidebar({ current }: AppSidebarProps) {
         {links.map(([href, label]) => {
           const isCurrent =
             (current === "home" && label === "ホーム") ||
-            (current === "inventory" && label === "在庫");
+            (current === "inventory" && label === "在庫") ||
+            (current === "workflow" && label === "P0商品作業");
           return (
             <a aria-current={isCurrent ? "page" : undefined} href={href} key={label}>
               {label}

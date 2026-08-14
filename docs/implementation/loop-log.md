@@ -30,3 +30,15 @@
 - 検証: PWA/0円契約を含む36テスト合格。静的検査のService Worker global設定を修正後、全品質ゲートを再実行する。
 - 残る問題: ログアウト時のserver session失効接続、同期待ちのサーバー送信、P0全画面、実PostgreSQL/RLS E2E、iPhone Safari実機確認。
 - 次の一手: 全品質ゲートとproduction PWAの実画面を検証し、P0 API/DB接続を続ける。
+
+## Iteration 4 — 2026-08-15 P0一気通貫ワークスペース
+
+- 基準値: PWAの格納導線は動くが、仕入から会計CSVまでを同じ試験SKUで確認できる画面とAPI全工程テストがなかった。
+- 最大の問題: 画面デモ、domain状態遷移、APIの順序制約、DB契約が別々で、一気通貫の整合を証明できなかった。
+- 実装: `/workflow`、8操作のP0 domain/API契約、冪等性、順序/人確認/証拠の拒否、PostgreSQL migration、架空データの会計CSVローカル出力を追加。
+- 発見と修正: 写真カード内部の文字がチェック操作を遮る問題を、透明入力をカード全面へ広げて修正。取引貢献利益カードの未定義色を共通濃紺へ修正。
+- 自動検証: `npm.cmd run check` と `git diff --check` が合格。11 test files / 47 tests、行91.36%、分岐81.31%、関数100%。型、lint、format、本番buildも合格。
+- 実画面検証: Playwrightで仕入確認→写真4種→採寸4項目→説明候補→本人引渡し→注文→二重確認→梱包→発送→仕訳候補承認→CSV保存を完走。説明候補の採寸値4件一致、console error 0件、CSV内容一致。
+- 画面証拠: `output/playwright/p0-workflow-purchase.png`、`p0-workflow-mobile.png`、`p0-workflow-accounting.png`、`p0-workflow-accounting-mobile.png`。CSV証拠は架空データの `test-journal-candidate.csv`。
+- 残る問題: Web画面はまだAPI/DBへ接続していない。SQLは静的契約検査のみ。実PostgreSQL/RLS、認証/ログアウト、写真原本アップロード、PWA同期待ち送信、iPhone Safari実機は未確認。
+- 次の一手: P0のサーバー正本接続、権限/監査/メディア契約を実装し、実DBがなくても安全境界を自動検査できる範囲を拡張する。

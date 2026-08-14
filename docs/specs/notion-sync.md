@@ -60,6 +60,7 @@
 ## 2026-08-15 PWA同期
 
 - 親MVP仕様: 状態、対象、モバイル見出し、検証、リスク、未確認事項をPWA/Mac不要へ更新し、再取得確認済み。
-- 実装計画: SwiftUI/macOS ActionsをPWA/Windowsローカル検証へ更新し、37テスト・実画面・Service Workerの進捗を追記し、再取得確認済み。
+- 実装計画: SwiftUI/macOS ActionsをPWA/Windowsローカル検証へ更新し、P0一気通貫画面、47テスト、会計CSV、Service Workerの進捗を追記し、再取得確認済み。
 - タスク: `Build: iOS P0現場導線` を `Build: モバイルPWA P0現場導線` へ変更し、進捗を `進行中` に更新。Page ID `3bc1548a-971b-811c-9aad-fc9bcb44317a`。
+- タスク本文: SwiftUI固有のObjective/Acceptance Criteria/Technical DetailsをPWAへ置換し、47テストとP0画面完走、残るAPI/DB/iPhone実機項目を再取得確認済み。
 - 外部費用: 有料API、有料SaaS、従量課金、外部CI、デプロイ0件。

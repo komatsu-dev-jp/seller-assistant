@@ -4,6 +4,10 @@ import { describe, expect, it } from "vitest";
 
 const migrationPath = fileURLToPath(new URL("../migrations/0001_p0_core.sql", import.meta.url));
 const sql = readFileSync(migrationPath, "utf8");
+const workflowMigrationPath = fileURLToPath(
+  new URL("../migrations/0002_p0_workflow.sql", import.meta.url),
+);
+const workflowSql = readFileSync(workflowMigrationPath, "utf8");
 
 describe("P0 PostgreSQL migration contract", () => {
   it("enables and forces workspace RLS for business tables", () => {
@@ -39,5 +43,14 @@ describe("P0 PostgreSQL migration contract", () => {
       expect(sql).toContain(`'${forbidden}'`);
     }
     expect(sql).toContain("redacted_changes");
+  });
+
+  it("persists ordered P0 workflow actions with evidence and idempotency", () => {
+    expect(workflowSql).toContain("create table p0_workflow");
+    expect(workflowSql).toContain("create table p0_workflow_action");
+    expect(workflowSql).toContain("evidence_reference_ids uuid[] not null");
+    expect(workflowSql).toContain("primary key (workspace_id, sku_id, idempotency_key)");
+    expect(workflowSql).toContain("force row level security");
+    expect(workflowSql).toContain("workspace_id = app_workspace_id()");
   });
 });

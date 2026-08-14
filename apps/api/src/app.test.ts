@@ -65,4 +65,141 @@ describe("P0 workspace API", () => {
     expect((await app.inject(request)).statusCode).toBe(201);
     expect((await app.inject(request)).statusCode).toBe(409);
   });
+
+  it("advances the P0 workflow in order and replays the same idempotent request", async () => {
+    const app = buildApp({ repository: new InMemoryWorkflowRepository() });
+    apps.push(app);
+    const created = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceId}/skus`,
+      headers: { "x-actor-id": actorId },
+      payload: { skuCode: "SKU-000002", title: "試験シャツ", category: "トップス" },
+    });
+    const skuId = (created.json() as { id: string }).id;
+    const request = {
+      method: "POST" as const,
+      url: `/v1/workspaces/${workspaceId}/skus/${skuId}/p0-actions`,
+      headers: { "x-actor-id": actorId },
+      payload: {
+        action: "confirm_purchase",
+        idempotencyKey: "33333333-3333-4333-8333-333333333333",
+        evidenceReferenceIds: ["44444444-4444-4444-8444-444444444444"],
+        requiredFactsConfirmed: true,
+        manualChannelHandoff: false,
+      },
+    };
+    const first = await app.inject(request);
+    const replay = await app.inject(request);
+    expect(first.statusCode).toBe(200);
+    expect(first.json()).toMatchObject({ state: "purchase_confirmed", version: 2 });
+    expect(replay.json()).toEqual(first.json());
+  });
+
+  it("completes the representative P0 journey without skipping a human gate", async () => {
+    const app = buildApp({ repository: new InMemoryWorkflowRepository() });
+    apps.push(app);
+    const created = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceId}/skus`,
+      headers: { "x-actor-id": actorId },
+      payload: { skuCode: "SKU-000004", title: "一気通貫試験商品", category: "トップス" },
+    });
+    const skuId = (created.json() as { id: string }).id;
+    const actionUrl = `/v1/workspaces/${workspaceId}/skus/${skuId}/p0-actions`;
+    const journey = [
+      ["confirm_purchase", "10000000-0000-4000-8000-000000000001", false],
+      ["confirm_capture", "10000000-0000-4000-8000-000000000002", false],
+      ["confirm_listing", "10000000-0000-4000-8000-000000000003", true],
+      ["confirm_order", "10000000-0000-4000-8000-000000000004", false],
+      ["confirm_pick", "10000000-0000-4000-8000-000000000005", false],
+      ["confirm_pack", "10000000-0000-4000-8000-000000000006", false],
+      ["confirm_ship", "10000000-0000-4000-8000-000000000007", false],
+      ["approve_journal", "10000000-0000-4000-8000-000000000008", false],
+    ] as const;
+
+    for (const [action, idempotencyKey, manualChannelHandoff] of journey) {
+      const response = await app.inject({
+        method: "POST",
+        url: actionUrl,
+        headers: { "x-actor-id": actorId },
+        payload: {
+          action,
+          idempotencyKey,
+          evidenceReferenceIds: [idempotencyKey.replace("10000000", "20000000")],
+          requiredFactsConfirmed: true,
+          manualChannelHandoff,
+        },
+      });
+      expect(response.statusCode, response.body).toBe(200);
+    }
+
+    const finalResponse = await app.inject({
+      method: "POST",
+      url: actionUrl,
+      headers: { "x-actor-id": actorId },
+      payload: {
+        action: "approve_journal",
+        idempotencyKey: "10000000-0000-4000-8000-000000000008",
+        evidenceReferenceIds: ["20000000-0000-4000-8000-000000000008"],
+        requiredFactsConfirmed: true,
+        manualChannelHandoff: false,
+      },
+    });
+    expect(finalResponse.json()).toMatchObject({
+      state: "journal_approved",
+      lastAction: "approve_journal",
+      version: 9,
+    });
+  });
+
+  it("rejects workflow skips and idempotency payload conflicts", async () => {
+    const app = buildApp({ repository: new InMemoryWorkflowRepository() });
+    apps.push(app);
+    const created = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceId}/skus`,
+      headers: { "x-actor-id": actorId },
+      payload: { skuCode: "SKU-000003", title: "試験商品", category: "トップス" },
+    });
+    const skuId = (created.json() as { id: string }).id;
+    const actionUrl = `/v1/workspaces/${workspaceId}/skus/${skuId}/p0-actions`;
+    const skipped = await app.inject({
+      method: "POST",
+      url: actionUrl,
+      headers: { "x-actor-id": actorId },
+      payload: {
+        action: "confirm_listing",
+        idempotencyKey: "55555555-5555-4555-8555-555555555555",
+        evidenceReferenceIds: ["66666666-6666-4666-8666-666666666666"],
+        requiredFactsConfirmed: true,
+        manualChannelHandoff: true,
+      },
+    });
+    expect(skipped.statusCode).toBe(409);
+
+    const basePayload = {
+      action: "confirm_purchase",
+      idempotencyKey: "77777777-7777-4777-8777-777777777777",
+      evidenceReferenceIds: ["88888888-8888-4888-8888-888888888888"],
+      requiredFactsConfirmed: true,
+      manualChannelHandoff: false,
+    };
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: actionUrl,
+          headers: { "x-actor-id": actorId },
+          payload: basePayload,
+        })
+      ).statusCode,
+    ).toBe(200);
+    const conflict = await app.inject({
+      method: "POST",
+      url: actionUrl,
+      headers: { "x-actor-id": actorId },
+      payload: { ...basePayload, manualChannelHandoff: true },
+    });
+    expect(conflict.statusCode).toBe(409);
+  });
 });

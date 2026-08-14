@@ -1,8 +1,10 @@
 import Fastify from "fastify";
 import {
   apiErrorSchema,
+  advanceP0WorkflowRequestSchema,
   createSkuRequestSchema,
   inventorySummarySchema,
+  p0WorkflowResponseSchema,
   skuResponseSchema,
   workspaceIdSchema,
   type ApiError,
@@ -78,6 +80,38 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const summary = await repository.inventorySummary(workspace.data, actor);
       return reply.send(inventorySummarySchema.parse(summary));
+    } catch (error) {
+      const mapped = mapRepositoryError(error, request.id);
+      return reply.code(mapped.status).send(mapped.payload);
+    }
+  });
+
+  app.post<{
+    Params: { workspaceId: string; skuId: string };
+    Body: unknown;
+    Reply: ReturnType<typeof p0WorkflowResponseSchema.parse> | ApiError;
+  }>("/v1/workspaces/:workspaceId/skus/:skuId/p0-actions", async (request, reply) => {
+    const workspace = workspaceIdSchema.safeParse(request.params.workspaceId);
+    const sku = workspaceIdSchema.safeParse(request.params.skuId);
+    const input = advanceP0WorkflowRequestSchema.safeParse(request.body);
+    const actor = parseActor(request.headers["x-actor-id"]);
+    if (!workspace.success || !sku.success || !input.success || !actor) {
+      return reply.code(400).send(
+        apiErrorSchema.parse({
+          code: "invalid_request",
+          message: "workspace、SKU、actor、またはP0操作を確認してください。",
+          requestId: request.id,
+        }),
+      );
+    }
+    try {
+      const result = await repository.advanceP0Workflow(
+        workspace.data,
+        sku.data,
+        actor,
+        input.data,
+      );
+      return reply.send(p0WorkflowResponseSchema.parse(result));
     } catch (error) {
       const mapped = mapRepositoryError(error, request.id);
       return reply.code(mapped.status).send(mapped.payload);

@@ -26,7 +26,9 @@ export default function Home() {
             <h1>今日の確認</h1>
             <p>止まっている作業を、根拠を見ながら順番に解決します。</p>
           </div>
-          <button type="button">＋ 仕入を登録</button>
+          <a className="primaryButton" href="/workflow">
+            ＋ 試験商品を開く
+          </a>
         </header>
 
         <section className="checkGrid" aria-label="未解決の概要">
@@ -71,8 +73,8 @@ export default function Home() {
               <h3>商品と保管場所を読み取る</h3>
               <p>商品コードと「撮影室A › 棚03 › 段2」を確認してから格納します。</p>
             </div>
-            <a className="primaryButton" href="/inventory">
-              格納作業を開く
+            <a className="primaryButton" href="/workflow">
+              一気通貫作業を開く
             </a>
           </div>
         </section>

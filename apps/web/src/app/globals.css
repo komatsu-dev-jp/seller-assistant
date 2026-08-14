@@ -919,6 +919,40 @@ a {
   text-decoration: none;
   box-shadow: 0 10px 24px rgba(36, 107, 253, 0.22);
 }
+.mobileWorkflowAction {
+  min-height: 64px;
+  padding: 12px 16px;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+  color: var(--ink);
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  text-decoration: none;
+}
+.mobileWorkflowAction > span:first-child {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  color: white;
+  background: var(--ink);
+  border-radius: 9px;
+}
+.mobileWorkflowAction strong,
+.mobileWorkflowAction small {
+  display: block;
+}
+.mobileWorkflowAction strong {
+  font-size: 13px;
+}
+.mobileWorkflowAction small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 9px;
+}
 .mobilePrimaryAction > span:first-child {
   font-size: 25px;
 }
@@ -1186,5 +1220,542 @@ a {
     width: 520px;
     transform: translateX(-50%);
     border-inline: 1px solid var(--line);
+  }
+}
+
+/* P0 item workspace */
+.workflowContent {
+  max-width: 1440px;
+}
+.zeroCostBadge {
+  align-self: center;
+  padding: 9px 13px;
+  color: #087653;
+  background: #e5f7ef;
+  border: 1px solid #a7dec9;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 900;
+}
+.workflowBoard {
+  display: grid;
+  gap: 16px;
+}
+.workflowStages {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+}
+.workflowStages button {
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  color: var(--muted);
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  font-weight: 800;
+}
+.workflowStages button span {
+  width: 25px;
+  height: 25px;
+  display: grid;
+  place-items: center;
+  color: white;
+  background: #9ba8ba;
+  border-radius: 50%;
+  font-size: 11px;
+}
+.workflowStages button.active {
+  color: var(--blue);
+  border-color: var(--blue);
+  box-shadow: 0 8px 24px rgb(42 103 246 / 12%);
+}
+.workflowStages button.active span {
+  background: var(--blue);
+}
+.workflowStages button.done {
+  color: #087653;
+  border-color: #a7dec9;
+}
+.workflowStages button.done span {
+  background: var(--green);
+}
+.workflowStages button:disabled {
+  cursor: not-allowed;
+  opacity: 0.64;
+}
+.workflowItemSummary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  padding: 0;
+  overflow: hidden;
+}
+.workflowItemSummary > div {
+  min-width: 0;
+  padding: 15px 18px;
+  border-inline-end: 1px solid var(--line);
+}
+.workflowItemSummary > div:last-child {
+  border-inline-end: 0;
+}
+.workflowItemSummary span,
+.workflowItemSummary strong {
+  display: block;
+}
+.workflowItemSummary span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+}
+.workflowItemSummary strong {
+  margin-top: 4px;
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.workflowPanel {
+  padding: 24px;
+}
+.workflowPanelHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--line);
+}
+.workflowPanelHead h2,
+.workflowPanelHead p {
+  margin: 0;
+}
+.workflowPanelHead h2 {
+  margin-top: 5px;
+  font-size: 22px;
+}
+.workflowSplit {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.7fr) 1.3fr;
+  gap: 18px;
+  margin-top: 18px;
+}
+.receiptPreview {
+  min-height: 180px;
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  color: white;
+  background: linear-gradient(145deg, #172c4c, #2f65a6);
+  border-radius: 14px;
+}
+.receiptPreview span {
+  color: #b9d5ff;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+.receiptPreview strong {
+  margin-top: 5px;
+  font-size: 20px;
+}
+.receiptPreview p {
+  margin: 12px 0 0;
+  font-size: 11px;
+  line-height: 1.6;
+  opacity: 0.86;
+}
+.factList {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.factList div {
+  padding: 17px;
+  border-bottom: 1px solid var(--line);
+  border-inline-end: 1px solid var(--line);
+}
+.factList div:nth-child(even) {
+  border-inline-end: 0;
+}
+.factList div:nth-last-child(-n + 2) {
+  border-bottom: 0;
+}
+.factList dt {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+}
+.factList dd {
+  margin: 6px 0 0;
+  font-size: 14px;
+  font-weight: 900;
+}
+.humanGate {
+  margin-top: 18px;
+  padding: 16px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  background: #f3f7fc;
+  border: 1px solid #dce6f3;
+  border-radius: 13px;
+}
+.humanGate strong,
+.humanGate p {
+  display: block;
+  margin: 0;
+}
+.humanGate p {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+.humanGate button,
+.workflowNext button,
+.exportButton {
+  min-height: 42px;
+  padding: 0 16px;
+  flex: 0 0 auto;
+  color: white;
+  background: var(--blue);
+  border: 0;
+  border-radius: 9px;
+  font-weight: 900;
+}
+.humanGate button:disabled,
+.workflowNext button:disabled,
+.exportButton:disabled {
+  color: #8894a5;
+  background: #e2e7ee;
+  cursor: not-allowed;
+}
+.workflowNext {
+  margin-top: 17px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+}
+.workflowNext span {
+  color: var(--muted);
+  font-size: 11px;
+}
+.photoChecklist {
+  margin-top: 18px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+.photoChecklist label {
+  position: relative;
+  min-height: 112px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-end;
+  background: #f4f6f9;
+  border: 1px dashed #aeb9c8;
+  border-radius: 12px;
+  cursor: pointer;
+}
+.photoChecklist label.checked {
+  background: #ecf8f3;
+  border: 1px solid #8ad0b7;
+}
+.photoChecklist input {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.photoChecklist label:has(input:focus-visible) {
+  outline: 3px solid color-mix(in srgb, var(--blue), transparent 45%);
+  outline-offset: 2px;
+}
+.photoChecklist label > span {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  color: white;
+  background: var(--blue);
+  border-radius: 6px;
+}
+.photoChecklist label.checked > span {
+  background: var(--green);
+}
+.photoChecklist strong {
+  margin-top: 10px;
+  font-size: 13px;
+}
+.photoChecklist small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 9px;
+}
+.measurementGrid {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+.measurementGrid > label {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+}
+.measurementGrid label > span {
+  margin-top: 5px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--ink);
+  font-size: 12px;
+}
+.measurementGrid input {
+  width: 100%;
+  min-width: 0;
+  padding: 10px;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 900;
+}
+.candidateNotice {
+  margin: 18px 0 14px;
+  padding: 14px 16px;
+  color: #255445;
+  background: #eff9f5;
+  border: 1px solid #bfe4d5;
+  border-radius: 11px;
+}
+.candidateNotice strong,
+.candidateNotice p {
+  display: block;
+  margin: 0;
+}
+.candidateNotice p {
+  margin-top: 4px;
+  font-size: 10px;
+}
+.workflowPanel textarea {
+  width: 100%;
+  padding: 16px;
+  color: var(--ink);
+  background: #fafbfd;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  resize: vertical;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.8;
+}
+.listingChecks {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.listingChecks span {
+  padding: 5px 8px;
+  color: #7c4f08;
+  background: #fff5dc;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 900;
+}
+.listingChecks span.pass {
+  color: #087653;
+  background: #e8f8f1;
+}
+.orderTimeline {
+  margin-top: 18px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.orderTimeline > div {
+  min-height: 104px;
+  padding: 14px;
+  display: flex;
+  gap: 9px;
+  background: #f5f7fa;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+}
+.orderTimeline > div > span {
+  width: 23px;
+  height: 23px;
+  flex: 0 0 23px;
+  display: grid;
+  place-items: center;
+  background: #dce2ea;
+  border-radius: 50%;
+}
+.orderTimeline > div.done {
+  background: #eef9f5;
+  border-color: #b6dfd0;
+}
+.orderTimeline > div.done > span {
+  color: white;
+  background: var(--green);
+}
+.orderTimeline strong,
+.orderTimeline small {
+  display: block;
+}
+.orderTimeline strong {
+  font-size: 12px;
+}
+.orderTimeline small {
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.5;
+}
+.profitWaterfall {
+  margin-top: 18px;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+}
+.profitWaterfall > div {
+  min-height: 82px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background: #f5f7fa;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.profitWaterfall span {
+  color: var(--muted);
+  font-size: 10px;
+}
+.profitWaterfall strong {
+  font-size: 16px;
+}
+.profitWaterfall .total {
+  color: white;
+  background: var(--ink);
+  border-color: var(--ink);
+}
+.profitWaterfall .total span {
+  color: #cbd9ed;
+}
+.accountingDisclaimer {
+  margin: 12px 0;
+  padding: 10px 12px;
+  color: #734f14;
+  background: #fff6df;
+  border-radius: 9px;
+  font-size: 10px;
+  font-weight: 800;
+}
+.journalCandidate {
+  padding: 15px;
+  display: grid;
+  gap: 5px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+}
+.journalCandidate span,
+.journalCandidate small {
+  color: var(--muted);
+  font-size: 9px;
+}
+.journalCandidate strong {
+  font-size: 14px;
+}
+.exportButton {
+  width: 100%;
+  margin-top: 12px;
+}
+
+@media (max-width: 900px) {
+  .workflowStages {
+    grid-template-columns: repeat(5, minmax(120px, 1fr));
+    overflow-x: auto;
+    padding-bottom: 3px;
+  }
+  .workflowItemSummary,
+  .photoChecklist,
+  .measurementGrid,
+  .orderTimeline,
+  .profitWaterfall {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .workflowItemSummary > div:nth-child(2) {
+    border-inline-end: 0;
+  }
+  .workflowItemSummary > div:nth-child(-n + 2) {
+    border-bottom: 1px solid var(--line);
+  }
+}
+
+@media (max-width: 640px) {
+  .workflowContent {
+    padding: 18px 14px 90px;
+  }
+  .workflowContent .topbar {
+    align-items: flex-start;
+  }
+  .workflowContent .topbar h1 {
+    font-size: 24px;
+  }
+  .zeroCostBadge {
+    align-self: flex-start;
+  }
+  .workflowPanel {
+    padding: 17px;
+  }
+  .workflowPanelHead {
+    align-items: flex-start;
+  }
+  .workflowPanelHead h2 {
+    font-size: 18px;
+  }
+  .workflowSplit,
+  .factList,
+  .photoChecklist,
+  .measurementGrid,
+  .orderTimeline,
+  .profitWaterfall {
+    grid-template-columns: 1fr;
+  }
+  .factList div,
+  .factList div:nth-child(even),
+  .factList div:nth-last-child(-n + 2) {
+    border-inline-end: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .factList div:last-child {
+    border-bottom: 0;
+  }
+  .humanGate,
+  .workflowNext {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .humanGate button,
+  .workflowNext button {
+    width: 100%;
   }
 }
