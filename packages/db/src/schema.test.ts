@@ -32,6 +32,10 @@ const sessionWorkspaceMigrationPath = fileURLToPath(
   new URL("../migrations/0008_session_workspace.sql", import.meta.url),
 );
 const sessionWorkspaceSql = readFileSync(sessionWorkspaceMigrationPath, "utf8");
+const workAssignmentMigrationPath = fileURLToPath(
+  new URL("../migrations/0009_work_assignment.sql", import.meta.url),
+);
+const workAssignmentSql = readFileSync(workAssignmentMigrationPath, "utf8");
 
 describe("P0 PostgreSQL migration contract", () => {
   it("enables and forces workspace RLS for business tables", () => {
@@ -132,5 +136,17 @@ describe("P0 PostgreSQL migration contract", () => {
     expect(sessionWorkspaceSql).toContain("revoke all on function");
     expect(sessionWorkspaceSql).toContain("auth_session_workspace_fk");
     expect(sessionWorkspaceSql).toContain("alter column workspace_id set not null");
+  });
+
+  it("limits field work by location branch, operation and time", () => {
+    expect(workAssignmentSql).toContain("create table work_assignment");
+    expect(workAssignmentSql).toContain("location_root_id uuid not null");
+    expect(workAssignmentSql).toContain("expires_at > starts_at");
+    expect(workAssignmentSql).toContain("create policy workspace_isolation on work_assignment");
+    expect(workAssignmentSql).toContain("create or replace function has_active_work_assignment");
+    expect(workAssignmentSql).toContain("assignment.starts_at <= requested_at");
+    expect(workAssignmentSql).toContain("assignment.expires_at > requested_at");
+    expect(workAssignmentSql).toContain("assignment.revoked_at is null");
+    expect(workAssignmentSql).toContain("grant select on work_assignment to resale_app_runtime");
   });
 });

@@ -535,7 +535,7 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
     try {
       return await this.sql.begin(async (transaction) => {
         await setWorkspace(transaction, workspaceId);
-        await requireRole(transaction, workspaceId, actor.identityId, [
+        const role = await requireRole(transaction, workspaceId, actor.identityId, [
           "owner",
           "inventory_manager",
           "field_worker",
@@ -607,6 +607,19 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
             "conflict",
             "The inventory item or active storage location could not be confirmed",
           );
+        }
+        if (role === "field_worker") {
+          const assignments = await transaction<Array<{ allowed: boolean }>>`
+            select has_active_work_assignment(
+              ${workspaceId}, ${actor.identityId}, 'putaway', ${location.id}, now()
+            ) as allowed
+          `;
+          if (!assignments[0]?.allowed) {
+            throw new RepositoryError(
+              "forbidden",
+              "The field worker is not assigned to this location branch and operation",
+            );
+          }
         }
         if (
           unit.inventory_label_version !== input.inventoryLabelVersion ||

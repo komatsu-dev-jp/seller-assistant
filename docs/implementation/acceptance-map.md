@@ -95,3 +95,22 @@ P0の必須ACは AC-001、003〜008、013〜014、018〜023、025〜026、028〜
 - 全体検証: 16 test files / 76 tests、line 91.36%、branch 81.81%、functions 100%、format/lint/type/build合格。
 - 費用: 有料API、有料SaaS、外部CI、デプロイ、Apple Developer登録0件。Windows PC内のみ。
 - 残り: 全表/全roleのRLSマトリクス、注文等の実API、写真原本Storage、実iPhone Safariのホーム画面追加/カメラ/圏外復帰。
+
+## Iteration 12の実証範囲
+
+- 全業務テーブル: workspaceを持つ21テーブルについて、RLS有効、強制RLS有効、`USING`/`WITH CHECK`のworkspace policyが各1件であることを実PostgreSQL catalogで確認。
+- DB権限: 制限runtime roleが21業務テーブルへDELETE/TRUNCATE/REFERENCES/TRIGGERを持たないことを実DBで確認。ログイン成功時の失敗回数削除に必要な認証専用テーブルは対象外として区別。
+- 外注role: `field_worker`の実credential/sessionを作り、role取得成功、SKU作成403、仕入確定409を確認。URLの別workspace指定403も継続確認。
+- 結果: PostgreSQL 18.6の使い捨てDBで`postgres-integration: PASS (restricted role, 21-table RLS matrix, field-worker denial, ...)`。
+- 費用: PC内だけ、外部費用・外部CI・公開0件。
+- 残り: 場所枝/期限付き割当、住所期限、写真Storage、注文等の実API、実iPhone Safari。
+
+## Iteration 13の実証範囲
+
+- 外注割当: `work_assignment`へ担当者、場所枝の根、作業種類、開始、期限、取消を分離保存。ラベルを読んだだけでは権限を増やさない。
+- 場所枝: 対象場所から親をたどり、担当枝の内側だけを許可。`field_worker`は格納担当なし403、担当外の棚403、担当内の棚だけ201。
+- role分離: owner/inventory_managerは管理作業として格納可能。field_workerだけ期限付き割当を必須化し、仕入確定やSKU作成は引き続き拒否。
+- DB: 0001〜0009、22業務テーブルRLS、同一操作再送、二重読取、容量、引当、棚卸を含む実PostgreSQL結合テストPASS。
+- 全体検証: 16 test files / 77 tests、line 91.36%、branch 81.81%、functions 100%、format/lint/type/build合格。
+- 費用: Windows PC内だけ、外部費用・外部CI・公開0件。
+- 残り: 割当解除時の端末同期、場所写真の承認/取得、住所期限、注文等の実API、実iPhone Safari。

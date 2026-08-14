@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import postgres from "postgres";
 import { buildApp } from "./app.js";
-import { PostgresLoginService } from "./auth.js";
+import { hashPassword, PostgresLoginService } from "./auth.js";
 import { bootstrapInitialOwner } from "./bootstrap-owner.js";
 import { assertRestrictedDatabaseRole } from "./db-security.js";
 import { PostgresWorkflowRepository } from "./repository.js";
@@ -21,12 +21,96 @@ function hashFixture(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }
 
+const workspaceProtectedTables = [
+  "audit_event",
+  "count_observation",
+  "count_session",
+  "financial_event",
+  "idempotency_record",
+  "inventory_discrepancy",
+  "inventory_label",
+  "inventory_movement",
+  "inventory_unit",
+  "location_node",
+  "location_photo",
+  "measurement_attempt",
+  "media_asset",
+  "order_allocation",
+  "outbox_event",
+  "p0_workflow",
+  "p0_workflow_action",
+  "product_sku",
+  "sales_order",
+  "scan_session",
+  "workspace_membership",
+  "work_assignment",
+] as const;
+
 await assert.rejects(
   () => assertRestrictedDatabaseRole(adminUrl),
   /restricted LOGIN role/u,
   "The API must reject an admin DATABASE_URL",
 );
 await assertRestrictedDatabaseRole(runtimeUrl);
+
+const catalog = postgres(adminUrl, { max: 1 });
+try {
+  const protections = await catalog<
+    Array<{
+      table_name: string;
+      row_security: boolean;
+      force_row_security: boolean;
+      policy_count: number;
+      workspace_policy_count: number;
+    }>
+  >`
+    select table_info.relname as table_name,
+           table_info.relrowsecurity as row_security,
+           table_info.relforcerowsecurity as force_row_security,
+           count(policy.policyname)::integer as policy_count,
+           count(policy.policyname) filter (
+             where policy.qual like '%workspace_id = app_workspace_id()%'
+               and policy.with_check like '%workspace_id = app_workspace_id()%'
+           )::integer as workspace_policy_count
+    from pg_class table_info
+    join pg_namespace namespace on namespace.oid = table_info.relnamespace
+    left join pg_policies policy
+      on policy.schemaname = namespace.nspname and policy.tablename = table_info.relname
+    where namespace.nspname = 'public'
+      and table_info.relname in ${catalog(workspaceProtectedTables)}
+    group by table_info.relname, table_info.relrowsecurity, table_info.relforcerowsecurity
+    order by table_info.relname
+  `;
+  assert.deepEqual(
+    protections.map((row) => row.table_name),
+    [...workspaceProtectedTables].sort(),
+    "Every workspace business table must be present in the RLS matrix",
+  );
+  for (const protection of protections) {
+    assert.equal(protection.row_security, true, `${protection.table_name} must enable RLS`);
+    assert.equal(protection.force_row_security, true, `${protection.table_name} must force RLS`);
+    assert.equal(protection.policy_count, 1, `${protection.table_name} must have one policy`);
+    assert.equal(
+      protection.workspace_policy_count,
+      1,
+      `${protection.table_name} must isolate USING and WITH CHECK by workspace`,
+    );
+  }
+  const dangerousGrants = await catalog<Array<{ table_name: string; privilege_type: string }>>`
+    select table_name, privilege_type
+    from information_schema.role_table_grants
+    where grantee = 'resale_app_runtime'
+      and table_name in ${catalog(workspaceProtectedTables)}
+      and privilege_type in ('DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER')
+  `;
+  assert.equal(
+    dangerousGrants.length,
+    0,
+    `The runtime role must not receive destructive business grants: ${JSON.stringify(dangerousGrants)}`,
+  );
+} finally {
+  await catalog.end({ timeout: 5 });
+}
 
 const owner = await bootstrapInitialOwner(adminUrl, {
   email: "owner@example.test",
@@ -103,6 +187,8 @@ try {
   const binALabelId = randomUUID();
   const binBLabelId = randomUUID();
   const capacityBinLabelId = randomUUID();
+  const workerPassword = "fictional-field-worker-password";
+  const workerPasswordRecord = await hashPassword(workerPassword);
   const fixtureAdmin = postgres(adminUrl, { max: 1 });
   try {
     await fixtureAdmin`
@@ -112,12 +198,59 @@ try {
     `;
     await fixtureAdmin`
       insert into workspace_membership (workspace_id, identity_id, role) values
-        (${owner.workspaceId}, ${workerId}, 'inventory_manager'),
+        (${owner.workspaceId}, ${workerId}, 'field_worker'),
         (${owner.workspaceId}, ${shippingId}, 'shipping')
+    `;
+    await fixtureAdmin`
+      insert into auth_credential (
+        identity_id, email_normalized, password_hash, password_salt,
+        hash_algorithm, scrypt_n, scrypt_r, scrypt_p
+      ) values (
+        ${workerId}, 'worker@example.test', ${workerPasswordRecord.hash},
+        ${workerPasswordRecord.salt}, 'scrypt-v1', ${workerPasswordRecord.n},
+        ${workerPasswordRecord.r}, ${workerPasswordRecord.p}
+      )
     `;
   } finally {
     await fixtureAdmin.end({ timeout: 5 });
   }
+
+  const workerLogin = await app.inject({
+    method: "POST",
+    url: "/v1/session/login",
+    payload: { email: "worker@example.test", password: workerPassword },
+  });
+  assert.equal(workerLogin.statusCode, 204, workerLogin.body);
+  const workerSetCookie = workerLogin.headers["set-cookie"];
+  assert.equal(typeof workerSetCookie, "string");
+  const workerCookie = String(workerSetCookie).split(";", 1)[0];
+  const workerContext = await app.inject({
+    method: "GET",
+    url: "/v1/session/context",
+    headers: { cookie: workerCookie },
+  });
+  assert.equal(workerContext.statusCode, 200, workerContext.body);
+  assert.equal(workerContext.json<{ role: string }>().role, "field_worker");
+  const workerCreateSku = await app.inject({
+    method: "POST",
+    url: `/v1/workspaces/${owner.workspaceId}/skus`,
+    headers: { cookie: workerCookie },
+    payload: { skuCode: "SKU-WORKER-DENIED", title: "拒否確認", category: "試験" },
+  });
+  assert.equal(workerCreateSku.statusCode, 403, workerCreateSku.body);
+  const workerPurchaseApproval = await app.inject({
+    method: "POST",
+    url: `/v1/workspaces/${owner.workspaceId}/skus/${skuId}/p0-actions`,
+    headers: { cookie: workerCookie },
+    payload: {
+      action: "confirm_purchase",
+      idempotencyKey: randomUUID(),
+      evidenceReferenceIds: [randomUUID()],
+      requiredFactsConfirmed: true,
+      manualChannelHandoff: false,
+    },
+  });
+  assert.equal(workerPurchaseApproval.statusCode, 409, workerPurchaseApproval.body);
 
   const inventory = postgres(runtimeUrl, { max: 8 });
   try {
@@ -187,10 +320,49 @@ try {
       idempotencyKey: "88888888-8888-4888-8888-888888888888",
       humanConfirmed: true,
     } as const;
+    const workerPutawayWithoutAssignment = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/inventory/putaway`,
+      headers: { cookie: workerCookie },
+      payload: apiPutawayPayload,
+    });
+    assert.equal(
+      workerPutawayWithoutAssignment.statusCode,
+      403,
+      workerPutawayWithoutAssignment.body,
+    );
+
+    const assignmentAdmin = postgres(adminUrl, { max: 1 });
+    try {
+      await assignmentAdmin`
+        insert into work_assignment (
+          workspace_id, identity_id, location_root_id, operation,
+          starts_at, expires_at, created_by
+        ) values (
+          ${owner.workspaceId}, ${workerId}, ${binBId}, 'putaway',
+          now() - interval '1 minute', now() + interval '1 hour', ${owner.identityId}
+        )
+      `;
+    } finally {
+      await assignmentAdmin.end({ timeout: 5 });
+    }
+    const workerPutawayOutsideBranch = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/inventory/putaway`,
+      headers: { cookie: workerCookie },
+      payload: {
+        ...apiPutawayPayload,
+        inventoryNumber: "INV-900001",
+        locationCode: "BIN-A",
+        idempotencyKey: "99999999-9999-4999-8999-999999999999",
+      },
+    });
+    assert.equal(workerPutawayOutsideBranch.statusCode, 403, workerPutawayOutsideBranch.body);
+
     const apiPutaway = await app.inject({
       method: "POST",
       url: `/v1/workspaces/${owner.workspaceId}/inventory/putaway`,
-      headers: { cookie },
+      headers: { cookie: workerCookie },
       payload: apiPutawayPayload,
     });
     assert.equal(apiPutaway.statusCode, 201, apiPutaway.body);
@@ -208,7 +380,7 @@ try {
     const apiPutawayReplay = await app.inject({
       method: "POST",
       url: `/v1/workspaces/${owner.workspaceId}/inventory/putaway`,
-      headers: { cookie },
+      headers: { cookie: workerCookie },
       payload: apiPutawayPayload,
     });
     assert.equal(apiPutawayReplay.statusCode, 201, apiPutawayReplay.body);
@@ -216,7 +388,7 @@ try {
     const apiPutawayConflict = await app.inject({
       method: "POST",
       url: `/v1/workspaces/${owner.workspaceId}/inventory/putaway`,
-      headers: { cookie },
+      headers: { cookie: workerCookie },
       payload: { ...apiPutawayPayload, locationCode: "BIN-A" },
     });
     assert.equal(apiPutawayConflict.statusCode, 409, apiPutawayConflict.body);
@@ -428,5 +600,5 @@ try {
 }
 
 process.stdout.write(
-  "postgres-integration: PASS (restricted role, login, RLS, double scan, capacity, allocation, stocktake, logout)\n",
+  "postgres-integration: PASS (restricted role, 22-table RLS matrix, assignment-scoped field worker, login, double scan, capacity, allocation, stocktake, logout)\n",
 );

@@ -120,3 +120,26 @@
 - 費用: PC内のNode.js、Next.js、PostgreSQL、Playwrightだけを使用。外部費用、Apple Developer、外部CI、公開、デプロイ0件。
 - 残る問題: 全表/全roleのRLSマトリクス、注文等の実API、写真原本Storage、実iPhone Safari確認は未完了。
 - 次の一手: role/RLS越境マトリクスを実DBへ追加し、P0の残る確定操作を同じsession境界へ接続する。
+
+## Iteration 12 — 2026-08-15 全業務テーブルRLSと外注role
+
+- 基準値: 代表テーブルの別workspace拒否は通っていたが、workspaceを持つ全業務テーブルと外注roleの実credential経路を一括検証していなかった。
+- 実装: PostgreSQL catalogから21業務テーブルを固定一覧で照合し、RLS、強制RLS、workspaceの`USING`/`WITH CHECK` policyを各テーブルで必須化する結合assertを追加した。runtime roleの破壊的な業務テーブルgrantも0件に固定した。
+- role検証: 架空の`field_worker` credentialで実login/session contextを通し、在庫現場roleであること、SKU作成403、仕入確定409を確認した。
+- 発見と修正1: 最初のgrant検査が、login成功後に失敗回数を消す認証専用テーブルのDELETEも誤検出した。21業務テーブルだけへ対象を限定し、認証の正常な後片付けは維持した。
+- 発見と修正2: postgres.jsの空結果はArray派生型のため`deepStrictEqual([])`が失敗した。件数0の明示比較へ変更した。
+- 検証: PostgreSQL 18.6の使い捨てDBへ0001〜0008を適用し、21テーブル、外注role、既存の二重読取/容量/同時引当/棚卸/logoutを含む結合テストPASS。
+- 費用: Windows PC内だけ。有料API、有料SaaS、外部CI、公開、デプロイ0件。
+- 残る問題: 場所枝/期限付き割当、住所期限、写真Storage、注文等の実API、実iPhone Safariは未完了。
+- 次の一手: 外注の場所枝/作業期限をsessionとAPIへ加え、割当外の在庫・写真取得を拒否する。
+
+## Iteration 13 — 2026-08-15 外注の場所枝・作業・期限付き割当
+
+- 基準値: field_workerのrole制限は通ったが、在庫作業の担当場所と期限をDBで限定していなかった。
+- 実装: `work_assignment`、workspace RLS、場所枝を親方向へ照合する`has_active_work_assignment`を追加。field_workerの格納APIだけは、対象場所を含む枝、`putaway`作業、開始済み、期限内、未取消をすべて必須化した。
+- 最小権限: runtime roleは割当を参照できるだけで作成/変更できない。ラベルpayloadやURLだけでは割当を作らず、owner/inventory_managerの管理権限と分離した。
+- 実DB: 担当なし403、BIN-Bだけの担当でBIN-Aは403、BIN-Bは201。同じ格納再送は同じ結果、異なるpayloadは409。22業務テーブルのRLS matrixも継続PASS。
+- 自動検証: 16 test files / 77 tests、line 91.36%、branch 81.81%、functions 100%、format/lint/type/build合格。0001〜0009を新規DBへ適用して結合テストPASS。
+- 費用: Windows PC内だけ。有料API、有料SaaS、外部CI、公開、デプロイ0件。
+- 残る問題: 割当解除後の端末cache消去、場所写真の承認/取得、住所期限、注文等の実API、実iPhone Safariは未完了。
+- 次の一手: 場所写真を原本/審査/位置EXIF除去済み派生へ分け、担当枝内だけ取得できる契約を追加する。
