@@ -60,6 +60,14 @@ const shippingAssignmentMigrationPath = fileURLToPath(
   new URL("../migrations/0015_shipping_assignment_checked_codes.sql", import.meta.url),
 );
 const shippingAssignmentSql = readFileSync(shippingAssignmentMigrationPath, "utf8");
+const teamAssignmentMigrationPath = fileURLToPath(
+  new URL("../migrations/0016_team_assignment_management.sql", import.meta.url),
+);
+const teamAssignmentSql = readFileSync(teamAssignmentMigrationPath, "utf8");
+const researchMigrationPath = fileURLToPath(
+  new URL("../migrations/0017_capture_research_candidates.sql", import.meta.url),
+);
+const researchSql = readFileSync(researchMigrationPath, "utf8");
 
 describe("P0 PostgreSQL migration contract", () => {
   it("enables and forces workspace RLS for business tables", () => {
@@ -101,7 +109,7 @@ describe("P0 PostgreSQL migration contract", () => {
     expect(shippingAssignmentSql).toContain("app_has_valid_code_check_digit");
     expect(shippingAssignmentSql).toContain("create table order_assignment");
     expect(shippingAssignmentSql).toContain("enable row level security");
-    expect(shippingAssignmentSql).toContain("expires_at <= starts_at + interval '30 days'");
+    expect(shippingAssignmentSql).toContain("expires_at <= starts_at + interval '24 hours'");
     expect(shippingAssignmentSql).toContain("order_assignment_no_overlap");
     expect(shippingAssignmentSql).toContain("tstzrange(starts_at, expires_at, '[)') with &&");
   });
@@ -249,5 +257,45 @@ describe("P0 PostgreSQL migration contract", () => {
     expect(auditContextSql).toContain("reason_code text not null");
     expect(auditContextSql).toContain("approved_by uuid references app_identity(id)");
     expect(auditContextSql).toContain("never store free-form addresses");
+  });
+
+  it("drops the legacy inventory-number constraint before upgrading populated rows", () => {
+    const dropLegacyConstraintAt = shippingAssignmentSql.indexOf(
+      "alter table inventory_unit drop constraint inventory_unit_inventory_number_check",
+    );
+    const convertExistingRowsAt = shippingAssignmentSql.indexOf("update inventory_unit");
+    const addCheckedConstraintAt = shippingAssignmentSql.indexOf(
+      "alter table inventory_unit add constraint inventory_unit_inventory_number_check",
+    );
+
+    expect(dropLegacyConstraintAt).toBeGreaterThan(-1);
+    expect(convertExistingRowsAt).toBeGreaterThan(dropLegacyConstraintAt);
+    expect(addCheckedConstraintAt).toBeGreaterThan(convertExistingRowsAt);
+    expect(shippingAssignmentSql).toContain(
+      "alter table inventory_label disable trigger inventory_label_target_guard",
+    );
+    expect(shippingAssignmentSql).toContain(
+      "alter table inventory_label enable trigger inventory_label_target_guard",
+    );
+  });
+
+  it("manages local members and exact 24-hour assignments without broad table grants", () => {
+    expect(teamAssignmentSql).toContain("create table inventory_unit_assignment");
+    expect(teamAssignmentSql).toContain("has_active_inventory_unit_assignment");
+    expect(teamAssignmentSql).toContain("app_create_local_member");
+    expect(teamAssignmentSql).toContain("app_create_team_assignment");
+    expect(teamAssignmentSql).toContain("app_revoke_team_assignment");
+    expect(teamAssignmentSql).toContain("interval '24 hours'");
+    expect(teamAssignmentSql).not.toMatch(/grant\s+(insert|update).*auth_credential/iu);
+  });
+
+  it("stores OCR and market observations only as human-reviewed candidates", () => {
+    expect(researchSql).toContain("create table product_identity_candidate");
+    expect(researchSql).toContain("source_text_sha256");
+    expect(researchSql).not.toContain("raw_ocr_text");
+    expect(researchSql).toContain("create table marketplace_reference");
+    expect(researchSql).toContain("source_url ~ '^https://'");
+    expect(researchSql).toContain("status in ('candidate','human_confirmed','rejected')");
+    expect(researchSql.match(/force row level security/g)).toHaveLength(2);
   });
 });

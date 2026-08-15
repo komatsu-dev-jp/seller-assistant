@@ -3,15 +3,22 @@ import { randomUUID } from "node:crypto";
 import type { IncomingHttpHeaders } from "node:http";
 import {
   accountingExportResponseSchema,
+  approveStocktakeRequestSchema,
   addressLeaseQuerySchema,
   addressLeaseResponseSchema,
   assignOrderRequestSchema,
   apiErrorSchema,
   advanceP0WorkflowRequestSchema,
   captureSummarySchema,
+  captureTaskResponseSchema,
+  confirmIdentityCandidateRequestSchema,
+  createIdentityCandidateRequestSchema,
+  createLocalMemberRequestSchema,
+  createTeamAssignmentRequestSchema,
   createAccountingExportRequestSchema,
   createAddressLeaseRequestSchema,
   createLocationRequestSchema,
+  createMarketplaceReferenceRequestSchema,
   createOrderRequestSchema,
   createP0ItemRequestSchema,
   createSkuRequestSchema,
@@ -22,6 +29,8 @@ import {
   locationPhotoResponseSchema,
   locationNodeResponseSchema,
   measurementResponseSchema,
+  identityCandidateResponseSchema,
+  marketplaceReferenceResponseSchema,
   orderOperationResponseSchema,
   orderAssignmentResponseSchema,
   packOrderRequestSchema,
@@ -29,18 +38,29 @@ import {
   p0WorkflowResponseSchema,
   p0ItemResponseSchema,
   productMediaUploadResponseSchema,
+  productResearchResponseSchema,
   putawayInventoryRequestSchema,
   putawayInventoryResponseSchema,
   putawayCatalogResponseSchema,
   quarantineReturnRequestSchema,
+  reissuedInventoryLabelResponseSchema,
+  reissueInventoryLabelRequestSchema,
   recordMeasurementRequestSchema,
   reviewLocationPhotoRequestSchema,
+  revokeTeamAssignmentRequestSchema,
+  resolveStocktakeDiscrepancyRequestSchema,
   returnOrderRequestSchema,
   sessionContextResponseSchema,
   shippingAddressResponseSchema,
   shippingTaskResponseSchema,
   shipOrderRequestSchema,
   skuResponseSchema,
+  startStocktakeRequestSchema,
+  stocktakeObservationRequestSchema,
+  stocktakeResponseSchema,
+  teamAssignmentResponseSchema,
+  teamMemberResponseSchema,
+  teamStateResponseSchema,
   uploadLocationPhotoQuerySchema,
   uploadProductMediaQuerySchema,
   workspaceIdSchema,
@@ -61,6 +81,8 @@ import { inspectImage, type PrivateMediaStore } from "./local-media-store.js";
 import type { AddressCipher } from "./address-crypto.js";
 import type { OrderRepository } from "./order-repository.js";
 import type { P0ItemRepository } from "./p0-item-repository.js";
+import type { TeamRepository } from "./team-repository.js";
+import type { StocktakeRepository } from "./stocktake-repository.js";
 
 interface BuildAppOptions {
   repository?: WorkflowRepository;
@@ -75,6 +97,8 @@ interface BuildAppOptions {
   orderRepository?: OrderRepository;
   addressCipher?: AddressCipher;
   p0ItemRepository?: P0ItemRepository;
+  teamRepository?: TeamRepository;
+  stocktakeRepository?: StocktakeRepository;
 }
 
 export function buildApp(options: BuildAppOptions = {}) {
@@ -109,6 +133,8 @@ export function buildApp(options: BuildAppOptions = {}) {
     await repository.close();
     await options.orderRepository?.close();
     await options.p0ItemRepository?.close();
+    await options.teamRepository?.close();
+    await options.stocktakeRepository?.close();
     await options.closeAuthentication?.();
     await options.loginService?.close();
   });
@@ -175,6 +201,328 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const context = await repository.sessionContext(actor);
       return reply.send(sessionContextResponseSchema.parse(context));
+    } catch (error) {
+      const mapped = mapRepositoryError(error, request.id);
+      return reply.code(mapped.status).send(mapped.payload);
+    }
+  });
+
+  app.get<{
+    Params: { workspaceId: string };
+    Reply: ReturnType<typeof teamStateResponseSchema.parse> | ApiError;
+  }>("/v1/workspaces/:workspaceId/team", async (request, reply) => {
+    const workspace = workspaceIdSchema.safeParse(request.params.workspaceId);
+    const actor = await authenticate(request.headers);
+    if (!actor) return reply.code(401).send(authenticationError(request.id));
+    if (!workspace.success) return reply.code(400).send(invalidOrderInput(request.id));
+    const actorWorkspace = actorWorkspaceError(actor, workspace.data, request.id);
+    if (actorWorkspace) return reply.code(403).send(actorWorkspace);
+    if (!options.teamRepository) return reply.code(503).send(teamServiceUnavailable(request.id));
+    try {
+      return reply.send(
+        teamStateResponseSchema.parse(await options.teamRepository.state(workspace.data, actor)),
+      );
+    } catch (error) {
+      const mapped = mapRepositoryError(error, request.id);
+      return reply.code(mapped.status).send(mapped.payload);
+    }
+  });
+
+  app.post<{
+    Params: { workspaceId: string };
+    Body: unknown;
+    Reply: ReturnType<typeof teamMemberResponseSchema.parse> | ApiError;
+  }>("/v1/workspaces/:workspaceId/team/members", async (request, reply) => {
+    const workspace = workspaceIdSchema.safeParse(request.params.workspaceId);
+    const actor = await authenticate(request.headers);
+    const input = createLocalMemberRequestSchema.safeParse(request.body);
+    if (!actor) return reply.code(401).send(authenticationError(request.id));
+    if (!workspace.success || !input.success) {
+      return reply.code(400).send(invalidOrderInput(request.id));
+    }
+    const actorWorkspace = actorWorkspaceError(actor, workspace.data, request.id);
+    if (actorWorkspace) return reply.code(403).send(actorWorkspace);
+    if (!options.teamRepository) return reply.code(503).send(teamServiceUnavailable(request.id));
+    try {
+      return reply
+        .code(201)
+        .send(
+          teamMemberResponseSchema.parse(
+            await options.teamRepository.createMember(workspace.data, actor, input.data),
+          ),
+        );
+    } catch (error) {
+      const mapped = mapRepositoryError(error, request.id);
+      return reply.code(mapped.status).send(mapped.payload);
+    }
+  });
+
+  app.post<{
+    Params: { workspaceId: string };
+    Body: unknown;
+    Reply: ReturnType<typeof teamAssignmentResponseSchema.parse> | ApiError;
+  }>("/v1/workspaces/:workspaceId/team/assignments", async (request, reply) => {
+    const workspace = workspaceIdSchema.safeParse(request.params.workspaceId);
+    const actor = await authenticate(request.headers);
+    const input = createTeamAssignmentRequestSchema.safeParse(request.body);
+    if (!actor) return reply.code(401).send(authenticationError(request.id));
+    if (!workspace.success || !input.success) {
+      return reply.code(400).send(invalidOrderInput(request.id));
+    }
+    const actorWorkspace = actorWorkspaceError(actor, workspace.data, request.id);
+    if (actorWorkspace) return reply.code(403).send(actorWorkspace);
+    if (!options.teamRepository) return reply.code(503).send(teamServiceUnavailable(request.id));
+    try {
+      return reply
+        .code(201)
+        .send(
+          teamAssignmentResponseSchema.parse(
+            await options.teamRepository.createAssignment(workspace.data, actor, input.data),
+          ),
+        );
+    } catch (error) {
+      const mapped = mapRepositoryError(error, request.id);
+      return reply.code(mapped.status).send(mapped.payload);
+    }
+  });
+
+  app.post<{
+    Params: { workspaceId: string; assignmentId: string };
+    Body: unknown;
+    Reply: ReturnType<typeof teamAssignmentResponseSchema.parse> | ApiError;
+  }>(
+    "/v1/workspaces/:workspaceId/team/assignments/:assignmentId/revoke",
+    async (request, reply) => {
+      const workspace = workspaceIdSchema.safeParse(request.params.workspaceId);
+      const assignment = workspaceIdSchema.safeParse(request.params.assignmentId);
+      const actor = await authenticate(request.headers);
+      const input = revokeTeamAssignmentRequestSchema.safeParse(request.body);
+      if (!actor) return reply.code(401).send(authenticationError(request.id));
+      if (!workspace.success || !assignment.success || !input.success) {
+        return reply.code(400).send(invalidOrderInput(request.id));
+      }
+      const actorWorkspace = actorWorkspaceError(actor, workspace.data, request.id);
+      if (actorWorkspace) return reply.code(403).send(actorWorkspace);
+      if (!options.teamRepository) {
+        return reply.code(503).send(teamServiceUnavailable(request.id));
+      }
+      try {
+        return reply.send(
+          teamAssignmentResponseSchema.parse(
+            await options.teamRepository.revokeAssignment(
+              workspace.data,
+              assignment.data,
+              actor,
+              input.data,
+            ),
+          ),
+        );
+      } catch (error) {
+        const mapped = mapRepositoryError(error, request.id);
+        return reply.code(mapped.status).send(mapped.payload);
+      }
+    },
+  );
+
+  app.get<{
+    Params: { workspaceId: string };
+    Reply: ReturnType<ReturnType<typeof stocktakeResponseSchema.array>["parse"]> | ApiError;
+  }>("/v1/workspaces/:workspaceId/stocktakes", async (request, reply) => {
+    const context = await workspaceRequestContext(
+      request.params.workspaceId,
+      request.headers,
+      request.id,
+      authenticate,
+    );
+    if (context.error) return reply.code(context.status).send(context.error);
+    if (!options.stocktakeRepository) {
+      return reply.code(503).send(stocktakeServiceUnavailable(request.id));
+    }
+    try {
+      return reply.send(
+        stocktakeResponseSchema
+          .array()
+          .parse(await options.stocktakeRepository.list(context.workspaceId, context.actor)),
+      );
+    } catch (error) {
+      const mapped = mapRepositoryError(error, request.id);
+      return reply.code(mapped.status).send(mapped.payload);
+    }
+  });
+
+  app.post<{
+    Params: { workspaceId: string };
+    Body: unknown;
+    Reply: ReturnType<typeof stocktakeResponseSchema.parse> | ApiError;
+  }>("/v1/workspaces/:workspaceId/stocktakes", async (request, reply) => {
+    const context = await workspaceRequestContext(
+      request.params.workspaceId,
+      request.headers,
+      request.id,
+      authenticate,
+    );
+    const input = startStocktakeRequestSchema.safeParse(request.body);
+    if (context.error) return reply.code(context.status).send(context.error);
+    if (!input.success) return reply.code(400).send(invalidLocationInput(request.id));
+    if (!options.stocktakeRepository) {
+      return reply.code(503).send(stocktakeServiceUnavailable(request.id));
+    }
+    try {
+      return reply
+        .code(201)
+        .send(
+          stocktakeResponseSchema.parse(
+            await options.stocktakeRepository.start(context.workspaceId, context.actor, input.data),
+          ),
+        );
+    } catch (error) {
+      const mapped = mapRepositoryError(error, request.id);
+      return reply.code(mapped.status).send(mapped.payload);
+    }
+  });
+
+  app.post<{
+    Params: { workspaceId: string; stocktakeId: string };
+    Body: unknown;
+    Reply: ReturnType<typeof stocktakeResponseSchema.parse> | ApiError;
+  }>("/v1/workspaces/:workspaceId/stocktakes/:stocktakeId/observations", async (request, reply) => {
+    const context = await stocktakeRequestContext(
+      request.params,
+      request.headers,
+      request.id,
+      authenticate,
+    );
+    const input = stocktakeObservationRequestSchema.safeParse(request.body);
+    if (context.error) return reply.code(context.status).send(context.error);
+    if (!input.success) return reply.code(400).send(invalidLocationInput(request.id));
+    if (!options.stocktakeRepository)
+      return reply.code(503).send(stocktakeServiceUnavailable(request.id));
+    try {
+      return reply.send(
+        stocktakeResponseSchema.parse(
+          await options.stocktakeRepository.observe(
+            context.workspaceId,
+            context.stocktakeId,
+            context.actor,
+            input.data,
+          ),
+        ),
+      );
+    } catch (error) {
+      const mapped = mapRepositoryError(error, request.id);
+      return reply.code(mapped.status).send(mapped.payload);
+    }
+  });
+
+  for (const action of ["reconcile", "approve"] as const) {
+    app.post<{
+      Params: { workspaceId: string; stocktakeId: string };
+      Body: unknown;
+      Reply: ReturnType<typeof stocktakeResponseSchema.parse> | ApiError;
+    }>(`/v1/workspaces/:workspaceId/stocktakes/:stocktakeId/${action}`, async (request, reply) => {
+      const context = await stocktakeRequestContext(
+        request.params,
+        request.headers,
+        request.id,
+        authenticate,
+      );
+      if (context.error) return reply.code(context.status).send(context.error);
+      if (!options.stocktakeRepository)
+        return reply.code(503).send(stocktakeServiceUnavailable(request.id));
+      const approval =
+        action === "approve" ? approveStocktakeRequestSchema.safeParse(request.body) : null;
+      if (approval && !approval.success) {
+        return reply.code(400).send(invalidLocationInput(request.id));
+      }
+      try {
+        const result =
+          action === "reconcile"
+            ? await options.stocktakeRepository.reconcile(
+                context.workspaceId,
+                context.stocktakeId,
+                context.actor,
+              )
+            : await options.stocktakeRepository.approve(
+                context.workspaceId,
+                context.stocktakeId,
+                context.actor,
+                approval!.data,
+              );
+        return reply.send(stocktakeResponseSchema.parse(result));
+      } catch (error) {
+        const mapped = mapRepositoryError(error, request.id);
+        return reply.code(mapped.status).send(mapped.payload);
+      }
+    });
+  }
+
+  app.post<{
+    Params: { workspaceId: string; stocktakeId: string; discrepancyId: string };
+    Body: unknown;
+    Reply: ReturnType<typeof stocktakeResponseSchema.parse> | ApiError;
+  }>(
+    "/v1/workspaces/:workspaceId/stocktakes/:stocktakeId/discrepancies/:discrepancyId/resolve",
+    async (request, reply) => {
+      const context = await stocktakeRequestContext(
+        request.params,
+        request.headers,
+        request.id,
+        authenticate,
+      );
+      const discrepancy = workspaceIdSchema.safeParse(request.params.discrepancyId);
+      const input = resolveStocktakeDiscrepancyRequestSchema.safeParse(request.body);
+      if (context.error) return reply.code(context.status).send(context.error);
+      if (!discrepancy.success || !input.success)
+        return reply.code(400).send(invalidLocationInput(request.id));
+      if (!options.stocktakeRepository)
+        return reply.code(503).send(stocktakeServiceUnavailable(request.id));
+      try {
+        return reply.send(
+          stocktakeResponseSchema.parse(
+            await options.stocktakeRepository.resolve(
+              context.workspaceId,
+              context.stocktakeId,
+              discrepancy.data,
+              context.actor,
+              input.data,
+            ),
+          ),
+        );
+      } catch (error) {
+        const mapped = mapRepositoryError(error, request.id);
+        return reply.code(mapped.status).send(mapped.payload);
+      }
+    },
+  );
+
+  app.post<{
+    Params: { workspaceId: string };
+    Body: unknown;
+    Reply: ReturnType<typeof reissuedInventoryLabelResponseSchema.parse> | ApiError;
+  }>("/v1/workspaces/:workspaceId/inventory-labels/reissue", async (request, reply) => {
+    const context = await workspaceRequestContext(
+      request.params.workspaceId,
+      request.headers,
+      request.id,
+      authenticate,
+    );
+    const input = reissueInventoryLabelRequestSchema.safeParse(request.body);
+    if (context.error) return reply.code(context.status).send(context.error);
+    if (!input.success) return reply.code(400).send(invalidLocationInput(request.id));
+    if (!options.stocktakeRepository)
+      return reply.code(503).send(stocktakeServiceUnavailable(request.id));
+    try {
+      return reply
+        .code(201)
+        .send(
+          reissuedInventoryLabelResponseSchema.parse(
+            await options.stocktakeRepository.reissueLabel(
+              context.workspaceId,
+              context.actor,
+              input.data,
+            ),
+          ),
+        );
     } catch (error) {
       const mapped = mapRepositoryError(error, request.id);
       return reply.code(mapped.status).send(mapped.payload);
@@ -279,6 +627,169 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const items = await options.p0ItemRepository.listItems(workspace.data, actor);
       return reply.send(p0ItemResponseSchema.array().parse(items));
+    } catch (error) {
+      const mapped = mapRepositoryError(error, request.id);
+      return reply.code(mapped.status).send(mapped.payload);
+    }
+  });
+
+  app.get<{
+    Params: { workspaceId: string };
+    Reply: ReturnType<ReturnType<typeof captureTaskResponseSchema.array>["parse"]> | ApiError;
+  }>("/v1/workspaces/:workspaceId/capture-tasks", async (request, reply) => {
+    const context = await workspaceRequestContext(
+      request.params.workspaceId,
+      request.headers,
+      request.id,
+      authenticate,
+    );
+    if (context.error) return reply.code(context.status).send(context.error);
+    if (!options.p0ItemRepository)
+      return reply.code(503).send(p0ItemServiceUnavailable(request.id));
+    try {
+      return reply.send(
+        captureTaskResponseSchema
+          .array()
+          .parse(await options.p0ItemRepository.captureTasks(context.workspaceId, context.actor)),
+      );
+    } catch (error) {
+      const mapped = mapRepositoryError(error, request.id);
+      return reply.code(mapped.status).send(mapped.payload);
+    }
+  });
+
+  app.get<{
+    Params: { workspaceId: string; skuId: string };
+    Reply: ReturnType<typeof productResearchResponseSchema.parse> | ApiError;
+  }>("/v1/workspaces/:workspaceId/skus/:skuId/research", async (request, reply) => {
+    const context = await skuRequestContext(
+      request.params,
+      request.headers,
+      request.id,
+      authenticate,
+    );
+    if (context.error) return reply.code(context.status).send(context.error);
+    if (!options.p0ItemRepository)
+      return reply.code(503).send(p0ItemServiceUnavailable(request.id));
+    try {
+      return reply.send(
+        productResearchResponseSchema.parse(
+          await options.p0ItemRepository.productResearch(
+            context.workspaceId,
+            context.skuId,
+            context.actor,
+          ),
+        ),
+      );
+    } catch (error) {
+      const mapped = mapRepositoryError(error, request.id);
+      return reply.code(mapped.status).send(mapped.payload);
+    }
+  });
+
+  app.post<{
+    Params: { workspaceId: string; skuId: string };
+    Body: unknown;
+    Reply: ReturnType<typeof identityCandidateResponseSchema.parse> | ApiError;
+  }>("/v1/workspaces/:workspaceId/skus/:skuId/identity-candidates", async (request, reply) => {
+    const context = await skuRequestContext(
+      request.params,
+      request.headers,
+      request.id,
+      authenticate,
+    );
+    const input = createIdentityCandidateRequestSchema.safeParse(request.body);
+    if (context.error) return reply.code(context.status).send(context.error);
+    if (!input.success) return reply.code(400).send(invalidP0ItemInput(request.id));
+    if (!options.p0ItemRepository)
+      return reply.code(503).send(p0ItemServiceUnavailable(request.id));
+    try {
+      return reply
+        .code(201)
+        .send(
+          identityCandidateResponseSchema.parse(
+            await options.p0ItemRepository.createIdentityCandidate(
+              context.workspaceId,
+              context.skuId,
+              context.actor,
+              input.data,
+            ),
+          ),
+        );
+    } catch (error) {
+      const mapped = mapRepositoryError(error, request.id);
+      return reply.code(mapped.status).send(mapped.payload);
+    }
+  });
+
+  app.post<{
+    Params: { workspaceId: string; skuId: string; candidateId: string };
+    Body: unknown;
+    Reply: ReturnType<typeof identityCandidateResponseSchema.parse> | ApiError;
+  }>(
+    "/v1/workspaces/:workspaceId/skus/:skuId/identity-candidates/:candidateId/decision",
+    async (request, reply) => {
+      const context = await skuRequestContext(
+        request.params,
+        request.headers,
+        request.id,
+        authenticate,
+      );
+      const candidate = workspaceIdSchema.safeParse(request.params.candidateId);
+      const input = confirmIdentityCandidateRequestSchema.safeParse(request.body);
+      if (context.error) return reply.code(context.status).send(context.error);
+      if (!candidate.success || !input.success)
+        return reply.code(400).send(invalidP0ItemInput(request.id));
+      if (!options.p0ItemRepository)
+        return reply.code(503).send(p0ItemServiceUnavailable(request.id));
+      try {
+        return reply.send(
+          identityCandidateResponseSchema.parse(
+            await options.p0ItemRepository.confirmIdentityCandidate(
+              context.workspaceId,
+              context.skuId,
+              candidate.data,
+              context.actor,
+              input.data,
+            ),
+          ),
+        );
+      } catch (error) {
+        const mapped = mapRepositoryError(error, request.id);
+        return reply.code(mapped.status).send(mapped.payload);
+      }
+    },
+  );
+
+  app.post<{
+    Params: { workspaceId: string; skuId: string };
+    Body: unknown;
+    Reply: ReturnType<typeof marketplaceReferenceResponseSchema.parse> | ApiError;
+  }>("/v1/workspaces/:workspaceId/skus/:skuId/market-references", async (request, reply) => {
+    const context = await skuRequestContext(
+      request.params,
+      request.headers,
+      request.id,
+      authenticate,
+    );
+    const input = createMarketplaceReferenceRequestSchema.safeParse(request.body);
+    if (context.error) return reply.code(context.status).send(context.error);
+    if (!input.success) return reply.code(400).send(invalidP0ItemInput(request.id));
+    if (!options.p0ItemRepository)
+      return reply.code(503).send(p0ItemServiceUnavailable(request.id));
+    try {
+      return reply
+        .code(201)
+        .send(
+          marketplaceReferenceResponseSchema.parse(
+            await options.p0ItemRepository.addMarketplaceReference(
+              context.workspaceId,
+              context.skuId,
+              context.actor,
+              input.data,
+            ),
+          ),
+        );
     } catch (error) {
       const mapped = mapRepositoryError(error, request.id);
       return reply.code(mapped.status).send(mapped.payload);
@@ -1198,6 +1709,22 @@ function p0ItemServiceUnavailable(requestId: string): ApiError {
   });
 }
 
+function teamServiceUnavailable(requestId: string): ApiError {
+  return apiErrorSchema.parse({
+    code: "team_service_unavailable",
+    message: "外注担当と期限付き割当の保存先を確認できないため、操作を停止しました。",
+    requestId,
+  });
+}
+
+function stocktakeServiceUnavailable(requestId: string): ApiError {
+  return apiErrorSchema.parse({
+    code: "stocktake_service_unavailable",
+    message: "棚卸とラベル履歴の保存先を確認できないため、操作を停止しました。",
+    requestId,
+  });
+}
+
 function invalidP0ItemInput(requestId: string): ApiError {
   return apiErrorSchema.parse({
     code: "invalid_request",
@@ -1269,6 +1796,94 @@ async function orderRequestContext(
   const actorWorkspace = actorWorkspaceError(actor, workspace.data, requestId);
   if (actorWorkspace) return { error: actorWorkspace, status: 403 };
   return { workspaceId: workspace.data, orderId: order.data, actor };
+}
+
+type WorkspaceRequestContext =
+  | { workspaceId: string; actor: RequestActor; error?: undefined; status?: undefined }
+  | {
+      error: ApiError;
+      status: 400 | 401 | 403;
+      workspaceId?: undefined;
+      actor?: undefined;
+    };
+
+async function workspaceRequestContext(
+  workspaceId: string,
+  headers: IncomingHttpHeaders,
+  requestId: string,
+  authenticate: (
+    headers: IncomingHttpHeaders,
+  ) => RequestActor | null | Promise<RequestActor | null>,
+): Promise<WorkspaceRequestContext> {
+  const actor = await authenticate(headers);
+  if (!actor) return { error: authenticationError(requestId), status: 401 };
+  const workspace = workspaceIdSchema.safeParse(workspaceId);
+  if (!workspace.success) return { error: invalidLocationInput(requestId), status: 400 };
+  const mismatch = actorWorkspaceError(actor, workspace.data, requestId);
+  if (mismatch) return { error: mismatch, status: 403 };
+  return { workspaceId: workspace.data, actor };
+}
+
+type StocktakeRequestContext =
+  | {
+      workspaceId: string;
+      stocktakeId: string;
+      actor: RequestActor;
+      error?: undefined;
+      status?: undefined;
+    }
+  | {
+      error: ApiError;
+      status: 400 | 401 | 403;
+      workspaceId?: undefined;
+      stocktakeId?: undefined;
+      actor?: undefined;
+    };
+
+async function stocktakeRequestContext(
+  params: { workspaceId: string; stocktakeId: string },
+  headers: IncomingHttpHeaders,
+  requestId: string,
+  authenticate: (
+    headers: IncomingHttpHeaders,
+  ) => RequestActor | null | Promise<RequestActor | null>,
+): Promise<StocktakeRequestContext> {
+  const base = await workspaceRequestContext(params.workspaceId, headers, requestId, authenticate);
+  if (base.error) return base;
+  const stocktake = workspaceIdSchema.safeParse(params.stocktakeId);
+  if (!stocktake.success) return { error: invalidLocationInput(requestId), status: 400 };
+  return { ...base, stocktakeId: stocktake.data };
+}
+
+type SkuRequestContext =
+  | {
+      workspaceId: string;
+      skuId: string;
+      actor: RequestActor;
+      error?: undefined;
+      status?: undefined;
+    }
+  | {
+      error: ApiError;
+      status: 400 | 401 | 403;
+      workspaceId?: undefined;
+      skuId?: undefined;
+      actor?: undefined;
+    };
+
+async function skuRequestContext(
+  params: { workspaceId: string; skuId: string },
+  headers: IncomingHttpHeaders,
+  requestId: string,
+  authenticate: (
+    headers: IncomingHttpHeaders,
+  ) => RequestActor | null | Promise<RequestActor | null>,
+): Promise<SkuRequestContext> {
+  const base = await workspaceRequestContext(params.workspaceId, headers, requestId, authenticate);
+  if (base.error) return base;
+  const sku = workspaceIdSchema.safeParse(params.skuId);
+  if (!sku.success) return { error: invalidP0ItemInput(requestId), status: 400 };
+  return { ...base, skuId: sku.data };
 }
 
 function mapRepositoryError(

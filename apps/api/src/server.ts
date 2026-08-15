@@ -8,6 +8,8 @@ import { LocalPrivateMediaStore } from "./local-media-store.js";
 import { AesGcmAddressCipher } from "./address-crypto.js";
 import { PostgresOrderRepository } from "./order-repository.js";
 import { PostgresP0ItemRepository } from "./p0-item-repository.js";
+import { PostgresTeamRepository } from "./team-repository.js";
+import { PostgresStocktakeRepository } from "./stocktake-repository.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 const sessionSecret = process.env.SESSION_SECRET;
@@ -55,6 +57,8 @@ const app = buildApp({
   orderRepository: new PostgresOrderRepository(databaseUrl),
   addressCipher: new AesGcmAddressCipher(addressEncryptionKey),
   p0ItemRepository: new PostgresP0ItemRepository(databaseUrl),
+  teamRepository: new PostgresTeamRepository(databaseUrl),
+  stocktakeRepository: new PostgresStocktakeRepository(databaseUrl),
 });
 const port = Number(process.env.PORT ?? 3100);
 

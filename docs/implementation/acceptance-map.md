@@ -1,7 +1,7 @@
 # 受け入れ条件・実装対応表
 
-- 状態: Goal開始・基盤実装中
-- 更新日: 2026-08-15（JST）
+- 状態: P0実装・ローカル検証完了、最終独立レビュー待ち
+- 更新日: 2026-08-16（JST）
 - 正本: `docs/specs/mvp-product-spec-v1.md`、`docs/specs/technical-architecture-v1.md`
 
 ## P0ゲート
@@ -10,14 +10,14 @@ P0の必須ACは AC-001、003〜008、013〜014、018〜023、025〜026、028〜
 
 | 範囲        | 実装先                         | 自動検証                      | 手動・画面証拠       | 状態                      |
 | ----------- | ------------------------------ | ----------------------------- | -------------------- | ------------------------- |
-| AC-001〜009 | domain/contracts、API、Web/PWA | unit/API                      | P0仕入・撮影・採寸   | 原本/採寸APIまで実装      |
-| AC-010〜017 | media/listing/price adapters   | unit/contract                 | 原本比較・本人引渡し | 未着手                    |
-| AC-018〜020 | inventory/order/shipping       | concurrency/API               | 二重読取・発送・返品 | 注文〜発送縦導線実装済    |
-| AC-021〜024 | finance/accounting/Notion      | fixture/schema                | 収益・CSV・同期確認  | 収支/会計CSV部分実装      |
-| AC-025〜028 | UI/監査/品質                   | a11y/security/all suites      | PC/iPhone PWA実画面  | ログイン/署名Cookie部分済 |
-| AC-029〜041 | 財務・冪等・機密・CSV・旧資産  | fixture/contract/security     | 出力内容確認         | 財務/冪等/API部分実装     |
-| AC-042〜055 | inventory/location/count       | DB/domain/concurrency         | M12/W10導線          | domain/SQL/W10部分実装    |
-| TA-001〜037 | architecture/CI/security       | type/lint/test/build/contract | platform checklist   | 実DB/RLS部分まで実装      |
+| AC-001〜009 | domain/contracts、API、Web/PWA | unit/API                      | P0仕入・撮影・採寸   | P0対象合格、P1 AIは無効   |
+| AC-010〜017 | media/listing/price adapters   | unit/contract                 | 原本比較・本人引渡し | AC-013/014合格、P1は無効  |
+| AC-018〜020 | inventory/order/shipping       | concurrency/API               | 二重読取・発送・返品 | 合格                      |
+| AC-021〜024 | finance/accounting/Notion      | fixture/schema                | 収益・CSV・同期確認  | AC-021〜023合格、P1は無効 |
+| AC-025〜028 | UI/監査/品質                   | a11y/security/all suites      | PC/PWA実画面         | 合格                      |
+| AC-029〜041 | 財務・冪等・機密・CSV・旧資産  | fixture/contract/security     | 出力内容確認         | P0対象合格、P1は無効      |
+| AC-042〜055 | inventory/location/count       | DB/domain/concurrency         | M12/W10導線          | 合格                      |
+| TA-001〜037 | architecture/CI/security       | type/lint/test/build/contract | platform checklist   | P0対象合格                |
 
 ## 合格条件
 
@@ -190,3 +190,16 @@ P0の必須ACは AC-001、003〜008、013〜014、018〜023、025〜026、028〜
 - 実画面: `output/playwright/iteration-21-login.png`、`iteration-21-workflow-reloaded.png`、`iteration-21-mobile-390x844.png`、`iteration-21-shipping-role.png`。外部downloadなし、PC内Chromeだけ。
 - 外部境界: runtimeは同一生成元`/v1`とPC内DB/ファイルだけ。Mercari/Notion/Slack/OpenAI/Photoroom等への送信route 0件。有料サービス0件。
 - 手動未確認: 実iPhone Safari、ホーム画面追加、カメラ、圏外復帰。これはDraft PRへ未確認事項として残し、成功扱いにしない。
+
+## Iteration 22の実証範囲
+
+- 外注運用: オーナーがPC内アカウントを作り、撮影・InventoryUnit・場所・場所写真・配送を対象IDと24時間以内の期限で割当/解除できる。解除後は対象APIを403拒否する。
+- 撮影PWA: field_workerは割当SKUだけを取得し、写真4種、採寸、理由付き再測定、端末内で得たタグ文字候補を途中保存/再送できる。原価、利益、購入者、税務資料は応答と画面へ0件。
+- 人による商品調査: OCR文字は候補に限定し、管理者が採用/修正/不明を確定する。販売済み比較は利用者が公式画面で確認したHTTPS URL・表示価格・状態・送料・採否理由だけを保存し、3件未満は根拠不足とする。外部巡回/自動取得は0件。
+- 棚卸・ラベル: 在庫画面から棚卸開始、観測、別担当の再確認、差異解決/承認、ラベル再発行を実APIで操作し、前後値・理由・承認者を監査する。
+- 移行: 既存の`INV-000001`をデータ付きDBで`INV-000001-7`へ更新し、ラベルguardを安全に一時停止して同じtransaction内で再有効化することを確認した。
+- 自動検証: `npm.cmd run check`合格。20 files / 108 tests、statements 84.09%、branch 81.81%、functions 100%、lines 91.36%。format、lint、typecheck、本番build合格。
+- 実DB: 新規DBへ0001〜0017を適用し、36業務テーブルRLS、全外注割当、仕入〜会計、5分住所、checked code、撮影/調査/出品根拠、場所写真、二重読取、返品隔離、棚卸、ラベル再発行、logoutを含む結合テストPASS。
+- 実画面: 在庫・棚卸、外注割当、390×844の撮影PWA、PC商品調査をChromeで確認。横あふれ0、console error 0、外部リンク0。通信要求は同一生成元`/v1`だけ。
+- 証拠: `output/playwright/iteration-22-inventory-stocktake.png`、`iteration-22-team-assignments.png`、`iteration-22-mobile-capture-390x844.png`、`iteration-22-product-research.png`。
+- 未確認: 実iPhone Safariのホーム画面追加、カメラ、圏外復帰、HEIC/WebP。P1、push、Draft PR、公開、Notion/Slack追加送信は未実行。

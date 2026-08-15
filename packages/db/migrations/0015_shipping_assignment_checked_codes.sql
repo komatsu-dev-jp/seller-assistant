@@ -25,6 +25,11 @@ language sql immutable strict as $$
   end
 $$;
 
+-- Existing rows still satisfy the legacy INV-000001 constraint here. Drop that
+-- constraint before converting them to INV-000001-7 so an in-place upgrade can
+-- complete without a transient CHECK violation.
+alter table inventory_unit drop constraint inventory_unit_inventory_number_check;
+
 update inventory_unit
 set inventory_number = app_append_code_check_digit(inventory_number)
 where not app_has_valid_code_check_digit(inventory_number);
@@ -32,6 +37,13 @@ where not app_has_valid_code_check_digit(inventory_number);
 update location_node
 set code = app_append_code_check_digit(code)
 where not app_has_valid_code_check_digit(code);
+
+-- The pre-existing guard correctly treats an issued label code as immutable.
+-- This one-time, transactional data migration is the only exception: it keeps
+-- the same target, token and version while adding the check digit required by
+-- the new scanner contract. A failure rolls the trigger state back with the
+-- surrounding transaction.
+alter table inventory_label disable trigger inventory_label_target_guard;
 
 update inventory_label label
 set short_code = unit.inventory_number
@@ -47,7 +59,8 @@ where label.workspace_id = location.workspace_id
   and label.target_type = 'location'
   and label.target_id = location.id;
 
-alter table inventory_unit drop constraint inventory_unit_inventory_number_check;
+alter table inventory_label enable trigger inventory_label_target_guard;
+
 alter table inventory_unit add constraint inventory_unit_inventory_number_check
   check (inventory_number ~ '^INV-[0-9]{6}-[0-9]$' and app_has_valid_code_check_digit(inventory_number));
 
@@ -69,7 +82,7 @@ create table order_assignment (
   created_at timestamptz not null default now(),
   primary key (workspace_id, id),
   foreign key (workspace_id, order_id) references sales_order(workspace_id, id),
-  check (expires_at > starts_at and expires_at <= starts_at + interval '30 days'),
+  check (expires_at > starts_at and expires_at <= starts_at + interval '24 hours'),
   check (revoked_at is null or revoked_at >= starts_at)
 );
 

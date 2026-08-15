@@ -3,10 +3,18 @@
 import type {
   AccountingExportResponse,
   FinancialSummaryResponse,
+  MeasurementResponse,
   OrderOperationResponse,
   P0ItemResponse,
 } from "@resale/contracts";
 import { useCallback, useEffect, useState } from "react";
+import {
+  clearCaptureUploads,
+  loadCaptureUploads,
+  markCaptureUploaded,
+  prepareCaptureUpload,
+} from "../lib/capture-outbox";
+import { ProductResearchPanel } from "./product-research-panel";
 
 type Stage = "purchase" | "capture" | "listing" | "order" | "accounting";
 type MeasurementKey = "肩幅" | "身幅" | "袖丈" | "着丈";
@@ -48,6 +56,7 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
   const [photos, setPhotos] = useState<Partial<Record<PhotoRole, File>>>({});
   const [measurements, setMeasurements] =
     useState<Record<MeasurementKey, string>>(emptyMeasurements);
+  const [measurementReviewReason, setMeasurementReviewReason] = useState("");
   const [financial, setFinancial] = useState<FinancialSummaryResponse | null>(null);
   const [accountingExport, setAccountingExport] = useState<AccountingExportResponse | null>(null);
   const [addressLeaseId, setAddressLeaseId] = useState<string | null>(null);
@@ -88,6 +97,20 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
     setMeasurements(restored);
     setAccountingExport(item.accountingExport);
   }, [item]);
+
+  useEffect(() => {
+    if (!item || workflowStateRank(item.workflowState) >= workflowStateRank("capture_confirmed"))
+      return;
+    loadCaptureUploads(workspaceId, item.skuId)
+      .then((records) => {
+        setPhotos((current) => {
+          const restored = { ...current };
+          for (const record of records) restored[record.role] = record.file;
+          return restored;
+        });
+      })
+      .catch(() => undefined);
+  }, [item, workspaceId]);
 
   const workflowRank = workflowStateRank(item?.workflowState);
   const completed: Record<Stage, boolean> = {
@@ -144,32 +167,57 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
       for (const { id: role } of photoRoles) {
         const file = photos[role];
         if (!file) throw new Error("写真4種を選択してください。");
-        const assetId = crypto.randomUUID();
-        await requestJson(
-          `/v1/workspaces/${workspaceId}/skus/${item.skuId}/media-uploads?assetId=${assetId}&role=${role}`,
-          { method: "POST", body: file, headers: { "content-type": file.type } },
-        );
-        assetIds.push(assetId);
+        const pending = await prepareCaptureUpload(workspaceId, item.skuId, role, file);
+        if (!pending.uploaded) {
+          await requestJson(
+            `/v1/workspaces/${workspaceId}/skus/${item.skuId}/media-uploads?assetId=${pending.assetId}&role=${role}`,
+            { method: "POST", body: pending.file, headers: { "content-type": pending.file.type } },
+          );
+          await markCaptureUploaded(pending.key);
+        }
+        assetIds.push(pending.assetId);
       }
       const measuredAt = new Date().toISOString();
+      const savedMeasurements: Array<{ requiresReview: boolean }> = [];
       for (const key of Object.keys(measurements) as MeasurementKey[]) {
-        await requestJson(`/v1/workspaces/${workspaceId}/skus/${item.skuId}/measurements`, {
-          method: "POST",
-          body: JSON.stringify({
-            definitionId: measurementDefinitions[key],
-            definitionVersion: 1,
-            value: Number(measurements[key]),
-            unit: "cm",
-            basis: "flat_width",
-            state: "natural",
-            measuredAt,
-            evidenceAssetId: assetIds[0],
-            attempt: 1,
-            humanConfirmed: true,
-          }),
-        });
+        const definitionId = measurementDefinitions[key];
+        const previous = item.capture.measurements
+          .filter((measurement) => measurement.definitionId === definitionId)
+          .sort((left, right) => right.attempt - left.attempt)[0];
+        if (previous && previous.value === Number(measurements[key]) && !previous.requiresReview) {
+          savedMeasurements.push(previous);
+          continue;
+        }
+        const saved = await requestJson<MeasurementResponse>(
+          `/v1/workspaces/${workspaceId}/skus/${item.skuId}/measurements`,
+          {
+            method: "POST",
+            body: JSON.stringify({
+              definitionId,
+              definitionVersion: 1,
+              value: Number(measurements[key]),
+              unit: "cm",
+              basis: "flat_width",
+              state: "natural",
+              measuredAt,
+              evidenceAssetId: assetIds[0],
+              attempt: (previous?.attempt ?? 0) + 1,
+              reviewReasonCode: measurementReviewReason || undefined,
+              humanConfirmed: true,
+            }),
+          },
+        );
+        savedMeasurements.push(saved);
+      }
+      const needsReview = savedMeasurements.filter((measurement) => measurement.requiresReview);
+      await refreshItems();
+      if (needsReview.length > 0) {
+        throw new Error(
+          "前回との差が2cmを超えています。再測定し、正しい場合は確認理由を選んで再保存してください。",
+        );
       }
       await advanceWorkflow(item.skuId, "confirm_capture", assetIds, false);
+      await clearCaptureUploads(workspaceId, item.skuId);
       await refreshItems();
       setStage("listing");
     });
@@ -474,6 +522,18 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
               </label>
             ))}
           </div>
+          <label className="fieldLabel">
+            再測定の確認理由（差が2cmを超えた場合のみ）
+            <select
+              value={measurementReviewReason}
+              onChange={(event) => setMeasurementReviewReason(event.target.value)}
+            >
+              <option value="">理由を選ばず初回保存</option>
+              <option value="previous_entry_error">前回の入力誤りを修正</option>
+              <option value="garment_stretch">伸縮素材を同じ方法で再確認</option>
+              <option value="measurement_definition_corrected">測る位置を定義どおりに修正</option>
+            </select>
+          </label>
           <div className="humanGate">
             <div>
               <strong>写真4種と実測値を人が確認</strong>
@@ -523,6 +583,7 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
               ? `／未確認: ${item.listingCandidate.unconfirmedFields.join("・")}`
               : "／未確認なし"}
           </p>
+          <ProductResearchPanel workspaceId={workspaceId} skuId={item.skuId} />
           <div className="humanGate">
             <div>
               <strong>コピー用内容を人が確認</strong>

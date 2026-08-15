@@ -59,6 +59,8 @@ describe("zero-cost PWA contract", () => {
     const proxy = readFileSync(resolve("apps/web/src/app/v1/session/login/route.ts"), "utf8");
     expect(form).toContain('type="password"');
     expect(form).toContain('fetch("/v1/session/login"');
+    expect(form).toContain('action="/v1/session/login"');
+    expect(form).toContain('method="post"');
     expect(form).toContain('method: "POST"');
     expect(form).not.toMatch(/localStorage|sessionStorage|indexedDB|URLSearchParams/u);
     expect(proxy).not.toMatch(/console\.|localStorage|sessionStorage/u);

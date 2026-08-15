@@ -46,7 +46,12 @@ export function LoginForm() {
   }
 
   return (
-    <form className="loginForm" onSubmit={(event) => void submit(event)}>
+    <form
+      action="/v1/session/login"
+      className="loginForm"
+      method="post"
+      onSubmit={(event) => void submit(event)}
+    >
       <label>
         メールアドレス
         <input

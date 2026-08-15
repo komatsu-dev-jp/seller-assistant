@@ -35,6 +35,6 @@
 - runtime（利用時に動く部分）の外部SDK、外部サービスURL、Mercari/Notion/Slack/OpenAI/Photoroom向けrouteは0件。
 - Webブラウザは同じサイト内の`/v1`だけを呼び、APIはPC内PostgreSQLとPC内private media directoryだけを使用する。
 - `.env.example`の外部credentialは空。住所暗号化keyも利用者がPC内で設定するまで起動を停止する。
-- Playwrightの補助コマンドが外部registryからの取得を必要としたため実行を中止し、download/権限昇格を行わなかった。既にPCへ入っているChromeでローカル画面だけを確認した。
+- 無料のPlaywright CLIと既にPCへ入っているChromeを検証専用に使用した。アプリのruntime依存、外部サービス連携、従量課金は追加していない。
 - 外部API呼出し、従量課金、有料契約、deploy、外部CI、App Store申請は0件。
 - GitHub push、Slack、Notionへの追加書込みはユーザーの外部接続確認が終わるまで停止している。

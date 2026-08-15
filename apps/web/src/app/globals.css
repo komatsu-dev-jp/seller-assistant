@@ -1776,6 +1776,68 @@ a {
   font-size: 13px;
   line-height: 1.8;
 }
+.fieldLabel,
+.compactForm label {
+  margin-top: 14px;
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+.fieldLabel input,
+.fieldLabel select,
+.fieldLabel textarea,
+.compactForm input,
+.compactForm select {
+  width: 100%;
+  min-height: 42px;
+  padding: 9px 11px;
+  color: var(--ink);
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 14px;
+}
+.researchPanel {
+  margin: 18px 0;
+  padding: 16px;
+  background: #f8faff;
+  border: 1px solid #dce6f7;
+  border-radius: 12px;
+}
+.researchPanel h3 {
+  margin: 0;
+}
+.compactForm {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+}
+.compactForm .checkLine {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.compactForm .checkLine input {
+  width: 18px;
+  min-height: 18px;
+}
+.compactForm button,
+.inlineActions button {
+  min-height: 42px;
+  align-self: end;
+}
+.inlineActions {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+}
+.successMessage {
+  color: var(--green);
+  font-weight: 800;
+}
 .listingChecks {
   margin-top: 10px;
   display: flex;

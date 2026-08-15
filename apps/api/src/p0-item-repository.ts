@@ -1,10 +1,17 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
   appendCodeCheckDigit,
+  type CaptureTaskResponse,
+  type ConfirmIdentityCandidateRequest,
   type CreateLocationRequest,
+  type CreateIdentityCandidateRequest,
+  type CreateMarketplaceReferenceRequest,
   type CreateP0ItemRequest,
+  type IdentityCandidateResponse,
   type LocationNodeResponse,
+  type MarketplaceReferenceResponse,
   type P0ItemResponse,
+  type ProductResearchResponse,
   type PutawayCatalogResponse,
 } from "@resale/contracts";
 import postgres from "postgres";
@@ -25,6 +32,31 @@ export interface P0ItemRepository {
   ): Promise<LocationNodeResponse>;
   listLocations(workspaceId: string, actor: RequestActor): Promise<LocationNodeResponse[]>;
   putawayCatalog(workspaceId: string, actor: RequestActor): Promise<PutawayCatalogResponse>;
+  captureTasks(workspaceId: string, actor: RequestActor): Promise<CaptureTaskResponse[]>;
+  createIdentityCandidate(
+    workspaceId: string,
+    skuId: string,
+    actor: RequestActor,
+    input: CreateIdentityCandidateRequest,
+  ): Promise<IdentityCandidateResponse>;
+  confirmIdentityCandidate(
+    workspaceId: string,
+    skuId: string,
+    candidateId: string,
+    actor: RequestActor,
+    input: ConfirmIdentityCandidateRequest,
+  ): Promise<IdentityCandidateResponse>;
+  addMarketplaceReference(
+    workspaceId: string,
+    skuId: string,
+    actor: RequestActor,
+    input: CreateMarketplaceReferenceRequest,
+  ): Promise<MarketplaceReferenceResponse>;
+  productResearch(
+    workspaceId: string,
+    skuId: string,
+    actor: RequestActor,
+  ): Promise<ProductResearchResponse>;
   close(): Promise<void>;
 }
 
@@ -77,6 +109,32 @@ interface LocationRow {
   active_inventory_count: number;
   approved_photo_count: number;
   label_version: number;
+  created_at: Date;
+}
+
+interface CandidateRow {
+  id: string;
+  sku_id: string;
+  source_asset_id: string;
+  brand_candidate: string | null;
+  model_candidate: string | null;
+  material_candidate: string | null;
+  size_candidate: string | null;
+  status: IdentityCandidateResponse["status"];
+  created_at: Date;
+}
+
+interface ReferenceRow {
+  id: string;
+  sku_id: string;
+  source_url: string;
+  displayed_price_minor: number;
+  sold_state: boolean;
+  item_condition: string;
+  shipping_basis: MarketplaceReferenceResponse["shippingBasis"];
+  included: boolean;
+  exclusion_reason: string | null;
+  checked_at: Date;
   created_at: Date;
 }
 
@@ -331,6 +389,12 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
             on label.workspace_id = unit.workspace_id and label.target_type = 'inventory_unit'
            and label.target_id = unit.id and label.active
           where unit.workspace_id = ${workspaceId} and unit.status = 'putaway_pending'
+            and (
+              ${role} in ('owner', 'inventory_manager')
+              or has_active_inventory_unit_assignment(
+                ${workspaceId}, ${actor.identityId}, 'putaway', unit.id, now()
+              )
+            )
           order by unit.created_at, unit.inventory_number
         `;
         const locations = await transaction<
@@ -364,6 +428,283 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
             labelVersion: row.label_version,
           })),
           loadedAt: new Date().toISOString(),
+        };
+      });
+    } catch (error) {
+      throw normalizeP0ItemError(error);
+    }
+  }
+
+  async captureTasks(workspaceId: string, actor: RequestActor): Promise<CaptureTaskResponse[]> {
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId);
+        const roles = await transaction<Array<{ role: string }>>`
+          select role from workspace_membership
+          where workspace_id = ${workspaceId} and identity_id = ${actor.identityId}
+            and active and role in ('owner','inventory_manager','field_worker')
+        `;
+        const role = roles[0]?.role;
+        if (!role) throw new RepositoryError("forbidden", "Capture role is required");
+        const rows = await transaction<
+          Array<{
+            sku_id: string;
+            sku_code: string;
+            title: string;
+            category: string | null;
+            photo_asset_ids: string[];
+            photo_roles: CaptureTaskResponse["photoRoles"];
+            measurements: CaptureTaskResponse["measurements"];
+            expires_at: Date;
+          }>
+        >`
+          select sku.id as sku_id, sku.sku_code, sku.title, sku.category,
+                 coalesce(photos.ids, array[]::uuid[]) as photo_asset_ids,
+                 coalesce(photos.roles, array[]::text[]) as photo_roles,
+                 coalesce(measurements.items, '[]'::jsonb) as measurements,
+                 coalesce(assignment.expires_at, statement_timestamp() + interval '24 hours') as expires_at
+          from product_sku sku
+          join p0_workflow workflow
+            on workflow.workspace_id = sku.workspace_id and workflow.sku_id = sku.id
+          left join lateral (
+            select array_agg(asset.id order by asset.created_at) as ids,
+                   array_agg(asset.role order by asset.created_at) as roles
+            from media_asset asset
+            where asset.workspace_id = sku.workspace_id and asset.sku_id = sku.id
+          ) photos on true
+          left join lateral (
+            select jsonb_agg(jsonb_build_object(
+              'id', measured.id, 'definitionId', measured.definition_id,
+              'definitionVersion', measured.definition_version,
+              'value', measured.value::double precision, 'unit', measured.unit,
+              'basis', measured.basis, 'state', measured.state,
+              'evidenceAssetId', measured.evidence_asset_id, 'attempt', measured.attempt,
+              'measuredAt', to_char(measured.measured_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+              'confirmedBy', measured.confirmed_by, 'requiresReview', measured.requires_review,
+              'differenceCm', measured.difference_cm::double precision,
+              'violations', measured.violations, 'reviewReasonCode', measured.review_reason_code
+            ) order by measured.definition_id) as items
+            from (
+              select distinct on (attempt.definition_id) attempt.*
+              from measurement_attempt attempt
+              where attempt.workspace_id = sku.workspace_id and attempt.sku_id = sku.id
+              order by attempt.definition_id, attempt.attempt desc, attempt.created_at desc
+            ) measured
+          ) measurements on true
+          left join lateral (
+            select assigned.expires_at from sku_work_assignment assigned
+            where assigned.workspace_id = sku.workspace_id and assigned.sku_id = sku.id
+              and assigned.identity_id = ${actor.identityId} and assigned.operation = 'capture'
+              and assigned.starts_at <= statement_timestamp()
+              and assigned.expires_at > statement_timestamp() and assigned.revoked_at is null
+            order by assigned.expires_at limit 1
+          ) assignment on true
+          where sku.workspace_id = ${workspaceId}
+            and workflow.state in ('sku_created','purchase_confirmed')
+            and (${role} in ('owner','inventory_manager') or assignment.expires_at is not null)
+          order by workflow.updated_at, sku.sku_code
+        `;
+        return rows.map((row) => ({
+          workspaceId,
+          skuId: row.sku_id,
+          skuCode: row.sku_code,
+          title: row.title,
+          category: row.category,
+          photoAssetIds: row.photo_asset_ids,
+          photoRoles: row.photo_roles,
+          measurements: row.measurements,
+          assignmentExpiresAt: row.expires_at.toISOString(),
+        }));
+      });
+    } catch (error) {
+      throw normalizeP0ItemError(error);
+    }
+  }
+
+  async createIdentityCandidate(
+    workspaceId: string,
+    skuId: string,
+    actor: RequestActor,
+    input: CreateIdentityCandidateRequest,
+  ): Promise<IdentityCandidateResponse> {
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId);
+        const role = await requireCaptureOrManagement(
+          transaction,
+          workspaceId,
+          skuId,
+          actor.identityId,
+        );
+        await requireResearchEditable(transaction, workspaceId, skuId, false);
+        const assets = await transaction<Array<{ id: string }>>`
+          select id from media_asset where workspace_id = ${workspaceId} and sku_id = ${skuId}
+            and id = ${input.sourceAssetId} and role in ('brand_tag','care_label')
+        `;
+        if (!assets[0]) throw new RepositoryError("forbidden", "A tag photo is required");
+        const parsed = parseOcrCandidate(input.rawOcrText);
+        const id = randomUUID();
+        const hash = createHash("sha256").update(input.rawOcrText, "utf8").digest("hex");
+        const rows = await transaction<CandidateRow[]>`
+          insert into product_identity_candidate (
+            id, workspace_id, sku_id, source_asset_id, source_text_sha256,
+            brand_candidate, model_candidate, material_candidate, size_candidate,
+            source_kind, created_by
+          ) values (
+            ${id}, ${workspaceId}, ${skuId}, ${input.sourceAssetId}, ${hash},
+            ${parsed.brand}, ${parsed.model}, ${parsed.material}, ${parsed.size},
+            'manual_ocr_text', ${actor.identityId}
+          ) returning id, sku_id, source_asset_id, brand_candidate, model_candidate,
+              material_candidate, size_candidate, status, created_at
+        `;
+        const row = rows[0];
+        if (!row) throw new RepositoryError("database_error", "The OCR candidate was not stored");
+        await auditResearch(
+          transaction,
+          workspaceId,
+          actor.identityId,
+          "research.ocr_candidate.created",
+          id,
+          { status: "absent" },
+          {
+            status: "candidate",
+            fields: Object.keys(parsed).filter((key) => parsed[key as keyof typeof parsed]),
+          },
+          role === "field_worker" ? "assigned_worker_tag_text" : "manager_tag_text",
+        );
+        return toCandidate(row);
+      });
+    } catch (error) {
+      throw normalizeP0ItemError(error);
+    }
+  }
+
+  async confirmIdentityCandidate(
+    workspaceId: string,
+    skuId: string,
+    candidateId: string,
+    actor: RequestActor,
+    input: ConfirmIdentityCandidateRequest,
+  ): Promise<IdentityCandidateResponse> {
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId);
+        await requireManagementRole(transaction, workspaceId, actor.identityId);
+        await requireResearchEditable(transaction, workspaceId, skuId, true);
+        const rows = await transaction<CandidateRow[]>`
+          update product_identity_candidate
+          set status = ${input.status}, confirmed_by = ${actor.identityId}, confirmed_at = statement_timestamp()
+          where workspace_id = ${workspaceId} and sku_id = ${skuId} and id = ${candidateId}
+            and status = 'candidate'
+          returning id, sku_id, source_asset_id, brand_candidate, model_candidate,
+                    material_candidate, size_candidate, status, created_at
+        `;
+        if (!rows[0]) throw new RepositoryError("conflict", "The candidate is unavailable");
+        await auditResearch(
+          transaction,
+          workspaceId,
+          actor.identityId,
+          "research.identity_candidate.decided",
+          candidateId,
+          { status: "candidate" },
+          { status: input.status },
+          "identity_candidate_human_decision",
+        );
+        return toCandidate(rows[0]);
+      });
+    } catch (error) {
+      throw normalizeP0ItemError(error);
+    }
+  }
+
+  async addMarketplaceReference(
+    workspaceId: string,
+    skuId: string,
+    actor: RequestActor,
+    input: CreateMarketplaceReferenceRequest,
+  ): Promise<MarketplaceReferenceResponse> {
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId);
+        await requireManagementRole(transaction, workspaceId, actor.identityId);
+        await requireResearchEditable(transaction, workspaceId, skuId, true);
+        const id = randomUUID();
+        const rows = await transaction<ReferenceRow[]>`
+          insert into marketplace_reference (
+            id, workspace_id, sku_id, source_url, displayed_price_minor, sold_state,
+            item_condition, shipping_basis, included, exclusion_reason, checked_at, created_by
+          ) values (
+            ${id}, ${workspaceId}, ${skuId}, ${input.sourceUrl}, ${input.displayedPriceMinor},
+            ${input.soldState}, ${input.itemCondition}, ${input.shippingBasis}, ${input.included},
+            ${input.exclusionReason}, ${input.checkedAt}, ${actor.identityId}
+          ) returning id, sku_id, source_url, displayed_price_minor, sold_state,
+              item_condition, shipping_basis, included, exclusion_reason, checked_at, created_at
+        `;
+        if (!rows[0])
+          throw new RepositoryError("database_error", "The market evidence was not stored");
+        await auditResearch(
+          transaction,
+          workspaceId,
+          actor.identityId,
+          "research.market_reference.added",
+          id,
+          { status: "absent" },
+          { included: input.included, soldState: input.soldState },
+          "official_page_human_checked",
+        );
+        return toReference(rows[0]);
+      });
+    } catch (error) {
+      throw normalizeP0ItemError(error);
+    }
+  }
+
+  async productResearch(
+    workspaceId: string,
+    skuId: string,
+    actor: RequestActor,
+  ): Promise<ProductResearchResponse> {
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId);
+        await requireManagementRole(transaction, workspaceId, actor.identityId);
+        const candidateRows = await transaction<CandidateRow[]>`
+          select id, sku_id, source_asset_id, brand_candidate, model_candidate,
+                 material_candidate, size_candidate, status, created_at
+          from product_identity_candidate
+          where workspace_id = ${workspaceId} and sku_id = ${skuId}
+          order by created_at desc
+        `;
+        const referenceRows = await transaction<ReferenceRow[]>`
+          select id, sku_id, source_url, displayed_price_minor, sold_state,
+                 item_condition, shipping_basis, included, exclusion_reason, checked_at, created_at
+          from marketplace_reference where workspace_id = ${workspaceId} and sku_id = ${skuId}
+          order by checked_at desc
+        `;
+        const included = referenceRows
+          .filter((row) => row.included && row.sold_state)
+          .map((row) => row.displayed_price_minor)
+          .sort((left, right) => left - right);
+        const middle = Math.floor(included.length / 2);
+        const median =
+          included.length === 0
+            ? null
+            : included.length % 2 === 1
+              ? included[middle]!
+              : Math.round((included[middle - 1]! + included[middle]!) / 2);
+        return {
+          workspaceId,
+          skuId,
+          candidates: candidateRows.map(toCandidate),
+          references: referenceRows.map(toReference),
+          includedSoldCount: included.length,
+          displayedPriceMedianMinor: median,
+          status:
+            referenceRows.length === 0
+              ? "no_evidence"
+              : included.length < 3
+                ? "insufficient_evidence"
+                : "human_review_required",
         };
       });
     } catch (error) {
@@ -490,9 +831,13 @@ async function selectP0Items(
           'basis', measured.basis,
           'state', measured.state,
           'evidenceAssetId', measured.evidence_asset_id,
+          'attempt', measured.attempt,
           'measuredAt', to_char(measured.measured_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
           'confirmedBy', measured.confirmed_by,
-          'requiresReview', measured.requires_review
+          'requiresReview', measured.requires_review,
+          'differenceCm', measured.difference_cm::double precision,
+          'violations', measured.violations,
+          'reviewReasonCode', measured.review_reason_code
         ) order by measured.definition_id
       ) as items
       from (
@@ -674,6 +1019,128 @@ async function requireManagementRole(
       and active and role in ('owner', 'inventory_manager')
   `;
   if (!rows[0]) throw new RepositoryError("forbidden", "Inventory management role is required");
+}
+
+async function requireCaptureOrManagement(
+  sql: postgres.TransactionSql,
+  workspaceId: string,
+  skuId: string,
+  identityId: string,
+): Promise<string> {
+  const roles = await sql<Array<{ role: string }>>`
+    select role from workspace_membership where workspace_id = ${workspaceId}
+      and identity_id = ${identityId} and active
+      and role in ('owner','inventory_manager','field_worker')
+  `;
+  const role = roles[0]?.role;
+  if (!role) throw new RepositoryError("forbidden", "Capture role is required");
+  if (role === "field_worker") {
+    const assigned = await sql<Array<{ allowed: boolean }>>`
+      select has_active_sku_work_assignment(
+        ${workspaceId}, ${identityId}, 'capture', ${skuId}, statement_timestamp()
+      ) as allowed
+    `;
+    if (!assigned[0]?.allowed) throw new RepositoryError("forbidden", "The SKU is not assigned");
+  }
+  return role;
+}
+
+async function requireResearchEditable(
+  sql: postgres.TransactionSql,
+  workspaceId: string,
+  skuId: string,
+  allowCaptureConfirmed: boolean,
+): Promise<void> {
+  const rows = await sql<Array<{ state: string }>>`
+    select state from p0_workflow where workspace_id = ${workspaceId} and sku_id = ${skuId}
+  `;
+  const allowed = allowCaptureConfirmed
+    ? ["sku_created", "purchase_confirmed", "capture_confirmed"]
+    : ["sku_created", "purchase_confirmed"];
+  if (!rows[0] || !allowed.includes(rows[0].state)) {
+    throw new RepositoryError(
+      "conflict",
+      "Research evidence is immutable after listing confirmation",
+    );
+  }
+}
+
+function parseOcrCandidate(rawText: string): {
+  brand: string | null;
+  model: string | null;
+  material: string | null;
+  size: string | null;
+} {
+  const lines = rawText
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 80);
+  const findValue = (pattern: RegExp) =>
+    lines.map((line) => line.match(pattern)?.[1]?.trim() ?? null).find(Boolean) ?? null;
+  const model = findValue(/(?:品番|型番|model|style)\s*[:：#]?\s*([A-Z0-9][A-Z0-9._/-]{2,40})/iu);
+  const size = findValue(/(?:サイズ|size)\s*[:：]?\s*([A-Z0-9][A-Z0-9._/-]{0,15})/iu);
+  const material =
+    findValue(/(?:素材|material|組成)\s*[:：]?\s*(.{1,80})/iu) ??
+    lines.find((line) => /(綿|コットン|ポリエステル|ウール|毛|ナイロン|レーヨン|麻)/u.test(line)) ??
+    null;
+  const brand =
+    lines.find(
+      (line) =>
+        line.length <= 80 && !/(品番|型番|model|style|サイズ|size|素材|material|組成)/iu.test(line),
+    ) ?? null;
+  return { brand, model, material, size };
+}
+
+function toCandidate(row: CandidateRow): IdentityCandidateResponse {
+  return {
+    candidateId: row.id,
+    skuId: row.sku_id,
+    sourceAssetId: row.source_asset_id,
+    brandCandidate: row.brand_candidate,
+    modelCandidate: row.model_candidate,
+    materialCandidate: row.material_candidate,
+    sizeCandidate: row.size_candidate,
+    status: row.status,
+    createdAt: row.created_at.toISOString(),
+  };
+}
+
+function toReference(row: ReferenceRow): MarketplaceReferenceResponse {
+  return {
+    referenceId: row.id,
+    skuId: row.sku_id,
+    sourceUrl: row.source_url,
+    displayedPriceMinor: row.displayed_price_minor,
+    soldState: row.sold_state,
+    itemCondition: row.item_condition,
+    shippingBasis: row.shipping_basis,
+    included: row.included,
+    exclusionReason: row.exclusion_reason,
+    checkedAt: row.checked_at.toISOString(),
+    createdAt: row.created_at.toISOString(),
+  };
+}
+
+async function auditResearch(
+  sql: postgres.TransactionSql,
+  workspaceId: string,
+  actorId: string,
+  action: string,
+  targetId: string,
+  before: Record<string, postgres.JSONValue>,
+  after: Record<string, postgres.JSONValue>,
+  reasonCode: string,
+): Promise<void> {
+  await sql`
+    insert into audit_event (
+      workspace_id, actor_id, action, target_type, target_id,
+      field_names, redacted_changes, reason_code, approved_by
+    ) values (
+      ${workspaceId}, ${actorId}, ${action}, 'product_research', ${targetId},
+      ${Object.keys(after)}, ${sql.json({ before, after })}, ${reasonCode}, ${actorId}
+    )
+  `;
 }
 
 function normalizeP0ItemError(error: unknown): RepositoryError {

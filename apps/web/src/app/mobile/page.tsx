@@ -39,6 +39,17 @@ export default async function MobileHomePage() {
 
         <MobileAssignmentSummary workspaceId={session.workspaceId} role={session.role} />
 
+        {session.role !== "shipping" ? (
+          <a className="mobileWorkflowAction" href="/mobile/capture">
+            <span aria-hidden="true">▣</span>
+            <div>
+              <strong>割当商品の撮影・採寸</strong>
+              <small>途中保存・再測定・タグ文字候補</small>
+            </div>
+            <span aria-hidden="true">›</span>
+          </a>
+        ) : null}
+
         {canViewManagement ? (
           <a className="mobileWorkflowAction" href="/workflow">
             <span aria-hidden="true">▤</span>
@@ -63,7 +74,10 @@ export default async function MobileHomePage() {
         {session.role === "shipping" ? (
           <a href="/shipping">発送</a>
         ) : (
-          <a href="/mobile/scan">読取</a>
+          <>
+            <a href="/mobile/capture">撮影</a>
+            <a href="/mobile/scan">読取</a>
+          </>
         )}
         {canViewManagement ? <a href="/inventory">在庫</a> : null}
         {canViewManagement ? <a href="/workflow">商品</a> : null}

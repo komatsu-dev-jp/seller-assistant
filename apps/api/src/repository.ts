@@ -391,6 +391,16 @@ export class InMemoryWorkflowRepository implements WorkflowRepository {
     const current = this.workflow.get(key);
     if (!current)
       throw new RepositoryError("forbidden", "The SKU is not available in this workspace");
+    if (
+      ["confirm_order", "confirm_pick", "confirm_pack", "confirm_ship", "approve_journal"].includes(
+        input.action,
+      )
+    ) {
+      throw new RepositoryError(
+        "conflict",
+        "注文・ピック・梱包・発送・会計の工程は、対応する保存操作と同時に確定します。",
+      );
+    }
     const payloadHash = hashWorkflowInput(input);
     const replayKey = `${key}:${input.idempotencyKey}`;
     const replay = this.replays.get(replayKey);
@@ -444,6 +454,7 @@ export class InMemoryWorkflowRepository implements WorkflowRepository {
     input: RegisterMediaAssetRequest,
   ): Promise<MediaAssetResponse> {
     this.requireSku(workspaceId, skuId);
+    this.requireCaptureEditable(workspaceId, skuId);
     const key = `${workspaceId}:${input.assetId}`;
     const existing = this.mediaAssets.get(key);
     const candidate = {
@@ -495,6 +506,7 @@ export class InMemoryWorkflowRepository implements WorkflowRepository {
     input: RecordMeasurementRequest,
   ): Promise<MeasurementResponse> {
     this.requireSku(workspaceId, skuId);
+    this.requireCaptureEditable(workspaceId, skuId);
     const evidence = this.mediaAssets.get(`${workspaceId}:${input.evidenceAssetId}`);
     if (!evidence || evidence.skuId !== skuId) {
       throw new RepositoryError("forbidden", "Measurement evidence is not available for this SKU");
@@ -535,6 +547,7 @@ export class InMemoryWorkflowRepository implements WorkflowRepository {
       requiresReview: actualReview.requiresReview,
       differenceCm: actualReview.difference,
       violations: actualReview.violations,
+      reviewReasonCode: input.reviewReasonCode ?? null,
       createdAt: new Date().toISOString(),
     };
     this.measurements.set(key, response);
@@ -559,6 +572,16 @@ export class InMemoryWorkflowRepository implements WorkflowRepository {
     );
     if (!sku) throw new RepositoryError("forbidden", "The SKU is not available in this workspace");
     return sku;
+  }
+
+  private requireCaptureEditable(workspaceId: string, skuId: string): void {
+    const workflow = this.workflow.get(`${workspaceId}:${skuId}`);
+    if (!workflow || !["sku_created", "purchase_confirmed"].includes(workflow.state)) {
+      throw new RepositoryError(
+        "conflict",
+        "確認済みの写真・採寸は変更できません。再編集工程を開始してください。",
+      );
+    }
   }
 
   private latestMeasurement(
@@ -630,6 +653,7 @@ interface MeasurementRow {
   requires_review: boolean;
   difference_cm: string | null;
   violations: string[];
+  review_reason_code: MeasurementResponse["reviewReasonCode"];
   created_at: Date;
 }
 
@@ -850,15 +874,21 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
           );
         }
         if (role === "field_worker") {
-          const assignments = await transaction<Array<{ allowed: boolean }>>`
-            select has_active_work_assignment(
-              ${workspaceId}, ${actor.identityId}, 'putaway', ${location.id}, now()
-            ) as allowed
+          const assignments = await transaction<
+            Array<{ location_allowed: boolean; inventory_allowed: boolean }>
+          >`
+            select
+              has_active_work_assignment(
+                ${workspaceId}, ${actor.identityId}, 'putaway', ${location.id}, now()
+              ) as location_allowed,
+              has_active_inventory_unit_assignment(
+                ${workspaceId}, ${actor.identityId}, 'putaway', ${unit.id}, now()
+              ) as inventory_allowed
           `;
-          if (!assignments[0]?.allowed) {
+          if (!assignments[0]?.location_allowed || !assignments[0]?.inventory_allowed) {
             throw new RepositoryError(
               "forbidden",
-              "The field worker is not assigned to this location branch and operation",
+              "The field worker is not assigned to this inventory item and location branch",
             );
           }
         }
@@ -908,7 +938,18 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
           ) values (
             ${workspaceId}, ${actor.identityId}, 'inventory.putaway', 'inventory_unit',
             ${unit.id}, ${["status", "location_id", "movement_seq"]},
-            ${transaction.json({ status: { to: "available" } })},
+            ${transaction.json({
+              before: {
+                status: "putaway_pending",
+                locationId: null,
+                movementSequence: Number(unit.movement_seq),
+              },
+              after: {
+                status: "available",
+                locationId: location.id,
+                movementSequence: Number(unit.movement_seq) + 1,
+              },
+            })},
             ${[scanSessionId, location.id]}, 'product_and_location_double_scan', ${actor.identityId}
           )
         `;
@@ -1366,7 +1407,7 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
           const measurements = await transaction<MeasurementRow[]>`
             select id, workspace_id, sku_id, definition_id, definition_version, value, unit,
                    basis, state, measured_by, measured_at, evidence_asset_id, attempt,
-                   confirmed_by, requires_review, difference_cm, violations, created_at
+                   confirmed_by, requires_review, difference_cm, violations, review_reason_code, created_at
             from measurement_attempt
             where workspace_id = ${workspaceId} and sku_id = ${skuId}
           `;
@@ -1420,7 +1461,10 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
             redacted_changes, reason_code, approved_by
           ) values (
             ${workspaceId}, ${actor.identityId}, ${input.action}, 'p0_workflow', ${skuId},
-            array['state'], ${transaction.json({ state: decision.nextState, version: nextVersion })},
+            array['state','version'], ${transaction.json({
+              before: { state: current.state, version: current.version },
+              after: { state: decision.nextState, version: nextVersion },
+            })},
             'human_workflow_confirmation', ${actor.identityId}
           )
         `;
@@ -1456,6 +1500,7 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
           actor.identityId,
           role,
         );
+        await requireCaptureEditable(transaction, workspaceId, skuId);
         const existingRows = await transaction<MediaAssetRow[]>`
           select id, workspace_id, sku_id, role, original_sha256, original_storage_key,
                  mime_type, size_bytes, width, height, created_at
@@ -1546,6 +1591,7 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
           actor.identityId,
           role,
         );
+        await requireCaptureEditable(transaction, workspaceId, skuId);
         const evidence = await transaction<Array<{ id: string }>>`
           select id from media_asset
           where workspace_id = ${workspaceId} and sku_id = ${skuId}
@@ -1560,7 +1606,7 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
         const previousRows = await transaction<MeasurementRow[]>`
           select id, workspace_id, sku_id, definition_id, definition_version, value, unit,
                  basis, state, measured_by, measured_at, evidence_asset_id, attempt,
-                 confirmed_by, requires_review, difference_cm, violations, created_at
+                 confirmed_by, requires_review, difference_cm, violations, review_reason_code, created_at
           from measurement_attempt
           where workspace_id = ${workspaceId} and sku_id = ${skuId}
             and definition_id = ${input.definitionId}
@@ -1586,23 +1632,43 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
           previousRows[0] ? toDomainMeasurement(toMeasurementResponse(previousRows[0])) : undefined,
           2,
         );
+        const reviewReasonCode = review.requiresReview ? (input.reviewReasonCode ?? null) : null;
+        const requiresReview = review.requiresReview && reviewReasonCode === null;
+        const storedViolations = requiresReview ? review.violations : [];
         const rows = await transaction<MeasurementRow[]>`
           insert into measurement_attempt (
             workspace_id, sku_id, definition_id, definition_version, value, unit,
             basis, state, measured_by, measured_at, evidence_asset_id, attempt,
-            confirmed_by, confirmed_at, requires_review, difference_cm, violations
+            confirmed_by, confirmed_at, requires_review, difference_cm, violations,
+            review_reason_code
           ) values (
             ${workspaceId}, ${skuId}, ${input.definitionId}, ${input.definitionVersion},
             ${input.value}, ${input.unit}, ${input.basis}, ${input.state}, ${actor.identityId},
             ${input.measuredAt}, ${input.evidenceAssetId}, ${input.attempt}, ${actor.identityId},
-            now(), ${review.requiresReview}, ${review.difference}, ${review.violations}
+            now(), ${requiresReview}, ${review.difference}, ${storedViolations}, ${reviewReasonCode}
           )
           returning id, workspace_id, sku_id, definition_id, definition_version, value, unit,
                     basis, state, measured_by, measured_at, evidence_asset_id, attempt,
-                    confirmed_by, requires_review, difference_cm, violations, created_at
+                    confirmed_by, requires_review, difference_cm, violations, review_reason_code, created_at
         `;
         const row = rows[0];
         if (!row) throw new RepositoryError("database_error", "Measurement insert returned no row");
+        await transaction`
+          insert into audit_event (
+            workspace_id, actor_id, action, target_type, target_id, field_names,
+            redacted_changes, reference_ids, reason_code, approved_by
+          ) values (
+            ${workspaceId}, ${actor.identityId}, 'measurement.recorded', 'measurement_attempt',
+            ${row.id}, ${["value", "attempt", "requires_review"]},
+            ${transaction.json({
+              before: previousRows[0]
+                ? { value: Number(previousRows[0].value), attempt: previousRows[0].attempt }
+                : { value: null, attempt: 0 },
+              after: { value: Number(row.value), attempt: row.attempt, requiresReview },
+            })}, ${[input.evidenceAssetId]},
+            ${reviewReasonCode ?? "measurement_human_confirmed"}, ${actor.identityId}
+          )
+        `;
         return toMeasurementResponse(row);
       });
     } catch (error) {
@@ -1637,7 +1703,7 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
       const measurements = await transaction<MeasurementRow[]>`
         select id, workspace_id, sku_id, definition_id, definition_version, value, unit,
                basis, state, measured_by, measured_at, evidence_asset_id, attempt,
-               confirmed_by, requires_review, difference_cm, violations, created_at
+               confirmed_by, requires_review, difference_cm, violations, review_reason_code, created_at
         from measurement_attempt where workspace_id = ${workspaceId} and sku_id = ${skuId}
       `;
       return buildCaptureSummary(
@@ -1691,6 +1757,23 @@ async function requireSkuAssignmentIfFieldWorker(
   `;
   if (!rows[0]?.allowed) {
     throw new RepositoryError("forbidden", "The SKU capture is outside this assignment");
+  }
+}
+
+async function requireCaptureEditable(
+  sql: postgres.TransactionSql,
+  workspaceId: string,
+  skuId: string,
+): Promise<void> {
+  const rows = await sql<Array<{ state: string }>>`
+    select state from p0_workflow
+    where workspace_id = ${workspaceId} and sku_id = ${skuId}
+  `;
+  if (!rows[0] || !["sku_created", "purchase_confirmed"].includes(rows[0].state)) {
+    throw new RepositoryError(
+      "conflict",
+      "Capture evidence is immutable after capture confirmation; reopen is not available in P0",
+    );
   }
 }
 
@@ -1751,6 +1834,7 @@ function toMeasurementResponse(row: MeasurementRow): MeasurementResponse {
     requiresReview: row.requires_review,
     differenceCm: row.difference_cm === null ? null : Number(row.difference_cm),
     violations: row.violations,
+    reviewReasonCode: row.review_reason_code,
     createdAt: row.created_at.toISOString(),
   };
 }

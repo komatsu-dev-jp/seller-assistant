@@ -113,6 +113,39 @@ function isAllowedPath(method: "GET" | "POST", segments: string[]): boolean {
   if (method === "GET" && segments.length === 1 && segments[0] === "shipping-tasks") {
     return true;
   }
+  if (method === "GET" && segments.length === 1 && segments[0] === "team") return true;
+  if (method === "GET" && segments.length === 1 && segments[0] === "capture-tasks") return true;
+  if (segments.length === 1 && segments[0] === "stocktakes") return true;
+  if (
+    method === "POST" &&
+    segments.length === 2 &&
+    segments[0] === "inventory-labels" &&
+    segments[1] === "reissue"
+  )
+    return true;
+  if (
+    method === "POST" &&
+    segments[0] === "stocktakes" &&
+    uuid.test(segments[1] ?? "") &&
+    ((segments.length === 3 &&
+      ["observations", "reconcile", "approve"].includes(segments[2] ?? "")) ||
+      (segments.length === 5 &&
+        segments[2] === "discrepancies" &&
+        uuid.test(segments[3] ?? "") &&
+        segments[4] === "resolve"))
+  )
+    return true;
+  if (
+    method === "POST" &&
+    segments[0] === "team" &&
+    ((segments.length === 2 && ["members", "assignments"].includes(segments[1] ?? "")) ||
+      (segments.length === 4 &&
+        segments[1] === "assignments" &&
+        uuid.test(segments[2] ?? "") &&
+        segments[3] === "revoke"))
+  ) {
+    return true;
+  }
   if (segments.length === 1 && ["p0-items", "locations"].includes(segments[0] ?? "")) {
     return true;
   }
@@ -154,6 +187,20 @@ function isAllowedPath(method: "GET" | "POST", segments: string[]): boolean {
   ) {
     return true;
   }
+  if (
+    segments[0] === "skus" &&
+    uuid.test(segments[1] ?? "") &&
+    ((method === "GET" && segments.length === 3 && segments[2] === "research") ||
+      (method === "POST" &&
+        segments.length === 3 &&
+        ["identity-candidates", "market-references"].includes(segments[2] ?? "")) ||
+      (method === "POST" &&
+        segments.length === 5 &&
+        segments[2] === "identity-candidates" &&
+        uuid.test(segments[3] ?? "") &&
+        segments[4] === "decision"))
+  )
+    return true;
   if (
     method === "GET" &&
     segments.length === 3 &&

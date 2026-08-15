@@ -1,5 +1,6 @@
 import { AppSidebar } from "../../components/app-sidebar";
 import { InventoryWorkspace } from "../../components/inventory-workspace";
+import { StocktakeWorkspace } from "../../components/stocktake-workspace";
 import { requirePageSession } from "../../lib/server-session";
 
 export const dynamic = "force-dynamic";
@@ -24,6 +25,7 @@ export default async function InventoryPage() {
           </div>
         </header>
         <InventoryWorkspace workspaceId={session.workspaceId} />
+        <StocktakeWorkspace workspaceId={session.workspaceId} />
       </section>
     </main>
   );

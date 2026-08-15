@@ -1,8 +1,10 @@
 import { hasValidCodeCheckDigit } from "@resale/contracts";
+import { clearCaptureBusinessData } from "./capture-outbox";
 
 const DATABASE_NAME = "resale-ops-offline-v1";
 const STORE_NAME = "putaway-outbox";
-const DATABASE_VERSION = 2;
+const REREAD_STORE_NAME = "putaway-reread-required";
+const DATABASE_VERSION = 3;
 
 const inventoryPattern = /^INV-[0-9]{6}-[0-9]$/u;
 const locationPattern = /^[A-Z0-9]+(?:-[A-Z0-9]+)+-[0-9]$/u;
@@ -30,6 +32,14 @@ export interface PendingPutawayOperation {
   locationScannedAt: string;
   confirmedAt: string;
   humanConfirmed: true;
+}
+
+interface LegacyPutawayConflict {
+  idempotencyKey: string;
+  inventoryNumber: string;
+  locationCode: string;
+  reason: "label_check_digit_upgrade";
+  detectedAt: string;
 }
 
 export function validatePendingPutaway(value: unknown): value is PendingPutawayOperation {
@@ -71,8 +81,32 @@ function openDatabase(): Promise<IDBDatabase> {
       const database = request.result;
       if (!database.objectStoreNames.contains(STORE_NAME)) {
         database.createObjectStore(STORE_NAME, { keyPath: "idempotencyKey" });
-      } else if (event.oldVersion < 2) {
-        request.transaction?.objectStore(STORE_NAME).clear();
+      }
+      const rereadStore = database.objectStoreNames.contains(REREAD_STORE_NAME)
+        ? request.transaction?.objectStore(REREAD_STORE_NAME)
+        : database.createObjectStore(REREAD_STORE_NAME, { keyPath: "idempotencyKey" });
+      if (event.oldVersion > 0 && event.oldVersion < 2) {
+        const oldStore = request.transaction?.objectStore(STORE_NAME);
+        const cursorRequest = oldStore?.openCursor();
+        if (cursorRequest && rereadStore) {
+          cursorRequest.onsuccess = () => {
+            const cursor = cursorRequest.result;
+            if (!cursor) return;
+            const value = cursor.value as Record<string, unknown>;
+            const idempotencyKey =
+              typeof value.idempotencyKey === "string" ? value.idempotencyKey : crypto.randomUUID();
+            rereadStore.put({
+              idempotencyKey,
+              inventoryNumber:
+                typeof value.inventoryNumber === "string" ? value.inventoryNumber : "不明",
+              locationCode: typeof value.locationCode === "string" ? value.locationCode : "不明",
+              reason: "label_check_digit_upgrade",
+              detectedAt: new Date().toISOString(),
+            } satisfies LegacyPutawayConflict);
+            cursor.delete();
+            cursor.continue();
+          };
+        }
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -144,6 +178,33 @@ export async function savePutawayOnlineFirst(
 
 export async function pendingPutawayCount(): Promise<number> {
   return (await readPendingPutaways()).length;
+}
+
+export async function legacyPutawayConflictCount(): Promise<number> {
+  const database = await openDatabase();
+  try {
+    const transaction = database.transaction(REREAD_STORE_NAME, "readonly");
+    const request = transaction.objectStore(REREAD_STORE_NAME).count();
+    const count = await new Promise<number>((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error ?? new Error("再読取件数を確認できません。"));
+    });
+    await waitForTransaction(transaction);
+    return count;
+  } finally {
+    database.close();
+  }
+}
+
+export async function acknowledgeLegacyPutawayConflicts(): Promise<void> {
+  const database = await openDatabase();
+  try {
+    const transaction = database.transaction(REREAD_STORE_NAME, "readwrite");
+    transaction.objectStore(REREAD_STORE_NAME).clear();
+    await waitForTransaction(transaction);
+  } finally {
+    database.close();
+  }
 }
 
 export async function syncPendingPutaways(): Promise<{
@@ -257,6 +318,7 @@ export async function clearOfflineBusinessData(): Promise<void> {
       ]);
     });
   }
+  await clearCaptureBusinessData();
   await new Promise<void>((resolve, reject) => {
     const request = indexedDB.deleteDatabase(DATABASE_NAME);
     request.onsuccess = () => resolve();

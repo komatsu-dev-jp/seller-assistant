@@ -231,3 +231,17 @@
 - 自動検証: 最終`npm.cmd run check`合格。20 files / 101 tests、line 91.36%、branch 81.81%、functions 100%。新規使い捨てPostgreSQLへ0001〜0015を適用し、33業務テーブルRLS、配送割当、5分住所、checked code、撮影/出品根拠再読込、注文〜会計の原子的進捗を含む結合テストPASS。
 - 実画面: インストール済みChromeをローカルだけで使用し、owner login 204、P0再読込、390×844、配送担当画面、収支情報非表示を確認。証拠は`output/playwright/iteration-21-*.png`。Playwright wrapperは外部registry取得を要求したため使用せず、権限昇格もdownloadもしていない。
 - 未確認: 実iPhone Safariのホーム画面追加、カメラ、圏外復帰はユーザー端末での手動確認が必要。外部へのpush、Slack、Notion、Draft PRはユーザーのAPI確認中につき停止。
+
+## Iteration 22 — 2026-08-16 外注・撮影調査・棚卸のP0完成
+
+- 基準値: 独立レビューで、既存データ入りmigration、配送解除、InventoryUnit単位の格納割当、確認後の撮影変更、アプリ内の外注作成/割当、撮影の再送/再測定/商品候補、棚卸/ラベル再発行、監査の前後値にHigh相当の不足があった。
+- 実装: migration 0015〜0017、team/stocktake/capture/research API、外注・棚卸PC画面、撮影PWA、安定した写真outbox、旧outboxの再読取待ち移行、厳密な対象/期限/役割検査を追加した。
+- 承認版固定: `confirm_listing`後は写真・採寸の追記を409拒否する。文章候補は確認済み写真/採寸revisionだけから再構築し、確認後の内容差替えを承認済み表示にしない。
+- 監査: 主要変更は主体、日時、対象、before、after、理由、承認者をallowlist payloadへ保存する。住所、token、証憑本文、AI/OCR全文は監査へ保存しない。
+- 実画面: 架空のfield_workerでログインし、割当SKU 1件だけを390×844で表示。原価/利益/購入者/税務資料0件、横あふれ0、console error 0。同じブラウザでオーナーの商品調査、在庫棚卸、外注割当も確認した。
+- 外部境界: ブラウザ通信は`127.0.0.1`の同一生成元`/v1`だけ。Mercari/Notion/Slack/OpenAI/Photoroom等のruntime URL、SDK、route、外部リンクは0件。
+- 検証失敗と修正: 既存の使い捨てDBを再利用した初回結合テストは「初期ownerが存在する」で安全停止した。データを削除せず新しいDBを作り、専用の制限LOGIN roleで全migrationと結合テストを再実行してPASSした。
+- 検証: `npm.cmd run check`は20 files / 108 tests、statements 84.09%、branch 81.81%、functions 100%、lines 91.36%、本番buildまでPASS。PostgreSQLは0001〜0017、36-table RLS、代表一気通貫をPASS。
+- 証拠: `output/playwright/iteration-22-*.png`、`docs/implementation/p0-e2e-evidence.md`、本Loop。
+- 残る問題: 実iPhone Safari、ホーム画面追加、実カメラ、圏外復帰、HEIC/WebPは未確認。P1、外部push、Draft PR、公開は未実行。
+- 次の一手: 差分をlocal commitへ固定し、別担当の読み取り専用レビューでCritical/High 0を確認する。

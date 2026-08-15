@@ -45,6 +45,10 @@ export function ShippingWorkspace({ workspaceId }: { workspaceId: string }) {
     try {
       await action();
     } catch (reason) {
+      if (reason instanceof RequestError && reason.status === 403) {
+        setLeaseId(null);
+        setAddress(null);
+      }
       setError(errorMessage(reason));
     } finally {
       setBusy(false);
@@ -74,7 +78,13 @@ export function ShippingWorkspace({ workspaceId }: { workspaceId: string }) {
       );
       setAddress(result.shippingAddress);
       const remaining = Math.max(0, Date.parse(result.expiresAt) - Date.now());
-      window.setTimeout(() => setAddress(null), Math.min(remaining, 300_000));
+      window.setTimeout(
+        () => {
+          setAddress(null);
+          setLeaseId(null);
+        },
+        Math.min(remaining, 300_000),
+      );
     });
   }
 
@@ -240,8 +250,20 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { cache: "no-store", ...init, headers });
   const payload = (await response.json().catch(() => null)) as { message?: string } | null;
   if (!response.ok)
-    throw new Error(payload?.message ?? `操作に失敗しました（${response.status}）。`);
+    throw new RequestError(
+      response.status,
+      payload?.message ?? `操作に失敗しました（${response.status}）。`,
+    );
   return payload as T;
+}
+
+class RequestError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+  }
 }
 
 function errorMessage(reason: unknown): string {

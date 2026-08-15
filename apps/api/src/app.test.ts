@@ -341,7 +341,7 @@ describe("P0 workspace API", () => {
     expect(replay.json()).toEqual(first.json());
   });
 
-  it("completes the representative P0 journey without skipping a human gate", async () => {
+  it("covers capture/listing while rejecting downstream workflow bypasses", async () => {
     const repository = new InMemoryWorkflowRepository();
     const app = buildTestApp(undefined, repository);
     apps.push(app);
@@ -460,37 +460,19 @@ describe("P0 workspace API", () => {
     );
     expect(listing.statusCode, listing.body).toBe(200);
 
-    const remaining = [
+    const forbiddenBypasses = [
       ["confirm_order", "10000000-0000-4000-8000-000000000004"],
       ["confirm_pick", "10000000-0000-4000-8000-000000000005"],
       ["confirm_pack", "10000000-0000-4000-8000-000000000006"],
       ["confirm_ship", "10000000-0000-4000-8000-000000000007"],
       ["approve_journal", "10000000-0000-4000-8000-000000000008"],
     ] as const;
-    for (const [action, idempotencyKey] of remaining) {
+    for (const [action, idempotencyKey] of forbiddenBypasses) {
       const response = await advance(action, idempotencyKey, [
         idempotencyKey.replace("100", "200"),
       ]);
-      expect(response.statusCode, response.body).toBe(200);
+      expect(response.statusCode, response.body).toBe(409);
     }
-
-    const finalResponse = await app.inject({
-      method: "POST",
-      url: actionUrl,
-      headers: { "x-actor-id": actorId },
-      payload: {
-        action: "approve_journal",
-        idempotencyKey: "10000000-0000-4000-8000-000000000008",
-        evidenceReferenceIds: ["20000000-0000-4000-8000-000000000008"],
-        requiredFactsConfirmed: true,
-        manualChannelHandoff: false,
-      },
-    });
-    expect(finalResponse.json()).toMatchObject({
-      state: "journal_approved",
-      lastAction: "approve_journal",
-      version: 9,
-    });
   });
 
   it("rejects workflow skips and idempotency payload conflicts", async () => {

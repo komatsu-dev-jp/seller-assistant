@@ -315,6 +315,10 @@ export const recordMeasurementRequestSchema = z
     measuredAt: z.iso.datetime(),
     evidenceAssetId: z.string().uuid(),
     attempt: z.number().int().positive().max(20),
+    reviewReasonCode: z
+      .enum(["garment_stretch", "measurement_definition_corrected", "previous_entry_error"])
+      .nullable()
+      .optional(),
     humanConfirmed: z.literal(true),
   })
   .strict();
@@ -330,6 +334,9 @@ export const measurementResponseSchema = recordMeasurementRequestSchema
     requiresReview: z.boolean(),
     differenceCm: z.number().nonnegative().nullable(),
     violations: z.array(z.string()),
+    reviewReasonCode: z
+      .enum(["garment_stretch", "measurement_definition_corrected", "previous_entry_error"])
+      .nullable(),
     createdAt: z.iso.datetime(),
   });
 
@@ -405,6 +412,93 @@ export const p0CaptureMeasurementSchema = z.object({
   measuredAt: z.iso.datetime(),
   confirmedBy: z.string().uuid(),
   requiresReview: z.boolean(),
+  attempt: z.number().int().positive(),
+  differenceCm: z.number().nonnegative().nullable(),
+  violations: z.array(z.string()),
+  reviewReasonCode: z
+    .enum(["garment_stretch", "measurement_definition_corrected", "previous_entry_error"])
+    .nullable(),
+});
+
+export const captureTaskResponseSchema = z.object({
+  workspaceId: workspaceIdSchema,
+  skuId: z.string().uuid(),
+  skuCode: z.string(),
+  title: z.string(),
+  category: z.string().nullable(),
+  photoAssetIds: z.array(z.string().uuid()),
+  photoRoles: z.array(photoRoleSchema),
+  measurements: z.array(p0CaptureMeasurementSchema),
+  assignmentExpiresAt: z.iso.datetime(),
+});
+
+export const createIdentityCandidateRequestSchema = z
+  .object({
+    sourceAssetId: z.string().uuid(),
+    rawOcrText: z.string().trim().min(1).max(4000),
+    humanConfirmedSource: z.literal(true),
+  })
+  .strict();
+
+export const identityCandidateResponseSchema = z.object({
+  candidateId: z.string().uuid(),
+  skuId: z.string().uuid(),
+  sourceAssetId: z.string().uuid(),
+  brandCandidate: z.string().nullable(),
+  modelCandidate: z.string().nullable(),
+  materialCandidate: z.string().nullable(),
+  sizeCandidate: z.string().nullable(),
+  status: z.enum(["candidate", "human_confirmed", "rejected"]),
+  createdAt: z.iso.datetime(),
+});
+
+export const confirmIdentityCandidateRequestSchema = z
+  .object({
+    status: z.enum(["human_confirmed", "rejected"]),
+    humanConfirmed: z.literal(true),
+  })
+  .strict();
+
+export const createMarketplaceReferenceRequestSchema = z
+  .object({
+    sourceUrl: z.string().url().startsWith("https://"),
+    displayedPriceMinor: z.number().int().nonnegative().max(100_000_000),
+    soldState: z.boolean(),
+    itemCondition: z.string().trim().min(1).max(80),
+    shippingBasis: z.enum(["included", "separate", "unknown"]),
+    included: z.boolean(),
+    exclusionReason: z.string().trim().min(1).max(160).nullable(),
+    checkedAt: z.iso.datetime(),
+    humanConfirmed: z.literal(true),
+  })
+  .strict()
+  .refine((value) => value.included || Boolean(value.exclusionReason), {
+    message: "Excluded evidence requires a reason",
+    path: ["exclusionReason"],
+  });
+
+export const marketplaceReferenceResponseSchema = z.object({
+  referenceId: z.string().uuid(),
+  skuId: z.string().uuid(),
+  sourceUrl: z.string().url().startsWith("https://"),
+  displayedPriceMinor: z.number().int().nonnegative().max(100_000_000),
+  soldState: z.boolean(),
+  itemCondition: z.string().trim().min(1).max(80),
+  shippingBasis: z.enum(["included", "separate", "unknown"]),
+  included: z.boolean(),
+  exclusionReason: z.string().trim().min(1).max(160).nullable(),
+  checkedAt: z.iso.datetime(),
+  createdAt: z.iso.datetime(),
+});
+
+export const productResearchResponseSchema = z.object({
+  workspaceId: workspaceIdSchema,
+  skuId: z.string().uuid(),
+  candidates: identityCandidateResponseSchema.array(),
+  references: marketplaceReferenceResponseSchema.array(),
+  includedSoldCount: z.number().int().nonnegative(),
+  displayedPriceMedianMinor: z.number().int().nonnegative().nullable(),
+  status: z.enum(["no_evidence", "insufficient_evidence", "human_review_required"]),
 });
 
 export const p0ListingCandidateSchema = z.object({
@@ -550,7 +644,153 @@ export const assignOrderRequestSchema = z
   .refine((value) => Date.parse(value.expiresAt) > Date.parse(value.startsAt), {
     message: "Assignment expiry must be after its start",
     path: ["expiresAt"],
-  });
+  })
+  .refine(
+    (value) => Date.parse(value.expiresAt) - Date.parse(value.startsAt) <= 24 * 60 * 60 * 1000,
+    {
+      message: "Assignment duration must not exceed 24 hours",
+      path: ["expiresAt"],
+    },
+  );
+
+export const createLocalMemberRequestSchema = z
+  .object({
+    displayName: z.string().trim().min(1).max(120),
+    email: z.string().trim().toLowerCase().email().max(320),
+    initialPassword: z.string().min(12).max(128),
+    role: z.enum(["inventory_manager", "field_worker", "shipping", "accounting"]),
+    humanConfirmed: z.literal(true),
+  })
+  .strict();
+
+export const teamMemberResponseSchema = z.object({
+  identityId: z.string().uuid(),
+  email: z.string().email(),
+  role: z.enum(["owner", "inventory_manager", "field_worker", "shipping", "accounting"]),
+  active: z.boolean(),
+});
+
+export const teamAssignmentTypeSchema = z.enum([
+  "capture",
+  "location_putaway",
+  "location_photo",
+  "inventory_putaway",
+  "shipping",
+]);
+
+export const createTeamAssignmentRequestSchema = z
+  .object({
+    identityId: z.string().uuid(),
+    assignmentType: teamAssignmentTypeSchema.exclude(["shipping"]),
+    targetId: z.string().uuid(),
+    startsAt: z.iso.datetime(),
+    expiresAt: z.iso.datetime(),
+    humanConfirmed: z.literal(true),
+  })
+  .strict()
+  .refine((value) => Date.parse(value.expiresAt) > Date.parse(value.startsAt), {
+    message: "Assignment expiry must be after its start",
+    path: ["expiresAt"],
+  })
+  .refine(
+    (value) => Date.parse(value.expiresAt) - Date.parse(value.startsAt) <= 24 * 60 * 60 * 1000,
+    {
+      message: "Assignment duration must not exceed 24 hours",
+      path: ["expiresAt"],
+    },
+  );
+
+export const revokeTeamAssignmentRequestSchema = z
+  .object({
+    assignmentType: teamAssignmentTypeSchema,
+    reasonCode: z.enum([
+      "assignment_error",
+      "assignment_changed",
+      "device_lost",
+      "worker_unavailable",
+    ]),
+    humanConfirmed: z.literal(true),
+  })
+  .strict();
+
+export const teamAssignmentResponseSchema = z.object({
+  assignmentId: z.string().uuid(),
+  assignmentType: teamAssignmentTypeSchema,
+  identityId: z.string().uuid(),
+  assigneeEmail: z.string().email(),
+  targetId: z.string().uuid(),
+  targetLabel: z.string(),
+  startsAt: z.iso.datetime(),
+  expiresAt: z.iso.datetime(),
+  revokedAt: z.iso.datetime().nullable(),
+});
+
+export const teamStateResponseSchema = z.object({
+  workspaceId: workspaceIdSchema,
+  members: teamMemberResponseSchema.array(),
+  assignments: teamAssignmentResponseSchema.array(),
+});
+
+export const startStocktakeRequestSchema = z
+  .object({ locationId: z.string().uuid(), humanConfirmed: z.literal(true) })
+  .strict();
+
+export const stocktakeObservationRequestSchema = z
+  .object({
+    inventoryNumber: inventoryNumberSchema,
+    observedAt: z.iso.datetime(),
+    humanConfirmed: z.literal(true),
+  })
+  .strict();
+
+export const stocktakeDiscrepancySchema = z.object({
+  discrepancyId: z.string().uuid(),
+  inventoryUnitId: z.string().uuid().nullable(),
+  inventoryNumber: inventoryNumberSchema.nullable(),
+  kind: z.enum(["missing_candidate", "misplaced", "unexpected", "duplicate", "unreadable"]),
+  state: z.enum(["open", "reconfirmation_required", "approval_required", "resolved"]),
+  resolution: z.string().nullable(),
+});
+
+export const stocktakeResponseSchema = z.object({
+  stocktakeId: z.string().uuid(),
+  workspaceId: workspaceIdSchema,
+  locationId: z.string().uuid(),
+  locationCode: checkedLocationCodeSchema,
+  state: z.enum(["counting", "reconciliation", "approved"]),
+  initialCounterId: z.string().uuid(),
+  observationCount: z.number().int().nonnegative(),
+  discrepancies: stocktakeDiscrepancySchema.array(),
+  startedAt: z.iso.datetime(),
+  approvedAt: z.iso.datetime().nullable(),
+});
+
+export const resolveStocktakeDiscrepancyRequestSchema = z
+  .object({
+    resolution: z.enum(["found_in_place", "moved_to_correct_place", "no_inventory_adjustment"]),
+    humanConfirmed: z.literal(true),
+  })
+  .strict();
+
+export const approveStocktakeRequestSchema = z.object({ humanConfirmed: z.literal(true) }).strict();
+
+export const reissueInventoryLabelRequestSchema = z
+  .object({
+    targetType: z.enum(["inventory_unit", "location"]),
+    targetId: z.string().uuid(),
+    reasonCode: z.enum(["damaged", "lost", "unreadable", "security_reissue"]),
+    humanConfirmed: z.literal(true),
+  })
+  .strict();
+
+export const reissuedInventoryLabelResponseSchema = z.object({
+  labelId: z.string().uuid(),
+  targetType: z.enum(["inventory_unit", "location"]),
+  targetId: z.string().uuid(),
+  shortCode: z.string(),
+  version: z.number().int().positive(),
+  issuedAt: z.iso.datetime(),
+});
 
 export const orderAssignmentResponseSchema = z.object({
   assignmentId: z.string().uuid(),
@@ -696,6 +936,15 @@ export type RegisterMediaAssetRequest = z.infer<typeof registerMediaAssetRequest
 export type MediaAssetResponse = z.infer<typeof mediaAssetResponseSchema>;
 export type RecordMeasurementRequest = z.infer<typeof recordMeasurementRequestSchema>;
 export type MeasurementResponse = z.infer<typeof measurementResponseSchema>;
+export type CaptureTaskResponse = z.infer<typeof captureTaskResponseSchema>;
+export type CreateIdentityCandidateRequest = z.infer<typeof createIdentityCandidateRequestSchema>;
+export type ConfirmIdentityCandidateRequest = z.infer<typeof confirmIdentityCandidateRequestSchema>;
+export type IdentityCandidateResponse = z.infer<typeof identityCandidateResponseSchema>;
+export type CreateMarketplaceReferenceRequest = z.infer<
+  typeof createMarketplaceReferenceRequestSchema
+>;
+export type MarketplaceReferenceResponse = z.infer<typeof marketplaceReferenceResponseSchema>;
+export type ProductResearchResponse = z.infer<typeof productResearchResponseSchema>;
 export type CaptureSummary = z.infer<typeof captureSummarySchema>;
 export type CreateOrderRequest = z.infer<typeof createOrderRequestSchema>;
 export type CreateP0ItemRequest = z.infer<typeof createP0ItemRequestSchema>;
@@ -705,6 +954,22 @@ export type LocationNodeResponse = z.infer<typeof locationNodeResponseSchema>;
 export type OrderOperationResponse = z.infer<typeof orderOperationResponseSchema>;
 export type AssignOrderRequest = z.infer<typeof assignOrderRequestSchema>;
 export type OrderAssignmentResponse = z.infer<typeof orderAssignmentResponseSchema>;
+export type CreateLocalMemberRequest = z.infer<typeof createLocalMemberRequestSchema>;
+export type TeamMemberResponse = z.infer<typeof teamMemberResponseSchema>;
+export type CreateTeamAssignmentRequest = z.infer<typeof createTeamAssignmentRequestSchema>;
+export type RevokeTeamAssignmentRequest = z.infer<typeof revokeTeamAssignmentRequestSchema>;
+export type TeamAssignmentResponse = z.infer<typeof teamAssignmentResponseSchema>;
+export type TeamStateResponse = z.infer<typeof teamStateResponseSchema>;
+export type StartStocktakeRequest = z.infer<typeof startStocktakeRequestSchema>;
+export type StocktakeObservationRequest = z.infer<typeof stocktakeObservationRequestSchema>;
+export type StocktakeDiscrepancy = z.infer<typeof stocktakeDiscrepancySchema>;
+export type StocktakeResponse = z.infer<typeof stocktakeResponseSchema>;
+export type ResolveStocktakeDiscrepancyRequest = z.infer<
+  typeof resolveStocktakeDiscrepancyRequestSchema
+>;
+export type ApproveStocktakeRequest = z.infer<typeof approveStocktakeRequestSchema>;
+export type ReissueInventoryLabelRequest = z.infer<typeof reissueInventoryLabelRequestSchema>;
+export type ReissuedInventoryLabelResponse = z.infer<typeof reissuedInventoryLabelResponseSchema>;
 export type ShippingTaskResponse = z.infer<typeof shippingTaskResponseSchema>;
 export type CreateAddressLeaseRequest = z.infer<typeof createAddressLeaseRequestSchema>;
 export type AddressLeaseResponse = z.infer<typeof addressLeaseResponseSchema>;

@@ -2,10 +2,16 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { pendingPutawayCount, syncPendingPutaways } from "../lib/offline-outbox";
+import {
+  acknowledgeLegacyPutawayConflicts,
+  legacyPutawayConflictCount,
+  pendingPutawayCount,
+  syncPendingPutaways,
+} from "../lib/offline-outbox";
 
 export function OfflineSyncStatus() {
   const [pending, setPending] = useState(0);
+  const [rereadRequired, setRereadRequired] = useState(0);
   const [state, setState] = useState<"idle" | "syncing" | "error">("idle");
   const [message, setMessage] = useState("接続後も現在地を再確認し、競合は自動上書きしません。");
 
@@ -41,6 +47,9 @@ export function OfflineSyncStatus() {
     void pendingPutawayCount()
       .then(setPending)
       .catch(() => setState("error"));
+    void legacyPutawayConflictCount()
+      .then(setRereadRequired)
+      .catch(() => setState("error"));
     const synchronizeWhenOnline = () => void synchronize();
     window.addEventListener("online", synchronizeWhenOnline);
     return () => window.removeEventListener("online", synchronizeWhenOnline);
@@ -56,6 +65,20 @@ export function OfflineSyncStatus() {
       <button disabled={state === "syncing" || pending === 0} onClick={() => void synchronize()}>
         {state === "syncing" ? "確認中…" : "同期を再試行"}
       </button>
+      {rereadRequired > 0 ? (
+        <div className="accountingDisclaimer">
+          <strong>{rereadRequired}件は旧ラベル形式のため再読取が必要です。</strong>
+          <p>自動変換や自動上書きはしていません。商品と場所を読み直してください。</p>
+          <button
+            type="button"
+            onClick={() =>
+              void acknowledgeLegacyPutawayConflicts().then(() => setRereadRequired(0))
+            }
+          >
+            再読取の案内を確認した
+          </button>
+        </div>
+      ) : null}
     </section>
   );
 }

@@ -284,6 +284,9 @@ export class PostgresOrderRepository implements OrderRepository {
           "order.confirmed",
           record.orderId,
           ["state", "inventory_unit_id"],
+          { state: "absent", inventoryStatus: "available" },
+          { state: "confirmed", inventoryStatus: "reserved" },
+          "human_confirmed_order_creation",
         );
         return requireOperationResponse(
           transaction,
@@ -358,6 +361,13 @@ export class PostgresOrderRepository implements OrderRepository {
           "order.shipping.assigned",
           row.id,
           ["identity_id", "starts_at", "expires_at"],
+          { assignment: "none" },
+          {
+            identityId: assignee.identity_id,
+            startsAt: row.starts_at.toISOString(),
+            expiresAt: row.expires_at.toISOString(),
+          },
+          "shipping_assignment_human_confirmed",
         );
         return {
           assignmentId: row.id,
@@ -491,6 +501,9 @@ export class PostgresOrderRepository implements OrderRepository {
           "address.lease.issued",
           row.id,
           ["purpose", "expires_at"],
+          { addressAccess: "hidden" },
+          { addressAccess: "leased", expiresAt: row.expires_at.toISOString() },
+          "shipping_address_lease_human_confirmed",
         );
         return {
           leaseId: row.id,
@@ -553,6 +566,9 @@ export class PostgresOrderRepository implements OrderRepository {
           "address.viewed",
           orderId,
           [],
+          { addressAccess: "hidden" },
+          { addressAccess: "revealed_under_active_lease" },
+          "shipping_address_view_under_lease",
         );
         return {
           value: {
@@ -990,6 +1006,9 @@ export class PostgresOrderRepository implements OrderRepository {
           "accounting.export.approved",
           row.id,
           ["csv_sha256", "row_count"],
+          { export: "absent" },
+          { sha256: row.csv_sha256, rowCount: row.row_count },
+          "accounting_candidate_human_approved",
         );
         return toAccountingExportResponse(workspaceId, orderId, row);
       });
@@ -1065,6 +1084,7 @@ export class PostgresOrderRepository implements OrderRepository {
           payloadHash,
         );
         if (replay) return replay;
+        const before = await requireOrderUnit(transaction, workspaceId, orderId);
         const result = await mutation(transaction, role);
         await insertOperationRecord(transaction, {
           workspaceId,
@@ -1093,6 +1113,9 @@ export class PostgresOrderRepository implements OrderRepository {
           `order.${operation}`,
           orderId,
           ["state", "inventory_status"],
+          { state: before.order_state, inventoryStatus: before.inventory_status },
+          { state: result.state, inventoryStatus: result.inventoryStatus },
+          `human_confirmed_${operation}`,
         );
         return requireOperationResponse(transaction, workspaceId, operation, input.idempotencyKey);
       });
@@ -1305,7 +1328,10 @@ async function advanceP0ForOrderOperation(
       redacted_changes, reference_ids, reason_code, approved_by
     ) values (
       ${workspaceId}, ${actorId}, ${transition.action}, 'p0_workflow', ${workflow.sku_id},
-      array['state'], ${sql.json({ state: transition.to, version: nextVersion })},
+      array['state','version'], ${sql.json({
+        before: { state: workflow.state, version: workflow.version },
+        after: { state: transition.to, version: nextVersion },
+      })},
       ${[evidenceReferenceId]}, 'human_order_operation_confirmation', ${actorId}
     )
   `;
@@ -1548,6 +1574,9 @@ async function insertAudit(
   action: string,
   targetId: string,
   fieldNames: string[],
+  before: Record<string, postgres.JSONValue>,
+  after: Record<string, postgres.JSONValue>,
+  reasonCode: string,
 ): Promise<void> {
   await sql`
     insert into audit_event (
@@ -1555,8 +1584,8 @@ async function insertAudit(
       redacted_changes, reason_code, approved_by
     ) values (
       ${workspaceId}, ${actorId}, ${action}, 'sales_order', ${targetId},
-      ${fieldNames}, ${sql.json({ confirmation: { by: "human" } })},
-      'human_confirmed_order_operation', ${actorId}
+      ${fieldNames}, ${sql.json({ before, after })},
+      ${reasonCode}, ${actorId}
     )
   `;
 }
