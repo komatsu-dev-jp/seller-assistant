@@ -255,6 +255,7 @@ begin
   elsif requested_assignment_type = 'location_putaway' then
     update work_assignment set revoked_at = revoked_time
     where workspace_id = requested_workspace_id and id = requested_assignment_id
+      and operation = 'putaway'
       and revoked_at is null;
   elsif requested_assignment_type = 'location_photo' then
     update work_assignment set revoked_at = revoked_time

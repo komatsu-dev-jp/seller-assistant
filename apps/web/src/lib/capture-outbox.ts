@@ -7,6 +7,7 @@ export interface CaptureUploadRecord {
   role: CaptureRole;
   assetId: string;
   file: File;
+  fileSha256: string;
   uploaded: boolean;
   queuedAt: string;
 }
@@ -22,13 +23,8 @@ export async function prepareCaptureUpload(
 ): Promise<CaptureUploadRecord> {
   const key = `${workspaceId}:${skuId}:${role}`;
   const existing = await readRecord(key);
-  if (
-    existing &&
-    existing.file.name === file.name &&
-    existing.file.size === file.size &&
-    existing.file.lastModified === file.lastModified
-  )
-    return existing;
+  const fileSha256 = await sha256File(file);
+  if (existing && existing.fileSha256 === fileSha256) return existing;
   const record: CaptureUploadRecord = {
     key,
     workspaceId,
@@ -36,11 +32,19 @@ export async function prepareCaptureUpload(
     role,
     assetId: crypto.randomUUID(),
     file,
+    fileSha256,
     uploaded: false,
     queuedAt: new Date().toISOString(),
   };
   await putRecord(record);
   return record;
+}
+
+async function sha256File(file: File): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+  return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join(
+    "",
+  );
 }
 
 export async function markCaptureUploaded(key: string): Promise<void> {
@@ -65,6 +69,29 @@ export async function clearCaptureUploads(workspaceId: string, skuId: string): P
     transaction.oncomplete = () => resolve();
     transaction.onerror = () =>
       reject(transaction.error ?? new Error("撮影保留を消去できません。"));
+  });
+  database.close();
+}
+
+export async function clearUnassignedCaptureUploads(
+  workspaceId: string,
+  allowedSkuIds: readonly string[],
+): Promise<void> {
+  const allowed = new Set(allowedSkuIds);
+  const database = await openDatabase();
+  await new Promise<void>((resolve, reject) => {
+    const transaction = database.transaction(STORE_NAME, "readwrite");
+    const request = transaction.objectStore(STORE_NAME).openCursor();
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor) return;
+      const value = cursor.value as CaptureUploadRecord;
+      if (value.workspaceId === workspaceId && !allowed.has(value.skuId)) cursor.delete();
+      cursor.continue();
+    };
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () =>
+      reject(transaction.error ?? new Error("解除済みの撮影途中データを消去できません。"));
   });
   database.close();
 }

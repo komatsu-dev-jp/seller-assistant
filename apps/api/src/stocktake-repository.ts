@@ -95,6 +95,21 @@ export class PostgresStocktakeRepository implements StocktakeRepository {
           ${sequence[0]?.basis ?? 0}, ${actor.identityId}, statement_timestamp()
         )
       `;
+      const snapshot = await transaction<Array<{ inventory_unit_id: string }>>`
+        insert into count_session_inventory_snapshot (
+          workspace_id, count_session_id, inventory_unit_id, expected_location_id,
+          inventory_number, inventory_label_id, inventory_status, movement_seq
+        )
+        select unit.workspace_id, ${stocktakeId}, unit.id, unit.location_id,
+               unit.inventory_number, label.id, unit.status, unit.movement_seq
+        from inventory_unit unit
+        left join inventory_label label
+          on label.workspace_id = unit.workspace_id
+         and label.target_type = 'inventory_unit' and label.target_id = unit.id and label.active
+        where unit.workspace_id = ${workspaceId} and unit.location_id = ${input.locationId}
+          and unit.status in ('available','reserved','picked','packed')
+        returning inventory_unit_id
+      `;
       await audit(
         transaction,
         workspaceId,
@@ -102,7 +117,7 @@ export class PostgresStocktakeRepository implements StocktakeRepository {
         "stocktake.started",
         stocktakeId,
         { state: "absent" },
-        { state: "counting", locationId: input.locationId },
+        { state: "counting", locationId: input.locationId, expectedUnitCount: snapshot.length },
         "stocktake_human_started",
       );
       return requireStocktake(transaction, workspaceId, stocktakeId);
@@ -131,9 +146,20 @@ export class PostgresStocktakeRepository implements StocktakeRepository {
         throw new RepositoryError("forbidden", "Only the initial counter can add observations");
       }
       const units = await transaction<
-        Array<{ id: string; location_id: string | null; label_id: string | null }>
+        Array<{
+          id: string;
+          location_id: string | null;
+          label_id: string | null;
+          expected_at_start: boolean;
+        }>
       >`
-        select unit.id, unit.location_id, label.id as label_id
+        select unit.id, unit.location_id, label.id as label_id,
+               exists (
+                 select 1 from count_session_inventory_snapshot snapshot
+                 where snapshot.workspace_id = unit.workspace_id
+                   and snapshot.count_session_id = ${stocktakeId}
+                   and snapshot.inventory_unit_id = unit.id
+               ) as expected_at_start
         from inventory_unit unit
         left join inventory_label label
           on label.workspace_id = unit.workspace_id and label.target_type = 'inventory_unit'
@@ -145,11 +171,7 @@ export class PostgresStocktakeRepository implements StocktakeRepository {
         select coalesce(max(ordinal), 0)::integer + 1 as next from count_observation
         where workspace_id = ${workspaceId} and count_session_id = ${stocktakeId}
       `;
-      const result = !unit
-        ? "unexpected"
-        : unit.location_id === session.location_id
-          ? "matched"
-          : "misplaced";
+      const result = !unit ? "unexpected" : unit.expected_at_start ? "matched" : "misplaced";
       await transaction`
         insert into count_observation (
           workspace_id, count_session_id, ordinal, inventory_unit_id,
@@ -202,14 +224,16 @@ export class PostgresStocktakeRepository implements StocktakeRepository {
         )
         select ${workspaceId}, ${stocktakeId}, unit.id, 'missing_candidate',
                'reconfirmation_required', ${actor.identityId}
-        from inventory_unit unit
-        where unit.workspace_id = ${workspaceId} and unit.location_id = ${session.location_id}
-          and unit.status in ('available','reserved','picked','packed')
+        from count_session_inventory_snapshot snapshot
+        join inventory_unit unit
+          on unit.workspace_id = snapshot.workspace_id and unit.id = snapshot.inventory_unit_id
+        where snapshot.workspace_id = ${workspaceId}
+          and snapshot.count_session_id = ${stocktakeId}
           and not exists (
             select 1 from count_observation observation
-            where observation.workspace_id = unit.workspace_id
+            where observation.workspace_id = snapshot.workspace_id
               and observation.count_session_id = ${stocktakeId}
-              and observation.inventory_unit_id = unit.id
+              and observation.inventory_unit_id = snapshot.inventory_unit_id
           )
       `;
       await transaction`

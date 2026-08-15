@@ -43,15 +43,19 @@
 - `output/playwright/iteration-22-team-assignments.png`
 - `output/playwright/iteration-22-mobile-capture-390x844.png`
 - `output/playwright/iteration-22-product-research.png`
+- `output/playwright/iteration-24-team-assignments.png`
+- `output/playwright/iteration-24-inventory-stocktake.png`
 
 ## DB・権限の実証
 
-- 新規の使い捨てPostgreSQLへmigration 0001〜0017を順番に適用した。
-- 36業務テーブルでRLS（別の利用組織のデータをDB自身が拒否する仕組み）を確認した。
+- 新規の使い捨てPostgreSQLへmigration 0001〜0018を順番に適用した。
+- 37業務テーブルでRLS（別の利用組織のデータをDB自身が拒否する仕組み）を確認した。
 - 配送担当なし、期限切れ、別注文の住所/pick/pack/shipを拒否した。
 - 商品写真4種と採寸4項目が不足した撮影確認、古い根拠を使った出品確認、汎用APIによる注文進捗の直接完了を拒否した。
 - 外注担当は期限内に割り当てられたSKU、InventoryUnit、場所、注文だけ操作でき、解除後は即時拒否した。
 - 棚卸の最初の計数者と再確認者、差異依頼者と承認者を別人に限定し、ラベル再発行を監査へ記録した。
+- 棚卸開始時の対象を不変snapshotへ保存し、開始後に入った商品を差異候補へ混入させないことを確認した。
+- 古いラベル版の格納を拒否した事実と、現在版・入力版・理由を監査へ残した。
 - 住所は暗号化して保存し、平文を監査・ログ・画面HTMLへ残していない。
 
 ## 外部接続の確認

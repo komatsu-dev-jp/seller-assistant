@@ -65,7 +65,7 @@ export function StocktakeWorkspace({ workspaceId }: { workspaceId: string }) {
               humanConfirmed: true,
             })
           }
-          className="measurementGrid"
+          className="operationsFormGrid"
         >
           <label>
             棚卸場所
@@ -175,7 +175,7 @@ export function StocktakeWorkspace({ workspaceId }: { workspaceId: string }) {
             humanConfirmed: true,
           });
         }}
-        className="measurementGrid"
+        className="operationsFormGrid"
       >
         <label>
           再発行対象

@@ -22,15 +22,17 @@ export function OfflineSyncStatus() {
       const result = await syncPendingPutaways();
       setPending(result.remaining);
       setMessage(
-        result.discarded > 0
-          ? `${result.discarded}件は担当解除・変更のため端末から消去しました。同期${result.synced}件、残り${result.remaining}件です。`
-          : result.synced > 0
-            ? `${result.synced}件を同期しました。残り${result.remaining}件です。`
-            : result.remaining > 0
-              ? "通信できません。端末内の同期待ちを保持しています。"
-              : "同期待ちはありません。",
+        result.loginRequired
+          ? "ログイン期限が切れました。再ログイン後に同期待ちを再送します。端末内に保持しています。"
+          : result.discarded > 0
+            ? `${result.discarded}件は担当解除・変更のため端末から消去しました。同期${result.synced}件、残り${result.remaining}件です。`
+            : result.synced > 0
+              ? `${result.synced}件を同期しました。残り${result.remaining}件です。`
+              : result.remaining > 0
+                ? "通信できません。端末内の同期待ちを保持しています。"
+                : "同期待ちはありません。",
       );
-      setState("idle");
+      setState(result.loginRequired ? "error" : "idle");
     } catch (error) {
       setState("error");
       setMessage(

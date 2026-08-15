@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { toPutawayRequest, validatePendingPutaway } from "./offline-outbox";
+import {
+  offlineFailureDisposition,
+  toPutawayRequest,
+  validatePendingPutaway,
+} from "./offline-outbox";
 
 const valid = {
   schemaVersion: 2,
@@ -39,5 +43,12 @@ describe("PWA offline outbox", () => {
     const request = toPutawayRequest(valid);
     expect(request).not.toHaveProperty("schemaVersion");
     expect(request).toMatchObject({ humanConfirmed: true, inventoryLabelVersion: 1 });
+  });
+
+  it("keeps pending work for login expiry but discards revoked assignments", () => {
+    expect(offlineFailureDisposition(401)).toBe("authentication_required");
+    expect(offlineFailureDisposition(403)).toBe("forbidden");
+    expect(offlineFailureDisposition(503)).toBe("unavailable");
+    expect(offlineFailureDisposition(409)).toBeNull();
   });
 });

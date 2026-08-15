@@ -3,7 +3,9 @@
 import type { CaptureTaskResponse, MeasurementResponse } from "@resale/contracts";
 import { useCallback, useEffect, useState } from "react";
 import {
+  clearCaptureBusinessData,
   clearCaptureUploads,
+  clearUnassignedCaptureUploads,
   loadCaptureUploads,
   markCaptureUploaded,
   prepareCaptureUpload,
@@ -45,16 +47,29 @@ export function MobileCaptureWorkspace({ workspaceId }: { workspaceId: string })
     const loaded = await requestJson<CaptureTaskResponse[]>(
       `/v1/workspaces/${workspaceId}/capture-tasks`,
     );
-    setTasks(loaded);
-    setSelectedId((current) =>
-      current && loaded.some((entry) => entry.skuId === current)
-        ? current
-        : (loaded[0]?.skuId ?? ""),
+    await clearUnassignedCaptureUploads(
+      workspaceId,
+      loaded.map((entry) => entry.skuId),
     );
+    setTasks(loaded);
+    setSelectedId((current) => {
+      if (current && !loaded.some((entry) => entry.skuId === current)) {
+        void clearCaptureUploads(workspaceId, current).catch(() => undefined);
+      }
+      return current && loaded.some((entry) => entry.skuId === current)
+        ? current
+        : (loaded[0]?.skuId ?? "");
+    });
   }, [workspaceId]);
 
   useEffect(() => {
-    refresh().catch((reason: unknown) => setError(errorMessage(reason)));
+    refresh().catch(async (reason: unknown) => {
+      if (isAssignmentRevokedError(reason)) {
+        await clearCaptureBusinessData().catch(() => undefined);
+        setFiles({});
+      }
+      setError(errorMessage(reason));
+    });
   }, [refresh]);
 
   useEffect(() => {
@@ -86,11 +101,21 @@ export function MobileCaptureWorkspace({ workspaceId }: { workspaceId: string })
         const assetId = task.photoAssetIds[index];
         if (assetId && isCaptureRole(role)) roleToAsset.set(role, assetId);
       });
+      const stagedUploads = new Map<
+        CaptureRole,
+        Awaited<ReturnType<typeof prepareCaptureUpload>>
+      >();
       for (const { id: role } of roles) {
         if (roleToAsset.has(role)) continue;
         const file = files[role];
         if (!file) throw new Error("未保存の写真4種を選択してください。");
         const pending = await prepareCaptureUpload(workspaceId, task.skuId, role, file);
+        stagedUploads.set(role, pending);
+        roleToAsset.set(role, pending.assetId);
+      }
+      for (const { id: role } of roles) {
+        const pending = stagedUploads.get(role);
+        if (!pending) continue;
         if (!pending.uploaded) {
           await requestJson(
             `/v1/workspaces/${workspaceId}/skus/${task.skuId}/media-uploads?assetId=${pending.assetId}&role=${role}`,
@@ -98,7 +123,6 @@ export function MobileCaptureWorkspace({ workspaceId }: { workspaceId: string })
           );
           await markCaptureUploaded(pending.key);
         }
-        roleToAsset.set(role, pending.assetId);
       }
       const evidenceAssetId = roleToAsset.get("front");
       if (!evidenceAssetId) throw new Error("正面写真を確認できません。");
@@ -168,6 +192,10 @@ export function MobileCaptureWorkspace({ workspaceId }: { workspaceId: string })
       setMessage("写真・採寸を保存しました。商品候補は管理者の確認待ちです。");
       await refresh();
     } catch (reason) {
+      if (isAssignmentRevokedError(reason)) {
+        await clearCaptureUploads(workspaceId, task.skuId).catch(() => undefined);
+        setFiles({});
+      }
       setError(errorMessage(reason));
     } finally {
       setBusy(false);
@@ -207,6 +235,7 @@ export function MobileCaptureWorkspace({ workspaceId }: { workspaceId: string })
               <input
                 type="file"
                 accept="image/jpeg,image/png"
+                capture="environment"
                 disabled={saved}
                 onChange={(event) =>
                   setFiles((current) => ({ ...current, [id]: event.target.files?.[0] }))
@@ -293,11 +322,25 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
       message?: string;
       error?: { message?: string };
     } | null;
-    throw new Error(
+    throw new HttpResponseError(
       body?.message ?? body?.error?.message ?? `保存に失敗しました（${response.status}）`,
+      response.status,
     );
   }
   return (await response.json()) as T;
+}
+
+class HttpResponseError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
+
+function isAssignmentRevokedError(reason: unknown): boolean {
+  return reason instanceof HttpResponseError && reason.status === 403;
 }
 
 function errorMessage(reason: unknown): string {

@@ -211,31 +211,37 @@ export async function syncPendingPutaways(): Promise<{
   synced: number;
   discarded: number;
   remaining: number;
+  loginRequired: boolean;
 }> {
   const pending = await readPendingPutaways();
   let synced = 0;
   let discarded = 0;
+  let loginRequired = false;
   for (const operation of pending) {
     const result = await trySendPutaway(operation);
     if (result === "unavailable") break;
+    if (result === "authentication_required") {
+      loginRequired = true;
+      break;
+    }
     await deletePendingPutaway(operation.idempotencyKey);
     if (result === "synced") synced += 1;
     else discarded += 1;
   }
-  return { synced, discarded, remaining: (await readPendingPutaways()).length };
+  return { synced, discarded, remaining: (await readPendingPutaways()).length, loginRequired };
 }
 
 async function trySendPutaway(
   operation: PendingPutawayOperation,
-): Promise<"synced" | "unavailable" | "forbidden"> {
+): Promise<"synced" | "unavailable" | "authentication_required" | "forbidden"> {
   try {
     const context = await fetch("/v1/session/context", { cache: "no-store" });
-    if (context.status >= 500) return "unavailable";
+    const contextFailure = offlineFailureDisposition(context.status);
+    if (contextFailure) return contextFailure;
     const contextBody = (await context.json().catch(() => null)) as {
       workspaceId?: string;
       message?: string;
     } | null;
-    if (context.status === 401 || context.status === 403) return "forbidden";
     if (!context.ok || !contextBody?.workspaceId) {
       throw new Error(contextBody?.message ?? "ログイン中の事業所を確認できませんでした。");
     }
@@ -249,14 +255,23 @@ async function trySendPutaway(
       },
     );
     if (response.status === 201) return "synced";
-    if (response.status === 401 || response.status === 403) return "forbidden";
-    if (response.status >= 500) return "unavailable";
+    const responseFailure = offlineFailureDisposition(response.status);
+    if (responseFailure) return responseFailure;
     const body = (await response.json().catch(() => null)) as { message?: string } | null;
     throw new Error(body?.message ?? "現在の在庫状態と一致しないため、再読取してください。");
   } catch (error) {
     if (error instanceof TypeError) return "unavailable";
     throw error;
   }
+}
+
+export function offlineFailureDisposition(
+  status: number,
+): "authentication_required" | "forbidden" | "unavailable" | null {
+  if (status === 401) return "authentication_required";
+  if (status === 403) return "forbidden";
+  if (status >= 500) return "unavailable";
+  return null;
 }
 
 export function toPutawayRequest(operation: PendingPutawayOperation) {
@@ -317,6 +332,14 @@ export async function clearOfflineBusinessData(): Promise<void> {
         channel.port2,
       ]);
     });
+  }
+  if ("caches" in window) {
+    const cacheNames = await caches.keys();
+    await Promise.all(
+      cacheNames
+        .filter((cacheName) => cacheName.startsWith("resale-ops-"))
+        .map((cacheName) => caches.delete(cacheName)),
+    );
   }
   await clearCaptureBusinessData();
   await new Promise<void>((resolve, reject) => {

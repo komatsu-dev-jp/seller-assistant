@@ -135,12 +135,12 @@ export function TeamWorkspace({ workspaceId, role }: Props) {
   const activeAssignments = team?.assignments.filter((assignment) => !assignment.revokedAt) ?? [];
 
   return (
-    <div className="inventoryGrid">
+    <div className="teamGrid">
       <section className="panel inventoryMain">
         <p className="eyebrow">MEMBERS</p>
         <h2>PC内ログイン</h2>
         {role === "owner" ? (
-          <form action={createMember} className="measurementGrid">
+          <form action={createMember} className="teamFormGrid memberFormGrid">
             <label>
               表示名
               <input name="displayName" required maxLength={120} />
@@ -193,7 +193,7 @@ export function TeamWorkspace({ workspaceId, role }: Props) {
         <p>
           格納担当には「格納する商品」と「格納先の場所」の2件をそれぞれ割り当てます。場所写真は別の権限です。
         </p>
-        <form action={createAssignment} className="measurementGrid">
+        <form action={createAssignment} className="teamFormGrid assignmentFormGrid">
           <label>
             担当者
             <select name="identityId" required>

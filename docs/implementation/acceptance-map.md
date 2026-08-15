@@ -203,3 +203,15 @@ P0の必須ACは AC-001、003〜008、013〜014、018〜023、025〜026、028〜
 - 実画面: 在庫・棚卸、外注割当、390×844の撮影PWA、PC商品調査をChromeで確認。横あふれ0、console error 0、外部リンク0。通信要求は同一生成元`/v1`だけ。
 - 証拠: `output/playwright/iteration-22-inventory-stocktake.png`、`iteration-22-team-assignments.png`、`iteration-22-mobile-capture-390x844.png`、`iteration-22-product-research.png`。
 - 未確認: 実iPhone Safariのホーム画面追加、カメラ、圏外復帰、HEIC/WebP。P1、push、Draft PR、公開、Notion/Slack追加送信は未実行。
+
+## Iteration 24の実証範囲
+
+- 棚卸時点固定: 棚卸開始時の対象現物、場所、在庫番号、ラベル、状態、移動番号を`count_session_inventory_snapshot`へ保存。開始後に別商品が入っても対象へ加えず、開始時にあった未読取品だけを差異候補にする。
+- 撮影途中保存: 4枚すべてを通信前にIndexedDB（ブラウザ内の端末保存領域）へ保存する。同一写真判定は名前・容量・更新日時ではなく、実bytesのSHA-256で行う。取得した最新割当一覧にないSKUまたは403の割当解除、ログアウト時は撮影保留を消去し、401のログイン期限切れだけでは消去しない。
+- 格納途中保存: 401はログイン期限切れとして端末に保持し、403の担当解除だけを消去する。409の状態競合と通信不能も自動上書き・自動削除しない。
+- 監査: 原本写真登録に安全なbefore/afterを保存。古いラベル版の格納を409拒否した事実も、現在版・入力版・対象場所・理由を別transactionで監査する。
+- UI: PCの外注担当、場所登録、場所写真、現物在庫、棚卸フォームを専用gridへ分離。1440×1000の実ブラウザで入力欄、選択欄、ファイルボタン、解除ボタン、一覧の切断0件を原寸確認した。
+- 自動検証: `npm.cmd run check`合格。20 files / 112 tests、statements 84.09%、branch 81.81%、functions 100%、lines 91.36%。format、lint、typecheck、本番build合格。
+- 実DB: 新規DBへ0001〜0018を適用し、37業務テーブルRLS、棚卸snapshot、開始後移動の非混入、古いラベル拒否監査、主要P0一気通貫を含む結合テストPASS。
+- 実画面: `output/playwright/iteration-24-team-assignments.png`、`iteration-24-inventory-stocktake.png`。console error 0件。PC内`127.0.0.1`以外への通信0件。
+- 未確認: 実iPhone Safari、ホーム画面追加、実カメラ、圏外復帰、HEIC/WebP。外部push、Draft PR、公開、Slack/Notion追加送信は未実行。

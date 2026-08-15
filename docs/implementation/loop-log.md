@@ -245,3 +245,16 @@
 - 証拠: `output/playwright/iteration-22-*.png`、`docs/implementation/p0-e2e-evidence.md`、本Loop。
 - 残る問題: 実iPhone Safari、ホーム画面追加、実カメラ、圏外復帰、HEIC/WebPは未確認。P1、外部push、Draft PR、公開は未実行。
 - 次の一手: 差分をlocal commitへ固定し、別担当の読み取り専用レビューでCritical/High 0を確認する。
+
+## Iteration 24 — 2026-08-16 最終独立レビューHigh 7件の解消
+
+- 基準値: 独立レビューはCritical 0 / High 7 / Medium 4 / Low 1。棚卸対象を開始後に再検索、撮影4枚の全件事前保存なし、割当解除後の撮影cache残存、401で格納outbox消去、古いラベル拒否監査なし、写真原本監査のbefore/after不足、PCフォーム崩れがHighだった。
+- 棚卸: 0018で開始時snapshotを新設し、観測と差異作成はsnapshotだけを参照。開始後に別商品を対象場所へ移動する実DB試験で、その商品が差異候補へ入らないことを確認した。
+- 端末保存: 撮影は全ファイルをSHA-256付きで先に保存してから送信。最新割当一覧にないSKUと403のcapture権限失効だけ撮影cacheを消去し、401では保持する。格納も401を再ログイン待ち、403を担当解除として分離し、401時に端末レコードを保持する純粋関数testを追加した。
+- logout: Service Workerが未制御でも、`resale-ops-`で始まるCache Storageをページ自身が削除する。IndexedDBと撮影DBも従来どおり削除する。
+- 監査: `media.original.registered`へ安全なbefore/afterを追加。古い在庫/場所ラベルの入力は、業務transactionをrollbackした後に専用監査を保存し、409で再読取を要求する。
+- UI: 4列採寸gridの誤流用をやめ、外注、場所、写真、棚卸に専用responsive gridを追加。一覧行の列幅、場所ツリー、解除ボタンも補正し、1440×1000の原寸画像で確認した。
+- 失敗と修正: 初回DB試験は、snapshot後の移動を1点専用棚へ入れようとしてDBが正しく拒否した。容量競合試験は別の専用棚に保持したまま、snapshot試験棚を同一SKU2点までに変更し、新しい空DBで全試験を再実行した。
+- 検証: `npm.cmd run check`は20 files / 112 tests、statements 84.09%、branch 81.81%、functions 100%、lines 91.36%、本番buildまでPASS。PostgreSQL 0001〜0018、37-table RLS、P0結合PASS。
+- 外部境界: 検証先はPC内Web/API/PostgreSQLだけ。外部API、SaaS、CI、deploy、Slack、Notion、GitHub pushは0件。
+- 次の一手: local commitへ固定し、別担当の読み取り専用再レビューでCritical/High 0を確認する。

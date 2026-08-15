@@ -68,6 +68,10 @@ const researchMigrationPath = fileURLToPath(
   new URL("../migrations/0017_capture_research_candidates.sql", import.meta.url),
 );
 const researchSql = readFileSync(researchMigrationPath, "utf8");
+const stocktakeSnapshotMigrationPath = fileURLToPath(
+  new URL("../migrations/0018_stocktake_snapshot.sql", import.meta.url),
+);
+const stocktakeSnapshotSql = readFileSync(stocktakeSnapshotMigrationPath, "utf8");
 
 describe("P0 PostgreSQL migration contract", () => {
   it("enables and forces workspace RLS for business tables", () => {
@@ -297,5 +301,18 @@ describe("P0 PostgreSQL migration contract", () => {
     expect(researchSql).toContain("source_url ~ '^https://'");
     expect(researchSql).toContain("status in ('candidate','human_confirmed','rejected')");
     expect(researchSql.match(/force row level security/g)).toHaveLength(2);
+  });
+
+  it("freezes the expected inventory set when a stocktake starts", () => {
+    expect(stocktakeSnapshotSql).toContain("create table count_session_inventory_snapshot");
+    expect(stocktakeSnapshotSql).toContain("expected_location_id uuid not null");
+    expect(stocktakeSnapshotSql).toContain("inventory_number text not null");
+    expect(stocktakeSnapshotSql).toContain(
+      "create policy workspace_isolation on count_session_inventory_snapshot",
+    );
+    expect(stocktakeSnapshotSql).toContain(
+      "grant select, insert on count_session_inventory_snapshot to resale_app_runtime",
+    );
+    expect(stocktakeSnapshotSql).toContain("force row level security");
   });
 });

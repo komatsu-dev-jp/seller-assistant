@@ -797,6 +797,14 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
     actor: RequestActor,
     input: PutawayInventoryRequest,
   ): Promise<PutawayInventoryResponse> {
+    let staleLabelAudit:
+      | {
+          inventoryUnitId: string;
+          locationId: string;
+          activeInventoryVersion: number;
+          activeLocationVersion: number;
+        }
+      | undefined;
     try {
       return await this.sql.begin(async (transaction) => {
         await setWorkspace(transaction, workspaceId);
@@ -896,6 +904,12 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
           unit.inventory_label_version !== input.inventoryLabelVersion ||
           location.location_label_version !== input.locationLabelVersion
         ) {
+          staleLabelAudit = {
+            inventoryUnitId: unit.id,
+            locationId: location.id,
+            activeInventoryVersion: unit.inventory_label_version,
+            activeLocationVersion: location.location_label_version,
+          };
           throw new RepositoryError(
             "conflict",
             "A label version changed; both labels must be read again",
@@ -966,6 +980,45 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
         };
       });
     } catch (error) {
+      if (staleLabelAudit) {
+        const rejected = staleLabelAudit;
+        try {
+          await this.sql.begin(async (transaction) => {
+            await setWorkspace(transaction, workspaceId);
+            await requireRole(transaction, workspaceId, actor.identityId, [
+              "owner",
+              "inventory_manager",
+              "field_worker",
+            ]);
+            await transaction`
+              insert into audit_event (
+                workspace_id, actor_id, action, target_type, target_id,
+                field_names, redacted_changes, reference_ids, reason_code
+              ) values (
+                ${workspaceId}, ${actor.identityId}, 'inventory.scan.rejected',
+                'inventory_unit', ${rejected.inventoryUnitId},
+                ${["inventory_label_version", "location_label_version"]},
+                ${transaction.json({
+                  before: {
+                    activeInventoryLabelVersion: rejected.activeInventoryVersion,
+                    activeLocationLabelVersion: rejected.activeLocationVersion,
+                  },
+                  after: {
+                    submittedInventoryLabelVersion: input.inventoryLabelVersion,
+                    submittedLocationLabelVersion: input.locationLabelVersion,
+                  },
+                })},
+                ${[rejected.locationId]}, 'stale_label_version'
+              )
+            `;
+          });
+        } catch {
+          throw new RepositoryError(
+            "database_error",
+            "The stale label was rejected but its audit record could not be preserved",
+          );
+        }
+      }
       throw normalizeDatabaseError(error);
     }
   }
@@ -1557,10 +1610,22 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
         await transaction`
           insert into audit_event (
             workspace_id, actor_id, action, target_type, target_id, field_names,
-            reference_ids, reason_code, approved_by
+            redacted_changes, reference_ids, reason_code, approved_by
           )
           values (${workspaceId}, ${actor.identityId}, 'media.original.registered', 'media_asset', ${input.assetId},
-                  array['role','originalSha256','mimeType','sizeBytes','width','height'], array[${skuId}::uuid],
+                  array['role','mimeType','sizeBytes','width','height'],
+                  ${transaction.json({
+                    before: { record: "absent" },
+                    after: {
+                      record: "registered",
+                      role: input.role,
+                      mimeType: input.mimeType,
+                      sizeBytes: input.sizeBytes,
+                      width: input.width,
+                      height: input.height,
+                    },
+                  })},
+                  array[${skuId}::uuid],
                   'server_verified_original_bytes', ${actor.identityId})
         `;
         return toMediaAssetResponse(row);

@@ -71,14 +71,46 @@ describe("zero-cost PWA contract", () => {
     const outbox = readFileSync(resolve("apps/web/src/lib/offline-outbox.ts"), "utf8");
     const status = readFileSync(resolve("apps/web/src/components/offline-sync-status.tsx"), "utf8");
     expect(outbox).toContain("syncPendingPutaways");
-    expect(outbox).toContain('if (response.status >= 500) return "unavailable"');
-    expect(outbox).toContain("response.status === 401 || response.status === 403");
+    expect(outbox).toContain('status === 401) return "authentication_required"');
+    expect(outbox).toContain('status === 403) return "forbidden"');
+    expect(outbox).toContain('status >= 500) return "unavailable"');
+    expect(outbox).toContain('result === "authentication_required"');
     expect(outbox).toContain("discarded += 1");
     expect(outbox).toContain("throw new Error(body?.message");
     expect(outbox).not.toMatch(/address|receiptText|purchasePrice|taxDocument/u);
     expect(status).toContain('addEventListener("online"');
     expect(status).toContain("自動上書きせず、再読取してください");
     expect(status).toContain("担当解除・変更のため端末から消去しました");
+    expect(status).toContain("再ログイン後に同期待ちを再送します。端末内に保持しています");
+  });
+
+  it("stages every capture file before network upload and clears revoked assignments", () => {
+    const capture = readFileSync(
+      resolve("apps/web/src/components/mobile-capture-workspace.tsx"),
+      "utf8",
+    );
+    const save = capture.slice(capture.indexOf("async function save()"));
+    const stageIndex = save.indexOf("await prepareCaptureUpload");
+    const uploadIndex = save.indexOf("await requestJson(");
+    expect(stageIndex).toBeGreaterThan(-1);
+    expect(uploadIndex).toBeGreaterThan(stageIndex);
+    expect(save).toContain("const stagedUploads = new Map");
+    expect(save).toContain("clearCaptureUploads(workspaceId, task.skuId)");
+    expect(capture).toContain("clearCaptureBusinessData");
+    expect(capture).toContain("clearUnassignedCaptureUploads");
+    expect(capture).toContain("reason.status === 403");
+    expect(capture).not.toContain("reason.status === 401 || reason.status === 403");
+    const outbox = readFileSync(resolve("apps/web/src/lib/capture-outbox.ts"), "utf8");
+    expect(outbox).toContain('crypto.subtle.digest("SHA-256"');
+    expect(outbox).toContain("existing.fileSha256 === fileSha256");
+    expect(capture).toContain('capture="environment"');
+  });
+
+  it("clears the application cache even before a service worker controls the page", () => {
+    const outbox = readFileSync(resolve("apps/web/src/lib/offline-outbox.ts"), "utf8");
+    expect(outbox).toContain('if ("caches" in window)');
+    expect(outbox).toContain('cacheName.startsWith("resale-ops-")');
+    expect(outbox).toContain("caches.delete(cacheName)");
   });
 
   it("keeps external CI manual and free of macOS jobs", () => {

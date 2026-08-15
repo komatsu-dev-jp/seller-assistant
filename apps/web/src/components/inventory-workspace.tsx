@@ -184,7 +184,7 @@ export function InventoryWorkspace({ workspaceId }: { workspaceId: string }) {
           <div className="panelHead">
             <h2 id="location-create-heading">場所を登録</h2>
           </div>
-          <form action={createLocation} className="measurementGrid">
+          <form action={createLocation} className="inventoryFormGrid">
             <label>
               親の場所
               <select name="parentId" defaultValue="">
@@ -233,7 +233,7 @@ export function InventoryWorkspace({ workspaceId }: { workspaceId: string }) {
           <h2 id="location-photo-heading">保管場所の写真</h2>
           <span className="safeBadge">原本は非公開・GPS除去</span>
         </div>
-        <div className="measurementGrid">
+        <div className="locationPhotoFormLayout">
           <label>
             写真を登録する場所
             <select
@@ -249,7 +249,7 @@ export function InventoryWorkspace({ workspaceId }: { workspaceId: string }) {
               ))}
             </select>
           </label>
-          <form action={uploadLocationPhoto} className="measurementGrid">
+          <form action={uploadLocationPhoto} className="locationPhotoForm">
             <label>
               写真の種類
               <select name="photoKind" defaultValue="exact_position">

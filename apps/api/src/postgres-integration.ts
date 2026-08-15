@@ -37,6 +37,7 @@ const workspaceProtectedTables = [
   "address_access_lease",
   "count_observation",
   "count_session",
+  "count_session_inventory_snapshot",
   "cost_allocation",
   "financial_event",
   "idempotency_record",
@@ -796,7 +797,7 @@ try {
           single_item_only, allow_mixed_sku, max_units
         ) values
           (${rootLocationId}, ${owner.workspaceId}, null, ${appendCodeCheckDigit("ROOM-01")}, '架空保管室', 0, false, false, true, null),
-          (${binAId}, ${owner.workspaceId}, ${rootLocationId}, ${appendCodeCheckDigit("BIN-A")}, '棚A-1', 1, true, true, false, 1),
+          (${binAId}, ${owner.workspaceId}, ${rootLocationId}, ${appendCodeCheckDigit("BIN-A")}, '棚A-1', 1, true, false, false, 2),
           (${binBId}, ${owner.workspaceId}, ${rootLocationId}, ${appendCodeCheckDigit("BIN-B")}, '棚B-1', 1, true, true, false, 1),
           (${capacityBinId}, ${owner.workspaceId}, ${rootLocationId}, ${appendCodeCheckDigit("BIN-C")}, '同時格納試験棚', 1, true, true, false, 1),
           (${returnBinId}, ${owner.workspaceId}, ${rootLocationId}, ${appendCodeCheckDigit("RETURN-01")}, '返品隔離棚', 1, true, false, true, 20)
@@ -1181,6 +1182,46 @@ try {
     });
     assert.equal(stocktakeStarted.statusCode, 201, stocktakeStarted.body);
     const countSessionId = stocktakeStarted.json<{ stocktakeId: string }>().stocktakeId;
+    const stocktakeSnapshot = await inventory.begin(async (transaction) => {
+      await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+      return transaction<Array<{ inventory_unit_id: string; expected_location_id: string }>>`
+        select inventory_unit_id, expected_location_id
+        from count_session_inventory_snapshot
+        where workspace_id = ${owner.workspaceId} and count_session_id = ${countSessionId}
+        order by inventory_unit_id
+      `;
+    });
+    assert.deepEqual(
+      [...stocktakeSnapshot],
+      [{ inventory_unit_id: unitOneId, expected_location_id: binAId }],
+    );
+    await inventory.begin(async (transaction) => {
+      await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+      const moveScanId = randomUUID();
+      await transaction`
+        insert into scan_session (
+          id, workspace_id, operation, inventory_unit_id, expected_location_id,
+          destination_location_id, inventory_label_id, inventory_label_version,
+          location_label_id, location_label_version, inventory_scanned_at,
+          location_scanned_at, confirmed_by, confirmed_at
+        ) values (
+          ${moveScanId}, ${owner.workspaceId}, 'move', ${unitTwoId}, ${binBId},
+          ${binAId}, ${itemLabelTwoId}, 1, ${binALabelId}, 1,
+          now(), now(), ${owner.identityId}, now()
+        )
+      `;
+      await transaction`
+        insert into inventory_movement (
+          workspace_id, inventory_unit_id, movement_seq, from_location_id,
+          to_location_id, movement_kind, scan_session_id, idempotency_key,
+          payload_hash, moved_by
+        ) values (
+          ${owner.workspaceId}, ${unitTwoId}, 2, ${binBId}, ${binAId}, 'move',
+          ${moveScanId}, 'move-after-stocktake-snapshot',
+          ${hashFixture("move-after-stocktake-snapshot")}, ${owner.identityId}
+        )
+      `;
+    });
     const stocktakeReconciled = await app.inject({
       method: "POST",
       url: `/v1/workspaces/${owner.workspaceId}/stocktakes/${countSessionId}/reconcile`,
@@ -1189,9 +1230,14 @@ try {
     });
     assert.equal(stocktakeReconciled.statusCode, 200, stocktakeReconciled.body);
     const discrepancies = stocktakeReconciled.json<{
-      discrepancies: Array<{ discrepancyId: string }>;
+      discrepancies: Array<{ discrepancyId: string; inventoryUnitId: string | null }>;
     }>().discrepancies;
     assert.ok(discrepancies.length > 0);
+    assert.equal(
+      discrepancies.some((discrepancy) => discrepancy.inventoryUnitId === unitTwoId),
+      false,
+      "Inventory moved into the location after start must not enter the immutable snapshot",
+    );
     const discrepancyId = discrepancies[0]!.discrepancyId;
     const selfReconfirmation = await app.inject({
       method: "POST",
@@ -1245,6 +1291,34 @@ try {
         { version: 2, active: true },
       ],
     );
+    const stalePutawayAt = Date.now();
+    const staleLabelAttempt = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/inventory/putaway`,
+      headers: { cookie },
+      payload: {
+        inventoryNumber: appendCodeCheckDigit("INV-900001"),
+        locationCode: appendCodeCheckDigit("BIN-A"),
+        inventoryLabelVersion: 1,
+        locationLabelVersion: 1,
+        inventoryScannedAt: new Date(stalePutawayAt).toISOString(),
+        locationScannedAt: new Date(stalePutawayAt + 1).toISOString(),
+        confirmedAt: new Date(stalePutawayAt + 2).toISOString(),
+        idempotencyKey: randomUUID(),
+        humanConfirmed: true,
+      },
+    });
+    assert.equal(staleLabelAttempt.statusCode, 409, staleLabelAttempt.body);
+    const staleLabelAudits = await inventory.begin(async (transaction) => {
+      await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+      return transaction<Array<{ reason_code: string; redacted_changes: unknown }>>`
+        select reason_code, redacted_changes from audit_event
+        where workspace_id = ${owner.workspaceId} and action = 'inventory.scan.rejected'
+          and target_id = ${unitOneId}
+      `;
+    });
+    assert.equal(staleLabelAudits.length, 1);
+    assert.equal(staleLabelAudits[0]?.reason_code, "stale_label_version");
 
     const fictionalAddress = "〒100-0000 架空県テスト市サンプル1-2-3 架空太郎";
     const orderCreateKey = randomUUID();
@@ -1651,7 +1725,8 @@ try {
         where workspace_id = ${owner.workspaceId}
           and (
             action like 'order.%' or action like 'address.%' or action like 'accounting.%'
-            or action like 'team.%' or action like 'stocktake.%'
+            or action like 'team.%' or action like 'stocktake.%' or action like 'media.%'
+            or action like 'inventory.scan.%'
             or action in ('inventory.putaway', 'inventory.label.reissued')
           )
           and (redacted_changes is null or not (redacted_changes ? 'before')
@@ -1692,7 +1767,7 @@ try {
 }
 
 process.stdout.write(
-  "postgres-integration: PASS (restricted role, 36-table RLS matrix, assigned external workers, purchase-to-accounting order flow, encrypted 5-minute address lease, checked inventory/location codes, persisted capture/research/listing evidence, reviewed zero-GPS location photo, double scan, return quarantine, stocktake and label reissue, logout)\n",
+  "postgres-integration: PASS (restricted role, 37-table RLS matrix, assigned external workers, purchase-to-accounting order flow, encrypted 5-minute address lease, checked inventory/location codes, persisted capture/research/listing evidence, reviewed zero-GPS location photo, double scan, immutable stocktake snapshot and audited label rejection, return quarantine, stocktake and label reissue, logout)\n",
 );
 
 function jpegWithGpsMetadata(): Buffer {
