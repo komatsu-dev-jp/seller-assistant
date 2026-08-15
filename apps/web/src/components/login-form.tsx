@@ -27,7 +27,18 @@ export function LoginForm() {
         const body = (await response.json().catch(() => null)) as { message?: string } | null;
         throw new Error(body?.message ?? "ログインを確認できませんでした。");
       }
-      window.location.assign("/");
+      const contextResponse = await fetch("/v1/session/context", { cache: "no-store" });
+      const context = (await contextResponse.json().catch(() => null)) as { role?: string } | null;
+      if (!contextResponse.ok || !context?.role) {
+        throw new Error("ログイン後の担当範囲を確認できませんでした。");
+      }
+      window.location.assign(
+        context.role === "shipping"
+          ? "/shipping"
+          : context.role === "field_worker"
+            ? "/mobile"
+            : "/",
+      );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "ログインを確認できませんでした。");
       setStatus("error");

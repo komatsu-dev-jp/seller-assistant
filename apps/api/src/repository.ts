@@ -42,6 +42,7 @@ export interface LocationPhotoReviewSource {
 
 export interface ApprovedLocationPhotoContent {
   displayStorageKey: string;
+  displaySha256: string;
   mimeType: "image/jpeg" | "image/png";
 }
 
@@ -305,6 +306,7 @@ export class InMemoryWorkflowRepository implements WorkflowRepository {
       throw new RepositoryError("database_error", "Original photo metadata is missing");
     this.locationPhotoDisplays.set(key, {
       displayStorageKey: input.derivativeStorageKey,
+      displaySha256: input.derivativeSha256,
       mimeType: original.mimeType,
     });
     return Promise.resolve(approved);
@@ -400,6 +402,15 @@ export class InMemoryWorkflowRepository implements WorkflowRepository {
         );
       }
       return Promise.resolve(replay.result);
+    }
+    if (input.action === "confirm_capture" || input.action === "confirm_listing") {
+      const assets = [...this.mediaAssets.values()].filter(
+        (asset) => asset.workspaceId === workspaceId && asset.skuId === skuId,
+      );
+      const measurements = [...this.measurements.values()].filter(
+        (measurement) => measurement.workspaceId === workspaceId && measurement.skuId === skuId,
+      );
+      assertCaptureEvidenceForWorkflow(workspaceId, skuId, input, assets, measurements);
     }
     const decision = decideP0WorkflowAction({
       currentState: current.state,
@@ -1236,9 +1247,13 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
           }
         }
         const rows = await transaction<
-          Array<{ derivative_storage_key: string; original_mime_type: string }>
+          Array<{
+            derivative_storage_key: string;
+            derivative_sha256: string;
+            original_mime_type: string;
+          }>
         >`
-          select derivative_storage_key, original_mime_type
+          select derivative_storage_key, derivative_sha256, original_mime_type
           from location_photo
           where workspace_id = ${workspaceId} and location_id = ${locationId} and id = ${photoId}
             and review_state = 'approved' and derivative_storage_key is not null
@@ -1252,6 +1267,7 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
         }
         return {
           displayStorageKey: row.derivative_storage_key,
+          displaySha256: row.derivative_sha256,
           mimeType: row.original_mime_type,
         };
       });
@@ -1276,6 +1292,20 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
           "shipping",
           "accounting",
         ]);
+        if (
+          [
+            "confirm_order",
+            "confirm_pick",
+            "confirm_pack",
+            "confirm_ship",
+            "approve_journal",
+          ].includes(input.action)
+        ) {
+          throw new RepositoryError(
+            "conflict",
+            "注文・ピック・梱包・発送・会計の工程は、対応する保存操作と同時に確定します。",
+          );
+        }
         await requireSkuAssignmentIfFieldWorker(
           transaction,
           workspaceId,
@@ -1326,6 +1356,28 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
         const current = rows[0];
         if (!current)
           throw new RepositoryError("forbidden", "The SKU is not available in this workspace");
+        if (input.action === "confirm_capture" || input.action === "confirm_listing") {
+          const assets = await transaction<MediaAssetRow[]>`
+            select id, workspace_id, sku_id, role, original_sha256, original_storage_key,
+                   mime_type, size_bytes, width, height, created_at
+            from media_asset
+            where workspace_id = ${workspaceId} and sku_id = ${skuId}
+          `;
+          const measurements = await transaction<MeasurementRow[]>`
+            select id, workspace_id, sku_id, definition_id, definition_version, value, unit,
+                   basis, state, measured_by, measured_at, evidence_asset_id, attempt,
+                   confirmed_by, requires_review, difference_cm, violations, created_at
+            from measurement_attempt
+            where workspace_id = ${workspaceId} and sku_id = ${skuId}
+          `;
+          assertCaptureEvidenceForWorkflow(
+            workspaceId,
+            skuId,
+            input,
+            assets.map(toMediaAssetResponse),
+            measurements.map(toMeasurementResponse),
+          );
+        }
         const decision = decideP0WorkflowAction({
           currentState: current.state,
           action: input.action,
@@ -1780,8 +1832,66 @@ const requiredCaptureMeasurements = [
   "shoulder_width",
   "chest_width",
   "sleeve_length",
-  "garment_length",
+  "body_length",
 ];
+
+function assertCaptureEvidenceForWorkflow(
+  workspaceId: string,
+  skuId: string,
+  input: AdvanceP0WorkflowRequest,
+  assets: MediaAssetResponse[],
+  measurements: MeasurementResponse[],
+): void {
+  const summary = buildCaptureSummary(workspaceId, skuId, assets, measurements);
+  if (!summary.readyForHumanReview) {
+    throw new RepositoryError(
+      "conflict",
+      "撮影4種類と必須採寸4項目を、警告なしで確認してから完了してください。",
+    );
+  }
+
+  const submitted = new Set(input.evidenceReferenceIds);
+  const assetById = new Map(assets.map((asset) => [asset.assetId, asset]));
+  if (input.action === "confirm_capture") {
+    if ([...submitted].some((id) => !assetById.has(id))) {
+      throw new RepositoryError(
+        "conflict",
+        "撮影完了の根拠に、このSKU以外の写真が含まれています。",
+      );
+    }
+    const submittedRoles = new Set(
+      [...submitted]
+        .map((id) => assetById.get(id)?.role)
+        .filter((role): role is MediaAssetResponse["role"] => role !== undefined),
+    );
+    if (!requiredCaptureRoles.every((role) => submittedRoles.has(role))) {
+      throw new RepositoryError("conflict", "撮影完了には必須4種類の写真根拠が必要です。");
+    }
+    return;
+  }
+
+  const latestByDefinition = new Map<string, MeasurementResponse>();
+  for (const measurement of measurements) {
+    const current = latestByDefinition.get(measurement.definitionId);
+    if (!current || current.attempt < measurement.attempt) {
+      latestByDefinition.set(measurement.definitionId, measurement);
+    }
+  }
+  const expected = new Set([
+    ...assets.map((asset) => asset.assetId),
+    ...[...latestByDefinition.values()].map((measurement) => measurement.id),
+  ]);
+  if (
+    submitted.size !== expected.size ||
+    [...submitted].some((id) => !expected.has(id)) ||
+    [...expected].some((id) => !submitted.has(id))
+  ) {
+    throw new RepositoryError(
+      "conflict",
+      "文章候補の根拠が現在の写真・採寸と一致しません。再読込して確認してください。",
+    );
+  }
+}
 
 function buildCaptureSummary(
   workspaceId: string,

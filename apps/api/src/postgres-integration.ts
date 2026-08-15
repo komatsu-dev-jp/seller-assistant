@@ -4,6 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import postgres from "postgres";
+import { appendCodeCheckDigit } from "@resale/contracts";
 import { buildApp } from "./app.js";
 import { hashPassword, PostgresLoginService } from "./auth.js";
 import { bootstrapInitialOwner } from "./bootstrap-owner.js";
@@ -47,6 +48,7 @@ const workspaceProtectedTables = [
   "media_asset",
   "order_allocation",
   "order_operation_record",
+  "order_assignment",
   "order_private_address",
   "outbox_event",
   "p0_workflow",
@@ -194,7 +196,7 @@ try {
     workflowState: string;
   }>();
   assert.equal(acquiredItem.workflowState, "purchase_confirmed");
-  assert.equal(acquiredItem.inventoryNumber, "INV-000001");
+  assert.equal(acquiredItem.inventoryNumber, appendCodeCheckDigit("INV-000001"));
   const acquiredReplay = await app.inject({
     method: "POST",
     url: `/v1/workspaces/${owner.workspaceId}/p0-items`,
@@ -256,7 +258,7 @@ try {
     headers: { cookie },
     payload: {
       inventoryNumber: acquiredItem.inventoryNumber,
-      locationCode: "HOME-BIN-01",
+      locationCode: appendCodeCheckDigit("HOME-BIN-01"),
       inventoryLabelVersion: 1,
       locationLabelVersion: 1,
       inventoryScannedAt: new Date(acquisitionScanTime).toISOString(),
@@ -304,24 +306,73 @@ try {
     });
     assert.equal(measurement.statusCode, 201, measurement.body);
   }
-  for (const [action, evidenceReferenceIds, manualChannelHandoff] of [
-    ["confirm_capture", acquisitionAssets, false],
-    ["confirm_listing", [acquiredItem.receiptId], true],
-  ] as const) {
-    const advanced = await app.inject({
-      method: "POST",
-      url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/p0-actions`,
-      headers: { cookie },
-      payload: {
-        action,
-        evidenceReferenceIds,
-        manualChannelHandoff,
-        idempotencyKey: randomUUID(),
-        requiredFactsConfirmed: true,
-      },
-    });
-    assert.equal(advanced.statusCode, 200, advanced.body);
-  }
+  const captureAdvanced = await app.inject({
+    method: "POST",
+    url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/p0-actions`,
+    headers: { cookie },
+    payload: {
+      action: "confirm_capture",
+      evidenceReferenceIds: acquisitionAssets,
+      manualChannelHandoff: false,
+      idempotencyKey: randomUUID(),
+      requiredFactsConfirmed: true,
+    },
+  });
+  assert.equal(captureAdvanced.statusCode, 200, captureAdvanced.body);
+  const capturedReadModel = await app.inject({
+    method: "GET",
+    url: `/v1/workspaces/${owner.workspaceId}/p0-items`,
+    headers: { cookie },
+  });
+  assert.equal(capturedReadModel.statusCode, 200, capturedReadModel.body);
+  const reloadedItem = capturedReadModel
+    .json<
+      Array<{
+        skuId: string;
+        capture: {
+          measurements: Array<{ definitionId: string; value: number }>;
+          confirmedAt: string;
+        };
+        listingCandidate: {
+          text: string;
+          referenceIds: string[];
+          unconfirmedFields: string[];
+          status: string;
+        };
+      }>
+    >()
+    .find((item) => item.skuId === acquiredItem.skuId);
+  assert.ok(reloadedItem);
+  assert.equal(reloadedItem.capture.measurements.length, 4);
+  assert.equal(reloadedItem.listingCandidate.text.includes("肩幅44cm"), true);
+  assert.deepEqual(reloadedItem.listingCandidate.unconfirmedFields, []);
+  assert.equal(reloadedItem.listingCandidate.status, "candidate");
+  const listingAdvanced = await app.inject({
+    method: "POST",
+    url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/p0-actions`,
+    headers: { cookie },
+    payload: {
+      action: "confirm_listing",
+      evidenceReferenceIds: reloadedItem.listingCandidate.referenceIds,
+      manualChannelHandoff: true,
+      idempotencyKey: randomUUID(),
+      requiredFactsConfirmed: true,
+    },
+  });
+  assert.equal(listingAdvanced.statusCode, 200, listingAdvanced.body);
+  const manualOrderWorkflowBypass = await app.inject({
+    method: "POST",
+    url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/p0-actions`,
+    headers: { cookie },
+    payload: {
+      action: "confirm_order",
+      evidenceReferenceIds: [randomUUID()],
+      manualChannelHandoff: false,
+      idempotencyKey: randomUUID(),
+      requiredFactsConfirmed: true,
+    },
+  });
+  assert.equal(manualOrderWorkflowBypass.statusCode, 409, manualOrderWorkflowBypass.body);
 
   const created = await app.inject({
     method: "POST",
@@ -371,6 +422,8 @@ try {
   const returnBinLabelId = randomUUID();
   const workerPassword = "fictional-field-worker-password";
   const workerPasswordRecord = await hashPassword(workerPassword);
+  const shippingPassword = "fictional-shipping-password";
+  const shippingPasswordRecord = await hashPassword(shippingPassword);
   const fixtureAdmin = postgres(adminUrl, { max: 1 });
   try {
     await fixtureAdmin`
@@ -387,10 +440,16 @@ try {
       insert into auth_credential (
         identity_id, email_normalized, password_hash, password_salt,
         hash_algorithm, scrypt_n, scrypt_r, scrypt_p
-      ) values (
+      ) values
+      (
         ${workerId}, 'worker@example.test', ${workerPasswordRecord.hash},
         ${workerPasswordRecord.salt}, 'scrypt-v1', ${workerPasswordRecord.n},
         ${workerPasswordRecord.r}, ${workerPasswordRecord.p}
+      ),
+      (
+        ${shippingId}, 'shipping@example.test', ${shippingPasswordRecord.hash},
+        ${shippingPasswordRecord.salt}, 'scrypt-v1', ${shippingPasswordRecord.n},
+        ${shippingPasswordRecord.r}, ${shippingPasswordRecord.p}
       )
     `;
   } finally {
@@ -413,6 +472,15 @@ try {
   });
   assert.equal(workerContext.statusCode, 200, workerContext.body);
   assert.equal(workerContext.json<{ role: string }>().role, "field_worker");
+  const shippingLogin = await app.inject({
+    method: "POST",
+    url: "/v1/session/login",
+    payload: { email: "shipping@example.test", password: shippingPassword },
+  });
+  assert.equal(shippingLogin.statusCode, 204, shippingLogin.body);
+  const shippingSetCookie = shippingLogin.headers["set-cookie"];
+  assert.equal(typeof shippingSetCookie, "string");
+  const shippingCookie = String(shippingSetCookie).split(";", 1)[0];
   const workerCreateSku = await app.inject({
     method: "POST",
     url: `/v1/workspaces/${owner.workspaceId}/skus`,
@@ -435,22 +503,12 @@ try {
   assert.equal(ownerPurchaseApproval.statusCode, 200, ownerPurchaseApproval.body);
 
   const captureAssetId = randomUUID();
-  const captureAssetPayload = {
-    assetId: captureAssetId,
-    role: "front",
-    originalSha256: hashFixture("field-worker-capture"),
-    originalStorageKey: `workspaces/${owner.workspaceId}/originals/${captureAssetId}.jpg`,
-    mimeType: "image/jpeg",
-    sizeBytes: 4096,
-    width: 2000,
-    height: 2000,
-  } as const;
-  const captureAssetUrl = `/v1/workspaces/${owner.workspaceId}/skus/${skuId}/media-assets`;
+  const captureAssetUrl = `/v1/workspaces/${owner.workspaceId}/skus/${skuId}/media-uploads?assetId=${captureAssetId}&role=front`;
   const workerMediaWithoutAssignment = await app.inject({
     method: "POST",
     url: captureAssetUrl,
-    headers: { cookie: workerCookie },
-    payload: captureAssetPayload,
+    headers: { cookie: workerCookie, "content-type": "image/jpeg" },
+    payload: jpegWithGpsMetadata(),
   });
   assert.equal(workerMediaWithoutAssignment.statusCode, 403, workerMediaWithoutAssignment.body);
   const workerMeasurementWithoutAssignment = await app.inject({
@@ -544,7 +602,63 @@ try {
       manualChannelHandoff: false,
     },
   });
-  assert.equal(workerCaptureWithAssignment.statusCode, 200, workerCaptureWithAssignment.body);
+  assert.equal(workerCaptureWithAssignment.statusCode, 409, workerCaptureWithAssignment.body);
+
+  const remainingWorkerAssets = [
+    { assetId: randomUUID(), role: "back" },
+    { assetId: randomUUID(), role: "brand_tag" },
+    { assetId: randomUUID(), role: "care_label" },
+  ] as const;
+  for (const asset of remainingWorkerAssets) {
+    const uploaded = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/skus/${skuId}/media-uploads?assetId=${asset.assetId}&role=${asset.role}`,
+      headers: { cookie: workerCookie, "content-type": "image/jpeg" },
+      payload: jpegWithGpsMetadata(),
+    });
+    assert.equal(uploaded.statusCode, 201, uploaded.body);
+  }
+  const remainingWorkerMeasurements = [
+    ["shoulder_width", 44],
+    ["sleeve_length", 61],
+    ["body_length", 70],
+  ] as const;
+  for (const [definitionId, value] of remainingWorkerMeasurements) {
+    const measured = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/skus/${skuId}/measurements`,
+      headers: { cookie: workerCookie },
+      payload: {
+        definitionId,
+        definitionVersion: 1,
+        value,
+        unit: "cm",
+        basis: "length",
+        state: "natural",
+        measuredAt: new Date().toISOString(),
+        evidenceAssetId: captureAssetId,
+        attempt: 1,
+        humanConfirmed: true,
+      },
+    });
+    assert.equal(measured.statusCode, 201, measured.body);
+  }
+  const workerCaptureComplete = await app.inject({
+    method: "POST",
+    url: `/v1/workspaces/${owner.workspaceId}/skus/${skuId}/p0-actions`,
+    headers: { cookie: workerCookie },
+    payload: {
+      action: "confirm_capture",
+      idempotencyKey: randomUUID(),
+      evidenceReferenceIds: [
+        captureAssetId,
+        ...remainingWorkerAssets.map((asset) => asset.assetId),
+      ],
+      requiredFactsConfirmed: true,
+      manualChannelHandoff: false,
+    },
+  });
+  assert.equal(workerCaptureComplete.statusCode, 200, workerCaptureComplete.body);
 
   const workerPurchaseApproval = await app.inject({
     method: "POST",
@@ -569,32 +683,32 @@ try {
           id, workspace_id, parent_id, code, name, depth, can_store_inventory,
           single_item_only, allow_mixed_sku, max_units
         ) values
-          (${rootLocationId}, ${owner.workspaceId}, null, 'ROOM-01', '架空保管室', 0, false, false, true, null),
-          (${binAId}, ${owner.workspaceId}, ${rootLocationId}, 'BIN-A', '棚A-1', 1, true, true, false, 1),
-          (${binBId}, ${owner.workspaceId}, ${rootLocationId}, 'BIN-B', '棚B-1', 1, true, true, false, 1),
-          (${capacityBinId}, ${owner.workspaceId}, ${rootLocationId}, 'BIN-C', '同時格納試験棚', 1, true, true, false, 1),
-          (${returnBinId}, ${owner.workspaceId}, ${rootLocationId}, 'RETURN-01', '返品隔離棚', 1, true, false, true, 20)
+          (${rootLocationId}, ${owner.workspaceId}, null, ${appendCodeCheckDigit("ROOM-01")}, '架空保管室', 0, false, false, true, null),
+          (${binAId}, ${owner.workspaceId}, ${rootLocationId}, ${appendCodeCheckDigit("BIN-A")}, '棚A-1', 1, true, true, false, 1),
+          (${binBId}, ${owner.workspaceId}, ${rootLocationId}, ${appendCodeCheckDigit("BIN-B")}, '棚B-1', 1, true, true, false, 1),
+          (${capacityBinId}, ${owner.workspaceId}, ${rootLocationId}, ${appendCodeCheckDigit("BIN-C")}, '同時格納試験棚', 1, true, true, false, 1),
+          (${returnBinId}, ${owner.workspaceId}, ${rootLocationId}, ${appendCodeCheckDigit("RETURN-01")}, '返品隔離棚', 1, true, false, true, 20)
       `;
       await transaction`
         insert into inventory_unit (id, workspace_id, sku_id, inventory_number) values
-          (${unitOneId}, ${owner.workspaceId}, ${skuId}, 'INV-900001'),
-          (${unitTwoId}, ${owner.workspaceId}, ${skuId}, 'INV-900002'),
-          (${unitThreeId}, ${owner.workspaceId}, ${skuId}, 'INV-900003'),
-          (${unitFourId}, ${owner.workspaceId}, ${skuId}, 'INV-900004')
+          (${unitOneId}, ${owner.workspaceId}, ${skuId}, ${appendCodeCheckDigit("INV-900001")}),
+          (${unitTwoId}, ${owner.workspaceId}, ${skuId}, ${appendCodeCheckDigit("INV-900002")}),
+          (${unitThreeId}, ${owner.workspaceId}, ${skuId}, ${appendCodeCheckDigit("INV-900003")}),
+          (${unitFourId}, ${owner.workspaceId}, ${skuId}, ${appendCodeCheckDigit("INV-900004")})
       `;
       await transaction`
         insert into inventory_label (
           id, workspace_id, target_type, target_id, label_kind, version,
           token_hash, short_code, issued_by
         ) values
-          (${itemLabelOneId}, ${owner.workspaceId}, 'inventory_unit', ${unitOneId}, 'qr', 1, ${hashFixture("item-1")}, 'ITEM-900001', ${owner.identityId}),
-          (${itemLabelTwoId}, ${owner.workspaceId}, 'inventory_unit', ${unitTwoId}, 'qr', 1, ${hashFixture("item-2")}, 'ITEM-900002', ${owner.identityId}),
-          (${itemLabelThreeId}, ${owner.workspaceId}, 'inventory_unit', ${unitThreeId}, 'qr', 1, ${hashFixture("item-3")}, 'ITEM-900003', ${owner.identityId}),
-          (${itemLabelFourId}, ${owner.workspaceId}, 'inventory_unit', ${unitFourId}, 'qr', 1, ${hashFixture("item-4")}, 'ITEM-900004', ${owner.identityId}),
-          (${binALabelId}, ${owner.workspaceId}, 'location', ${binAId}, 'qr', 1, ${hashFixture("bin-a")}, 'PLACE-BIN-A', ${owner.identityId}),
-          (${binBLabelId}, ${owner.workspaceId}, 'location', ${binBId}, 'qr', 1, ${hashFixture("bin-b")}, 'PLACE-BIN-B', ${owner.identityId}),
-          (${capacityBinLabelId}, ${owner.workspaceId}, 'location', ${capacityBinId}, 'qr', 1, ${hashFixture("bin-c")}, 'PLACE-BIN-C', ${owner.identityId}),
-          (${returnBinLabelId}, ${owner.workspaceId}, 'location', ${returnBinId}, 'qr', 1, ${hashFixture("return-bin")}, 'PLACE-RETURN-01', ${owner.identityId})
+          (${itemLabelOneId}, ${owner.workspaceId}, 'inventory_unit', ${unitOneId}, 'qr', 1, ${hashFixture("item-1")}, ${appendCodeCheckDigit("INV-900001")}, ${owner.identityId}),
+          (${itemLabelTwoId}, ${owner.workspaceId}, 'inventory_unit', ${unitTwoId}, 'qr', 1, ${hashFixture("item-2")}, ${appendCodeCheckDigit("INV-900002")}, ${owner.identityId}),
+          (${itemLabelThreeId}, ${owner.workspaceId}, 'inventory_unit', ${unitThreeId}, 'qr', 1, ${hashFixture("item-3")}, ${appendCodeCheckDigit("INV-900003")}, ${owner.identityId}),
+          (${itemLabelFourId}, ${owner.workspaceId}, 'inventory_unit', ${unitFourId}, 'qr', 1, ${hashFixture("item-4")}, ${appendCodeCheckDigit("INV-900004")}, ${owner.identityId}),
+          (${binALabelId}, ${owner.workspaceId}, 'location', ${binAId}, 'qr', 1, ${hashFixture("bin-a")}, ${appendCodeCheckDigit("BIN-A")}, ${owner.identityId}),
+          (${binBLabelId}, ${owner.workspaceId}, 'location', ${binBId}, 'qr', 1, ${hashFixture("bin-b")}, ${appendCodeCheckDigit("BIN-B")}, ${owner.identityId}),
+          (${capacityBinLabelId}, ${owner.workspaceId}, 'location', ${capacityBinId}, 'qr', 1, ${hashFixture("bin-c")}, ${appendCodeCheckDigit("BIN-C")}, ${owner.identityId}),
+          (${returnBinLabelId}, ${owner.workspaceId}, 'location', ${returnBinId}, 'qr', 1, ${hashFixture("return-bin")}, ${appendCodeCheckDigit("RETURN-01")}, ${owner.identityId})
       `;
     });
 
@@ -620,8 +734,8 @@ try {
 
     const apiPutawayStart = Date.now();
     const apiPutawayPayload = {
-      inventoryNumber: "INV-900002",
-      locationCode: "BIN-B",
+      inventoryNumber: appendCodeCheckDigit("INV-900002"),
+      locationCode: appendCodeCheckDigit("BIN-B"),
       inventoryLabelVersion: 1,
       locationLabelVersion: 1,
       inventoryScannedAt: new Date(apiPutawayStart).toISOString(),
@@ -671,7 +785,7 @@ try {
       workerPutawayCatalog
         .json<{ locations: Array<{ code: string }> }>()
         .locations.map((row) => row.code),
-      ["BIN-B"],
+      [appendCodeCheckDigit("BIN-B")],
     );
     const workerPutawayOutsideBranch = await app.inject({
       method: "POST",
@@ -679,8 +793,8 @@ try {
       headers: { cookie: workerCookie },
       payload: {
         ...apiPutawayPayload,
-        inventoryNumber: "INV-900001",
-        locationCode: "BIN-A",
+        inventoryNumber: appendCodeCheckDigit("INV-900001"),
+        locationCode: appendCodeCheckDigit("BIN-A"),
         idempotencyKey: "99999999-9999-4999-8999-999999999999",
       },
     });
@@ -695,10 +809,10 @@ try {
     assert.equal(apiPutaway.statusCode, 201, apiPutaway.body);
     assert.deepEqual(apiPutaway.json(), {
       inventoryUnitId: unitTwoId,
-      inventoryNumber: "INV-900002",
+      inventoryNumber: appendCodeCheckDigit("INV-900002"),
       status: "available",
       locationId: binBId,
-      locationCode: "BIN-B",
+      locationCode: appendCodeCheckDigit("BIN-B"),
       movementSequence: 1,
       scanSessionId: apiPutaway.json<{ scanSessionId: string }>().scanSessionId,
       idempotencyKey: apiPutawayPayload.idempotencyKey,
@@ -716,7 +830,7 @@ try {
       method: "POST",
       url: `/v1/workspaces/${owner.workspaceId}/inventory/putaway`,
       headers: { cookie: workerCookie },
-      payload: { ...apiPutawayPayload, locationCode: "BIN-A" },
+      payload: { ...apiPutawayPayload, locationCode: appendCodeCheckDigit("BIN-A") },
     });
     assert.equal(apiPutawayConflict.statusCode, 409, apiPutawayConflict.body);
 
@@ -1019,19 +1133,6 @@ try {
     assert.equal(orderResult.state, "confirmed");
     assert.equal(orderResult.inventoryStatus, "reserved");
     const orderId = orderResult.orderId;
-    const orderWorkflow = await app.inject({
-      method: "POST",
-      url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/p0-actions`,
-      headers: { cookie },
-      payload: {
-        action: "confirm_order",
-        evidenceReferenceIds: [orderId],
-        manualChannelHandoff: false,
-        idempotencyKey: randomUUID(),
-        requiredFactsConfirmed: true,
-      },
-    });
-    assert.equal(orderWorkflow.statusCode, 200, orderWorkflow.body);
     const createReplay = await app.inject({
       method: "POST",
       url: `/v1/workspaces/${owner.workspaceId}/orders`,
@@ -1047,6 +1148,48 @@ try {
       payload: { ...orderCreatePayload, saleAmountMinor: 5001 },
     });
     assert.equal(createConflict.statusCode, 409, createConflict.body);
+
+    const unassignedShippingLease = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/address-leases`,
+      headers: { cookie: shippingCookie },
+      payload: { purpose: "shipping_label", humanConfirmed: true },
+    });
+    assert.equal(unassignedShippingLease.statusCode, 403, unassignedShippingLease.body);
+    const assignedShipping = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/assignment`,
+      headers: { cookie },
+      payload: {
+        assigneeEmail: "shipping@example.test",
+        startsAt: new Date(Date.now() - 60_000).toISOString(),
+        expiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(),
+        humanConfirmed: true,
+      },
+    });
+    assert.equal(assignedShipping.statusCode, 201, assignedShipping.body);
+    const overlappingShipping = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/assignment`,
+      headers: { cookie },
+      payload: {
+        assigneeEmail: "shipping@example.test",
+        startsAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+        humanConfirmed: true,
+      },
+    });
+    assert.equal(overlappingShipping.statusCode, 409, overlappingShipping.body);
+    const shippingTasks = await app.inject({
+      method: "GET",
+      url: `/v1/workspaces/${owner.workspaceId}/shipping-tasks`,
+      headers: { cookie: shippingCookie },
+    });
+    assert.equal(shippingTasks.statusCode, 200, shippingTasks.body);
+    assert.deepEqual(
+      shippingTasks.json<Array<{ orderId: string }>>().map((task) => task.orderId),
+      [orderId],
+    );
 
     const firstLease = await app.inject({
       method: "POST",
@@ -1096,7 +1239,7 @@ try {
     const activeLease = await app.inject({
       method: "POST",
       url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/address-leases`,
-      headers: { cookie },
+      headers: { cookie: shippingCookie },
       payload: { purpose: "shipping_label", humanConfirmed: true },
     });
     assert.equal(activeLease.statusCode, 201, activeLease.body);
@@ -1104,7 +1247,7 @@ try {
     const scanBase = Date.now();
     const pickPayload = {
       inventoryNumber: acquiredItem.inventoryNumber,
-      locationCode: "HOME-BIN-01",
+      locationCode: appendCodeCheckDigit("HOME-BIN-01"),
       inventoryLabelVersion: 1,
       locationLabelVersion: 1,
       addressLeaseId: activeLeaseId,
@@ -1117,28 +1260,15 @@ try {
     const picked = await app.inject({
       method: "POST",
       url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/pick`,
-      headers: { cookie },
+      headers: { cookie: shippingCookie },
       payload: pickPayload,
     });
     assert.equal(picked.statusCode, 200, picked.body);
     assert.equal(picked.json<{ inventoryStatus: string }>().inventoryStatus, "picked");
-    const pickWorkflow = await app.inject({
-      method: "POST",
-      url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/p0-actions`,
-      headers: { cookie },
-      payload: {
-        action: "confirm_pick",
-        evidenceReferenceIds: [orderId],
-        manualChannelHandoff: false,
-        idempotencyKey: randomUUID(),
-        requiredFactsConfirmed: true,
-      },
-    });
-    assert.equal(pickWorkflow.statusCode, 200, pickWorkflow.body);
     const pickedReplay = await app.inject({
       method: "POST",
       url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/pick`,
-      headers: { cookie },
+      headers: { cookie: shippingCookie },
       payload: pickPayload,
     });
     assert.deepEqual(pickedReplay.json(), picked.json());
@@ -1146,7 +1276,7 @@ try {
     const packed = await app.inject({
       method: "POST",
       url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/pack`,
-      headers: { cookie },
+      headers: { cookie: shippingCookie },
       payload: {
         packingEvidenceReferenceId: randomUUID(),
         addressLeaseId: activeLeaseId,
@@ -1157,23 +1287,10 @@ try {
     });
     assert.equal(packed.statusCode, 200, packed.body);
     assert.equal(packed.json<{ inventoryStatus: string }>().inventoryStatus, "packed");
-    const packWorkflow = await app.inject({
-      method: "POST",
-      url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/p0-actions`,
-      headers: { cookie },
-      payload: {
-        action: "confirm_pack",
-        evidenceReferenceIds: [orderId],
-        manualChannelHandoff: false,
-        idempotencyKey: randomUUID(),
-        requiredFactsConfirmed: true,
-      },
-    });
-    assert.equal(packWorkflow.statusCode, 200, packWorkflow.body);
     const shipped = await app.inject({
       method: "POST",
       url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/ship`,
-      headers: { cookie },
+      headers: { cookie: shippingCookie },
       payload: {
         addressLeaseId: activeLeaseId,
         shippedAt: new Date().toISOString(),
@@ -1183,19 +1300,17 @@ try {
     });
     assert.equal(shipped.statusCode, 200, shipped.body);
     assert.equal(shipped.json<{ inventoryStatus: string }>().inventoryStatus, "shipped");
-    const shipWorkflow = await app.inject({
-      method: "POST",
-      url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/p0-actions`,
+    const shippedReadModel = await app.inject({
+      method: "GET",
+      url: `/v1/workspaces/${owner.workspaceId}/p0-items`,
       headers: { cookie },
-      payload: {
-        action: "confirm_ship",
-        evidenceReferenceIds: [orderId],
-        manualChannelHandoff: false,
-        idempotencyKey: randomUUID(),
-        requiredFactsConfirmed: true,
-      },
     });
-    assert.equal(shipWorkflow.statusCode, 200, shipWorkflow.body);
+    assert.equal(shippedReadModel.statusCode, 200, shippedReadModel.body);
+    const shippedItem = shippedReadModel
+      .json<Array<{ skuId: string; workflowState: string; orderState: string }>>()
+      .find((entry) => entry.skuId === acquiredItem.skuId);
+    assert.equal(shippedItem?.workflowState, "shipped");
+    assert.equal(shippedItem?.orderState, "shipped");
 
     const financial = await app.inject({
       method: "GET",
@@ -1232,19 +1347,15 @@ try {
       accountingExport.json<{ sha256: string }>().sha256,
     );
     assert.equal(csvContent.body.includes("販売額の仕訳候補"), true);
-    const journalWorkflow = await app.inject({
-      method: "POST",
-      url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/p0-actions`,
+    const journalReadModel = await app.inject({
+      method: "GET",
+      url: `/v1/workspaces/${owner.workspaceId}/p0-items`,
       headers: { cookie },
-      payload: {
-        action: "approve_journal",
-        evidenceReferenceIds: [accountingExport.json<{ exportId: string }>().exportId],
-        manualChannelHandoff: false,
-        idempotencyKey: randomUUID(),
-        requiredFactsConfirmed: true,
-      },
     });
-    assert.equal(journalWorkflow.statusCode, 200, journalWorkflow.body);
+    const journalItem = journalReadModel
+      .json<Array<{ skuId: string; workflowState: string }>>()
+      .find((entry) => entry.skuId === acquiredItem.skuId);
+    assert.equal(journalItem?.workflowState, "journal_approved");
 
     const returned = await app.inject({
       method: "POST",
@@ -1277,7 +1388,7 @@ try {
       payload: {
         orderId,
         inventoryNumber: acquiredItem.inventoryNumber,
-        locationCode: "RETURN-01",
+        locationCode: appendCodeCheckDigit("RETURN-01"),
         inventoryLabelVersion: 1,
         locationLabelVersion: 1,
         inventoryScannedAt: new Date(returnScanBase).toISOString(),
@@ -1348,7 +1459,7 @@ try {
 }
 
 process.stdout.write(
-  "postgres-integration: PASS (restricted role, 32-table RLS matrix, purchase-to-accounting order flow, encrypted 5-minute address lease, location/SKU assignment-scoped field worker, reviewed zero-GPS location photo, double scan, return quarantine, stocktake, logout)\n",
+  "postgres-integration: PASS (restricted role, 33-table RLS matrix, purchase-to-accounting order flow, assigned shipping with encrypted 5-minute address lease, checked inventory/location codes, persisted capture/listing evidence, reviewed zero-GPS location photo, double scan, return quarantine, stocktake, logout)\n",
 );
 
 function jpegWithGpsMetadata(): Buffer {

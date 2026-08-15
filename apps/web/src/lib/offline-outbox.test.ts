@@ -5,8 +5,8 @@ import { toPutawayRequest, validatePendingPutaway } from "./offline-outbox";
 const valid = {
   schemaVersion: 2,
   idempotencyKey: "b3da7490-e72b-4af1-986e-2ffdfd178577",
-  inventoryNumber: "INV-000123",
-  locationCode: "BX-014-3",
+  inventoryNumber: "INV-000123-8",
+  locationCode: "BX-014-3-2",
   inventoryLabelVersion: 1,
   locationLabelVersion: 1,
   inventoryScannedAt: "2026-08-15T00:00:00.000Z",

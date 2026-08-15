@@ -56,6 +56,10 @@ const auditContextMigrationPath = fileURLToPath(
   new URL("../migrations/0014_audit_context.sql", import.meta.url),
 );
 const auditContextSql = readFileSync(auditContextMigrationPath, "utf8");
+const shippingAssignmentMigrationPath = fileURLToPath(
+  new URL("../migrations/0015_shipping_assignment_checked_codes.sql", import.meta.url),
+);
+const shippingAssignmentSql = readFileSync(shippingAssignmentMigrationPath, "utf8");
 
 describe("P0 PostgreSQL migration contract", () => {
   it("enables and forces workspace RLS for business tables", () => {
@@ -91,6 +95,15 @@ describe("P0 PostgreSQL migration contract", () => {
       expect(sql).toContain(`'${forbidden}'`);
     }
     expect(sql).toContain("redacted_changes");
+  });
+
+  it("requires checked manual codes and order-scoped shipping assignments", () => {
+    expect(shippingAssignmentSql).toContain("app_has_valid_code_check_digit");
+    expect(shippingAssignmentSql).toContain("create table order_assignment");
+    expect(shippingAssignmentSql).toContain("enable row level security");
+    expect(shippingAssignmentSql).toContain("expires_at <= starts_at + interval '30 days'");
+    expect(shippingAssignmentSql).toContain("order_assignment_no_overlap");
+    expect(shippingAssignmentSql).toContain("tstzrange(starts_at, expires_at, '[)') with &&");
   });
 
   it("persists ordered P0 workflow actions with evidence and idempotency", () => {

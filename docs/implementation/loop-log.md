@@ -218,3 +218,16 @@
 - 費用: 外部API、有料SaaS、外部CI、デプロイ、Apple Developer契約0件。PC内だけ。
 - 残る問題: 実iPhone Safariはユーザー端末で未確認。P1、HEIC/WebP、Notion限定ミラー本実装はP0後。
 - 次の一手: 最終全check、独立実装レビュー、必要修正、Draft PRを行う。本番公開とPRマージは行わない。
+
+## Iteration 21 — 2026-08-15 独立レビュー指摘の解消と外部接続監査
+
+- 基準値: 独立レビューはCritical 0 / High 4 / Medium 3。写真metadataだけで撮影完了を作れる旧入口、配送担当が任意注文へ住所表示権限を作れる問題、再読込後に採寸・出品根拠を復元できない問題、在庫/場所コードのcheck digit未実装がHighだった。
+- 写真: 旧metadata登録APIを削除し、画像本体の受信、API側hash・形式・寸法検査、PC内private保存、位置metadata除去、人の承認を唯一の経路にした。表示時もDBのSHA-256と実bytesを再照合し、DB登録失敗時は新規原本を補償削除する。
+- 配送: `order_assignment`を追加し、管理者が担当者と期限を割り当てる。配送担当は自分の有効な注文だけを表示し、住所表示、ピッキング、梱包、発送も同じ割当を必須にした。住所表示期限は最大5分。
+- 再読込: 商品写真4種、最新採寸4項目、撮影確認、出品候補、確認根拠、最新会計CSV履歴をP0 read modelへ含め、再読込後も同一SKUから文章候補と進捗を復元する。古い・不足・別SKUの根拠は確定できない。
+- コード: 在庫番号と場所コードへcheck digit（入力誤りを検出する末尾の検査数字）を追加し、Web、PWA、API、DBの全層で検証する。既存コードはmigrationで新形式へ移行する。
+- 原子的な進捗: 注文確認、ピッキング、梱包、発送、会計CSV承認は、注文処理とP0進捗を同じDB transactionで更新する。汎用workflow APIから直接完了状態を作る経路は拒否する。
+- 外部接続監査: runtimeコードにMercari、Notion、Slack、OpenAI、Photoroom等のSDK/URL/routeはない。ブラウザは同一生成元の`/v1`だけを呼び、APIはPC内PostgreSQLとprivate media directoryだけを使用する。`.env.example`の外部credentialは空。外部送信、課金、deploy、CI、追加downloadは0件。
+- 自動検証: 最終`npm.cmd run check`合格。20 files / 101 tests、line 91.36%、branch 81.81%、functions 100%。新規使い捨てPostgreSQLへ0001〜0015を適用し、33業務テーブルRLS、配送割当、5分住所、checked code、撮影/出品根拠再読込、注文〜会計の原子的進捗を含む結合テストPASS。
+- 実画面: インストール済みChromeをローカルだけで使用し、owner login 204、P0再読込、390×844、配送担当画面、収支情報非表示を確認。証拠は`output/playwright/iteration-21-*.png`。Playwright wrapperは外部registry取得を要求したため使用せず、権限昇格もdownloadもしていない。
+- 未確認: 実iPhone Safariのホーム画面追加、カメラ、圏外復帰はユーザー端末での手動確認が必要。外部へのpush、Slack、Notion、Draft PRはユーザーのAPI確認中につき停止。

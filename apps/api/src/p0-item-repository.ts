@@ -1,10 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
-import type {
-  CreateLocationRequest,
-  CreateP0ItemRequest,
-  LocationNodeResponse,
-  P0ItemResponse,
-  PutawayCatalogResponse,
+import {
+  appendCodeCheckDigit,
+  type CreateLocationRequest,
+  type CreateP0ItemRequest,
+  type LocationNodeResponse,
+  type P0ItemResponse,
+  type PutawayCatalogResponse,
 } from "@resale/contracts";
 import postgres from "postgres";
 
@@ -43,10 +44,22 @@ interface P0ItemRow {
   receipt_reference: string;
   purchased_at: Date;
   allocated_cost_minor: number;
+  photo_asset_ids: string[];
+  photo_roles: P0ItemResponse["capture"]["photoRoles"];
+  measurements: P0ItemResponse["capture"]["measurements"];
+  capture_confirmed_by: string | null;
+  capture_confirmed_at: Date | null;
+  listing_confirmed_by: string | null;
+  listing_confirmed_at: Date | null;
   workflow_state: P0ItemResponse["workflowState"];
   order_id: string | null;
   order_number: string | null;
   order_state: P0ItemResponse["orderState"];
+  accounting_export_id: string | null;
+  accounting_export_filename: "journal-candidates.csv" | null;
+  accounting_export_sha256: string | null;
+  accounting_export_row_count: number | null;
+  accounting_export_created_at: Date | null;
   updated_at: Date;
 }
 
@@ -109,7 +122,7 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
         const purchaseBatchId = randomUUID();
         const receiptId = randomUUID();
         const nextNumbers = await transaction<Array<{ next_number: number }>>`
-          select coalesce(max(substring(inventory_number from 5)::integer), 0) + 1 as next_number
+          select coalesce(max(substring(inventory_number from 5 for 6)::integer), 0) + 1 as next_number
           from inventory_unit where workspace_id = ${workspaceId}
         `;
         const nextNumber = nextNumbers[0]?.next_number;
@@ -119,7 +132,7 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
             "The workspace inventory number range is exhausted",
           );
         }
-        const inventoryNumber = `INV-${String(nextNumber).padStart(6, "0")}`;
+        const inventoryNumber = appendCodeCheckDigit(`INV-${String(nextNumber).padStart(6, "0")}`);
         const labelTokenHash = createHash("sha256").update(randomUUID(), "utf8").digest("hex");
 
         await transaction`
@@ -136,7 +149,7 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
             token_hash, short_code, issued_by
           ) values (
             ${workspaceId}, 'inventory_unit', ${inventoryUnitId}, 'manual_code', 1,
-            ${labelTokenHash}, ${`ITEM-${String(nextNumber).padStart(6, "0")}`}, ${actor.identityId}
+            ${labelTokenHash}, ${inventoryNumber}, ${actor.identityId}
           )
         `;
         await transaction`
@@ -244,13 +257,14 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
         }
         if (depth > 7) throw new RepositoryError("conflict", "The location hierarchy is too deep");
         const locationId = randomUUID();
+        const checkedCode = appendCodeCheckDigit(input.code);
         const labelHash = createHash("sha256").update(randomUUID(), "utf8").digest("hex");
         await transaction`
           insert into location_node (
             id, workspace_id, parent_id, code, name, depth, can_store_inventory,
             single_item_only, allow_mixed_sku, max_units
           ) values (
-            ${locationId}, ${workspaceId}, ${input.parentId}, ${input.code}, ${input.name},
+            ${locationId}, ${workspaceId}, ${input.parentId}, ${checkedCode}, ${input.name},
             ${depth}, ${input.canStoreInventory}, ${input.singleItemOnly},
             ${input.allowMixedSku}, ${input.maxUnits}
           )
@@ -261,7 +275,7 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
             token_hash, short_code, issued_by
           ) values (
             ${workspaceId}, 'location', ${locationId}, 'manual_code', 1,
-            ${labelHash}, ${`PLACE-${input.code}`}, ${actor.identityId}
+            ${labelHash}, ${checkedCode}, ${actor.identityId}
           )
         `;
         await transaction`
@@ -424,8 +438,20 @@ async function selectP0Items(
            location_label.version as location_label_version, receipt.id as receipt_id,
            receipt.receipt_reference, batch.purchased_at,
            allocation.allocated_amount_minor::integer as allocated_cost_minor,
+           coalesce(capture_photos.asset_ids, array[]::uuid[]) as photo_asset_ids,
+           coalesce(capture_photos.roles, array[]::text[]) as photo_roles,
+           coalesce(capture_measurements.items, '[]'::jsonb) as measurements,
+           capture_action.actor_id as capture_confirmed_by,
+           capture_action.created_at as capture_confirmed_at,
+           listing_action.actor_id as listing_confirmed_by,
+           listing_action.created_at as listing_confirmed_at,
            workflow.state as workflow_state, current_order.id as order_id,
            current_order.order_number, current_order.state as order_state,
+           latest_export.id as accounting_export_id,
+           latest_export.filename as accounting_export_filename,
+           latest_export.csv_sha256 as accounting_export_sha256,
+           latest_export.row_count::integer as accounting_export_row_count,
+           latest_export.created_at as accounting_export_created_at,
            greatest(sku.created_at, workflow.updated_at) as updated_at
     from product_sku sku
     join inventory_unit unit
@@ -448,6 +474,49 @@ async function selectP0Items(
      and location_label.target_type = 'location' and location_label.target_id = location.id
      and location_label.active
     left join lateral (
+      select array_agg(asset.id order by asset.created_at, asset.id) as asset_ids,
+             array_agg(asset.role order by asset.created_at, asset.id) as roles
+      from media_asset asset
+      where asset.workspace_id = sku.workspace_id and asset.sku_id = sku.id
+    ) capture_photos on true
+    left join lateral (
+      select jsonb_agg(
+        jsonb_build_object(
+          'id', measured.id,
+          'definitionId', measured.definition_id,
+          'definitionVersion', measured.definition_version,
+          'value', measured.value::double precision,
+          'unit', measured.unit,
+          'basis', measured.basis,
+          'state', measured.state,
+          'evidenceAssetId', measured.evidence_asset_id,
+          'measuredAt', to_char(measured.measured_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+          'confirmedBy', measured.confirmed_by,
+          'requiresReview', measured.requires_review
+        ) order by measured.definition_id
+      ) as items
+      from (
+        select distinct on (attempt.definition_id) attempt.*
+        from measurement_attempt attempt
+        where attempt.workspace_id = sku.workspace_id and attempt.sku_id = sku.id
+        order by attempt.definition_id, attempt.attempt desc, attempt.created_at desc
+      ) measured
+    ) capture_measurements on true
+    left join lateral (
+      select action.actor_id, action.created_at
+      from p0_workflow_action action
+      where action.workspace_id = sku.workspace_id and action.sku_id = sku.id
+        and action.action = 'confirm_capture'
+      order by action.created_at desc limit 1
+    ) capture_action on true
+    left join lateral (
+      select action.actor_id, action.created_at
+      from p0_workflow_action action
+      where action.workspace_id = sku.workspace_id and action.sku_id = sku.id
+        and action.action = 'confirm_listing'
+      order by action.created_at desc limit 1
+    ) listing_action on true
+    left join lateral (
       select sales_order.id, sales_order.order_number, sales_order.state
       from order_allocation order_link
       join sales_order
@@ -458,6 +527,13 @@ async function selectP0Items(
       order by sales_order.created_at desc
       limit 1
     ) current_order on true
+    left join lateral (
+      select export.id, export.filename, export.csv_sha256, export.row_count, export.created_at
+      from accounting_export export
+      where export.workspace_id = sku.workspace_id and export.order_id = current_order.id
+      order by export.created_at desc, export.id desc
+      limit 1
+    ) latest_export on true
     where sku.workspace_id = ${workspaceId}
       and (${skuId ?? null}::uuid is null or sku.id = ${skuId ?? null}::uuid)
     order by workflow.updated_at desc, sku.created_at desc
@@ -475,6 +551,17 @@ async function requireP0Item(
 }
 
 function toP0ItemResponse(row: P0ItemRow): P0ItemResponse {
+  const referenceIds = [
+    ...row.photo_asset_ids,
+    ...row.measurements.map((measurement) => measurement.id),
+  ];
+  const listingCandidate = buildListingCandidate(
+    row.title,
+    row.measurements,
+    referenceIds,
+    row.listing_confirmed_by,
+    row.listing_confirmed_at,
+  );
   return {
     workspaceId: row.workspace_id,
     skuId: row.sku_id,
@@ -491,11 +578,84 @@ function toP0ItemResponse(row: P0ItemRow): P0ItemResponse {
     receiptReference: row.receipt_reference,
     purchasedAt: row.purchased_at.toISOString(),
     allocatedCostMinor: row.allocated_cost_minor,
+    capture: {
+      photoAssetIds: row.photo_asset_ids,
+      photoRoles: row.photo_roles,
+      measurements: row.measurements,
+      confirmedBy: row.capture_confirmed_by,
+      confirmedAt: row.capture_confirmed_at?.toISOString() ?? null,
+    },
+    listingCandidate,
     workflowState: row.workflow_state,
     orderId: row.order_id,
     orderNumber: row.order_number,
     orderState: row.order_state,
+    accountingExport:
+      row.order_id &&
+      row.accounting_export_id &&
+      row.accounting_export_filename &&
+      row.accounting_export_sha256 &&
+      row.accounting_export_row_count &&
+      row.accounting_export_created_at
+        ? {
+            exportId: row.accounting_export_id,
+            workspaceId: row.workspace_id,
+            orderId: row.order_id,
+            filename: row.accounting_export_filename,
+            sha256: row.accounting_export_sha256,
+            rowCount: row.accounting_export_row_count,
+            contentUrl: accountingExportContentUrl(
+              row.workspace_id,
+              row.order_id,
+              row.accounting_export_id,
+            ),
+            createdAt: row.accounting_export_created_at.toISOString(),
+          }
+        : null,
     updatedAt: row.updated_at.toISOString(),
+  };
+}
+
+function accountingExportContentUrl(
+  workspaceId: string,
+  orderId: string,
+  exportId: string,
+): string {
+  return `/v1/workspaces/${workspaceId}/orders/${orderId}/accounting-exports/${exportId}/content`;
+}
+
+function buildListingCandidate(
+  title: string,
+  measurements: P0ItemResponse["capture"]["measurements"],
+  referenceIds: string[],
+  confirmedBy: string | null,
+  confirmedAt: Date | null,
+): P0ItemResponse["listingCandidate"] {
+  const labels = [
+    ["shoulder_width", "肩幅"],
+    ["chest_width", "身幅"],
+    ["sleeve_length", "袖丈"],
+    ["body_length", "着丈"],
+  ] as const;
+  const byDefinition = new Map(
+    measurements.map((measurement) => [measurement.definitionId, measurement]),
+  );
+  const unconfirmedFields = labels
+    .filter(([definitionId]) => !byDefinition.has(definitionId))
+    .map(([, label]) => label);
+  const facts = labels
+    .map(([definitionId, label]) => {
+      const measurement = byDefinition.get(definitionId);
+      return `${label}${measurement ? measurement.value : "未確認"}${measurement ? "cm" : ""}`;
+    })
+    .join("、");
+  return {
+    text: `${title}です。平置き実寸は${facts}です。写真と実寸をご確認のうえ、購入をご検討ください。`,
+    referenceIds,
+    unconfirmedFields,
+    status: confirmedAt ? "human_confirmed" : "candidate",
+    confirmedBy,
+    confirmedAt: confirmedAt?.toISOString() ?? null,
   };
 }
 

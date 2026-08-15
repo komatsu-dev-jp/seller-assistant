@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { healthResponseSchema } from "@resale/contracts";
 import { buildApp } from "./app.js";
-import { InMemoryWorkflowRepository } from "./repository.js";
+import { InMemoryWorkflowRepository, RepositoryError } from "./repository.js";
 import { createWriteOriginValidator } from "./security.js";
 import { createCookieAuthenticator, createSignedSession } from "./session.js";
 import type { LoginService } from "./auth.js";
@@ -13,9 +13,12 @@ import { LocalPrivateMediaStore, type PrivateMediaStore } from "./local-media-st
 const apps: ReturnType<typeof buildApp>[] = [];
 const mediaRoots: string[] = [];
 
-function buildTestApp(mediaStore?: PrivateMediaStore) {
+function buildTestApp(
+  mediaStore?: PrivateMediaStore,
+  repository: InMemoryWorkflowRepository = new InMemoryWorkflowRepository(),
+) {
   return buildApp({
-    repository: new InMemoryWorkflowRepository(),
+    repository,
     authenticate: (headers) => {
       const identityId = headers["x-actor-id"];
       const activeWorkspaceId = headers["x-workspace-id"];
@@ -148,8 +151,8 @@ describe("P0 workspace API", () => {
     expect(context.json()).toEqual({ identityId: actorId, workspaceId, role: "owner" });
 
     const request = {
-      inventoryNumber: "INV-000123",
-      locationCode: "BX-014-3",
+      inventoryNumber: "INV-000123-8",
+      locationCode: "BX-014-3-2",
       inventoryLabelVersion: 1,
       locationLabelVersion: 1,
       inventoryScannedAt: "2026-08-15T01:00:00.000Z",
@@ -339,7 +342,8 @@ describe("P0 workspace API", () => {
   });
 
   it("completes the representative P0 journey without skipping a human gate", async () => {
-    const app = buildTestApp();
+    const repository = new InMemoryWorkflowRepository();
+    const app = buildTestApp(undefined, repository);
     apps.push(app);
     const created = await app.inject({
       method: "POST",
@@ -349,30 +353,124 @@ describe("P0 workspace API", () => {
     });
     const skuId = (created.json() as { id: string }).id;
     const actionUrl = `/v1/workspaces/${workspaceId}/skus/${skuId}/p0-actions`;
-    const journey = [
-      ["confirm_purchase", "10000000-0000-4000-8000-000000000001", false],
-      ["confirm_capture", "10000000-0000-4000-8000-000000000002", false],
-      ["confirm_listing", "10000000-0000-4000-8000-000000000003", true],
-      ["confirm_order", "10000000-0000-4000-8000-000000000004", false],
-      ["confirm_pick", "10000000-0000-4000-8000-000000000005", false],
-      ["confirm_pack", "10000000-0000-4000-8000-000000000006", false],
-      ["confirm_ship", "10000000-0000-4000-8000-000000000007", false],
-      ["approve_journal", "10000000-0000-4000-8000-000000000008", false],
-    ] as const;
-
-    for (const [action, idempotencyKey, manualChannelHandoff] of journey) {
-      const response = await app.inject({
+    const advance = async (
+      action:
+        | "confirm_purchase"
+        | "confirm_capture"
+        | "confirm_listing"
+        | "confirm_order"
+        | "confirm_pick"
+        | "confirm_pack"
+        | "confirm_ship"
+        | "approve_journal",
+      idempotencyKey: string,
+      evidenceReferenceIds: string[],
+      manualChannelHandoff = false,
+    ) =>
+      app.inject({
         method: "POST",
         url: actionUrl,
         headers: { "x-actor-id": actorId },
         payload: {
           action,
           idempotencyKey,
-          evidenceReferenceIds: [idempotencyKey.replace("10000000", "20000000")],
+          evidenceReferenceIds,
           requiredFactsConfirmed: true,
           manualChannelHandoff,
         },
       });
+
+    const purchase = await advance("confirm_purchase", "10000000-0000-4000-8000-000000000001", [
+      "20000000-0000-4000-8000-000000000001",
+    ]);
+    expect(purchase.statusCode, purchase.body).toBe(200);
+
+    const prematureCapture = await advance(
+      "confirm_capture",
+      "10000000-0000-4000-8000-000000000009",
+      ["20000000-0000-4000-8000-000000000009"],
+    );
+    expect(prematureCapture.statusCode).toBe(409);
+
+    const roles = ["front", "back", "brand_tag", "care_label"] as const;
+    const assetIds = roles.map((_, index) => `30000000-0000-4000-8000-00000000000${index + 1}`);
+    for (const [index, role] of roles.entries()) {
+      await repository.registerMediaAsset(
+        workspaceId,
+        skuId,
+        { identityId: actorId },
+        {
+          assetId: assetIds[index]!,
+          role,
+          originalSha256: String(index + 1).repeat(64),
+          originalStorageKey: `workspaces/${workspaceId}/originals/${assetIds[index]}.jpg`,
+          mimeType: "image/jpeg",
+          sizeBytes: 128,
+          width: 16,
+          height: 16,
+        },
+      );
+    }
+    const definitions = [
+      ["shoulder_width", 42],
+      ["chest_width", 52],
+      ["sleeve_length", 61],
+      ["body_length", 70],
+    ] as const;
+    const measurementIds: string[] = [];
+    for (const [definitionId, value] of definitions) {
+      const measurement = await repository.recordMeasurement(
+        workspaceId,
+        skuId,
+        { identityId: actorId },
+        {
+          definitionId,
+          definitionVersion: 1,
+          value,
+          unit: "cm",
+          basis: definitionId === "chest_width" ? "flat_width" : "length",
+          state: "natural",
+          measuredAt: "2026-08-15T00:00:00.000Z",
+          evidenceAssetId: assetIds[0]!,
+          attempt: 1,
+          humanConfirmed: true,
+        },
+      );
+      measurementIds.push(measurement.id);
+    }
+
+    const capture = await advance(
+      "confirm_capture",
+      "10000000-0000-4000-8000-000000000002",
+      assetIds,
+    );
+    expect(capture.statusCode, capture.body).toBe(200);
+    const staleListing = await advance(
+      "confirm_listing",
+      "10000000-0000-4000-8000-000000000010",
+      assetIds,
+      true,
+    );
+    expect(staleListing.statusCode).toBe(409);
+    const listing = await advance(
+      "confirm_listing",
+      "10000000-0000-4000-8000-000000000003",
+      [...assetIds, ...measurementIds],
+      true,
+    );
+    expect(listing.statusCode, listing.body).toBe(200);
+
+    const remaining = [
+      ["confirm_order", "10000000-0000-4000-8000-000000000004"],
+      ["confirm_pick", "10000000-0000-4000-8000-000000000005"],
+      ["confirm_pack", "10000000-0000-4000-8000-000000000006"],
+      ["confirm_ship", "10000000-0000-4000-8000-000000000007"],
+      ["approve_journal", "10000000-0000-4000-8000-000000000008"],
+    ] as const;
+    for (const [action, idempotencyKey] of remaining) {
+      const response = await advance(action, idempotencyKey, [
+        idempotencyKey.replace("100", "200"),
+      ]);
       expect(response.statusCode, response.body).toBe(200);
     }
 
@@ -447,7 +545,9 @@ describe("P0 workspace API", () => {
   });
 
   it("registers immutable photo evidence and human measurements for capture readiness", async () => {
-    const app = buildTestApp();
+    const mediaRoot = await mkdtemp(join(tmpdir(), "resale-app-media-"));
+    mediaRoots.push(mediaRoot);
+    const app = buildTestApp(new LocalPrivateMediaStore(mediaRoot));
     apps.push(app);
     const created = await app.inject({
       method: "POST",
@@ -464,21 +564,29 @@ describe("P0 workspace API", () => {
       "30000000-0000-4000-8000-000000000004",
     ];
 
+    const legacyMetadataOnly = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceId}/skus/${skuId}/media-assets`,
+      headers: { "x-actor-id": actorId },
+      payload: {
+        assetId: assetIds[0],
+        role: "front",
+        originalSha256: "a".repeat(64),
+        originalStorageKey: `workspaces/${workspaceId}/originals/forged.jpg`,
+        mimeType: "image/jpeg",
+        sizeBytes: 128,
+        width: 16,
+        height: 16,
+      },
+    });
+    expect(legacyMetadataOnly.statusCode).toBe(404);
+
     for (const [index, role] of roles.entries()) {
       const response = await app.inject({
         method: "POST",
-        url: `/v1/workspaces/${workspaceId}/skus/${skuId}/media-assets`,
-        headers: { "x-actor-id": actorId },
-        payload: {
-          assetId: assetIds[index],
-          role,
-          originalSha256: String(index + 1).repeat(64),
-          originalStorageKey: `workspaces/${workspaceId}/originals/${assetIds[index]}.jpg`,
-          mimeType: "image/jpeg",
-          sizeBytes: 1_024,
-          width: 2_000,
-          height: 2_000,
-        },
+        url: `/v1/workspaces/${workspaceId}/skus/${skuId}/media-uploads?assetId=${assetIds[index]}&role=${role}`,
+        headers: { "content-type": "image/jpeg", "x-actor-id": actorId },
+        payload: jpegWithGpsMetadata(),
       });
       expect(response.statusCode, response.body).toBe(201);
     }
@@ -487,7 +595,7 @@ describe("P0 workspace API", () => {
       ["shoulder_width", 42],
       ["chest_width", 52],
       ["sleeve_length", 61],
-      ["garment_length", 70],
+      ["body_length", 70],
     ] as const;
     for (const [definitionId, value] of definitions) {
       const response = await app.inject({
@@ -561,7 +669,9 @@ describe("P0 workspace API", () => {
   });
 
   it("rejects media path changes and measurement evidence from another SKU", async () => {
-    const app = buildTestApp();
+    const mediaRoot = await mkdtemp(join(tmpdir(), "resale-app-media-"));
+    mediaRoots.push(mediaRoot);
+    const app = buildTestApp(new LocalPrivateMediaStore(mediaRoot));
     apps.push(app);
     const first = await app.inject({
       method: "POST",
@@ -578,32 +688,22 @@ describe("P0 workspace API", () => {
     const firstSkuId = (first.json() as { id: string }).id;
     const secondSkuId = (second.json() as { id: string }).id;
     const assetId = "40000000-0000-4000-8000-000000000001";
-    const assetPayload = {
-      assetId,
-      role: "front",
-      originalSha256: "a".repeat(64),
-      originalStorageKey: `workspaces/${workspaceId}/originals/${assetId}.jpg`,
-      mimeType: "image/jpeg",
-      sizeBytes: 2_048,
-      width: 2_000,
-      height: 2_000,
-    };
-    const mediaUrl = `/v1/workspaces/${workspaceId}/skus/${firstSkuId}/media-assets`;
+    const mediaUrl = `/v1/workspaces/${workspaceId}/skus/${firstSkuId}/media-uploads?assetId=${assetId}&role=front`;
     expect(
       (
         await app.inject({
           method: "POST",
           url: mediaUrl,
-          headers: { "x-actor-id": actorId },
-          payload: assetPayload,
+          headers: { "content-type": "image/jpeg", "x-actor-id": actorId },
+          payload: jpegWithGpsMetadata(),
         })
       ).statusCode,
     ).toBe(201);
     const changed = await app.inject({
       method: "POST",
-      url: mediaUrl,
-      headers: { "x-actor-id": actorId },
-      payload: { ...assetPayload, role: "back" },
+      url: `/v1/workspaces/${workspaceId}/skus/${firstSkuId}/media-uploads?assetId=${assetId}&role=back`,
+      headers: { "content-type": "image/jpeg", "x-actor-id": actorId },
+      payload: jpegWithGpsMetadata(),
     });
     expect(changed.statusCode).toBe(409);
 
@@ -706,6 +806,40 @@ describe("P0 workspace API", () => {
     expect(content.statusCode).toBe(200);
     expect(content.headers["cache-control"]).toBe("private, no-store");
     expect(content.rawPayload.toString("utf8")).not.toContain("GPSLatitude");
+  });
+
+  it("removes a newly stored location original when database registration fails", async () => {
+    const mediaRoot = await mkdtemp(join(tmpdir(), "resale-app-media-"));
+    mediaRoots.push(mediaRoot);
+    const repository = new InMemoryWorkflowRepository();
+    repository.registerLocationPhoto = () =>
+      Promise.reject(new RepositoryError("database_error", "simulated registration failure"));
+    const app = buildTestApp(new LocalPrivateMediaStore(mediaRoot), repository);
+    apps.push(app);
+    const locationId = "51000000-0000-4000-8000-000000000001";
+    const photoId = "51000000-0000-4000-8000-000000000002";
+    const query = new URLSearchParams({
+      photoId,
+      originalAssetId: "51000000-0000-4000-8000-000000000003",
+      photoKind: "room",
+      capturedAt: "2026-08-15T01:00:00.000Z",
+      humanConfirmed: "true",
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceId}/locations/${locationId}/photos?${query.toString()}`,
+      headers: { "content-type": "image/jpeg", "x-actor-id": actorId },
+      payload: jpegWithGpsMetadata(),
+    });
+    expect(response.statusCode).toBe(503);
+    const originalPath = join(
+      mediaRoot,
+      "workspaces",
+      workspaceId,
+      "location-originals",
+      `${photoId}.jpg`,
+    );
+    await expect(stat(originalPath)).rejects.toMatchObject({ code: "ENOENT" });
   });
 });
 

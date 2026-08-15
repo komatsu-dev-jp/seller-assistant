@@ -177,3 +177,16 @@ P0の必須ACは AC-001、003〜008、013〜014、018〜023、025〜026、028〜
 - 検証: 19 files / 96 tests、line 91.36%、branch 81.81%、functions 100%、format/lint/type/build合格。0001〜0014、32業務テーブルRLSの新規使い捨てPostgreSQL結合テストPASS。
 - 費用: Node.js、Next.js、PostgreSQL、PC内ファイル、ローカルPlaywrightだけ。外部API/SaaS/CI/デプロイ/Apple契約0件。
 - 未確認: 実iPhone Safariでのホーム画面追加、カメラ撮影、圏外復帰。HEIC/WebP。P1は未着手。
+
+## Iteration 21の実証範囲
+
+- AC-004/005、TA-003/004: metadataだけの旧写真登録routeを削除。画像bytesのサーバー検査、非公開保存、位置metadata除去、別担当承認、表示時SHA再照合を自動テスト。DB登録失敗時の孤児原本0件も確認。
+- AC-013: 同じSKUの写真4種、最新採寸4項目、撮影確認、出品候補と根拠をDB read modelから再構築し、ブラウザ再読込後も採寸入り文章を表示。
+- AC-019/048、TA-002: 配送担当は管理者が割り当てた有効期限内の注文だけを取得し、住所lease、pick、pack、shipの全操作で再照合。利益、原価、税務候補は配送画面へ0件。
+- AC-023/029、TA-011/012/022: 注文・発送とP0進捗、会計CSV履歴とP0進捗を同一transactionで更新。直接workflow完了を拒否し、再読込後もCSVのhash、ファイル名、作成者、時刻を復元。
+- AC-053: 在庫番号と場所コードをchecked codeへ変更し、1文字変更、古い版、異なるcatalogをWeb/API/DBで拒否。
+- TA-019/020: 新規DBの33業務テーブルすべてでRLS/force RLS/workspace policyを検査。制限runtime roleの破壊的grant 0件、監査payloadの秘密値0件。
+- 品質ゲート: 20 files / 101 tests、line 91.36%、branch 81.81%、functions 100%。format、lint、typecheck、本番build合格。PostgreSQL 0001〜0015、33-table RLS、P0実結合PASS。
+- 実画面: `output/playwright/iteration-21-login.png`、`iteration-21-workflow-reloaded.png`、`iteration-21-mobile-390x844.png`、`iteration-21-shipping-role.png`。外部downloadなし、PC内Chromeだけ。
+- 外部境界: runtimeは同一生成元`/v1`とPC内DB/ファイルだけ。Mercari/Notion/Slack/OpenAI/Photoroom等への送信route 0件。有料サービス0件。
+- 手動未確認: 実iPhone Safari、ホーム画面追加、カメラ、圏外復帰。これはDraft PRへ未確認事項として残し、成功扱いにしない。

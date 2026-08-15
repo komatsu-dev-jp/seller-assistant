@@ -5,6 +5,7 @@ import {
   accountingExportResponseSchema,
   addressLeaseQuerySchema,
   addressLeaseResponseSchema,
+  assignOrderRequestSchema,
   apiErrorSchema,
   advanceP0WorkflowRequestSchema,
   captureSummarySchema,
@@ -21,8 +22,8 @@ import {
   locationPhotoResponseSchema,
   locationNodeResponseSchema,
   measurementResponseSchema,
-  mediaAssetResponseSchema,
   orderOperationResponseSchema,
+  orderAssignmentResponseSchema,
   packOrderRequestSchema,
   pickOrderRequestSchema,
   p0WorkflowResponseSchema,
@@ -35,9 +36,9 @@ import {
   recordMeasurementRequestSchema,
   reviewLocationPhotoRequestSchema,
   returnOrderRequestSchema,
-  registerMediaAssetRequestSchema,
   sessionContextResponseSchema,
   shippingAddressResponseSchema,
+  shippingTaskResponseSchema,
   shipOrderRequestSchema,
   skuResponseSchema,
   uploadLocationPhotoQuerySchema,
@@ -174,6 +175,59 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const context = await repository.sessionContext(actor);
       return reply.send(sessionContextResponseSchema.parse(context));
+    } catch (error) {
+      const mapped = mapRepositoryError(error, request.id);
+      return reply.code(mapped.status).send(mapped.payload);
+    }
+  });
+
+  app.get<{
+    Params: { workspaceId: string };
+    Reply: ReturnType<ReturnType<typeof shippingTaskResponseSchema.array>["parse"]> | ApiError;
+  }>("/v1/workspaces/:workspaceId/shipping-tasks", async (request, reply) => {
+    const workspace = workspaceIdSchema.safeParse(request.params.workspaceId);
+    const actor = await authenticate(request.headers);
+    if (!actor) return reply.code(401).send(authenticationError(request.id));
+    if (!workspace.success) return reply.code(400).send(invalidOrderInput(request.id));
+    const actorWorkspace = actorWorkspaceError(actor, workspace.data, request.id);
+    if (actorWorkspace) return reply.code(403).send(actorWorkspace);
+    if (!options.orderRepository) {
+      return reply.code(503).send(orderServiceUnavailable(request.id));
+    }
+    try {
+      const result = await options.orderRepository.shippingTasks(workspace.data, actor);
+      return reply.send(shippingTaskResponseSchema.array().parse(result));
+    } catch (error) {
+      const mapped = mapRepositoryError(error, request.id);
+      return reply.code(mapped.status).send(mapped.payload);
+    }
+  });
+
+  app.post<{
+    Params: { workspaceId: string; orderId: string };
+    Body: unknown;
+    Reply: ReturnType<typeof orderAssignmentResponseSchema.parse> | ApiError;
+  }>("/v1/workspaces/:workspaceId/orders/:orderId/assignment", async (request, reply) => {
+    const context = await orderRequestContext(
+      request.params,
+      request.headers,
+      request.id,
+      authenticate,
+    );
+    const input = assignOrderRequestSchema.safeParse(request.body);
+    if (context.error) return reply.code(context.status).send(context.error);
+    if (!input.success) return reply.code(400).send(invalidOrderInput(request.id));
+    if (!options.orderRepository) {
+      return reply.code(503).send(orderServiceUnavailable(request.id));
+    }
+    try {
+      const result = await options.orderRepository.assignShipping(
+        context.workspaceId,
+        context.orderId,
+        context.actor,
+        input.data,
+      );
+      return reply.code(201).send(orderAssignmentResponseSchema.parse(result));
     } catch (error) {
       const mapped = mapRepositoryError(error, request.id);
       return reply.code(mapped.status).send(mapped.payload);
@@ -421,20 +475,32 @@ export function buildApp(options: BuildAppOptions = {}) {
       const extension = inspected.mimeType === "image/jpeg" ? "jpg" : "png";
       const originalStorageKey = `workspaces/${workspace.data}/location-originals/${input.data.photoId}.${extension}`;
       const stored = await options.mediaStore.saveOriginal(originalStorageKey, request.body);
-      const result = await repository.registerLocationPhoto(workspace.data, location.data, actor, {
-        photoId: input.data.photoId,
-        originalAssetId: input.data.originalAssetId,
-        photoKind: input.data.photoKind,
-        originalSha256: stored.sha256,
-        originalStorageKey: stored.storageKey,
-        mimeType: inspected.mimeType,
-        sizeBytes: stored.sizeBytes,
-        width: inspected.width,
-        height: inspected.height,
-        capturedAt: input.data.capturedAt,
-        humanConfirmed: true,
-      });
-      return reply.code(201).send(locationPhotoResponseSchema.parse(result));
+      try {
+        const result = await repository.registerLocationPhoto(
+          workspace.data,
+          location.data,
+          actor,
+          {
+            photoId: input.data.photoId,
+            originalAssetId: input.data.originalAssetId,
+            photoKind: input.data.photoKind,
+            originalSha256: stored.sha256,
+            originalStorageKey: stored.storageKey,
+            mimeType: inspected.mimeType,
+            sizeBytes: stored.sizeBytes,
+            width: inspected.width,
+            height: inspected.height,
+            capturedAt: input.data.capturedAt,
+            humanConfirmed: true,
+          },
+        );
+        return reply.code(201).send(locationPhotoResponseSchema.parse(result));
+      } catch (error) {
+        if (stored.created) {
+          await options.mediaStore.removeOriginal(stored.storageKey, stored.sha256);
+        }
+        throw error;
+      }
     } catch (error) {
       if (!(error instanceof RepositoryError)) {
         return reply.code(400).send(mediaInputError(request.id));
@@ -544,7 +610,10 @@ export function buildApp(options: BuildAppOptions = {}) {
           photo.data,
           actor,
         );
-        const bytes = await options.mediaStore.readDisplay(source.displayStorageKey);
+        const bytes = await options.mediaStore.readDisplay(
+          source.displayStorageKey,
+          source.displaySha256,
+        );
         return reply.header("cache-control", "private, no-store").type(source.mimeType).send(bytes);
       } catch (error) {
         const mapped = mapRepositoryError(error, request.id);
@@ -711,41 +780,6 @@ export function buildApp(options: BuildAppOptions = {}) {
         return reply.code(mapped.status).send(mapped.payload);
       }
       return reply.code(400).send(mediaInputError(request.id));
-    }
-  });
-
-  app.post<{
-    Params: { workspaceId: string; skuId: string };
-    Body: unknown;
-    Reply: ReturnType<typeof mediaAssetResponseSchema.parse> | ApiError;
-  }>("/v1/workspaces/:workspaceId/skus/:skuId/media-assets", async (request, reply) => {
-    const workspace = workspaceIdSchema.safeParse(request.params.workspaceId);
-    const sku = workspaceIdSchema.safeParse(request.params.skuId);
-    const input = registerMediaAssetRequestSchema.safeParse(request.body);
-    const actor = await authenticate(request.headers);
-    if (!actor) return reply.code(401).send(authenticationError(request.id));
-    if (!workspace.success || !sku.success || !input.success) {
-      return reply.code(400).send(
-        apiErrorSchema.parse({
-          code: "invalid_request",
-          message: "workspace、SKU、actor、または原本メタデータを確認してください。",
-          requestId: request.id,
-        }),
-      );
-    }
-    const actorWorkspace = actorWorkspaceError(actor, workspace.data, request.id);
-    if (actorWorkspace) return reply.code(403).send(actorWorkspace);
-    try {
-      const result = await repository.registerMediaAsset(
-        workspace.data,
-        sku.data,
-        actor,
-        input.data,
-      );
-      return reply.code(201).send(mediaAssetResponseSchema.parse(result));
-    } catch (error) {
-      const mapped = mapRepositoryError(error, request.id);
-      return reply.code(mapped.status).send(mapped.payload);
     }
   });
 

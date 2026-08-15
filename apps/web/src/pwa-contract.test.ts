@@ -19,6 +19,16 @@ describe("zero-cost PWA contract", () => {
     expect(worker).toContain("CLEAR_BUSINESS_CACHE");
   });
 
+  it("allows only the explicit shipping task and assignment proxy paths", () => {
+    const proxy = readFileSync(
+      resolve("apps/web/src/app/v1/workspaces/[workspaceId]/[[...segments]]/route.ts"),
+      "utf8",
+    );
+    expect(proxy).toContain('segments[0] === "shipping-tasks"');
+    expect(proxy).toContain('"assignment"');
+    expect(proxy).toContain("orderActions.has");
+  });
+
   it("registers the worker even when React mounts after the window load event", () => {
     const registration = readFileSync(
       resolve("apps/web/src/components/pwa-registration.tsx"),
@@ -82,6 +92,7 @@ describe("zero-cost PWA contract", () => {
     const workflow = readFileSync(resolve("apps/web/src/app/workflow/page.tsx"), "utf8");
     const mobile = readFileSync(resolve("apps/web/src/app/mobile/page.tsx"), "utf8");
     const scan = readFileSync(resolve("apps/web/src/app/mobile/scan/page.tsx"), "utf8");
+    const shipping = readFileSync(resolve("apps/web/src/app/shipping/page.tsx"), "utf8");
 
     expect(guard).toContain('import "server-only"');
     expect(guard).toContain('cache: "no-store"');
@@ -94,12 +105,16 @@ describe("zero-cost PWA contract", () => {
       expect(source).toContain('requirePageSession(["owner", "inventory_manager"])');
       expect(source).not.toContain('"field_worker"');
     }
-    for (const source of [mobile, scan]) {
+    expect(mobile).toMatch(
+      /requirePageSession\(\[\s*"owner",\s*"inventory_manager",\s*"field_worker",\s*"shipping",?\s*\]\)/u,
+    );
+    for (const source of [scan]) {
       expect(source).toContain('export const dynamic = "force-dynamic"');
       expect(source).toContain(
         'requirePageSession(["owner", "inventory_manager", "field_worker"])',
       );
     }
+    expect(shipping).toContain('requirePageSession(["owner", "inventory_manager", "shipping"])');
     expect(mobile).toContain("canViewManagement");
   });
 });

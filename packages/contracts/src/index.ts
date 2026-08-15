@@ -1,7 +1,44 @@
 import { z } from "zod";
 
 export const workspaceIdSchema = z.string().uuid();
-export const inventoryNumberSchema = z.string().regex(/^INV-[0-9]{6}$/u);
+
+export function codeCheckDigit(baseCode: string): number {
+  const normalized = baseCode.trim().toUpperCase();
+  let total = 0;
+  for (let index = 0; index < normalized.length; index += 1) {
+    const distanceFromRight = normalized.length - 1 - index;
+    const weight = distanceFromRight % 2 === 0 ? 3 : 1;
+    total += (normalized.codePointAt(index) ?? 0) * weight;
+  }
+  return total % 10;
+}
+
+export function appendCodeCheckDigit(baseCode: string): string {
+  const normalized = baseCode.trim().toUpperCase();
+  return `${normalized}-${codeCheckDigit(normalized)}`;
+}
+
+export function hasValidCodeCheckDigit(code: string): boolean {
+  const normalized = code.trim().toUpperCase();
+  const separator = normalized.lastIndexOf("-");
+  if (separator <= 0 || !/^[0-9]$/u.test(normalized.slice(separator + 1))) return false;
+  const base = normalized.slice(0, separator);
+  return Number(normalized.slice(separator + 1)) === codeCheckDigit(base);
+}
+
+export const inventoryNumberSchema = z
+  .string()
+  .regex(/^INV-[0-9]{6}-[0-9]$/u)
+  .refine(hasValidCodeCheckDigit, "Inventory number check digit is invalid");
+
+export const checkedLocationCodeSchema = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .min(5)
+  .max(66)
+  .regex(/^[A-Z0-9]+(?:-[A-Z0-9]+)+-[0-9]$/u)
+  .refine(hasValidCodeCheckDigit, "Location code check digit is invalid");
 
 export const healthResponseSchema = z.object({
   status: z.literal("ok"),
@@ -57,13 +94,7 @@ export const sessionContextResponseSchema = z.object({
 export const putawayInventoryRequestSchema = z
   .object({
     inventoryNumber: inventoryNumberSchema,
-    locationCode: z
-      .string()
-      .trim()
-      .toUpperCase()
-      .min(3)
-      .max(64)
-      .regex(/^[A-Z0-9]+(?:-[A-Z0-9]+)+$/u),
+    locationCode: checkedLocationCodeSchema,
     inventoryLabelVersion: z.number().int().positive().max(10_000),
     locationLabelVersion: z.number().int().positive().max(10_000),
     inventoryScannedAt: z.iso.datetime(),
@@ -85,7 +116,7 @@ export const putawayInventoryResponseSchema = z.object({
   inventoryNumber: inventoryNumberSchema,
   status: z.literal("available"),
   locationId: z.string().uuid(),
-  locationCode: z.string(),
+  locationCode: checkedLocationCodeSchema,
   movementSequence: z.number().int().positive(),
   scanSessionId: z.string().uuid(),
   idempotencyKey: z.string().uuid(),
@@ -103,7 +134,7 @@ export const putawayCatalogResponseSchema = z.object({
   ),
   locations: z.array(
     z.object({
-      code: z.string(),
+      code: checkedLocationCodeSchema,
       name: z.string(),
       labelVersion: z.number().int().positive(),
     }),
@@ -362,6 +393,29 @@ export const createP0ItemRequestSchema = z
     path: ["allocatedCostMinor"],
   });
 
+export const p0CaptureMeasurementSchema = z.object({
+  id: z.string().uuid(),
+  definitionId: z.string(),
+  definitionVersion: z.number().int().positive(),
+  value: z.number().positive(),
+  unit: z.literal("cm"),
+  basis: z.enum(["flat_width", "circumference", "length"]),
+  state: z.enum(["natural", "closed", "unstretched"]),
+  evidenceAssetId: z.string().uuid(),
+  measuredAt: z.iso.datetime(),
+  confirmedBy: z.string().uuid(),
+  requiresReview: z.boolean(),
+});
+
+export const p0ListingCandidateSchema = z.object({
+  text: z.string().min(1),
+  referenceIds: z.array(z.string().uuid()),
+  unconfirmedFields: z.array(z.string()),
+  status: z.enum(["candidate", "human_confirmed"]),
+  confirmedBy: z.string().uuid().nullable(),
+  confirmedAt: z.iso.datetime().nullable(),
+});
+
 export const p0ItemResponseSchema = z.object({
   workspaceId: workspaceIdSchema,
   skuId: z.string().uuid(),
@@ -381,13 +435,21 @@ export const p0ItemResponseSchema = z.object({
     "lost",
     "disposed",
   ]),
-  locationCode: z.string().nullable(),
+  locationCode: checkedLocationCodeSchema.nullable(),
   inventoryLabelVersion: z.number().int().positive(),
   locationLabelVersion: z.number().int().positive().nullable(),
   receiptId: z.string().uuid(),
   receiptReference: z.string(),
   purchasedAt: z.iso.datetime(),
   allocatedCostMinor: z.number().int().nonnegative(),
+  capture: z.object({
+    photoAssetIds: z.array(z.string().uuid()),
+    photoRoles: z.array(photoRoleSchema),
+    measurements: z.array(p0CaptureMeasurementSchema),
+    confirmedBy: z.string().uuid().nullable(),
+    confirmedAt: z.iso.datetime().nullable(),
+  }),
+  listingCandidate: p0ListingCandidateSchema,
   workflowState: z.enum([
     "sku_created",
     "purchase_confirmed",
@@ -402,6 +464,18 @@ export const p0ItemResponseSchema = z.object({
   orderId: z.string().uuid().nullable(),
   orderNumber: z.string().nullable(),
   orderState: z.enum(["confirmed", "picking", "packed", "shipped", "returned"]).nullable(),
+  accountingExport: z
+    .object({
+      exportId: z.string().uuid(),
+      workspaceId: workspaceIdSchema,
+      orderId: z.string().uuid(),
+      filename: z.literal("journal-candidates.csv"),
+      sha256: z.string().regex(/^[a-f0-9]{64}$/u),
+      rowCount: z.number().int().positive(),
+      contentUrl: z.string(),
+      createdAt: z.iso.datetime(),
+    })
+    .nullable(),
   updatedAt: z.iso.datetime(),
 });
 
@@ -432,7 +506,7 @@ export const locationNodeResponseSchema = z.object({
   id: z.string().uuid(),
   workspaceId: workspaceIdSchema,
   parentId: z.string().uuid().nullable(),
-  code: z.string(),
+  code: checkedLocationCodeSchema,
   name: z.string(),
   depth: z.number().int().min(0).max(7),
   state: z.literal("active"),
@@ -463,6 +537,42 @@ export const orderOperationResponseSchema = z.object({
     "disposed",
   ]),
   updatedAt: z.iso.datetime(),
+});
+
+export const assignOrderRequestSchema = z
+  .object({
+    assigneeEmail: z.string().trim().toLowerCase().email().max(320),
+    startsAt: z.iso.datetime(),
+    expiresAt: z.iso.datetime(),
+    humanConfirmed: z.literal(true),
+  })
+  .strict()
+  .refine((value) => Date.parse(value.expiresAt) > Date.parse(value.startsAt), {
+    message: "Assignment expiry must be after its start",
+    path: ["expiresAt"],
+  });
+
+export const orderAssignmentResponseSchema = z.object({
+  assignmentId: z.string().uuid(),
+  workspaceId: workspaceIdSchema,
+  orderId: z.string().uuid(),
+  identityId: z.string().uuid(),
+  startsAt: z.iso.datetime(),
+  expiresAt: z.iso.datetime(),
+  revokedAt: z.iso.datetime().nullable(),
+});
+
+export const shippingTaskResponseSchema = z.object({
+  orderId: z.string().uuid(),
+  orderNumber: z.string(),
+  state: z.enum(["confirmed", "picking", "packed"]),
+  inventoryNumber: inventoryNumberSchema,
+  inventoryUnitId: z.string().uuid(),
+  skuId: z.string().uuid(),
+  locationCode: checkedLocationCodeSchema,
+  inventoryLabelVersion: z.number().int().positive(),
+  locationLabelVersion: z.number().int().positive(),
+  assignmentExpiresAt: z.iso.datetime(),
 });
 
 export const createAddressLeaseRequestSchema = z
@@ -593,6 +703,9 @@ export type P0ItemResponse = z.infer<typeof p0ItemResponseSchema>;
 export type CreateLocationRequest = z.infer<typeof createLocationRequestSchema>;
 export type LocationNodeResponse = z.infer<typeof locationNodeResponseSchema>;
 export type OrderOperationResponse = z.infer<typeof orderOperationResponseSchema>;
+export type AssignOrderRequest = z.infer<typeof assignOrderRequestSchema>;
+export type OrderAssignmentResponse = z.infer<typeof orderAssignmentResponseSchema>;
+export type ShippingTaskResponse = z.infer<typeof shippingTaskResponseSchema>;
 export type CreateAddressLeaseRequest = z.infer<typeof createAddressLeaseRequestSchema>;
 export type AddressLeaseResponse = z.infer<typeof addressLeaseResponseSchema>;
 export type ShippingAddressResponse = z.infer<typeof shippingAddressResponseSchema>;

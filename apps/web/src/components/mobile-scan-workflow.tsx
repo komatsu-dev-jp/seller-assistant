@@ -1,14 +1,14 @@
 "use client";
 
-import type { PutawayCatalogResponse } from "@resale/contracts";
+import { hasValidCodeCheckDigit, type PutawayCatalogResponse } from "@resale/contracts";
 import { useEffect, useMemo, useState } from "react";
 
 import { createPendingPutaway, savePutawayOnlineFirst } from "../lib/offline-outbox";
 
 type Step = "inventory" | "location" | "confirm" | "saved";
 
-const inventoryPattern = /^INV-[0-9]{6}$/u;
-const locationPattern = /^[A-Z0-9]+(?:-[A-Z0-9]+)+$/u;
+const inventoryPattern = /^INV-[0-9]{6}-[0-9]$/u;
+const locationPattern = /^[A-Z0-9]+(?:-[A-Z0-9]+)+-[0-9]$/u;
 
 export function MobileScanWorkflow({ workspaceId }: { workspaceId: string }) {
   const [step, setStep] = useState<Step>("inventory");
@@ -49,12 +49,18 @@ export function MobileScanWorkflow({ workspaceId }: { workspaceId: string }) {
       setError("ラベルに保存できない情報が含まれています。");
       return;
     }
-    if (step === "inventory" && !inventoryPattern.test(normalized)) {
-      setError("在庫番号は INV-000001 の形式で入力してください。");
+    if (
+      step === "inventory" &&
+      (!inventoryPattern.test(normalized) || !hasValidCodeCheckDigit(normalized))
+    ) {
+      setError("在庫番号は末尾のチェック値まで入力してください（例: INV-000001-7）。");
       return;
     }
-    if (step === "location" && !locationPattern.test(normalized)) {
-      setError("場所コードは ROOM-A や BOX-014-3 の形式で入力してください。");
+    if (
+      step === "location" &&
+      (!locationPattern.test(normalized) || !hasValidCodeCheckDigit(normalized))
+    ) {
+      setError("場所コードは末尾のチェック値まで入力してください。");
       return;
     }
     if (step === "inventory") {
@@ -149,7 +155,7 @@ export function MobileScanWorkflow({ workspaceId }: { workspaceId: string }) {
               type="text"
               value={value}
               onChange={(event) => setValue(event.target.value)}
-              placeholder={step === "inventory" ? "INV-000001" : "BX-014-3"}
+              placeholder={step === "inventory" ? "INV-000001-7" : "ROOM-A-9"}
               autoCapitalize="characters"
               autoComplete="off"
             />

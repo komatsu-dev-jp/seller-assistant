@@ -2,17 +2,20 @@ import { createHash, randomUUID } from "node:crypto";
 import type {
   AccountingExportResponse,
   AddressLeaseResponse,
+  AssignOrderRequest,
   CreateAccountingExportRequest,
   CreateAddressLeaseRequest,
   CreateOrderRequest,
   FinancialSummaryResponse,
   InspectReturnRequest,
   OrderOperationResponse,
+  OrderAssignmentResponse,
   PackOrderRequest,
   PickOrderRequest,
   QuarantineReturnRequest,
   ReturnOrderRequest,
   ShipOrderRequest,
+  ShippingTaskResponse,
 } from "@resale/contracts";
 import {
   calculateContribution,
@@ -54,6 +57,13 @@ export interface OrderRepository {
     actor: RequestActor,
     record: CreateOrderRecord,
   ): Promise<OrderOperationResponse>;
+  assignShipping(
+    workspaceId: string,
+    orderId: string,
+    actor: RequestActor,
+    input: AssignOrderRequest,
+  ): Promise<OrderAssignmentResponse>;
+  shippingTasks(workspaceId: string, actor: RequestActor): Promise<ShippingTaskResponse[]>;
   createAddressLease(
     workspaceId: string,
     orderId: string,
@@ -187,7 +197,7 @@ export class PostgresOrderRepository implements OrderRepository {
     try {
       return await this.sql.begin(async (transaction) => {
         await setWorkspace(transaction, workspaceId);
-        await requireRole(transaction, workspaceId, actor.identityId, [
+        const role = await requireRole(transaction, workspaceId, actor.identityId, [
           "owner",
           "inventory_manager",
         ]);
@@ -258,6 +268,15 @@ export class PostgresOrderRepository implements OrderRepository {
           state: "confirmed",
           inventoryStatus: "reserved",
         });
+        await advanceP0ForOrderOperation(
+          transaction,
+          workspaceId,
+          record.orderId,
+          actor.identityId,
+          role,
+          "create",
+          record.input.idempotencyKey,
+        );
         await insertAudit(
           transaction,
           workspaceId,
@@ -278,6 +297,153 @@ export class PostgresOrderRepository implements OrderRepository {
     }
   }
 
+  async assignShipping(
+    workspaceId: string,
+    orderId: string,
+    actor: RequestActor,
+    input: AssignOrderRequest,
+  ): Promise<OrderAssignmentResponse> {
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId);
+        await requireRole(transaction, workspaceId, actor.identityId, [
+          "owner",
+          "inventory_manager",
+        ]);
+        const assignees = await transaction<Array<{ identity_id: string }>>`
+          select credential.identity_id
+          from auth_credential credential
+          join workspace_membership membership
+            on membership.identity_id = credential.identity_id
+           and membership.workspace_id = ${workspaceId}
+          where credential.email_normalized = ${input.assigneeEmail}
+            and membership.active and membership.role = 'shipping'
+        `;
+        const assignee = assignees[0];
+        if (!assignee) {
+          throw new RepositoryError("forbidden", "The shipping assignee is not an active member");
+        }
+        const conflicts = await transaction<Array<{ present: boolean }>>`
+          select exists (
+            select 1 from order_assignment
+            where workspace_id = ${workspaceId} and order_id = ${orderId}
+              and revoked_at is null
+              and tstzrange(starts_at, expires_at, '[)') &&
+                  tstzrange(${input.startsAt}::timestamptz, ${input.expiresAt}::timestamptz, '[)')
+          ) as present
+        `;
+        if (conflicts[0]?.present) {
+          throw new RepositoryError("conflict", "The order already has an overlapping assignment");
+        }
+        const rows = await transaction<
+          Array<{ id: string; starts_at: Date; expires_at: Date; revoked_at: Date | null }>
+        >`
+          insert into order_assignment (
+            workspace_id, order_id, identity_id, starts_at, expires_at, assigned_by
+          )
+          select ${workspaceId}, ${orderId}, ${assignee.identity_id}, ${input.startsAt},
+                 ${input.expiresAt}, ${actor.identityId}
+          where exists (
+            select 1 from sales_order where workspace_id = ${workspaceId} and id = ${orderId}
+              and state in ('confirmed', 'picking', 'packed')
+          )
+          returning id, starts_at, expires_at, revoked_at
+        `;
+        const row = rows[0];
+        if (!row) throw new RepositoryError("conflict", "The order cannot be assigned");
+        await insertAudit(
+          transaction,
+          workspaceId,
+          actor.identityId,
+          "order.shipping.assigned",
+          row.id,
+          ["identity_id", "starts_at", "expires_at"],
+        );
+        return {
+          assignmentId: row.id,
+          workspaceId,
+          orderId,
+          identityId: assignee.identity_id,
+          startsAt: row.starts_at.toISOString(),
+          expiresAt: row.expires_at.toISOString(),
+          revokedAt: row.revoked_at?.toISOString() ?? null,
+        };
+      });
+    } catch (error) {
+      throw normalizeOrderError(error);
+    }
+  }
+
+  async shippingTasks(workspaceId: string, actor: RequestActor): Promise<ShippingTaskResponse[]> {
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId);
+        const role = await requireRole(transaction, workspaceId, actor.identityId, [
+          "owner",
+          "inventory_manager",
+          "shipping",
+        ]);
+        const rows = await transaction<
+          Array<{
+            order_id: string;
+            order_number: string;
+            state: ShippingTaskResponse["state"];
+            inventory_number: string;
+            inventory_unit_id: string;
+            sku_id: string;
+            location_code: string;
+            inventory_label_version: number;
+            location_label_version: number;
+            expires_at: Date;
+          }>
+        >`
+          select orders.id as order_id, orders.order_number, orders.state,
+                 unit.inventory_number, unit.id as inventory_unit_id, unit.sku_id,
+                 location.code as location_code, item_label.version as inventory_label_version,
+                 location_label.version as location_label_version, assignment.expires_at
+          from order_assignment assignment
+          join sales_order orders
+            on orders.workspace_id = assignment.workspace_id and orders.id = assignment.order_id
+          join order_allocation allocation
+            on allocation.workspace_id = orders.workspace_id and allocation.order_id = orders.id
+          join inventory_unit unit
+            on unit.workspace_id = allocation.workspace_id and unit.id = allocation.inventory_unit_id
+          join location_node location
+            on location.workspace_id = unit.workspace_id and location.id = unit.location_id
+          join inventory_label item_label
+            on item_label.workspace_id = unit.workspace_id
+           and item_label.target_type = 'inventory_unit' and item_label.target_id = unit.id
+           and item_label.active
+          join inventory_label location_label
+            on location_label.workspace_id = location.workspace_id
+           and location_label.target_type = 'location' and location_label.target_id = location.id
+           and location_label.active
+          where assignment.workspace_id = ${workspaceId}
+            and assignment.revoked_at is null
+            and assignment.starts_at <= statement_timestamp()
+            and assignment.expires_at > statement_timestamp()
+            and orders.state in ('confirmed', 'picking', 'packed')
+            and (${role === "shipping"}::boolean = false or assignment.identity_id = ${actor.identityId})
+          order by assignment.expires_at, orders.order_number
+        `;
+        return rows.map((row) => ({
+          orderId: row.order_id,
+          orderNumber: row.order_number,
+          state: row.state,
+          inventoryNumber: row.inventory_number,
+          inventoryUnitId: row.inventory_unit_id,
+          skuId: row.sku_id,
+          locationCode: row.location_code,
+          inventoryLabelVersion: row.inventory_label_version,
+          locationLabelVersion: row.location_label_version,
+          assignmentExpiresAt: row.expires_at.toISOString(),
+        }));
+      });
+    } catch (error) {
+      throw normalizeOrderError(error);
+    }
+  }
+
   async createAddressLease(
     workspaceId: string,
     orderId: string,
@@ -288,18 +454,28 @@ export class PostgresOrderRepository implements OrderRepository {
     try {
       return await this.sql.begin(async (transaction) => {
         await setWorkspace(transaction, workspaceId);
-        await requireRole(transaction, workspaceId, actor.identityId, [
+        const role = await requireRole(transaction, workspaceId, actor.identityId, [
           "owner",
           "inventory_manager",
           "shipping",
         ]);
+        const assignmentExpiry = await requireOrderAssignmentIfShipping(
+          transaction,
+          workspaceId,
+          orderId,
+          actor.identityId,
+          role,
+        );
         const rows = await transaction<Array<{ id: string; expires_at: Date }>>`
           insert into address_access_lease (
             workspace_id, order_id, identity_id, purpose, issued_by, issued_at, expires_at
           )
           select ${workspaceId}, ${orderId}, ${actor.identityId}, 'shipping_label',
                  ${actor.identityId}, statement_timestamp(),
-                 statement_timestamp() + interval '5 minutes'
+                 least(
+                   statement_timestamp() + interval '5 minutes',
+                   coalesce(${assignmentExpiry}, statement_timestamp() + interval '5 minutes')
+                 )
           where exists (
             select 1 from sales_order where workspace_id = ${workspaceId} and id = ${orderId}
               and state in ('confirmed', 'picking', 'packed')
@@ -338,11 +514,18 @@ export class PostgresOrderRepository implements OrderRepository {
     try {
       return await this.sql.begin(async (transaction) => {
         await setWorkspace(transaction, workspaceId);
-        await requireRole(transaction, workspaceId, actor.identityId, [
+        const role = await requireRole(transaction, workspaceId, actor.identityId, [
           "owner",
           "inventory_manager",
           "shipping",
         ]);
+        await requireOrderAssignmentIfShipping(
+          transaction,
+          workspaceId,
+          orderId,
+          actor.identityId,
+          role,
+        );
         const rows = await transaction<
           Array<{
             ciphertext: Buffer;
@@ -734,7 +917,10 @@ export class PostgresOrderRepository implements OrderRepository {
     try {
       return await this.sql.begin(async (transaction) => {
         await setWorkspace(transaction, workspaceId);
-        await requireRole(transaction, workspaceId, actor.identityId, ["owner", "accounting"]);
+        const role = await requireRole(transaction, workspaceId, actor.identityId, [
+          "owner",
+          "accounting",
+        ]);
         const events = await requireFinancialEvents(transaction, workspaceId, orderId);
         const candidates = events.map((event) => journalCandidate(event, actor.identityId));
         const generated = createAccountingCsv(candidates);
@@ -787,6 +973,16 @@ export class PostgresOrderRepository implements OrderRepository {
         `;
         const row = rows[0];
         if (!row) throw new RepositoryError("database_error", "Accounting export was not stored");
+        await advanceP0ForOrderOperation(
+          transaction,
+          workspaceId,
+          orderId,
+          actor.identityId,
+          role,
+          "accounting",
+          input.idempotencyKey,
+          row.id,
+        );
         await insertAudit(
           transaction,
           workspaceId,
@@ -851,6 +1047,16 @@ export class PostgresOrderRepository implements OrderRepository {
           "inventory_manager",
           "shipping",
         ]);
+        if (role === "shipping" && !["pick", "pack", "ship"].includes(operation)) {
+          throw new RepositoryError("forbidden", "Shipping staff cannot perform return decisions");
+        }
+        await requireOrderAssignmentIfShipping(
+          transaction,
+          workspaceId,
+          orderId,
+          actor.identityId,
+          role,
+        );
         const replay = await operationReplay(
           transaction,
           workspaceId,
@@ -869,6 +1075,17 @@ export class PostgresOrderRepository implements OrderRepository {
           state: result.state,
           inventoryStatus: result.inventoryStatus,
         });
+        if (operation === "pick" || operation === "pack" || operation === "ship") {
+          await advanceP0ForOrderOperation(
+            transaction,
+            workspaceId,
+            orderId,
+            actor.identityId,
+            role,
+            operation,
+            input.idempotencyKey,
+          );
+        }
         await insertAudit(
           transaction,
           workspaceId,
@@ -904,6 +1121,28 @@ async function requireRole(
     throw new RepositoryError("forbidden", "The actor cannot perform this order operation");
   }
   return role;
+}
+
+async function requireOrderAssignmentIfShipping(
+  sql: postgres.TransactionSql,
+  workspaceId: string,
+  orderId: string,
+  identityId: string,
+  role: WorkspaceRole,
+): Promise<Date | null> {
+  if (role !== "shipping") return null;
+  const rows = await sql<Array<{ expires_at: Date }>>`
+    select expires_at from order_assignment
+    where workspace_id = ${workspaceId} and order_id = ${orderId}
+      and identity_id = ${identityId} and revoked_at is null
+      and starts_at <= statement_timestamp() and expires_at > statement_timestamp()
+    order by expires_at asc limit 1
+  `;
+  const row = rows[0];
+  if (!row) {
+    throw new RepositoryError("forbidden", "The order is outside this shipping assignment");
+  }
+  return row.expires_at;
 }
 
 async function operationReplay(
@@ -967,6 +1206,116 @@ function toOrderOperationResponse(workspaceId: string, row: OperationRow): Order
     inventoryStatus: row.response_inventory_status,
     updatedAt: row.created_at.toISOString(),
   };
+}
+
+type AtomicP0Operation = "create" | "pick" | "pack" | "ship" | "accounting";
+
+const p0TransitionByOrderOperation = {
+  create: {
+    action: "confirm_order",
+    from: "listing_confirmed",
+    to: "order_confirmed",
+    roles: ["owner", "inventory_manager"],
+  },
+  pick: {
+    action: "confirm_pick",
+    from: "order_confirmed",
+    to: "picked",
+    roles: ["owner", "inventory_manager", "shipping"],
+  },
+  pack: {
+    action: "confirm_pack",
+    from: "picked",
+    to: "packed",
+    roles: ["owner", "inventory_manager", "shipping"],
+  },
+  ship: {
+    action: "confirm_ship",
+    from: "packed",
+    to: "shipped",
+    roles: ["owner", "inventory_manager", "shipping"],
+  },
+  accounting: {
+    action: "approve_journal",
+    from: "shipped",
+    to: "journal_approved",
+    roles: ["owner", "accounting"],
+  },
+} as const satisfies Record<
+  AtomicP0Operation,
+  { action: string; from: string; to: string; roles: readonly WorkspaceRole[] }
+>;
+
+async function advanceP0ForOrderOperation(
+  sql: postgres.TransactionSql,
+  workspaceId: string,
+  orderId: string,
+  actorId: string,
+  role: WorkspaceRole,
+  operation: AtomicP0Operation,
+  idempotencyKey: string,
+  evidenceReferenceId: string = orderId,
+): Promise<void> {
+  const transition = p0TransitionByOrderOperation[operation];
+  if (!(transition.roles as readonly WorkspaceRole[]).includes(role)) {
+    throw new RepositoryError("forbidden", "The actor cannot confirm this order workflow step");
+  }
+  const rows = await sql<Array<{ sku_id: string; state: string; version: number }>>`
+    select unit.sku_id, workflow.state, workflow.version
+    from order_allocation allocation
+    join inventory_unit unit
+      on unit.workspace_id = allocation.workspace_id
+     and unit.id = allocation.inventory_unit_id
+    join p0_workflow workflow
+      on workflow.workspace_id = unit.workspace_id and workflow.sku_id = unit.sku_id
+    where allocation.workspace_id = ${workspaceId} and allocation.order_id = ${orderId}
+      and allocation.active
+    for update of workflow
+  `;
+  const workflow = rows[0];
+  if (!workflow) {
+    throw new RepositoryError("conflict", "The order has no active SKU workflow");
+  }
+  if (workflow.state !== transition.from) {
+    throw new RepositoryError(
+      "conflict",
+      `The SKU workflow must be ${transition.from} before ${operation}`,
+    );
+  }
+  const nextVersion = workflow.version + 1;
+  const payloadHash = hashPayload({ operation, orderId, action: transition.action });
+  await sql`
+    update p0_workflow
+    set state = ${transition.to}, last_action = ${transition.action},
+        version = ${nextVersion}, updated_at = statement_timestamp()
+    where workspace_id = ${workspaceId} and sku_id = ${workflow.sku_id}
+  `;
+  await sql`
+    insert into p0_workflow_action (
+      workspace_id, sku_id, action, actor_id, evidence_reference_ids,
+      idempotency_key, payload_hash, response_state, response_version
+    ) values (
+      ${workspaceId}, ${workflow.sku_id}, ${transition.action}, ${actorId},
+      ${[evidenceReferenceId]}, ${idempotencyKey}, ${payloadHash}, ${transition.to}, ${nextVersion}
+    )
+  `;
+  await sql`
+    insert into audit_event (
+      workspace_id, actor_id, action, target_type, target_id, field_names,
+      redacted_changes, reference_ids, reason_code, approved_by
+    ) values (
+      ${workspaceId}, ${actorId}, ${transition.action}, 'p0_workflow', ${workflow.sku_id},
+      array['state'], ${sql.json({ state: transition.to, version: nextVersion })},
+      ${[evidenceReferenceId]}, 'human_order_operation_confirmation', ${actorId}
+    )
+  `;
+  await sql`
+    insert into outbox_event (workspace_id, event_type, aggregate_type, aggregate_id, payload)
+    values (
+      ${workspaceId}, 'p0.workflow.advanced', 'product_sku', ${workflow.sku_id},
+      ${sql.json({ action: transition.action, state: transition.to, version: nextVersion })}
+    )
+  `;
 }
 
 async function insertOperationRecord(

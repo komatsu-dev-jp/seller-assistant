@@ -12,6 +12,7 @@ const orderActions = new Set([
   "return-inspection",
   "financial-summary",
   "accounting-exports",
+  "assignment",
 ]);
 
 export async function GET(
@@ -109,6 +110,9 @@ async function proxyWorkspaceRequest(
 }
 
 function isAllowedPath(method: "GET" | "POST", segments: string[]): boolean {
+  if (method === "GET" && segments.length === 1 && segments[0] === "shipping-tasks") {
+    return true;
+  }
   if (segments.length === 1 && ["p0-items", "locations"].includes(segments[0] ?? "")) {
     return true;
   }

@@ -1,9 +1,11 @@
+import { hasValidCodeCheckDigit } from "@resale/contracts";
+
 const DATABASE_NAME = "resale-ops-offline-v1";
 const STORE_NAME = "putaway-outbox";
 const DATABASE_VERSION = 2;
 
-const inventoryPattern = /^INV-[0-9]{6}$/u;
-const locationPattern = /^[A-Z]{2,4}-[0-9]{3,6}-[0-9]$/u;
+const inventoryPattern = /^INV-[0-9]{6}-[0-9]$/u;
+const locationPattern = /^[A-Z0-9]+(?:-[A-Z0-9]+)+-[0-9]$/u;
 const allowedKeys = new Set([
   "schemaVersion",
   "idempotencyKey",
@@ -40,8 +42,10 @@ export function validatePendingPutaway(value: unknown): value is PendingPutawayO
     /^[0-9a-f-]{36}$/iu.test(record.idempotencyKey) &&
     typeof record.inventoryNumber === "string" &&
     inventoryPattern.test(record.inventoryNumber) &&
+    hasValidCodeCheckDigit(record.inventoryNumber) &&
     typeof record.locationCode === "string" &&
     locationPattern.test(record.locationCode) &&
+    hasValidCodeCheckDigit(record.locationCode) &&
     typeof record.inventoryLabelVersion === "number" &&
     Number.isSafeInteger(record.inventoryLabelVersion) &&
     record.inventoryLabelVersion > 0 &&

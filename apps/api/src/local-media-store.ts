@@ -22,7 +22,7 @@ export interface PrivateMediaStore {
     displayStorageKey: string,
     mimeType: "image/jpeg" | "image/png",
   ): Promise<StoredMediaResult>;
-  readDisplay(storageKey: string): Promise<Buffer>;
+  readDisplay(storageKey: string, expectedSha256: string): Promise<Buffer>;
   removeOriginal(storageKey: string, expectedSha256: string): Promise<void>;
   removeDisplay(storageKey: string, expectedSha256: string): Promise<void>;
 }
@@ -107,8 +107,12 @@ export class LocalPrivateMediaStore {
     };
   }
 
-  async readDisplay(storageKey: string): Promise<Buffer> {
-    return readFile(this.safePath(storageKey, "location-display"));
+  async readDisplay(storageKey: string, expectedSha256: string): Promise<Buffer> {
+    const bytes = await readFile(this.safePath(storageKey, "location-display"));
+    if (sha256(bytes) !== expectedSha256) {
+      throw new Error("The display file hash no longer matches the approved database record");
+    }
+    return bytes;
   }
 
   async removeDisplay(storageKey: string, expectedSha256: string): Promise<void> {

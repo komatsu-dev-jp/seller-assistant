@@ -40,6 +40,10 @@ describe("zero-cost local private media store", () => {
     expect(display.toString("utf8")).not.toContain("GPSLatitude");
     expect(result.sha256).toBe(sha256(display));
     expect(result.sizeBytes).toBeLessThan(original.length);
+    await expect(store.readDisplay(displayKey, result.sha256)).resolves.toEqual(display);
+    await expect(store.readDisplay(displayKey, sha256(Buffer.from("tampered")))).rejects.toThrow(
+      /approved database record/u,
+    );
   });
 
   it("replays the same original but refuses different bytes and path traversal", async () => {

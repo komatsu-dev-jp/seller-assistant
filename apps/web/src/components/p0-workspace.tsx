@@ -6,7 +6,7 @@ import type {
   OrderOperationResponse,
   P0ItemResponse,
 } from "@resale/contracts";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 type Stage = "purchase" | "capture" | "listing" | "order" | "accounting";
 type MeasurementKey = "肩幅" | "身幅" | "袖丈" | "着丈";
@@ -52,6 +52,7 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
   const [accountingExport, setAccountingExport] = useState<AccountingExportResponse | null>(null);
   const [addressLeaseId, setAddressLeaseId] = useState<string | null>(null);
   const [shippingAddressView, setShippingAddressView] = useState<string | null>(null);
+  const [assignmentMessage, setAssignmentMessage] = useState("");
 
   const item = items.find((candidate) => candidate.skuId === selectedSkuId) ?? items[0] ?? null;
   const refreshItems = useCallback(async () => {
@@ -75,22 +76,31 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
     setStage((current) => (current === "purchase" ? nextStageForItem(item) : current));
   }, [item, loading]);
 
+  useEffect(() => {
+    if (!item) return;
+    const restored = { ...emptyMeasurements };
+    for (const measurement of item.capture.measurements) {
+      const entry = Object.entries(measurementDefinitions).find(
+        ([, definitionId]) => definitionId === measurement.definitionId,
+      );
+      if (entry) restored[entry[0] as MeasurementKey] = String(measurement.value);
+    }
+    setMeasurements(restored);
+    setAccountingExport(item.accountingExport);
+  }, [item]);
+
   const workflowRank = workflowStateRank(item?.workflowState);
   const completed: Record<Stage, boolean> = {
     purchase: Boolean(item),
     capture: workflowRank >= workflowStateRank("capture_confirmed"),
     listing: workflowRank >= workflowStateRank("listing_confirmed"),
     order: item?.orderState === "shipped" || item?.orderState === "returned",
-    accounting: Boolean(accountingExport),
+    accounting: workflowRank >= workflowStateRank("journal_approved"),
   };
   const measurementComplete = Object.values(measurements).every(
     (value) => Number(value) > 0 && Number(value) <= 250,
   );
-  const description = useMemo(
-    () =>
-      `${item?.title ?? "商品"}です。平置き実寸は肩幅${measurements.肩幅 || "—"}cm、身幅${measurements.身幅 || "—"}cm、袖丈${measurements.袖丈 || "—"}cm、着丈${measurements.着丈 || "—"}cmです。写真と実寸をご確認のうえ、購入をご検討ください。`,
-    [item?.title, measurements],
-  );
+  const description = item?.listingCandidate.text ?? "商品情報を読み込んでいます。";
 
   async function run(action: () => Promise<void>) {
     setBusy(true);
@@ -166,9 +176,19 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
   }
 
   async function confirmListing() {
-    if (!item) return;
+    if (
+      !item ||
+      item.listingCandidate.unconfirmedFields.length > 0 ||
+      item.listingCandidate.referenceIds.length === 0
+    )
+      return;
     await run(async () => {
-      await advanceWorkflow(item.skuId, "confirm_listing", [item.receiptId], true);
+      await advanceWorkflow(
+        item.skuId,
+        "confirm_listing",
+        item.listingCandidate.referenceIds,
+        true,
+      );
       await navigator.clipboard?.writeText(description).catch(() => undefined);
       await refreshItems();
       setStage("order");
@@ -196,29 +216,25 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
   async function createOrder(form: FormData) {
     if (!item || item.inventoryStatus !== "available") return;
     await run(async () => {
-      const result = await requestJson<OrderOperationResponse>(
-        `/v1/workspaces/${workspaceId}/orders`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            orderNumber: textField(form, "orderNumber").toUpperCase(),
-            skuId: item.skuId,
-            inventoryUnitId: item.inventoryUnitId,
-            saleAmountMinor: numberField(form, "saleAmountMinor"),
-            costAmountMinor: item.allocatedCostMinor,
-            sellingFeeMinor: numberField(form, "sellingFeeMinor"),
-            shippingCostMinor: numberField(form, "shippingCostMinor"),
-            packagingCostMinor: numberField(form, "packagingCostMinor"),
-            taxBasis: "tax_included",
-            sourceMeaning: "本人が公式販売画面と照合した手入力取引",
-            occurredAt: new Date().toISOString(),
-            shippingAddress: textField(form, "shippingAddress"),
-            idempotencyKey: crypto.randomUUID(),
-            humanConfirmed: true,
-          }),
-        },
-      );
-      await advanceWorkflow(item.skuId, "confirm_order", [result.orderId], false);
+      await requestJson<OrderOperationResponse>(`/v1/workspaces/${workspaceId}/orders`, {
+        method: "POST",
+        body: JSON.stringify({
+          orderNumber: textField(form, "orderNumber").toUpperCase(),
+          skuId: item.skuId,
+          inventoryUnitId: item.inventoryUnitId,
+          saleAmountMinor: numberField(form, "saleAmountMinor"),
+          costAmountMinor: item.allocatedCostMinor,
+          sellingFeeMinor: numberField(form, "sellingFeeMinor"),
+          shippingCostMinor: numberField(form, "shippingCostMinor"),
+          packagingCostMinor: numberField(form, "packagingCostMinor"),
+          taxBasis: "tax_included",
+          sourceMeaning: "本人が公式販売画面と照合した手入力取引",
+          occurredAt: new Date().toISOString(),
+          shippingAddress: textField(form, "shippingAddress"),
+          idempotencyKey: crypto.randomUUID(),
+          humanConfirmed: true,
+        }),
+      });
       await refreshItems();
     });
   }
@@ -233,6 +249,24 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
     );
     setAddressLeaseId(result.leaseId);
     return result.leaseId;
+  }
+
+  async function assignShipping(form: FormData) {
+    if (!item?.orderId) return;
+    await run(async () => {
+      const startsAt = new Date();
+      const expiresAt = new Date(startsAt.getTime() + 8 * 60 * 60 * 1000);
+      await requestJson(`/v1/workspaces/${workspaceId}/orders/${item.orderId}/assignment`, {
+        method: "POST",
+        body: JSON.stringify({
+          assigneeEmail: textField(form, "assigneeEmail").toLowerCase(),
+          startsAt: startsAt.toISOString(),
+          expiresAt: expiresAt.toISOString(),
+          humanConfirmed: true,
+        }),
+      });
+      setAssignmentMessage(`発送担当を${expiresAt.toLocaleString("ja-JP")}まで割り当てました。`);
+    });
   }
 
   async function progressOrder() {
@@ -260,7 +294,6 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
             humanConfirmed: true,
           }),
         });
-        await advanceWorkflow(item.skuId, "confirm_pick", [orderId], false);
       } else if (item.orderState === "picking") {
         await requestJson(`/v1/workspaces/${workspaceId}/orders/${orderId}/pack`, {
           method: "POST",
@@ -272,7 +305,6 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
             humanConfirmed: true,
           }),
         });
-        await advanceWorkflow(item.skuId, "confirm_pack", [orderId], false);
       } else if (item.orderState === "packed") {
         await requestJson(`/v1/workspaces/${workspaceId}/orders/${orderId}/ship`, {
           method: "POST",
@@ -283,7 +315,6 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
             humanConfirmed: true,
           }),
         });
-        await advanceWorkflow(item.skuId, "confirm_ship", [orderId], false);
       }
       await refreshItems();
     });
@@ -328,7 +359,6 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
         },
       );
       setAccountingExport(result);
-      await advanceWorkflow(item.skuId, "approve_journal", [result.exportId], false);
       await refreshItems();
     });
   }
@@ -486,6 +516,13 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
             <p>公式画面への貼り付けと公開は本人が行います。外部費用は0円です。</p>
           </div>
           <textarea aria-label="商品説明候補" readOnly rows={7} value={description} />
+          <p className="candidateReferences">
+            参照: 写真 {item.capture.photoAssetIds.length}件・採寸
+            {item.capture.measurements.length}件
+            {item.listingCandidate.unconfirmedFields.length > 0
+              ? `／未確認: ${item.listingCandidate.unconfirmedFields.join("・")}`
+              : "／未確認なし"}
+          </p>
           <div className="humanGate">
             <div>
               <strong>コピー用内容を人が確認</strong>
@@ -493,7 +530,12 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
             </div>
             <button
               type="button"
-              disabled={busy || completed.listing}
+              disabled={
+                busy ||
+                completed.listing ||
+                item.listingCandidate.unconfirmedFields.length > 0 ||
+                item.listingCandidate.referenceIds.length === 0
+              }
               onClick={() => void confirmListing()}
             >
               {completed.listing ? "確認済み" : "確認してコピー"}
@@ -514,6 +556,8 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
           addressLeaseId={addressLeaseId}
           shippingAddressView={shippingAddressView}
           onCreate={createOrder}
+          onAssign={assignShipping}
+          assignmentMessage={assignmentMessage}
           onProgress={progressOrder}
           onIssueLease={() => {
             const orderId = item.orderId;
@@ -619,6 +663,8 @@ function OrderPanel({
   addressLeaseId,
   shippingAddressView,
   onCreate,
+  onAssign,
+  assignmentMessage,
   onProgress,
   onIssueLease,
   onReveal,
@@ -629,6 +675,8 @@ function OrderPanel({
   addressLeaseId: string | null;
   shippingAddressView: string | null;
   onCreate: (form: FormData) => Promise<void>;
+  onAssign: (form: FormData) => Promise<void>;
+  assignmentMessage: string;
   onProgress: () => Promise<void>;
   onIssueLease: () => void;
   onReveal: () => Promise<void>;
@@ -683,6 +731,20 @@ function OrderPanel({
           <button type="submit" disabled={busy}>
             公式画面と照合して注文を保存
           </button>
+        </form>
+      ) : null}
+      {item.orderId ? (
+        <form action={onAssign} className="candidateNotice">
+          <strong>発送担当をこの注文だけに割り当てる</strong>
+          <p>有効期間は割当時から8時間です。未割当の担当者は住所も発送操作も利用できません。</p>
+          <label>
+            発送担当のログインメール
+            <input name="assigneeEmail" type="email" required autoComplete="off" />
+          </label>
+          <button type="submit" disabled={busy}>
+            内容を確認して割り当て
+          </button>
+          {assignmentMessage ? <span className="safeBadge">{assignmentMessage}</span> : null}
         </form>
       ) : null}
       {item.orderId ? (
