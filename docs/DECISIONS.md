@@ -116,3 +116,13 @@ APIキー、トークン、個人情報、生ログ、会話全文、一時的�
 - Verification: 公式Node.js Crypto文書とOWASP Password Storage Cheat Sheetを2026-08-15に確認。自動testと実画面で平文非保存、共通失敗、rate limit、Cookie、未接続停止を確認する。
 - Sources: https://nodejs.org/api/crypto.html / https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html
 - Follow-up: 実PostgreSQLを無料のローカル環境へ用意し、初期owner、session、rate limit、membership/RLSを結合検証する。
+
+### 2026-08-18 — Claude CodeへSlack MCPを接続し、既存チャンネルを承認先として使う
+
+- Type: decision
+- Context: `.claude/skills/app-development-orchestrator/SKILL.md`のフェーズ4（UI/UX3方向の承認）。ユーザーがSlackとClaude Codeを接続したと明示。
+- Decision or rule: 新しいチャンネルを作らず、既存の承認履歴があるワークスペース「P-evidence開発」チャンネル`#メルカリ自動化`（ID `C0BPZCB25T3`）を確認済み送信先として使う。`slack_search_channels`で2026-08-18にチャンネルIDの一致を再確認した。送信前は毎回同様に再確認し、1️⃣/2️⃣/3️⃣等のリアクションではなく必ずスレッドへの明示的な文章返信を承認の確定条件にする。
+- Why: `docs/design/slack-approval.md`が既に記録している通り、Slack接続がユーザー本人名義で動くためリアクションだけでは他者の反応と区別できない。既存チャンネルを使うことでAGENTS.mdの「対象と権限が明示された場合だけSlackへ送信する」を満たす。
+- Applies to: `.claude/skills/app-development-orchestrator/SKILL.md`のフェーズ4、今後のUI/UX承認フロー全般
+- Verification: `slack_search_channels`でチャンネル名とID `C0BPZCB25T3` の一致を確認済み。
+- Follow-up: none

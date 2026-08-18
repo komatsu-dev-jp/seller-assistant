@@ -44,11 +44,23 @@ Claude CodeにはCodexの一部専用skill/連携がないため、以下の代�
 |---|---|---|
 | 0. 作業場所確認 | `project-workspace-setup` | Bash/Git branch確認、必要なら`EnterWorktree`。新規案件のみ専用ディレクトリを作る |
 | 1. サービス調査 | `new-service-discovery` / `openai-docs` | `WebSearch` / `WebFetch` / Notion検索（`notion-search`）で一次情報を確認 |
-| 4. UI/UX3方向案 | `imagegen`（AI画像生成） | **`design`スキル**でHTMLベースのUIモック/アートボードを3方向作成する（写真的な画像ではなく画面構造・文言・状態まで再現できるモック） |
-| 5. スマホ承認 | `slack:slack`（1️⃣/2️⃣/3️⃣リアクション） | **チャット内で直接承認を得る。**3方向をArtifactとして提示し、ユーザーがこの会話内で1案を明示的に選ぶ。Slack MCPが接続されていて送信先をユーザーが明示した場合のみSlack送信に切り替えてよい |
-| 6. Notion仕様固定 | `brief-to-notion-spec` / `notion:notion-spec-to-implementation` | Notion MCP（`notion-create-pages`/`notion-update-page`）でNotion側を更新し、**`docs/specs/`のローカルMarkdownを内容正本**として同期する（本リポジトリの既存ルール） |
-| 7. 共同開発基盤 | `bootstrap-codex-project` | `AGENTS.md`・`CLAUDE.md`・`memory/`・`handoffs/`・`docs/DECISIONS.md`・`inbox/`を**不足分だけ**整える。既存ファイルは上書きしない |
+| 3. UI/UX3方向案 | `imagegen`（AI画像生成） | **`design`スキル**でHTMLベースのUIモック/アートボードを3方向作成する（写真的な画像ではなく画面構造・文言・状態まで再現できるモック） |
+| 4. スマホ承認 | `slack:slack`（1️⃣/2️⃣/3️⃣リアクション） | **Slack MCPで承認を得る**（2026-08-18接続済み）。確認済み送信先は下記「確認済みSlack送信先」を参照。Slackが未接続または送信先が未確認の場合だけ、チャット内Artifact提示＋この会話内での明示選択にフォールバックする |
+| 5. Notion仕様固定 | `brief-to-notion-spec` / `notion:notion-spec-to-implementation` | Notion MCP（`notion-create-pages`/`notion-update-page`）でNotion側を更新し、**`docs/specs/`のローカルMarkdownを内容正本**として同期する（本リポジトリの既存ルール） |
+| 6. 共同開発基盤 | `bootstrap-codex-project` | `AGENTS.md`・`CLAUDE.md`・`memory/`・`handoffs/`・`docs/DECISIONS.md`・`inbox/`を**不足分だけ**整える。既存ファイルは上書きしない |
 | 9. 独立レビュー・Draft PR | `github:yeet` | GitHub MCP（`create_pull_request`等）でDraft PRを作成。実装した本人とは別視点でのレビューを経てから作成する |
+
+## 確認済みSlack送信先
+
+`docs/design/slack-approval.md`に記録された、このリポジトリの承認フローで既に使われてきた送信先。新しい送信先が必要な場合はユーザーに明示してもらい、この節を更新する。
+
+- ワークスペース: P-evidence開発
+- チャンネル: `#メルカリ自動化`
+- チャンネルID: `C0BPZCB25T3`（2026-08-18、`slack_search_channels`で再確認済み）
+
+**送信前に毎回`slack_search_channels`でチャンネル名とIDが一致するか確認してから投稿する。** 名前だけを頼りに誤った宛先へ送らないための対策。
+
+**リアクションだけを承認根拠にしない。** `slack-approval.md`の注意書きのとおり、Slack接続がユーザー本人名義で動くため、候補として付けた`one`/`two`/`three`等のリアクションもユーザー自身の反応として表示されてしまう。1️⃣/2️⃣/3️⃣を目印として使うのは構わないが、**必ずスレッドへの明示的な文章返信**（例:「Cでお願いします」「この方向で承認」）を承認の確定条件にする。返信が届くまでポーリングや待機はせず、ユーザーからの続きの指示、または通知イベントで再開する。
 
 ## フェーズ詳細
 
@@ -78,12 +90,15 @@ Claude CodeにはCodexの一部専用skill/連携がないため、以下の代�
 - 各案の意図（何を堅実/実用/挑戦にしたか）と根拠を短く記録する。
 - 画像・モック内のテキストは**すべて架空のダミーデータ**にする（`AGENTS.md`: 実データが不要な検証では架空データを使用する）。個人向け販売の自動操作を示唆する表現、推測URL、公式タイムセール以外の値引き文言は入れない。
 
-### 4. チャット内承認 ※STOPゲート2
+### 4. Slack承認 ※STOPゲート2
 
-- 3方向をArtifactとして提示し、それぞれの狙い・トレードオフを短く比較する。
-- ユーザーがこの会話内で1案を明示的に選び、修正点があれば確定させる。
-- 未接続・反応なし・複数選択のままではNotion仕様化・Goalへ進まない。
-- 承認結果は`docs/design/`配下（既存の`selected-direction.md`のような形式）と`docs/DECISIONS.md`に記録する。
+- 3方向のモック画像・スクリーンショットと、それぞれの狙い・トレードオフの短い比較を用意する。
+- 「確認済みSlack送信先」のチャンネルへ`slack_send_message`で投稿する。投稿前に`slack_search_channels`で宛先を再確認する。
+- 求める返信の形式を明示する（例:「A/B/Cのいずれかで返信してください」）。1️⃣/2️⃣/3️⃣のリアクションは目印として使ってよいが、承認の確定条件にはしない。
+- ユーザーからのスレッド返信、または後続のチャット指示で明示的な選択（1案の指定、修正点があれば確定）を受け取るまで次へ進まない。返信を待つ間はポーリングしない。
+- 複数案の同時選択、無反応、矛盾する返信ではNotion仕様化・Goalへ進まない。
+- Slackが未接続、または送信先が確認できない場合だけ、3方向をArtifactとしてこの会話内に提示し、ユーザーがその場で明示的に選ぶ形にフォールバックする。
+- 承認結果は`docs/design/`配下（既存の`selected-direction.md`や`slack-approval.md`のような形式）と`docs/DECISIONS.md`に記録する。Slack投稿の場合はパーマリンク、投稿・承認のタイムスタンプ、チャンネルIDも残す。
 
 ### 5. Notion仕様の高精度化
 
@@ -136,6 +151,7 @@ Claude CodeにはCodexの一部専用skill/連携がないため、以下の代�
 - `docs/specs/mvp-product-spec-v1.md` — 製品仕様の内容正本の実例
 - `docs/design/full-mock-index.md` — モック画像の位置づけ・仮データルールの実例
 - `docs/design/selected-direction.md` — UI/UX承認記録（STOPゲート2）の実例
+- `docs/design/slack-approval.md` — Slack承認の送信先・記録形式・リアクションの注意点の実例
 - `docs/DECISIONS.md` — 判断記録の形式
 - `handoffs/active/_TEMPLATE.md` — 申し送りの形式
 - `memory/_templates/incident.md` / `memory/_templates/lesson.md` — 失敗記録の形式
