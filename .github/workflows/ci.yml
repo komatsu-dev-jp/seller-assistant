@@ -1,6 +1,10 @@
 name: Web and API CI
 
 on:
+  pull_request:
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -17,4 +21,6 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npm run check
+      - run: npm test
+      - run: npm run lint
+      - run: npm run build

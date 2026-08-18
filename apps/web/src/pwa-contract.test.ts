@@ -113,10 +113,18 @@ describe("zero-cost PWA contract", () => {
     expect(outbox).toContain("caches.delete(cacheName)");
   });
 
-  it("keeps external CI manual and free of macOS jobs", () => {
+  it("runs free Linux CI for PRs and main pushes without macOS jobs", () => {
     const workflow = readFileSync(resolve(".github/workflows/ci.yml"), "utf8");
     expect(workflow).toContain("workflow_dispatch:");
-    expect(workflow).not.toMatch(/pull_request:|push:|macos-/u);
+    expect(workflow).toContain("pull_request:");
+    expect(workflow).toContain("push:");
+    expect(workflow).toContain("npm test");
+    expect(workflow).toContain("npm run lint");
+    expect(workflow).toContain("npm run build");
+    expect(workflow).not.toContain("macos-");
+    const pages = readFileSync(resolve(".github/workflows/pages.yml"), "utf8");
+    expect(pages).toContain("actions/deploy-pages@v4");
+    expect(pages).toContain("pages: write");
   });
 
   it("protects sensitive pages with a server-side session and role allowlist", () => {
