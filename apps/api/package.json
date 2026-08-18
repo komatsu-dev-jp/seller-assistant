@@ -1,0 +1,24 @@
+{
+  "name": "@resale/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "bootstrap:owner": "tsx src/bootstrap-owner.ts",
+    "test:postgres": "tsx src/postgres-integration.ts",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "@resale/contracts": "0.1.0",
+    "@resale/domain": "0.1.0",
+    "fastify": "5.12.0",
+    "postgres": "^3.4.9",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "tsx": "4.21.0"
+  }
+}

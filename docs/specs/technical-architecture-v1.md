@@ -1,8 +1,8 @@
 # フリマ物販業務アプリ（仮称）｜技術アーキテクチャ v1
 
-- 状態: Goal開始前・在庫ロケーション反映済み・Notion同期/独立再レビューPASS・ユーザー最終確認待ち
-- 更新日: 2026-08-14（JST）
-- 方針: iOSは現場作業、PC Webは高密度管理、サーバーを唯一の確定データ源にする
+- 状態: Goal開始・P0実装中（Slack最終承認 `1786721887.034329`、2026-08-15 JST）
+- 更新日: 2026-08-15（JST）
+- 方針: iPhone PWAは現場作業、PC Webは高密度管理、サーバーを唯一の確定データ源にする。開発・検証費用は0円とする
 
 ## 1. 推奨技術構成
 
@@ -10,34 +10,32 @@
 
 | 領域 | 推奨 | 理由 | 弱点・確認点 |
 |---|---|---|---|
-| iOS | SwiftUI + VisionKit DataScanner/Vision/AVFoundation/Photos/App Intents | iPhoneのOCR、商品・場所コード読取、カメラ、写真、ショートカットを公式機能で扱いやすい | Windowsではビルド不可。対応端末確認とmacOS CIまたはMacが必要 |
-| Web | Next.js + React + TypeScript | PC業務画面、認証、サーバー描画、テスト資産が豊富 | バージョンはGoal開始時に公式サポート状況を確認 |
-| API | Node.js + TypeScriptの独立API | iOSとWebで同じ業務ルールを使える | Webだけより構成要素が増える |
-| 契約 | OpenAPI + JSON Schema | APIの入出力を機械検証し、Swiftクライアントも生成可能 | 生成物の版管理が必要 |
+| PWA/Web | Next.js 16.3.1 + React 19.2.8 + TypeScript 5.9.3 | PC業務画面と、iPhoneのホーム画面へ追加できる現場画面を同じ技術で作れ、Windowsだけで検証できる | iPhone Safari固有のカメラ・保存制限は実機確認が必要 |
+| API | Node.js + TypeScriptの独立API | PWAとPC画面で同じ業務ルールを使える | Webだけより構成要素が増える |
+| 契約 | OpenAPI + JSON Schema | APIの入出力を機械検証できる | 生成物の版管理が必要 |
 | DB | PostgreSQL | 取引、在庫、監査、権限、集計を一貫して扱える | 運用・バックアップが必要 |
-| 認証/DB/Storage初期候補 | Supabase等のPostgreSQL系マネージド基盤 | Auth、RLS、非公開Storageを短期で構築しやすい | 価格、リージョン、契約、ロックインをGoal前に確認 |
-| 画像 | 非公開S3互換オブジェクトストレージ | 大容量画像をDBから分離し、署名URLで限定共有できる | 保存費・転送費・保持期間の設計が必要 |
+| 認証/DB/Storage | ローカルのPostgreSQLと開発用ファイル保存adapter | 無料のオープンソース構成で安全境界を検証できる | 本番サービス選定・接続・公開は今回対象外 |
+| 画像 | 非公開Storage契約 + ローカル開発adapter | 本番の署名URL境界を保ちつつ、検証は無料で行える | 本番保存費・転送費の選定は将来の再承認事項 |
 | 非同期処理 | PostgreSQL outbox + worker | 外部同期やAI処理の再試行を、追加の大型基盤なしで開始できる | 規模増加時は専用キューへ移行が必要 |
-| AI | サーバー側provider adapter + 構造化出力 | モデル交換、監査、候補/確定分離ができる | モデル、価格、保持条件はGoal開始時に公式確認 |
+| AI | 無料の決定的テンプレート + 将来のprovider adapter | 候補/確定分離を0円で検証し、有料AIなしでもP0を完了できる | 外部AI接続は将来の明示承認事項 |
 
 ### 代替案
 
-- React Native/ExpoでiOSとWebを共通化: 画面共有は増えるが、VisionKit、App Intents、撮影処理でネイティブ橋渡しが増える。今回はSwiftUIを推奨する。
-- WebをPWAだけにする: Windowsで検証しやすいが、ショートカット・端末内OCR・写真処理の体験が弱く、iOS要件を満たしにくい。
+- SwiftUI/React Native: ネイティブ機能は増えるが、Mac、Xcode、配布作業が必要になるため、ユーザーの0円・Mac不要条件から対象外とする。
+- PWAを採用する: Safariの「ホーム画面に追加」、Webカメラ入力、手入力fallback、Service Worker、IndexedDBで現場導線を実現する。ネイティブショートカットと端末内自動OCRはP0対象外とする。
 - Firebase: モバイル連携は強いが、在庫・会計・監査の関係データと複雑な集計はPostgreSQLの方が自然。
 
-正確なバージョン、料金、利用可能リージョンは未固定。Goal開始時に公式資料を再確認し、lockfile（依存版を固定するファイル）で固定する。
+実装依存は `package-lock.json`（依存版を固定するファイル）で固定した。有料サービスへ接続せず、Windows上のローカル実装・検証で0円を維持する。本番用PostgreSQL/Auth/Storage/AIの提供事業者は今回選定しない。
 
 ## 2. モノレポ構成案
 
-モノレポは、Web、API、iOS、共通契約を一つのGitリポジトリで管理する方式。
+モノレポは、PWA/Web、API、共通契約を一つのGitリポジトリで管理する方式。
 
 ```text
 apps/
-  web/                 # PC Web
-  api/                 # iOS/Web共通API
+  web/                 # PC Web + iPhone PWA
+  api/                 # PWA/Web共通API
   worker/              # AI、画像、CSV、Notion同期
-  ios/                 # SwiftUI Xcode project
 packages/
   domain/              # 業務ルール。外部SDKへ依存しない
   contracts/           # OpenAPI/JSON Schemaと生成物
@@ -50,7 +48,7 @@ tests/
   fixtures/ contracts/ e2e/
 ```
 
-- iOSの生成APIコードは `packages/contracts` の版から作る。
+- PWA/APIは `packages/contracts` の同じschema版を使う。
 - 業務計算は可能な限り `packages/domain` へ置き、画面や外部SDKへ混ぜない。
 - 実装時の正確なディレクトリはGoal確認後に作成する。
 
@@ -63,7 +61,7 @@ tests/
 
 ## 3. コンポーネント境界
 
-1. iOS: 撮影、端末内OCR候補、採寸入力、商品・場所ラベル読取、場所写真ガイド、オフライン送信、担当作業。
+1. PWA: Webカメラ写真、採寸入力、商品・場所コード確認、場所写真ガイド、最小情報のオフライン同期待ち、担当作業。
 2. Web: ホームC、一覧、承認、チーム、在庫場所ツリー、棚卸差異、分析、会計CSV、設定。
 3. API: 認証、権限、入力検証、状態遷移、冪等性、署名URL発行。
 4. Domain: 原価、利益、在庫場所の不変条件、移動、棚卸差異、採寸警告、承認、価格下限、CSV検査。
@@ -172,7 +170,7 @@ validate(job, result) -> checks
 - 状態遷移はAPI側で検証し、画面から任意の状態へ書き換えられない。
 - 確定変更とoutboxイベントを同じDB transaction（全体を一括成功/失敗させる処理）で保存する。
 - Workerは `for update skip locked` 等でジョブを安全に取得し、指数バックオフと上限回数を持つ。
-- Web/iOSには最終同期、処理中、再試行、失敗参照IDを返す。
+- Web/PWAには最終同期、処理中、再試行、失敗参照IDを返す。
 
 ### 業務別状態機械
 
@@ -188,11 +186,11 @@ validate(job, result) -> checks
 
 ## 7. オフライン・再送・冪等性
 
-- iOSは端末内SQLite/Core Data系ストアへ、操作ID、SKU、画像ローカル参照、ハッシュ、作成日時を保存する。
-- OS下限確定後、SwiftDataまたは互換層を選ぶ。未送信原本をキャッシュ掃除で削除しない。
-- session/refresh tokenはKeychainの `WhenUnlockedThisDeviceOnly` 相当へ保存する。住所、税務資料、外部API秘密はオフラインDBへ保存しない。
-- SQLite本体、WAL/SHM、未送信画像はアプリ専用領域でData Protectionを有効にし、バックアップ対象外にする。背景送信用写真は `CompleteUntilFirstUserAuthentication` 相当、他の機密キャッシュは `Complete` 相当とする。
-- ログアウトは最初にサーバーsessionを失効させ、background taskを取消し、Keychain、DB、WAL/SHM、tmp、未送信ファイルを削除して0件を確認する。送信済み原本はサーバー正本を残す。
+- PWAはIndexedDBへ、操作ID、在庫管理番号、場所コード、作成日時だけを固定schemaで保存する。画像、住所、原価、証憑本文、税務資料、外部API秘密を同期待ちへ保存しない。
+- session/refresh tokenはHttpOnly・Secure・SameSite Cookie（画面のJavaScriptから読めない認証Cookie）だけで扱い、localStorage、sessionStorage、IndexedDB、Cache Storageへ保存しない。
+- APIのDB接続は`resale_app_runtime`を付与されたLOGINロールだけを許可し、起動前に`SUPERUSER`、`BYPASSRLS`、runtime未所属を拒否する。migration/初期owner用の管理接続を通常APIへ渡さない。
+- Service Workerは画面のapp shellだけをCache Storageへ保存し、`/api/`応答と業務データをキャッシュしない。サーバー確定前は現在地を確定表示しない。
+- ログアウトは最初にサーバーsessionを失効させ、Cache Storage、IndexedDB、Service Workerが保持する業務データを削除して0件を確認する。送信済み原本はサーバー正本を残す。
 - 割当解除はサーバーで即時拒否し、次回同期時に対象キャッシュを消す。オフライン端末へ即時到達できないため、外注assignment leaseは最大24時間、住所表示grantは最大5分にする。
 - 大きな画像は再開可能アップロードを使い、完了後にサーバーハッシュを照合する。
 - 同じ画像ハッシュでも役割が異なる場合は関連を分け、同一アップロード本体は再利用できる。
@@ -200,11 +198,12 @@ validate(job, result) -> checks
 - 競合時は勝手に新しい方を採用せず、変更差分と担当者を表示する。
 - 格納・移動・ピッキングは端末上で「商品読取→場所読取→人の確認」を行う。オフライン中は`同期待ち`として保存するだけで、サーバー確定前に現在地を確定表示しない。
 - 再送時に現在地、場所版、割当が変わっていれば自動上書きせず、商品と場所の再読取または棚卸差異解決へ進める。
-- DataScanner非対応、カメラ拒否、ラベル損傷時は、チェック値付き在庫管理番号/場所コードの手入力と人の確認へ切り替える。
+- BarcodeDetector非対応、カメラ拒否、ラベル損傷時は、チェック値付き在庫管理番号/場所コードの手入力と人の確認へ切り替える。P0は自動コード認識を必須にしない。
 
 ## 8. 認証・権限・個人情報
 
-- 初期認証候補はメールOTP/招待。外部ログイン追加時はApple要件を再確認する。
+- P0の初期認証は、外部費用0円のためNode.js標準scryptによるメール/パスワードとする。N=2^17、r=8、p=1、salt 16 bytes以上、hash 32 bytesを下限とし、平文は保存しない。失敗応答を共通化し、同一識別子+接続元の5回失敗を15分停止する。初期ownerは公開APIではなくローカルの一回限りCLIで作成する。
+- 将来メールOTP/外部ログインを追加する場合は送信費、可用性、契約、Apple要件を再承認する。
 - 短命なsession tokenを使い、APIキーや外部サービス認証情報を端末へ埋め込まない。
 - APIで役割を判定し、PostgreSQL RLS（行単位のアクセス制御）でもworkspace越境を遮断する。
 - 実行roleは `app_user`、`worker_limited`、`migration_admin` に分け、通常API/workerへRLS bypass、table owner、service-role相当の常用権限を与えない。
@@ -216,7 +215,7 @@ validate(job, result) -> checks
 - 画像URLは短命の署名URL。公開bucket、連番URL、推測可能URLを使わない。
 - 外注者は割当中SKUだけを対象とし、原価、利益、住所、税務は役割別に非表示/拒否する。
 - 在庫外注者は`location_assignment`で割り当てられた場所の枝と作業種別だけを操作できる。QR読取は対象を示すだけで権限を付与せず、API/RLSで毎回確認する。
-- 場所案内写真は非公開Storageに置き、割当枝の範囲内だけ短命URLを発行する。iOSの位置情報権限は要求せず、表示用派生ではGPS等の位置EXIFを除去する。
+- 場所案内写真は非公開Storageに置き、割当枝の範囲内だけ短命URLを発行する。ブラウザの位置情報権限は要求せず、表示用派生ではGPS等の位置EXIFを除去する。
 - 権限テストはUI表示だけでなく、APIとDBの拒否まで検証する。
 
 ## 9. AI処理と監査
@@ -312,13 +311,11 @@ validate(job, result) -> checks
 - PostgreSQL migration、RLS、seed、API、worker、CSV、Playwright Web E2E。
 - OpenAPIからの生成差分、秘密情報scan、依存脆弱性scan。
 
-### macOS/Xcodeが必要
+### iPhone Safariでの最終確認
 
-- Swiftコンパイル、XCTest、iOSシミュレーター、実機カメラ、Photos、VisionKit DataScanner、商品/場所の二重読取、手入力fallback、App Intents。
-- 標準GitHub-hosted runnerの `macos-15` でビルド/XCTestを行い、workflow冒頭で実際のmacOS/Xcode版を記録する。labelやXcode要件が変わっていれば推測で代替せず公式runner一覧を再確認する。
-- private repositoryの標準macOS runnerは利用枠を消費し、超過後は2026-08-13確認時点でUSD 0.062/分。利用可能枠/予算を確認し、ユーザー承認上限を超える実行をしない。
-- 最終的にユーザーの対応iPhoneでカメラ、Photos、VisionKit、App Intents、オフライン再送を確認し、機種、iOS版、確認者、日時、結果を記録する。
-- 公式根拠: https://docs.github.com/en/actions/reference/runners/github-hosted-runners / https://docs.github.com/en/billing/reference/actions-runner-pricing
+- Mac/Xcode/Apple Developer契約は不要。Windowsでproduction buildを起動し、Playwright（ブラウザを自動操作する検査）でPWA画面、manifest、Service Worker、オフラインfallbackを検証する。
+- 対応iPhoneではSafariのホーム画面追加、カメラ写真、商品/場所の二重確認、手入力fallback、同期待ち表示を人が確認し、機種、iOS版、確認者、日時、結果を記録する。
+- GitHub Actionsは `workflow_dispatch`（利用者が明示的に押した場合だけ実行）に限定する。今回の検証では実行せず、外部計算費用を0円にする。
 - Shops CSV公式根拠: https://support.mercari-shops.com/hc/ja/articles/8859698858649- / https://support.mercari-shops.com/hc/ja/articles/10202904748057-
 
 ### CIゲート候補
@@ -327,10 +324,10 @@ validate(job, result) -> checks
 2. unit/integration/contract
 3. database/RLS/security
 4. web build/E2E/accessibility
-5. iOS build/XCTest（macOS）
+5. PWA manifest/Service Worker/offline/モバイル画面E2E
 6. secret/dependency scan
 
-コマンドはpackage manifestとXcode project作成後に `AGENTS.md` へ正確に追記する。現時点で存在しないコマンドを完了扱いしない。
+コマンドはpackage manifest作成後に `AGENTS.md` へ正確に追記する。現時点で存在しないコマンドを完了扱いしない。
 
 ## 14. 技術的受け入れ条件
 
@@ -348,13 +345,13 @@ validate(job, result) -> checks
 - TA-012: 財務計算とCSVが同じdomain関数を使用し、固定fixtureで期待値と一致する。
 - TA-013: audit_eventに必要項目があり、通常利用者が更新・削除できない。
 - TA-014: バックアップから隔離環境へ復元し、件数・ハッシュの確認手順を実行できる。
-- TA-015: Windows CIゲートが全合格し、macOS CIでiOS build/XCTestが合格する。
-- TA-016: 実機で撮影、写真選択、OCR候補、オフライン再送、ショートカット入口を確認する。
+- TA-015: Windowsのローカル品質ゲートが全合格し、PWAのproduction build、manifest、Service Worker、オフラインfallbackが合格する。外部CI実行は0件である。
+- TA-016: iPhone Safari実機でホーム画面追加、カメラ写真、商品/場所の二重確認、手入力fallback、同期待ち表示を確認する。自動OCRとショートカットはP0対象外とする。
 - TA-017: secret scanで秘密情報0件、重大・高重要度の未解決セキュリティ指摘0件である。
 - TA-018: 10,000 SKU・5同時利用・200画像・月100,000 financial eventのfixtureで、API/一覧/ホーム/ZIP検査の固定性能基準を満たす。
 - TA-019: 制限DB role、tenant context、複合FK、Storage policyにより、API/worker/署名URL/直接uploadのworkspace越境否定テストが100%拒否される。
 - TA-020: AuditEvent schema検査で住所、token、Cookie、証憑本文、AI全文、秘密値が0件である。
-- TA-021: 外注iOSのKeychain/Data Protection/backup除外を検査し、ログアウト後にsession・DB・WAL/SHM・tmp・業務ファイルが0件になる。
+- TA-021: 外注PWAのブラウザ保存schemaで住所・token・原価・証憑本文・税務情報が0件で、ログアウト後にserver session、Cache Storage、IndexedDB、Service Worker業務データが0件になる。
 - TA-022: 固定financial fixtureで割引、クーポン、返金、手数料返還、在庫復帰の二重控除が0件である。
 - TA-023: 業務別の全許可/禁止transition、自己承認、古い版、冪等key/hash不一致、同時引当を自動テストする。
 - TA-024: Notion schemaがallowlist外と自由記述を拒否し、upsert/古いrevision/archived投影を契約テストする。
@@ -377,22 +374,20 @@ validate(job, result) -> checks
 ### 未確認
 
 - サービス名、ドメイン、価格、各プラン上限、想定同時利用者・SKU数。
-- iOS最低OS、対応端末、Apple Developer契約、配布方式。
+- 対応するSafari/Chromeの下限、iPhoneのカメラ・ホーム画面追加・保存容量の実機差。
 - PostgreSQL/Auth/Storage提供事業者とリージョン、費用、データ処理契約。
-- AI provider/model、データ保持、費用上限。
+- 外部AI provider/modelは未選定。今回の0円MVPでは接続しない。
 - Shops/Photoroom API契約、Money Forward現行CSV仕様。
 - 保持期間、削除、バックアップ目標、税務・古物営業上の運用判断。
 - 実際の拠点・部屋・棚・段・箱の命名、最大階層、単品/複数保管の容量方針、現場Wi-Fi/通信状況。
 - ラベル寸法、耐久性、印刷枚数、既存プリンター、対応コード、RFIDやGS1を将来必要とする取引先運用。
-- GitHub owner/name/visibilityは `komatsu-dev-jp/resale-ops-app/private` を提案済みだがユーザー未承認。現在のGitHub CLI認証は無効。
+- GitHub `komatsu-dev-jp/resale-ops-app/private` とGitHub CLI認証は確認済み。外部CIは実行しない。
 
-### Goal開始前に必要
+### Goal開始後の継続条件
 
-1. 本書と製品仕様、Notion仕様、完成像・MVP・対象外・検証方法をユーザーが一度確認する。
-2. private GitHubリポジトリのowner/name/visibilityと作成・初期pushの権限を確認する。
-3. GitHub認証を復旧する。
-4. iOSのmacOS CIまたはMac実機検証経路を決める。
-5. 外部サービス有料契約をMVP前提にしないことを再確認する。
-6. Goal開始後、公式資料で依存版・API・CSVを再確認して固定する。
+1. 承認済みP0/P1順序と安全境界を維持する。
+2. 有料契約、従量課金、外部クラウドCI、本番公開を実行しない。
+3. PWAのiPhone実機項目はDraft PR前に確認手順と結果を記録し、未確認を合格扱いしない。
+4. 外部サービス接続が将来必要になった場合は、0円条件への影響を示してユーザーへ再承認を求める。
 
 Claude Code CLIは現環境に未導入であり、共同実行は未検証。`CLAUDE.md` は準備するが、導入・認証を勝手に行わない。
