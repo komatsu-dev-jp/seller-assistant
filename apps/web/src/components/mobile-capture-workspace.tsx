@@ -6,9 +6,11 @@ import {
   clearCaptureBusinessData,
   clearCaptureUploads,
   clearUnassignedCaptureUploads,
+  loadCaptureDraft,
   loadCaptureUploads,
   markCaptureUploaded,
   prepareCaptureUpload,
+  saveCaptureDraft,
   type CaptureRole,
 } from "../lib/capture-outbox";
 
@@ -41,6 +43,7 @@ export function MobileCaptureWorkspace({ workspaceId }: { workspaceId: string })
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [draftReadyFor, setDraftReadyFor] = useState("");
   const task = tasks.find((entry) => entry.skuId === selectedId) ?? tasks[0] ?? null;
 
   const refresh = useCallback(async () => {
@@ -53,9 +56,6 @@ export function MobileCaptureWorkspace({ workspaceId }: { workspaceId: string })
     );
     setTasks(loaded);
     setSelectedId((current) => {
-      if (current && !loaded.some((entry) => entry.skuId === current)) {
-        void clearCaptureUploads(workspaceId, current).catch(() => undefined);
-      }
       return current && loaded.some((entry) => entry.skuId === current)
         ? current
         : (loaded[0]?.skuId ?? "");
@@ -65,7 +65,12 @@ export function MobileCaptureWorkspace({ workspaceId }: { workspaceId: string })
   useEffect(() => {
     refresh().catch(async (reason: unknown) => {
       if (isAssignmentRevokedError(reason)) {
-        await clearCaptureBusinessData().catch(() => undefined);
+        try {
+          await clearCaptureBusinessData();
+        } catch (cleanupError) {
+          setError(`担当は解除済みですが、${errorMessage(cleanupError)}`);
+          return;
+        }
         setFiles({});
       }
       setError(errorMessage(reason));
@@ -74,21 +79,37 @@ export function MobileCaptureWorkspace({ workspaceId }: { workspaceId: string })
 
   useEffect(() => {
     if (!task) return;
+    setDraftReadyFor("");
     const restored = { shoulder_width: "", chest_width: "", sleeve_length: "", body_length: "" };
     for (const measurement of task.measurements) {
       if (measurement.definitionId in restored) {
         restored[measurement.definitionId as DefinitionId] = String(measurement.value);
       }
     }
-    setValues(restored);
-    loadCaptureUploads(workspaceId, task.skuId)
-      .then((records) => {
+    Promise.all([
+      loadCaptureUploads(workspaceId, task.skuId),
+      loadCaptureDraft(workspaceId, task.skuId),
+    ])
+      .then(([records, draft]) => {
         const saved: Partial<Record<CaptureRole, File>> = {};
         for (const record of records) saved[record.role] = record.file;
         setFiles(saved);
+        setValues(draft?.measurements ?? restored);
+        setReviewReasonCode(draft?.reviewReasonCode ?? "");
+        setTagText(draft?.tagText ?? "");
+        setDraftReadyFor(task.skuId);
       })
-      .catch(() => undefined);
+      .catch((reason: unknown) => setError(errorMessage(reason)));
   }, [task?.skuId, workspaceId]);
+
+  useEffect(() => {
+    if (!task || draftReadyFor !== task.skuId) return;
+    void saveCaptureDraft(workspaceId, task.skuId, {
+      measurements: values,
+      reviewReasonCode,
+      tagText,
+    }).catch((reason: unknown) => setError(errorMessage(reason)));
+  }, [draftReadyFor, reviewReasonCode, tagText, task?.skuId, values, workspaceId]);
 
   async function save() {
     if (!task) return;
@@ -193,7 +214,12 @@ export function MobileCaptureWorkspace({ workspaceId }: { workspaceId: string })
       await refresh();
     } catch (reason) {
       if (isAssignmentRevokedError(reason)) {
-        await clearCaptureUploads(workspaceId, task.skuId).catch(() => undefined);
+        try {
+          await clearCaptureUploads(workspaceId, task.skuId);
+        } catch (cleanupError) {
+          setError(`担当は解除済みですが、${errorMessage(cleanupError)}`);
+          return;
+        }
         setFiles({});
       }
       setError(errorMessage(reason));

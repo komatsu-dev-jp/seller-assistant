@@ -91,6 +91,20 @@ export function StocktakeWorkspace({ workspaceId }: { workspaceId: string }) {
           <p>
             読取 {active.observationCount}件、差異 {active.discrepancies.length}件
           </p>
+          {active.postStartMovements.length > 0 ? (
+            <div className="accountingDisclaimer">
+              <strong>棚卸開始後の通常移動 {active.postStartMovements.length}件</strong>
+              {active.postStartMovements.map((movement) => (
+                <p key={movement.inventoryUnitId}>
+                  {movement.inventoryNumber}: {movement.expectedLocationCode} →{" "}
+                  {movement.currentLocationCode ?? "場所なし"}
+                  （移動番号 {movement.snapshotMovementSequence} →{" "}
+                  {movement.currentMovementSequence}）
+                </p>
+              ))}
+              <small>未発見候補には含めず、移動履歴として別に照合します。</small>
+            </div>
+          ) : null}
           {active.state === "counting" ? (
             <>
               <form
@@ -98,6 +112,7 @@ export function StocktakeWorkspace({ workspaceId }: { workspaceId: string }) {
                   act(
                     `/v1/workspaces/${workspaceId}/stocktakes/${active.stocktakeId}/observations`,
                     {
+                      readResult: "readable",
                       inventoryNumber: formText(form, "inventoryNumber").toUpperCase(),
                       observedAt: new Date().toISOString(),
                       humanConfirmed: true,
@@ -111,6 +126,46 @@ export function StocktakeWorkspace({ workspaceId }: { workspaceId: string }) {
                 </label>
                 <button disabled={busy}>読取を記録</button>
               </form>
+              <form
+                className="operationsFormGrid"
+                action={(form) =>
+                  act(
+                    `/v1/workspaces/${workspaceId}/stocktakes/${active.stocktakeId}/observations`,
+                    {
+                      readResult: "unreadable",
+                      failureReason: form.get("failureReason"),
+                      observedAt: new Date().toISOString(),
+                      humanConfirmed: true,
+                    },
+                  )
+                }
+              >
+                <label>
+                  読取不能の理由
+                  <select name="failureReason" defaultValue="damaged_label">
+                    <option value="camera_blur">カメラのぶれ</option>
+                    <option value="damaged_label">ラベル破損</option>
+                    <option value="no_label">ラベルなし</option>
+                    <option value="manual_unreadable">手入力でも読取不能</option>
+                  </select>
+                </label>
+                <button disabled={busy}>読取不能として記録</button>
+              </form>
+              {active.observations.length > 0 ? (
+                <ul className="auditList" aria-label="棚卸の全読取記録">
+                  {active.observations.map((observation) => (
+                    <li key={observation.ordinal}>
+                      <strong>
+                        #{observation.ordinal} {observation.observedCode ?? "コードなし"}
+                      </strong>
+                      <span>
+                        {observation.result}
+                        {observation.failureReason ? ` / ${observation.failureReason}` : ""}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
               <button
                 disabled={busy}
                 type="button"

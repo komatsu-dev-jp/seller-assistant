@@ -72,6 +72,14 @@ const stocktakeSnapshotMigrationPath = fileURLToPath(
   new URL("../migrations/0018_stocktake_snapshot.sql", import.meta.url),
 );
 const stocktakeSnapshotSql = readFileSync(stocktakeSnapshotMigrationPath, "utf8");
+const postStartMovementMigrationPath = fileURLToPath(
+  new URL("../migrations/0019_stocktake_post_start_movement.sql", import.meta.url),
+);
+const postStartMovementSql = readFileSync(postStartMovementMigrationPath, "utf8");
+const observationCompletenessMigrationPath = fileURLToPath(
+  new URL("../migrations/0020_stocktake_observation_completeness.sql", import.meta.url),
+);
+const observationCompletenessSql = readFileSync(observationCompletenessMigrationPath, "utf8");
 
 describe("P0 PostgreSQL migration contract", () => {
   it("enables and forces workspace RLS for business tables", () => {
@@ -314,5 +322,27 @@ describe("P0 PostgreSQL migration contract", () => {
       "grant select, insert on count_session_inventory_snapshot to resale_app_runtime",
     );
     expect(stocktakeSnapshotSql).toContain("force row level security");
+  });
+
+  it("separates normal post-start movement from stocktake missing candidates", () => {
+    expect(postStartMovementSql).toContain("create table count_session_post_start_movement");
+    expect(postStartMovementSql).toContain("current_movement_seq > snapshot_movement_seq");
+    expect(postStartMovementSql).toContain(
+      "create policy workspace_isolation on count_session_post_start_movement",
+    );
+    expect(postStartMovementSql).toContain(
+      "grant select, insert on count_session_post_start_movement to resale_app_runtime",
+    );
+    expect(postStartMovementSql).toContain("force row level security");
+  });
+
+  it("retains readable, duplicate, unknown and unreadable stocktake evidence", () => {
+    expect(observationCompletenessSql).toContain("add column observed_code text");
+    expect(observationCompletenessSql).toContain("add column read_failure_reason text");
+    expect(observationCompletenessSql).toContain("result = 'unreadable'");
+    for (const reason of ["camera_blur", "damaged_label", "no_label", "manual_unreadable"]) {
+      expect(observationCompletenessSql).toContain(`'${reason}'`);
+    }
+    expect(observationCompletenessSql).not.toContain("free_text");
   });
 });

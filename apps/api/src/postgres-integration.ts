@@ -38,6 +38,7 @@ const workspaceProtectedTables = [
   "count_observation",
   "count_session",
   "count_session_inventory_snapshot",
+  "count_session_post_start_movement",
   "cost_allocation",
   "financial_event",
   "idempotency_record",
@@ -492,10 +493,12 @@ try {
   const unitTwoId = randomUUID();
   const unitThreeId = randomUUID();
   const unitFourId = randomUUID();
+  const unitFiveId = randomUUID();
   const itemLabelOneId = randomUUID();
   const itemLabelTwoId = randomUUID();
   const itemLabelThreeId = randomUUID();
   const itemLabelFourId = randomUUID();
+  const itemLabelFiveId = randomUUID();
   const binALabelId = randomUUID();
   const binBLabelId = randomUUID();
   const capacityBinLabelId = randomUUID();
@@ -797,7 +800,7 @@ try {
           single_item_only, allow_mixed_sku, max_units
         ) values
           (${rootLocationId}, ${owner.workspaceId}, null, ${appendCodeCheckDigit("ROOM-01")}, '架空保管室', 0, false, false, true, null),
-          (${binAId}, ${owner.workspaceId}, ${rootLocationId}, ${appendCodeCheckDigit("BIN-A")}, '棚A-1', 1, true, false, false, 2),
+          (${binAId}, ${owner.workspaceId}, ${rootLocationId}, ${appendCodeCheckDigit("BIN-A")}, '棚A-1', 1, true, false, false, 3),
           (${binBId}, ${owner.workspaceId}, ${rootLocationId}, ${appendCodeCheckDigit("BIN-B")}, '棚B-1', 1, true, true, false, 1),
           (${capacityBinId}, ${owner.workspaceId}, ${rootLocationId}, ${appendCodeCheckDigit("BIN-C")}, '同時格納試験棚', 1, true, true, false, 1),
           (${returnBinId}, ${owner.workspaceId}, ${rootLocationId}, ${appendCodeCheckDigit("RETURN-01")}, '返品隔離棚', 1, true, false, true, 20)
@@ -807,7 +810,8 @@ try {
           (${unitOneId}, ${owner.workspaceId}, ${skuId}, ${appendCodeCheckDigit("INV-900001")}),
           (${unitTwoId}, ${owner.workspaceId}, ${skuId}, ${appendCodeCheckDigit("INV-900002")}),
           (${unitThreeId}, ${owner.workspaceId}, ${skuId}, ${appendCodeCheckDigit("INV-900003")}),
-          (${unitFourId}, ${owner.workspaceId}, ${skuId}, ${appendCodeCheckDigit("INV-900004")})
+          (${unitFourId}, ${owner.workspaceId}, ${skuId}, ${appendCodeCheckDigit("INV-900004")}),
+          (${unitFiveId}, ${owner.workspaceId}, ${skuId}, ${appendCodeCheckDigit("INV-900005")})
       `;
       await transaction`
         insert into inventory_label (
@@ -818,6 +822,7 @@ try {
           (${itemLabelTwoId}, ${owner.workspaceId}, 'inventory_unit', ${unitTwoId}, 'qr', 1, ${hashFixture("item-2")}, ${appendCodeCheckDigit("INV-900002")}, ${owner.identityId}),
           (${itemLabelThreeId}, ${owner.workspaceId}, 'inventory_unit', ${unitThreeId}, 'qr', 1, ${hashFixture("item-3")}, ${appendCodeCheckDigit("INV-900003")}, ${owner.identityId}),
           (${itemLabelFourId}, ${owner.workspaceId}, 'inventory_unit', ${unitFourId}, 'qr', 1, ${hashFixture("item-4")}, ${appendCodeCheckDigit("INV-900004")}, ${owner.identityId}),
+          (${itemLabelFiveId}, ${owner.workspaceId}, 'inventory_unit', ${unitFiveId}, 'qr', 1, ${hashFixture("item-5")}, ${appendCodeCheckDigit("INV-900005")}, ${owner.identityId}),
           (${binALabelId}, ${owner.workspaceId}, 'location', ${binAId}, 'qr', 1, ${hashFixture("bin-a")}, ${appendCodeCheckDigit("BIN-A")}, ${owner.identityId}),
           (${binBLabelId}, ${owner.workspaceId}, 'location', ${binBId}, 'qr', 1, ${hashFixture("bin-b")}, ${appendCodeCheckDigit("BIN-B")}, ${owner.identityId}),
           (${capacityBinLabelId}, ${owner.workspaceId}, 'location', ${capacityBinId}, 'qr', 1, ${hashFixture("bin-c")}, ${appendCodeCheckDigit("BIN-C")}, ${owner.identityId}),
@@ -1130,6 +1135,14 @@ try {
     assert.equal(simultaneousPutaway.filter((result) => result.status === "fulfilled").length, 1);
     assert.equal(simultaneousPutaway.filter((result) => result.status === "rejected").length, 1);
 
+    await putaway(
+      unitFiveId,
+      itemLabelFiveId,
+      binAId,
+      binALabelId,
+      "putaway-unit-five-for-stocktake-movement",
+    );
+
     const firstOrderId = randomUUID();
     const secondOrderId = randomUUID();
     await inventory.begin(async (transaction) => {
@@ -1193,11 +1206,14 @@ try {
     });
     assert.deepEqual(
       [...stocktakeSnapshot],
-      [{ inventory_unit_id: unitOneId, expected_location_id: binAId }],
+      [
+        { inventory_unit_id: unitFiveId, expected_location_id: binAId },
+        { inventory_unit_id: unitOneId, expected_location_id: binAId },
+      ].sort((left, right) => left.inventory_unit_id.localeCompare(right.inventory_unit_id)),
     );
     await inventory.begin(async (transaction) => {
       await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
-      const moveScanId = randomUUID();
+      const moveIncomingScanId = randomUUID();
       await transaction`
         insert into scan_session (
           id, workspace_id, operation, inventory_unit_id, expected_location_id,
@@ -1205,7 +1221,7 @@ try {
           location_label_id, location_label_version, inventory_scanned_at,
           location_scanned_at, confirmed_by, confirmed_at
         ) values (
-          ${moveScanId}, ${owner.workspaceId}, 'move', ${unitTwoId}, ${binBId},
+          ${moveIncomingScanId}, ${owner.workspaceId}, 'move', ${unitTwoId}, ${binBId},
           ${binAId}, ${itemLabelTwoId}, 1, ${binALabelId}, 1,
           now(), now(), ${owner.identityId}, now()
         )
@@ -1217,11 +1233,70 @@ try {
           payload_hash, moved_by
         ) values (
           ${owner.workspaceId}, ${unitTwoId}, 2, ${binBId}, ${binAId}, 'move',
-          ${moveScanId}, 'move-after-stocktake-snapshot',
-          ${hashFixture("move-after-stocktake-snapshot")}, ${owner.identityId}
+          ${moveIncomingScanId}, 'move-in-after-stocktake-snapshot',
+          ${hashFixture("move-in-after-stocktake-snapshot")}, ${owner.identityId}
+        )
+      `;
+      const moveExpectedOutScanId = randomUUID();
+      await transaction`
+        insert into scan_session (
+          id, workspace_id, operation, inventory_unit_id, expected_location_id,
+          destination_location_id, inventory_label_id, inventory_label_version,
+          location_label_id, location_label_version, inventory_scanned_at,
+          location_scanned_at, confirmed_by, confirmed_at
+        ) values (
+          ${moveExpectedOutScanId}, ${owner.workspaceId}, 'move', ${unitFiveId}, ${binAId},
+          ${returnBinId}, ${itemLabelFiveId}, 1, ${returnBinLabelId}, 1,
+          now(), now(), ${owner.identityId}, now()
+        )
+      `;
+      await transaction`
+        insert into inventory_movement (
+          workspace_id, inventory_unit_id, movement_seq, from_location_id,
+          to_location_id, movement_kind, scan_session_id, idempotency_key,
+          payload_hash, moved_by
+        ) values (
+          ${owner.workspaceId}, ${unitFiveId}, 2, ${binAId}, ${returnBinId}, 'move',
+          ${moveExpectedOutScanId}, 'move-out-after-stocktake-snapshot',
+          ${hashFixture("move-out-after-stocktake-snapshot")}, ${owner.identityId}
         )
       `;
     });
+    const observationRequests = [
+      {
+        readResult: "readable",
+        inventoryNumber: appendCodeCheckDigit("INV-900001"),
+        observedAt: new Date().toISOString(),
+        humanConfirmed: true,
+      },
+      {
+        readResult: "readable",
+        inventoryNumber: appendCodeCheckDigit("INV-900001"),
+        observedAt: new Date().toISOString(),
+        humanConfirmed: true,
+      },
+      {
+        readResult: "readable",
+        inventoryNumber: appendCodeCheckDigit("INV-999999"),
+        observedAt: new Date().toISOString(),
+        humanConfirmed: true,
+      },
+      {
+        readResult: "unreadable",
+        failureReason: "damaged_label",
+        observedAt: new Date().toISOString(),
+        humanConfirmed: true,
+      },
+    ] as const;
+    for (const observation of observationRequests) {
+      const observed = await app.inject({
+        method: "POST",
+        url: `/v1/workspaces/${owner.workspaceId}/stocktakes/${countSessionId}/observations`,
+        headers: { cookie },
+        payload: observation,
+      });
+      assert.equal(observed.statusCode, 200, observed.body);
+    }
     const stocktakeReconciled = await app.inject({
       method: "POST",
       url: `/v1/workspaces/${owner.workspaceId}/stocktakes/${countSessionId}/reconcile`,
@@ -1229,14 +1304,54 @@ try {
       payload: {},
     });
     assert.equal(stocktakeReconciled.statusCode, 200, stocktakeReconciled.body);
-    const discrepancies = stocktakeReconciled.json<{
+    const reconciledStocktake = stocktakeReconciled.json<{
+      observations: Array<{ observedCode: string | null; result: string }>;
+      postStartMovements: Array<{
+        inventoryUnitId: string;
+        expectedLocationId: string;
+        currentLocationId: string | null;
+        snapshotMovementSequence: number;
+        currentMovementSequence: number;
+      }>;
       discrepancies: Array<{ discrepancyId: string; inventoryUnitId: string | null }>;
-    }>().discrepancies;
+    }>();
+    assert.deepEqual(
+      reconciledStocktake.observations.map((observation) => observation.result),
+      ["matched", "duplicate", "unexpected", "unreadable"],
+    );
+    assert.equal(
+      reconciledStocktake.observations[2]?.observedCode,
+      appendCodeCheckDigit("INV-999999"),
+    );
+    assert.equal(reconciledStocktake.postStartMovements.length, 1);
+    assert.deepEqual(
+      {
+        inventoryUnitId: reconciledStocktake.postStartMovements[0]?.inventoryUnitId,
+        expectedLocationId: reconciledStocktake.postStartMovements[0]?.expectedLocationId,
+        currentLocationId: reconciledStocktake.postStartMovements[0]?.currentLocationId,
+        snapshotMovementSequence:
+          reconciledStocktake.postStartMovements[0]?.snapshotMovementSequence,
+        currentMovementSequence: reconciledStocktake.postStartMovements[0]?.currentMovementSequence,
+      },
+      {
+        inventoryUnitId: unitFiveId,
+        expectedLocationId: binAId,
+        currentLocationId: returnBinId,
+        snapshotMovementSequence: 1,
+        currentMovementSequence: 2,
+      },
+    );
+    const discrepancies = reconciledStocktake.discrepancies;
     assert.ok(discrepancies.length > 0);
     assert.equal(
       discrepancies.some((discrepancy) => discrepancy.inventoryUnitId === unitTwoId),
       false,
       "Inventory moved into the location after start must not enter the immutable snapshot",
+    );
+    assert.equal(
+      discrepancies.some((discrepancy) => discrepancy.inventoryUnitId === unitFiveId),
+      false,
+      "Inventory normally moved out after start must be shown separately, not marked missing",
     );
     const discrepancyId = discrepancies[0]!.discrepancyId;
     const selfReconfirmation = await app.inject({
@@ -1526,6 +1641,13 @@ try {
       idempotencyKey: randomUUID(),
       humanConfirmed: true,
     } as const;
+    const stalePick = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/pick`,
+      headers: { cookie: shippingCookie },
+      payload: { ...pickPayload, inventoryLabelVersion: 99, idempotencyKey: randomUUID() },
+    });
+    assert.equal(stalePick.statusCode, 409, stalePick.body);
     const picked = await app.inject({
       method: "POST",
       url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/pick`,
@@ -1676,22 +1798,34 @@ try {
     });
     assert.equal(prematureInspection.statusCode, 409, prematureInspection.body);
     const returnScanBase = Date.now();
-    const quarantined = await app.inject({
+    const quarantinePayload = {
+      orderId,
+      inventoryNumber: acquiredItem.inventoryNumber,
+      locationCode: appendCodeCheckDigit("RETURN-01"),
+      inventoryLabelVersion: 1,
+      locationLabelVersion: 1,
+      inventoryScannedAt: new Date(returnScanBase).toISOString(),
+      locationScannedAt: new Date(returnScanBase + 1).toISOString(),
+      confirmedAt: new Date(returnScanBase + 2).toISOString(),
+      idempotencyKey: randomUUID(),
+      humanConfirmed: true,
+    } as const;
+    const staleQuarantine = await app.inject({
       method: "POST",
       url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/return-quarantine`,
       headers: { cookie },
       payload: {
-        orderId,
-        inventoryNumber: acquiredItem.inventoryNumber,
-        locationCode: appendCodeCheckDigit("RETURN-01"),
-        inventoryLabelVersion: 1,
-        locationLabelVersion: 1,
-        inventoryScannedAt: new Date(returnScanBase).toISOString(),
-        locationScannedAt: new Date(returnScanBase + 1).toISOString(),
-        confirmedAt: new Date(returnScanBase + 2).toISOString(),
+        ...quarantinePayload,
+        inventoryLabelVersion: 99,
         idempotencyKey: randomUUID(),
-        humanConfirmed: true,
       },
+    });
+    assert.equal(staleQuarantine.statusCode, 409, staleQuarantine.body);
+    const quarantined = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/return-quarantine`,
+      headers: { cookie },
+      payload: quarantinePayload,
     });
     assert.equal(quarantined.statusCode, 200, quarantined.body);
     assert.equal(quarantined.json<{ inventoryStatus: string }>().inventoryStatus, "quarantined");
@@ -1708,6 +1842,24 @@ try {
     });
     assert.equal(inspected.statusCode, 200, inspected.body);
     assert.equal(inspected.json<{ inventoryStatus: string }>().inventoryStatus, "available");
+
+    const staleOrderScanAudits = await inventory.begin(async (transaction) => {
+      await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+      return transaction<Array<{ operation: string }>>`
+        select redacted_changes->'after'->>'operation' as operation
+        from audit_event
+        where workspace_id = ${owner.workspaceId}
+          and action = 'inventory.scan.rejected'
+          and target_id = ${acquiredItem.inventoryUnitId}
+          and reason_code = 'stale_label_version'
+        order by occurred_at
+      `;
+    });
+    assert.deepEqual(
+      staleOrderScanAudits.map((event) => event.operation),
+      ["pick", "quarantine"],
+      "Pick and return-quarantine stale-label rejections must both leave audit evidence",
+    );
 
     const secrecyAdmin = postgres(adminUrl, { max: 1 });
     try {
@@ -1767,7 +1919,7 @@ try {
 }
 
 process.stdout.write(
-  "postgres-integration: PASS (restricted role, 37-table RLS matrix, assigned external workers, purchase-to-accounting order flow, encrypted 5-minute address lease, checked inventory/location codes, persisted capture/research/listing evidence, reviewed zero-GPS location photo, double scan, immutable stocktake snapshot and audited label rejection, return quarantine, stocktake and label reissue, logout)\n",
+  "postgres-integration: PASS (restricted role, 38-table RLS matrix, assigned external workers, purchase-to-accounting order flow, encrypted 5-minute address lease, checked inventory/location codes, persisted capture/research/listing evidence, reviewed zero-GPS location photo, double scan, immutable stocktake snapshot, complete read evidence, post-start movement separation and audited stale-label rejection, return quarantine, stocktake and label reissue, logout)\n",
 );
 
 function jpegWithGpsMetadata(): Buffer {

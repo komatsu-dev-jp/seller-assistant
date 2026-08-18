@@ -172,6 +172,21 @@ interface FinancialEventRow {
   occurred_at: Date;
 }
 
+class StaleOrderScanLabelError extends RepositoryError {
+  constructor(
+    readonly evidence: {
+      inventoryUnitId: string;
+      locationId: string;
+      activeInventoryVersion: number;
+      activeLocationVersion: number;
+      submittedInventoryVersion: number;
+      submittedLocationVersion: number;
+    },
+  ) {
+    super("conflict", "An inventory or location label is stale");
+  }
+}
+
 export class PostgresOrderRepository implements OrderRepository {
   private readonly sql: postgres.Sql;
 
@@ -1120,6 +1135,47 @@ export class PostgresOrderRepository implements OrderRepository {
         return requireOperationResponse(transaction, workspaceId, operation, input.idempotencyKey);
       });
     } catch (error) {
+      if (error instanceof StaleOrderScanLabelError) {
+        try {
+          await this.sql.begin(async (transaction) => {
+            await setWorkspace(transaction, workspaceId);
+            await requireRole(transaction, workspaceId, actor.identityId, [
+              "owner",
+              "inventory_manager",
+              "shipping",
+            ]);
+            await transaction`
+              insert into audit_event (
+                workspace_id, actor_id, action, target_type, target_id,
+                field_names, redacted_changes, reference_ids, reason_code, approved_by
+              ) values (
+                ${workspaceId}, ${actor.identityId}, 'inventory.scan.rejected',
+                'inventory_unit', ${error.evidence.inventoryUnitId},
+                ${["operation", "inventory_label_version", "location_label_version"]},
+                ${transaction.json({
+                  before: {
+                    operation,
+                    activeInventoryLabelVersion: error.evidence.activeInventoryVersion,
+                    activeLocationLabelVersion: error.evidence.activeLocationVersion,
+                  },
+                  after: {
+                    operation,
+                    submittedInventoryLabelVersion: error.evidence.submittedInventoryVersion,
+                    submittedLocationLabelVersion: error.evidence.submittedLocationVersion,
+                  },
+                })},
+                ${[orderId, error.evidence.locationId]}, 'stale_label_version',
+                ${actor.identityId}
+              )
+            `;
+          });
+        } catch {
+          throw new RepositoryError(
+            "database_error",
+            "The stale label was rejected but its audit record could not be preserved",
+          );
+        }
+      }
       throw normalizeOrderError(error);
     }
   }
@@ -1432,22 +1488,32 @@ async function requireReturnLabels(
     locationLabelVersion: number;
   },
 ): Promise<{ inventoryLabelId: string; locationLabelId: string }> {
-  const labels = await sql<Array<{ id: string; target_type: string }>>`
-    select id, target_type from inventory_label
+  const labels = await sql<Array<{ id: string; target_type: string; version: number }>>`
+    select id, target_type, version from inventory_label
     where workspace_id = ${workspaceId} and active
       and (
-        (target_type = 'inventory_unit' and target_id = ${inventoryUnitId}
-          and version = ${input.inventoryLabelVersion})
-        or (target_type = 'location' and target_id = ${locationId}
-          and version = ${input.locationLabelVersion})
+        (target_type = 'inventory_unit' and target_id = ${inventoryUnitId})
+        or (target_type = 'location' and target_id = ${locationId})
       )
   `;
-  const inventoryLabelId = labels.find((label) => label.target_type === "inventory_unit")?.id;
-  const locationLabelId = labels.find((label) => label.target_type === "location")?.id;
-  if (!inventoryLabelId || !locationLabelId) {
-    throw new RepositoryError("conflict", "An inventory or location label is stale");
+  const inventoryLabel = labels.find((label) => label.target_type === "inventory_unit");
+  const locationLabel = labels.find((label) => label.target_type === "location");
+  if (
+    !inventoryLabel ||
+    !locationLabel ||
+    inventoryLabel.version !== input.inventoryLabelVersion ||
+    locationLabel.version !== input.locationLabelVersion
+  ) {
+    throw new StaleOrderScanLabelError({
+      inventoryUnitId,
+      locationId,
+      activeInventoryVersion: inventoryLabel?.version ?? 0,
+      activeLocationVersion: locationLabel?.version ?? 0,
+      submittedInventoryVersion: input.inventoryLabelVersion,
+      submittedLocationVersion: input.locationLabelVersion,
+    });
   }
-  return { inventoryLabelId, locationLabelId };
+  return { inventoryLabelId: inventoryLabel.id, locationLabelId: locationLabel.id };
 }
 
 async function requireFinancialEvents(

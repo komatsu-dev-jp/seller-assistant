@@ -145,14 +145,16 @@ export class PostgresStocktakeRepository implements StocktakeRepository {
       ) {
         throw new RepositoryError("forbidden", "Only the initial counter can add observations");
       }
-      const units = await transaction<
-        Array<{
-          id: string;
-          location_id: string | null;
-          label_id: string | null;
-          expected_at_start: boolean;
-        }>
-      >`
+      const units =
+        input.readResult === "readable"
+          ? await transaction<
+              Array<{
+                id: string;
+                location_id: string | null;
+                label_id: string | null;
+                expected_at_start: boolean;
+              }>
+            >`
         select unit.id, unit.location_id, label.id as label_id,
                exists (
                  select 1 from count_session_inventory_snapshot snapshot
@@ -165,20 +167,47 @@ export class PostgresStocktakeRepository implements StocktakeRepository {
           on label.workspace_id = unit.workspace_id and label.target_type = 'inventory_unit'
          and label.target_id = unit.id and label.active
         where unit.workspace_id = ${workspaceId} and unit.inventory_number = ${input.inventoryNumber}
-      `;
+      `
+          : [];
       const unit = units[0];
       const ordinal = await transaction<Array<{ next: number }>>`
         select coalesce(max(ordinal), 0)::integer + 1 as next from count_observation
         where workspace_id = ${workspaceId} and count_session_id = ${stocktakeId}
       `;
-      const result = !unit ? "unexpected" : unit.expected_at_start ? "matched" : "misplaced";
+      const observedCode = input.readResult === "readable" ? input.inventoryNumber : null;
+      const prior = await transaction<Array<{ present: boolean }>>`
+        select exists (
+          select 1 from count_observation observation
+          where observation.workspace_id = ${workspaceId}
+            and observation.count_session_id = ${stocktakeId}
+            and (
+              (${unit?.id ?? null}::uuid is not null
+                and observation.inventory_unit_id = ${unit?.id ?? null}::uuid)
+              or
+              (${observedCode}::text is not null and observation.observed_code = ${observedCode})
+            )
+        ) as present
+      `;
+      const result =
+        input.readResult === "unreadable"
+          ? "unreadable"
+          : prior[0]?.present
+            ? "duplicate"
+            : !unit
+              ? "unexpected"
+              : unit.expected_at_start
+                ? "matched"
+                : "misplaced";
       await transaction`
         insert into count_observation (
           workspace_id, count_session_id, ordinal, inventory_unit_id,
-          observed_label_id, observed_by, observed_at, result
+          observed_label_id, observed_code, read_failure_reason,
+          observed_by, observed_at, result
         ) values (
           ${workspaceId}, ${stocktakeId}, ${ordinal[0]?.next ?? 1}, ${unit?.id ?? null},
-          ${unit?.label_id ?? null}, ${actor.identityId}, ${input.observedAt}, ${result}
+          ${unit?.label_id ?? null}, ${observedCode},
+          ${input.readResult === "unreadable" ? input.failureReason : null},
+          ${actor.identityId}, ${input.observedAt}, ${result}
         )
       `;
       await audit(
@@ -218,6 +247,24 @@ export class PostgresStocktakeRepository implements StocktakeRepository {
           "Only the initial counter can submit reconciliation",
         );
       }
+      const postStartMovements = await transaction<Array<{ inventory_unit_id: string }>>`
+        insert into count_session_post_start_movement (
+          workspace_id, count_session_id, inventory_unit_id,
+          snapshot_movement_seq, current_movement_seq,
+          expected_location_id, current_location_id
+        )
+        select snapshot.workspace_id, snapshot.count_session_id, snapshot.inventory_unit_id,
+               snapshot.movement_seq, unit.movement_seq,
+               snapshot.expected_location_id, unit.location_id
+        from count_session_inventory_snapshot snapshot
+        join inventory_unit unit
+          on unit.workspace_id = snapshot.workspace_id and unit.id = snapshot.inventory_unit_id
+        where snapshot.workspace_id = ${workspaceId}
+          and snapshot.count_session_id = ${stocktakeId}
+          and unit.movement_seq > snapshot.movement_seq
+        on conflict (workspace_id, count_session_id, inventory_unit_id) do nothing
+        returning inventory_unit_id
+      `;
       await transaction`
         insert into inventory_discrepancy (
           workspace_id, count_session_id, inventory_unit_id, kind, state, requester_id
@@ -229,6 +276,12 @@ export class PostgresStocktakeRepository implements StocktakeRepository {
           on unit.workspace_id = snapshot.workspace_id and unit.id = snapshot.inventory_unit_id
         where snapshot.workspace_id = ${workspaceId}
           and snapshot.count_session_id = ${stocktakeId}
+          and not exists (
+            select 1 from count_session_post_start_movement movement
+            where movement.workspace_id = snapshot.workspace_id
+              and movement.count_session_id = snapshot.count_session_id
+              and movement.inventory_unit_id = snapshot.inventory_unit_id
+          )
           and not exists (
             select 1 from count_observation observation
             where observation.workspace_id = snapshot.workspace_id
@@ -258,7 +311,7 @@ export class PostgresStocktakeRepository implements StocktakeRepository {
         "stocktake.reconciliation.submitted",
         stocktakeId,
         { state: "counting" },
-        { state: "reconciliation" },
+        { state: "reconciliation", postStartMovementCount: postStartMovements.length },
         "initial_count_human_submitted",
       );
       return requireStocktake(transaction, workspaceId, stocktakeId);
@@ -443,7 +496,9 @@ interface StocktakeRow {
   started_at: Date;
   approved_at: Date | null;
   observation_count: number;
+  observations: StocktakeResponse["observations"];
   discrepancies: StocktakeResponse["discrepancies"];
+  post_start_movements: StocktakeResponse["postStartMovements"];
 }
 
 async function selectStocktakes(
@@ -458,6 +513,17 @@ async function selectStocktakes(
             where observation.workspace_id = session.workspace_id
               and observation.count_session_id = session.id) as observation_count,
            coalesce((select jsonb_agg(jsonb_build_object(
+             'ordinal', observation.ordinal,
+             'inventoryUnitId', observation.inventory_unit_id,
+             'observedCode', observation.observed_code,
+             'result', observation.result,
+             'failureReason', observation.read_failure_reason,
+              'observedAt', to_char(observation.observed_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+           ) order by observation.ordinal)
+           from count_observation observation
+           where observation.workspace_id = session.workspace_id
+             and observation.count_session_id = session.id), '[]'::jsonb) as observations,
+           coalesce((select jsonb_agg(jsonb_build_object(
              'discrepancyId', discrepancy.id, 'inventoryUnitId', discrepancy.inventory_unit_id,
              'inventoryNumber', unit.inventory_number, 'kind', discrepancy.kind,
              'state', discrepancy.state, 'resolution', discrepancy.resolution
@@ -466,7 +532,29 @@ async function selectStocktakes(
            left join inventory_unit unit
              on unit.workspace_id = discrepancy.workspace_id and unit.id = discrepancy.inventory_unit_id
            where discrepancy.workspace_id = session.workspace_id
-             and discrepancy.count_session_id = session.id), '[]'::jsonb) as discrepancies
+             and discrepancy.count_session_id = session.id), '[]'::jsonb) as discrepancies,
+           coalesce((select jsonb_agg(jsonb_build_object(
+             'inventoryUnitId', movement.inventory_unit_id,
+             'inventoryNumber', unit.inventory_number,
+             'expectedLocationId', movement.expected_location_id,
+             'expectedLocationCode', expected_location.code,
+             'currentLocationId', movement.current_location_id,
+             'currentLocationCode', current_location.code,
+             'snapshotMovementSequence', movement.snapshot_movement_seq,
+             'currentMovementSequence', movement.current_movement_seq,
+              'detectedAt', to_char(movement.detected_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+           ) order by movement.detected_at, movement.inventory_unit_id)
+           from count_session_post_start_movement movement
+           join inventory_unit unit
+             on unit.workspace_id = movement.workspace_id and unit.id = movement.inventory_unit_id
+           join location_node expected_location
+             on expected_location.workspace_id = movement.workspace_id
+            and expected_location.id = movement.expected_location_id
+           left join location_node current_location
+             on current_location.workspace_id = movement.workspace_id
+            and current_location.id = movement.current_location_id
+           where movement.workspace_id = session.workspace_id
+             and movement.count_session_id = session.id), '[]'::jsonb) as post_start_movements
     from count_session session
     join location_node location
       on location.workspace_id = session.workspace_id and location.id = session.location_id
@@ -495,7 +583,9 @@ function toStocktake(row: StocktakeRow): StocktakeResponse {
     state: row.state,
     initialCounterId: row.initial_counter_id,
     observationCount: row.observation_count,
+    observations: row.observations,
     discrepancies: row.discrepancies,
+    postStartMovements: row.post_start_movements,
     startedAt: row.started_at.toISOString(),
     approvedAt: row.approved_at?.toISOString() ?? null,
   };

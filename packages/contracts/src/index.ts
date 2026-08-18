@@ -735,13 +735,35 @@ export const startStocktakeRequestSchema = z
   .object({ locationId: z.string().uuid(), humanConfirmed: z.literal(true) })
   .strict();
 
-export const stocktakeObservationRequestSchema = z
-  .object({
-    inventoryNumber: inventoryNumberSchema,
-    observedAt: z.iso.datetime(),
-    humanConfirmed: z.literal(true),
-  })
-  .strict();
+export const stocktakeObservationRequestSchema = z.discriminatedUnion("readResult", [
+  z
+    .object({
+      readResult: z.literal("readable"),
+      inventoryNumber: inventoryNumberSchema,
+      observedAt: z.iso.datetime(),
+      humanConfirmed: z.literal(true),
+    })
+    .strict(),
+  z
+    .object({
+      readResult: z.literal("unreadable"),
+      failureReason: z.enum(["camera_blur", "damaged_label", "no_label", "manual_unreadable"]),
+      observedAt: z.iso.datetime(),
+      humanConfirmed: z.literal(true),
+    })
+    .strict(),
+]);
+
+export const stocktakeObservationRecordSchema = z.object({
+  ordinal: z.number().int().positive(),
+  inventoryUnitId: z.string().uuid().nullable(),
+  observedCode: inventoryNumberSchema.nullable(),
+  result: z.enum(["matched", "misplaced", "unexpected", "duplicate", "unreadable"]),
+  failureReason: z
+    .enum(["camera_blur", "damaged_label", "no_label", "manual_unreadable"])
+    .nullable(),
+  observedAt: z.iso.datetime(),
+});
 
 export const stocktakeDiscrepancySchema = z.object({
   discrepancyId: z.string().uuid(),
@@ -752,6 +774,18 @@ export const stocktakeDiscrepancySchema = z.object({
   resolution: z.string().nullable(),
 });
 
+export const stocktakePostStartMovementSchema = z.object({
+  inventoryUnitId: z.string().uuid(),
+  inventoryNumber: inventoryNumberSchema,
+  expectedLocationId: z.string().uuid(),
+  expectedLocationCode: checkedLocationCodeSchema,
+  currentLocationId: z.string().uuid().nullable(),
+  currentLocationCode: checkedLocationCodeSchema.nullable(),
+  snapshotMovementSequence: z.number().int().nonnegative(),
+  currentMovementSequence: z.number().int().positive(),
+  detectedAt: z.iso.datetime(),
+});
+
 export const stocktakeResponseSchema = z.object({
   stocktakeId: z.string().uuid(),
   workspaceId: workspaceIdSchema,
@@ -760,7 +794,9 @@ export const stocktakeResponseSchema = z.object({
   state: z.enum(["counting", "reconciliation", "approved"]),
   initialCounterId: z.string().uuid(),
   observationCount: z.number().int().nonnegative(),
+  observations: stocktakeObservationRecordSchema.array(),
   discrepancies: stocktakeDiscrepancySchema.array(),
+  postStartMovements: stocktakePostStartMovementSchema.array(),
   startedAt: z.iso.datetime(),
   approvedAt: z.iso.datetime().nullable(),
 });
