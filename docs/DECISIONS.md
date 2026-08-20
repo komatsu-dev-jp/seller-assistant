@@ -126,3 +126,13 @@ APIキー、トークン、個人情報、生ログ、会話全文、一時的�
 - Applies to: `.claude/skills/app-development-orchestrator/SKILL.md`のフェーズ4、今後のUI/UX承認フロー全般
 - Verification: `slack_search_channels`でチャンネル名とID `C0BPZCB25T3` の一致を確認済み。
 - Follow-up: none
+
+### 2026-08-21 — GitHub Projectを作業進捗の共通正本にする
+
+- Type: decision
+- Context: GitHub Project `AI App Delivery`、`docs/implementation/github-projects-workflow.md`
+- Decision or rule: 複数アプリの作業進捗、リスク、実装モデル、Solの設計・最終レビュー、利用者承認はGitHub Projectで横断管理する。1作業はGitHub Issueで定義し、実装証拠はPull Request、詳細仕様は`docs/`、重大または再発し得る失敗は`memory/incidents/`へ置く。Slackは利用者承認の証跡、Notionは必要時の限定ミラー、ObsidianはGit管理下の文書を開く閲覧・編集手段とする。
+- Why: 進捗を一箇所で見渡しながら、仕様・承認・失敗の詳細を安全な正本へ残し、ツール間の二重管理と推測による実装を防ぐため。
+- Applies to: `komatsu-dev-jp/seller-assistant`、今後このProjectへ追加するアプリ、`.github/ISSUE_TEMPLATE/`、`.github/PULL_REQUEST_TEMPLATE.md`
+- Verification: Project #1に`Status`、`リスク`、`実装モデル`、`Sol ゲート`、`利用者承認`、`仕様・実装パケット`、`学び・失敗ログ`を設定し、一覧と進捗ボードを作成した。Issue/PRテンプレートと本運用書の参照先を確認する。
+- Follow-up: 各実装IssueでSolの仕様・実装パケットをリンクし、必要な作業だけをProjectへ追加する。
