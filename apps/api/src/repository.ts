@@ -6,6 +6,7 @@ import type {
   CaptureSummary,
   CreateSkuRequest,
   InventorySummary,
+  OwnerPulseResponse,
   LocationPhotoResponse,
   MeasurementResponse,
   MediaAssetResponse,
@@ -54,6 +55,7 @@ export interface WorkflowRepository {
     input: CreateSkuRequest,
   ): Promise<SkuResponse>;
   inventorySummary(workspaceId: string, actor: RequestActor): Promise<InventorySummary>;
+  ownerPulse(workspaceId: string, actor: RequestActor): Promise<OwnerPulseResponse>;
   putawayInventory(
     workspaceId: string,
     actor: RequestActor,
@@ -192,6 +194,43 @@ export class InMemoryWorkflowRepository implements WorkflowRepository {
       discrepancies: 0,
       olderThan90Days: 0,
       lastSyncedAt: new Date().toISOString(),
+    });
+  }
+
+  ownerPulse(workspaceId: string, actor: RequestActor): Promise<OwnerPulseResponse> {
+    void workspaceId;
+    void actor;
+    const now = new Date();
+    const periodStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const periodEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+    return Promise.resolve({
+      periodStart: periodStart.toISOString(),
+      periodEnd: periodEnd.toISOString(),
+      completedOrderCount: 0,
+      completedSalesMinor: 0,
+      refundsMinor: 0,
+      netSalesMinor: 0,
+      costOfGoodsMinor: 0,
+      grossProfitMinor: 0,
+      sellingFeesMinor: 0,
+      shippingCostMinor: 0,
+      packagingCostMinor: 0,
+      contributionProfitMinor: 0,
+      inventoryCostMinor: 0,
+      missingCostCount: 0,
+      missingShippingCount: 0,
+      approvalPendingCount: 0,
+      approvalPendingBreakdown: {
+        stocktakeDiscrepancyCount: 0,
+        locationPhotoCount: 0,
+        disposalCandidateCount: 0,
+        listingReviewCount: 0,
+      },
+      aging: { days0To30: 0, days31To60: 0, days61To90: 0, olderThan90Days: 0 },
+      supplierOverview: [],
+      formulaVersion: "financial_formula_v1.0.0",
+      disclaimer: "運用分析の参考値です。会計上の売上・利益・所得・税額を示すものではありません。",
+      lastCalculatedAt: now.toISOString(),
     });
   }
 
@@ -702,6 +741,38 @@ interface LocationPhotoRow {
   reviewed_at: Date | null;
 }
 
+interface OwnerPulseRow {
+  period_start: Date;
+  period_end: Date;
+  completed_order_count: number;
+  sales: string | number;
+  refunds: string | number;
+  costs: string | number;
+  fees: string | number;
+  fee_reversals: string | number;
+  shipping: string | number;
+  packaging: string | number;
+  missing_cost_count: number;
+  missing_shipping_count: number;
+  inventory_cost: string | number;
+  unallocated_count: number;
+  days_0_30: number;
+  days_31_60: number;
+  days_61_90: number;
+  older_90: number;
+  stocktake_approval_count: string | number;
+  location_photo_approval_count: string | number;
+  disposal_approval_count: string | number;
+  listing_approval_count: string | number;
+  approval_pending_count: string | number;
+}
+
+interface SupplierPulseRow {
+  supplier_name: string;
+  item_count: number;
+  core_data_completeness_percent: number;
+}
+
 export class PostgresWorkflowRepository implements WorkflowRepository {
   private readonly sql: postgres.Sql;
 
@@ -788,6 +859,211 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
         discrepancies: row.discrepancies,
         olderThan90Days: row.older_than_90_days,
         lastSyncedAt: new Date().toISOString(),
+      };
+    });
+  }
+
+  async ownerPulse(workspaceId: string, actor: RequestActor): Promise<OwnerPulseResponse> {
+    return this.sql.begin(async (transaction) => {
+      await setWorkspace(transaction, workspaceId);
+      await requireRole(transaction, workspaceId, actor.identityId, ["owner"]);
+      const rows = await transaction<OwnerPulseRow[]>`
+        with bounds as (
+          select
+            (date_trunc('month', statement_timestamp() at time zone 'Asia/Tokyo')
+              at time zone 'Asia/Tokyo') as period_start,
+            ((date_trunc('month', statement_timestamp() at time zone 'Asia/Tokyo') + interval '1 month')
+              at time zone 'Asia/Tokyo') as period_end
+        ),
+        completed_orders as (
+          select distinct orders.id
+          from sales_order orders
+          cross join bounds
+          where orders.workspace_id = ${workspaceId}
+            and orders.state in ('shipped', 'returned')
+            and exists (
+              select 1 from financial_event event
+              where event.workspace_id = orders.workspace_id and event.order_id = orders.id
+                and event.event_type = 'sale'
+                and event.occurred_at >= bounds.period_start
+                and event.occurred_at < bounds.period_end
+            )
+        ),
+        financial as (
+          select
+            count(distinct orders.id)::integer as completed_order_count,
+            coalesce(sum(event.amount_minor) filter (where event.event_type = 'sale'), 0)::bigint as sales,
+            coalesce(sum(event.amount_minor) filter (where event.event_type = 'refund'), 0)::bigint as refunds,
+            coalesce(sum(event.amount_minor) filter (where event.event_type = 'cost'), 0)::bigint as costs,
+            coalesce(sum(event.amount_minor) filter (where event.event_type = 'fee'), 0)::bigint as fees,
+            coalesce(sum(event.amount_minor) filter (where event.event_type = 'fee_reversal'), 0)::bigint as fee_reversals,
+            coalesce(sum(event.amount_minor) filter (where event.event_type = 'shipping'), 0)::bigint as shipping,
+            coalesce(sum(event.amount_minor) filter (where event.event_type = 'packaging'), 0)::bigint as packaging,
+            count(distinct orders.id) filter (
+              where not exists (
+                select 1 from financial_event cost_event
+                where cost_event.workspace_id = ${workspaceId}
+                  and cost_event.order_id = orders.id and cost_event.event_type = 'cost'
+              )
+            )::integer as missing_cost_count,
+            count(distinct orders.id) filter (
+              where not exists (
+                select 1 from financial_event shipping_event
+                where shipping_event.workspace_id = ${workspaceId}
+                  and shipping_event.order_id = orders.id and shipping_event.event_type = 'shipping'
+              )
+            )::integer as missing_shipping_count
+          from completed_orders orders
+          left join financial_event event
+            on event.workspace_id = ${workspaceId} and event.order_id = orders.id
+        ),
+        active_inventory as (
+          select unit.id, unit.sku_id, unit.created_at
+          from inventory_unit unit
+          where unit.workspace_id = ${workspaceId}
+            and unit.status in (
+              'putaway_pending', 'available', 'reserved', 'picked', 'packed',
+              'quarantined', 'disposal_pending'
+            )
+        ),
+        cost_by_sku as (
+          select allocation.sku_id, sum(allocation.allocated_amount_minor)::bigint as allocated_cost
+          from cost_allocation allocation
+          where allocation.workspace_id = ${workspaceId}
+          group by allocation.sku_id
+        ),
+        inventory as (
+          select
+            coalesce(sum(cost.allocated_cost), 0)::bigint as inventory_cost,
+            count(*) filter (where cost.sku_id is null)::integer as unallocated_count,
+            count(*) filter (where unit.created_at >= statement_timestamp() - interval '30 days')::integer as days_0_30,
+            count(*) filter (
+              where unit.created_at < statement_timestamp() - interval '30 days'
+                and unit.created_at >= statement_timestamp() - interval '60 days'
+            )::integer as days_31_60,
+            count(*) filter (
+              where unit.created_at < statement_timestamp() - interval '60 days'
+                and unit.created_at >= statement_timestamp() - interval '90 days'
+            )::integer as days_61_90,
+            count(*) filter (where unit.created_at < statement_timestamp() - interval '90 days')::integer as older_90
+          from active_inventory unit
+          left join cost_by_sku cost on cost.sku_id = unit.sku_id
+        ),
+        approvals as (
+          select
+            (select count(*) from inventory_discrepancy discrepancy
+              where discrepancy.workspace_id = ${workspaceId}
+                and discrepancy.state in ('reconfirmation_required', 'candidate_confirmed'))
+              as stocktake_approval_count,
+            (select count(*) from location_photo photo
+              where photo.workspace_id = ${workspaceId} and photo.review_state = 'pending')
+              as location_photo_approval_count,
+            (select count(*) from inventory_unit unit
+              where unit.workspace_id = ${workspaceId} and unit.status = 'disposal_pending')
+              as disposal_approval_count,
+            (select count(*) from p0_workflow workflow
+              where workflow.workspace_id = ${workspaceId} and workflow.state = 'capture_confirmed')
+              as listing_approval_count
+        )
+        select bounds.period_start, bounds.period_end,
+               financial.completed_order_count, financial.sales, financial.refunds,
+               financial.costs, financial.fees, financial.fee_reversals,
+               financial.shipping, financial.packaging,
+               financial.missing_cost_count, financial.missing_shipping_count,
+               inventory.inventory_cost, inventory.unallocated_count,
+               inventory.days_0_30, inventory.days_31_60, inventory.days_61_90,
+               inventory.older_90,
+               approvals.stocktake_approval_count, approvals.location_photo_approval_count,
+               approvals.disposal_approval_count, approvals.listing_approval_count,
+               (approvals.stocktake_approval_count + approvals.location_photo_approval_count
+                 + approvals.disposal_approval_count + approvals.listing_approval_count)
+                 as approval_pending_count
+        from bounds cross join financial cross join inventory cross join approvals
+      `;
+      const row = rows[0];
+      if (!row) throw new RepositoryError("database_error", "Owner pulse returned no row");
+      const supplierRows = await transaction<SupplierPulseRow[]>`
+        with supplier_items as (
+          select distinct batch.supplier_name, allocation.sku_id,
+                 (workflow.state in (
+                   'capture_confirmed', 'listing_confirmed', 'order_confirmed',
+                   'picked', 'packed', 'shipped', 'journal_approved'
+                 ))::integer as capture_complete,
+                 (unit.location_id is not null and unit.status <> 'putaway_pending')::integer
+                   as location_complete
+          from purchase_batch batch
+          join receipt
+            on receipt.workspace_id = batch.workspace_id
+           and receipt.purchase_batch_id = batch.id
+          join cost_allocation allocation
+            on allocation.workspace_id = receipt.workspace_id
+           and allocation.receipt_id = receipt.id
+          left join p0_workflow workflow
+            on workflow.workspace_id = allocation.workspace_id
+           and workflow.sku_id = allocation.sku_id
+          left join inventory_unit unit
+            on unit.workspace_id = allocation.workspace_id
+           and unit.sku_id = allocation.sku_id
+          where batch.workspace_id = ${workspaceId}
+        )
+        select supplier_name, count(*)::integer as item_count,
+               round(avg((1 + capture_complete + location_complete) * 100.0 / 3.0))::integer
+                 as core_data_completeness_percent
+        from supplier_items
+        group by supplier_name
+        order by item_count desc, supplier_name
+        limit 3
+      `;
+      const sales = safeMinor(row.sales);
+      const refunds = safeMinor(row.refunds);
+      const costs = safeMinor(row.costs);
+      const fees = safeMinor(row.fees) - safeMinor(row.fee_reversals);
+      const shipping = safeMinor(row.shipping);
+      const packaging = safeMinor(row.packaging);
+      const netSales = sales - refunds;
+      const grossProfit = row.missing_cost_count === 0 ? netSales - costs : null;
+      const contributionProfit =
+        grossProfit !== null && row.missing_shipping_count === 0
+          ? grossProfit - fees - shipping - packaging
+          : null;
+      return {
+        periodStart: row.period_start.toISOString(),
+        periodEnd: row.period_end.toISOString(),
+        completedOrderCount: row.completed_order_count,
+        completedSalesMinor: sales,
+        refundsMinor: refunds,
+        netSalesMinor: netSales,
+        costOfGoodsMinor: costs,
+        grossProfitMinor: grossProfit,
+        sellingFeesMinor: fees,
+        shippingCostMinor: shipping,
+        packagingCostMinor: packaging,
+        contributionProfitMinor: contributionProfit,
+        inventoryCostMinor: row.unallocated_count === 0 ? safeMinor(row.inventory_cost) : null,
+        missingCostCount: row.missing_cost_count + row.unallocated_count,
+        missingShippingCount: row.missing_shipping_count,
+        approvalPendingCount: Number(row.approval_pending_count),
+        approvalPendingBreakdown: {
+          stocktakeDiscrepancyCount: Number(row.stocktake_approval_count),
+          locationPhotoCount: Number(row.location_photo_approval_count),
+          disposalCandidateCount: Number(row.disposal_approval_count),
+          listingReviewCount: Number(row.listing_approval_count),
+        },
+        aging: {
+          days0To30: row.days_0_30,
+          days31To60: row.days_31_60,
+          days61To90: row.days_61_90,
+          olderThan90Days: row.older_90,
+        },
+        supplierOverview: supplierRows.map((supplier) => ({
+          supplierName: supplier.supplier_name,
+          itemCount: supplier.item_count,
+          coreDataCompletenessPercent: supplier.core_data_completeness_percent,
+        })),
+        formulaVersion: "financial_formula_v1.0.0",
+        disclaimer:
+          "運用分析の参考値です。会計上の売上・利益・所得・税額を示すものではありません。",
+        lastCalculatedAt: new Date().toISOString(),
       };
     });
   }
@@ -1472,6 +1748,16 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
             measurements.map(toMeasurementResponse),
           );
         }
+        const pilotItems =
+          input.action === "confirm_listing"
+            ? await transaction<Array<{ id: string; pilot_run_id: string }>>`
+                select item.id, item.pilot_run_id
+                from pilot_item_measurement item
+                where item.workspace_id = ${workspaceId} and item.sku_id = ${skuId}
+                  and item.completed_at is null
+              `
+            : [];
+        const pilotItem = pilotItems[0];
         const decision = decideP0WorkflowAction({
           currentState: current.state,
           action: input.action,
@@ -1521,6 +1807,88 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
             'human_workflow_confirmation', ${actor.identityId}
           )
         `;
+        if (pilotItem) {
+          const completed = await transaction<Array<{ completed_at: Date }>>`
+            update pilot_item_measurement
+            set completed_at = statement_timestamp(),
+                copy_ready_workflow_version = ${nextVersion}
+            where workspace_id = ${workspaceId} and id = ${pilotItem.id}
+              and completed_at is null
+            returning completed_at
+          `;
+          if (!completed[0]) {
+            throw new RepositoryError("conflict", "The pilot item is already complete");
+          }
+          await transaction`
+            insert into audit_event (
+              workspace_id, actor_id, action, target_type, target_id, field_names,
+              redacted_changes, reference_ids, reason_code, approved_by
+            ) values (
+              ${workspaceId}, ${actor.identityId}, 'pilot_item_completed',
+              'pilot_item_measurement', ${pilotItem.id},
+              ${["completed_at", "copy_ready_workflow_version"]},
+              ${transaction.json({
+                after: {
+                  copy_ready_workflow_version: nextVersion,
+                },
+              })},
+              ${[pilotItem.pilot_run_id, skuId]}, 'copy_ready_revision_human_confirmed',
+              ${actor.identityId}
+            )
+          `;
+          const pilotTotals = await transaction<
+            Array<{
+              item_count: number;
+              completed_count: number;
+              p50_seconds: number | string | null;
+              invalid_attempt_count: number;
+              missing_required_image_count: number;
+              label_location_mismatch_count: number;
+              misputaway_count: number;
+            }>
+          >`
+            with item_totals as (
+              select count(*)::integer as item_count,
+                     count(completed_at)::integer as completed_count,
+                     percentile_cont(0.5) within group (order by elapsed_seconds)
+                       filter (where elapsed_seconds is not null) as p50_seconds
+              from pilot_item_measurement
+              where workspace_id = ${workspaceId}
+                and pilot_run_id = ${pilotItem.pilot_run_id}
+            ), event_totals as (
+              select
+                count(*) filter (where event_type = 'invalid_attempt')::integer
+                  as invalid_attempt_count,
+                count(*) filter (where event_type = 'missing_required_image')::integer
+                  as missing_required_image_count,
+                count(*) filter (where event_type = 'label_location_mismatch')::integer
+                  as label_location_mismatch_count,
+                count(*) filter (where event_type = 'misputaway')::integer
+                  as misputaway_count
+              from pilot_exception_event
+              where workspace_id = ${workspaceId}
+                and pilot_run_id = ${pilotItem.pilot_run_id}
+            )
+            select item_totals.*, event_totals.*
+            from item_totals cross join event_totals
+          `;
+          const totals = pilotTotals[0];
+          if (totals?.item_count === 10 && totals.completed_count === 10) {
+            const passed =
+              Number(totals.p50_seconds) <= 300 &&
+              totals.invalid_attempt_count === 0 &&
+              totals.missing_required_image_count === 0 &&
+              totals.label_location_mismatch_count === 0 &&
+              totals.misputaway_count === 0;
+            await transaction`
+              update pilot_run
+              set state = ${passed ? "completed" : "failed"},
+                  completed_at = statement_timestamp()
+              where workspace_id = ${workspaceId} and id = ${pilotItem.pilot_run_id}
+                and state = 'active'
+            `;
+          }
+        }
         await transaction`
           insert into outbox_event (workspace_id, event_type, aggregate_type, aggregate_id, payload)
           values (${workspaceId}, 'p0.workflow.advanced', 'product_sku', ${skuId}, ${transaction.json({ action: input.action, state: decision.nextState, version: nextVersion })})
@@ -2127,4 +2495,12 @@ function normalizeDatabaseError(error: unknown): RepositoryError {
     }
   }
   return new RepositoryError("database_error", "The database operation failed safely");
+}
+
+function safeMinor(value: string | number): number {
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed)) {
+    throw new RepositoryError("database_error", "A money total exceeded the safe integer range");
+  }
+  return parsed;
 }

@@ -1,19 +1,20 @@
 "use client";
 
 import type {
-  AccountingExportResponse,
-  FinancialSummaryResponse,
   MeasurementResponse,
   OrderOperationResponse,
   P0ItemResponse,
+  PilotRunResponse,
 } from "@resale/contracts";
-import { useCallback, useEffect, useState } from "react";
+import { listingPrepPilotFixtures, pilotFixtureCategories } from "@resale/contracts";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   clearCaptureUploads,
   loadCaptureUploads,
   markCaptureUploaded,
   prepareCaptureUpload,
 } from "../lib/capture-outbox";
+import { AccountingWorkspace } from "./accounting-workspace";
 import { ProductResearchPanel } from "./product-research-panel";
 
 type Stage = "purchase" | "capture" | "listing" | "order" | "accounting";
@@ -46,6 +47,26 @@ const emptyMeasurements: Record<MeasurementKey, string> = {
   着丈: "",
 };
 
+type PilotEventType =
+  | "invalid_attempt"
+  | "missing_required_image"
+  | "measurement_rework"
+  | "label_location_mismatch"
+  | "misputaway"
+  | "network_retry"
+  | "manual_correction";
+
+type PendingPilotEvent = {
+  workspaceId: string;
+  runId: string;
+  eventType: PilotEventType;
+  detailCode: string;
+  idempotencyKey: string;
+};
+
+class ExpectedPilotReworkError extends Error {}
+class PilotEventSyncPendingError extends Error {}
+
 export function P0Workspace({ workspaceId }: { workspaceId: string }) {
   const [stage, setStage] = useState<Stage>("purchase");
   const [items, setItems] = useState<P0ItemResponse[]>([]);
@@ -57,11 +78,13 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
   const [measurements, setMeasurements] =
     useState<Record<MeasurementKey, string>>(emptyMeasurements);
   const [measurementReviewReason, setMeasurementReviewReason] = useState("");
-  const [financial, setFinancial] = useState<FinancialSummaryResponse | null>(null);
-  const [accountingExport, setAccountingExport] = useState<AccountingExportResponse | null>(null);
   const [addressLeaseId, setAddressLeaseId] = useState<string | null>(null);
   const [shippingAddressView, setShippingAddressView] = useState<string | null>(null);
   const [assignmentMessage, setAssignmentMessage] = useState("");
+  const [pilotRun, setPilotRun] = useState<PilotRunResponse | null>(null);
+  const [pendingPilotEventCount, setPendingPilotEventCount] = useState(0);
+  const pageInstanceId = useRef(crypto.randomUUID()).current;
+  const initialPilotResumeChecked = useRef(false);
 
   const item = items.find((candidate) => candidate.skuId === selectedSkuId) ?? items[0] ?? null;
   const refreshItems = useCallback(async () => {
@@ -73,12 +96,79 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
         : (result[0]?.skuId ?? null),
     );
   }, [workspaceId]);
+  const refreshPilotRun = useCallback(async () => {
+    const result = await requestJson<PilotRunResponse | null>(
+      `/v1/workspaces/${workspaceId}/pilot-runs/latest`,
+    );
+    setPilotRun(result);
+  }, [workspaceId]);
+  const syncPendingPilotEvents = useCallback(
+    async (runId?: string): Promise<PilotRunResponse | null> => {
+      try {
+        const result = await flushPendingPilotEvents(workspaceId, runId);
+        setPendingPilotEventCount(result.remainingCount);
+        if (result.latestRun && runId) setPilotRun(result.latestRun);
+        if (!runId) await refreshPilotRun();
+        return result.latestRun;
+      } catch (reason) {
+        setPendingPilotEventCount(countPendingPilotEvents(workspaceId, runId));
+        throw reason;
+      }
+    },
+    [refreshPilotRun, workspaceId],
+  );
 
   useEffect(() => {
     refreshItems()
       .catch((reason: unknown) => setError(errorMessage(reason)))
       .finally(() => setLoading(false));
   }, [refreshItems]);
+
+  useEffect(() => {
+    refreshPilotRun().catch((reason: unknown) => setError(errorMessage(reason)));
+  }, [refreshPilotRun]);
+
+  useEffect(() => {
+    setPendingPilotEventCount(countPendingPilotEvents(workspaceId));
+    const retry = () => {
+      void syncPendingPilotEvents().catch(() => undefined);
+    };
+    retry();
+    window.addEventListener("online", retry);
+    return () => window.removeEventListener("online", retry);
+  }, [syncPendingPilotEvents, workspaceId]);
+
+  useEffect(() => {
+    if (!pilotRun || initialPilotResumeChecked.current) return;
+    initialPilotResumeChecked.current = true;
+    const incomplete = pilotRun.items.find((candidate) => candidate.completedAt === null);
+    if (pilotRun.state !== "active" || !incomplete) return;
+    const marker = readPilotActiveMarker(workspaceId);
+    if (
+      marker?.pilotRunId === pilotRun.runId &&
+      marker.skuId === incomplete.skuId &&
+      marker.pageInstanceId === pageInstanceId
+    ) {
+      return;
+    }
+    const event: PendingPilotEvent = {
+      workspaceId,
+      runId: pilotRun.runId,
+      eventType: "invalid_attempt",
+      detailCode: "browser_reload_or_reopen",
+      idempotencyKey: crypto.randomUUID(),
+    };
+    void postPilotEventRequest(event)
+      .then((updated) => {
+        setPilotRun(updated);
+        sessionStorage.removeItem(pilotActiveMarkerKey(workspaceId));
+        setError("途中の再読み込みを検知したため、このパイロット試行は失敗として保存しました。");
+      })
+      .catch(() => {
+        enqueuePilotEvent(event);
+        setPendingPilotEventCount(countPendingPilotEvents(workspaceId, pilotRun.runId));
+      });
+  }, [pageInstanceId, pilotRun, workspaceId]);
 
   useEffect(() => {
     if (loading || !item) return;
@@ -95,7 +185,6 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
       if (entry) restored[entry[0] as MeasurementKey] = String(measurement.value);
     }
     setMeasurements(restored);
-    setAccountingExport(item.accountingExport);
   }, [item]);
 
   useEffect(() => {
@@ -124,6 +213,16 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
     (value) => Number(value) > 0 && Number(value) <= 250,
   );
   const description = item?.listingCandidate.text ?? "商品情報を読み込んでいます。";
+  const activePilotItem =
+    pilotRun?.state === "active" && item
+      ? (pilotRun.items.find((candidate) => candidate.skuId === item.skuId) ?? null)
+      : null;
+  const lastPilotItem = pilotRun?.items.at(-1) ?? null;
+  const canStartNextPilotItem =
+    pilotRun?.state === "active" && (!lastPilotItem || lastPilotItem.completedAt !== null);
+  const nextPilotFixture = canStartNextPilotItem
+    ? (listingPrepPilotFixtures[pilotRun.items.length] ?? null)
+    : null;
 
   async function run(action: () => Promise<void>) {
     setBusy(true);
@@ -131,14 +230,46 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
     try {
       await action();
     } catch (reason) {
+      if (activePilotItem && activePilotItem.completedAt === null) {
+        if (
+          !(reason instanceof ExpectedPilotReworkError) &&
+          !(reason instanceof PilotEventSyncPendingError)
+        ) {
+          if (reason instanceof TypeError) {
+            await recordPilotEvent("network_retry", "request_transport_error");
+          }
+          await recordPilotEvent("invalid_attempt", "workflow_action_error");
+        }
+      }
       setError(errorMessage(reason));
     } finally {
       setBusy(false);
     }
   }
 
+  async function ensurePilotEventsSynced(): Promise<void> {
+    if (!pilotRun || pilotRun.state !== "active") return;
+    try {
+      const updated = await syncPendingPilotEvents(pilotRun.runId);
+      if (countPendingPilotEvents(workspaceId, pilotRun.runId) > 0) {
+        throw new Error("pending pilot events remain");
+      }
+      if (updated && updated.state !== "active") {
+        throw new PilotEventSyncPendingError(
+          "同期待ちの例外記録により、このパイロットは不合格になりました。画面を更新して通常作業として続けてください。",
+        );
+      }
+    } catch (reason) {
+      if (reason instanceof PilotEventSyncPendingError) throw reason;
+      throw new PilotEventSyncPendingError(
+        "パイロットの例外記録が同期待ちです。再送が完了するまで、次の計測操作には進めません。",
+      );
+    }
+  }
+
   async function createPurchase(form: FormData) {
     await run(async () => {
+      if (textField(form, "pilotRunId")) await ensurePilotEventsSynced();
       const created = await requestJson<P0ItemResponse>(`/v1/workspaces/${workspaceId}/p0-items`, {
         method: "POST",
         body: JSON.stringify({
@@ -152,17 +283,43 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
           allocatedCostMinor: numberField(form, "allocatedCostMinor"),
           idempotencyKey: crypto.randomUUID(),
           humanConfirmed: true,
+          ...(textField(form, "pilotRunId") && textField(form, "productFixtureId")
+            ? {
+                pilot: {
+                  runId: textField(form, "pilotRunId"),
+                  productFixtureId: textField(form, "productFixtureId"),
+                },
+              }
+            : {}),
         }),
       });
+      const pilotRunId = textField(form, "pilotRunId");
+      if (pilotRunId) {
+        sessionStorage.setItem(
+          pilotActiveMarkerKey(workspaceId),
+          JSON.stringify({ pilotRunId, skuId: created.skuId, pageInstanceId }),
+        );
+      }
       await refreshItems();
+      await refreshPilotRun();
       setSelectedSkuId(created.skuId);
       setStage("capture");
     });
   }
 
   async function confirmCapture() {
-    if (!item || !measurementComplete || photoRoles.some(({ id }) => !photos[id])) return;
+    if (!item) return;
+    if (photoRoles.some(({ id }) => !photos[id])) {
+      await recordPilotEvent("missing_required_image", "capture_confirm_without_four_photos");
+      setError("写真4種（正面・背面・ブランドタグ・品質表示）を選択してください。");
+      return;
+    }
+    if (!measurementComplete) {
+      setError("4項目の採寸値を確認してください。");
+      return;
+    }
     await run(async () => {
+      if (activePilotItem) await ensurePilotEventsSynced();
       const assetIds: string[] = [];
       for (const { id: role } of photoRoles) {
         const file = photos[role];
@@ -212,7 +369,12 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
       const needsReview = savedMeasurements.filter((measurement) => measurement.requiresReview);
       await refreshItems();
       if (needsReview.length > 0) {
-        throw new Error(
+        let remainingReworkEvents = needsReview.length;
+        while (remainingReworkEvents > 0) {
+          await recordPilotEvent("measurement_rework", "difference_over_two_cm");
+          remainingReworkEvents -= 1;
+        }
+        throw new ExpectedPilotReworkError(
           "前回との差が2cmを超えています。再測定し、正しい場合は確認理由を選んで再保存してください。",
         );
       }
@@ -231,14 +393,17 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
     )
       return;
     await run(async () => {
+      if (activePilotItem) await ensurePilotEventsSynced();
       await advanceWorkflow(
         item.skuId,
         "confirm_listing",
         item.listingCandidate.referenceIds,
         true,
       );
+      if (activePilotItem) sessionStorage.removeItem(pilotActiveMarkerKey(workspaceId));
       await navigator.clipboard?.writeText(description).catch(() => undefined);
       await refreshItems();
+      await refreshPilotRun();
       setStage("order");
     });
   }
@@ -259,6 +424,63 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
         manualChannelHandoff,
       }),
     });
+  }
+
+  async function startPilot(form: FormData) {
+    await run(async () => {
+      try {
+        await syncPendingPilotEvents();
+      } catch {
+        throw new PilotEventSyncPendingError(
+          "以前のパイロット記録が同期待ちです。再送を完了してから新しい計測を開始してください。",
+        );
+      }
+      if (countPendingPilotEvents(workspaceId) > 0) {
+        throw new PilotEventSyncPendingError(
+          "以前のパイロット記録が同期待ちです。再送を完了してから新しい計測を開始してください。",
+        );
+      }
+      const viewport = `${window.innerWidth}x${window.innerHeight}`;
+      const created = await requestJson<PilotRunResponse>(
+        `/v1/workspaces/${workspaceId}/pilot-runs`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            protocolVersion: "listing_prep_pilot_v1.0.0",
+            commitSha: textField(form, "commitSha").toLowerCase(),
+            migrationVersion: "0028",
+            platform: navigator.platform || "Windows",
+            browser: navigator.userAgent.slice(0, 200),
+            viewport,
+            warmupCompleted: true,
+            humanConfirmed: true,
+          }),
+        },
+      );
+      setPilotRun(created);
+      setStage("purchase");
+    });
+  }
+
+  async function recordPilotEvent(eventType: PilotEventType, detailCode: string): Promise<void> {
+    if (!pilotRun || pilotRun.state !== "active") return;
+    const pending: PendingPilotEvent = {
+      workspaceId,
+      runId: pilotRun.runId,
+      eventType,
+      detailCode,
+      idempotencyKey: crypto.randomUUID(),
+    };
+    try {
+      const updated = await postPilotEventRequest(pending);
+      setPilotRun(updated);
+      if (updated.state !== "active") {
+        sessionStorage.removeItem(pilotActiveMarkerKey(workspaceId));
+      }
+    } catch {
+      enqueuePilotEvent(pending);
+      setPendingPilotEventCount(countPendingPilotEvents(workspaceId, pilotRun.runId));
+    }
   }
 
   async function createOrder(form: FormData) {
@@ -381,36 +603,6 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
     });
   }
 
-  async function loadFinancial() {
-    if (!item?.orderId) return;
-    await run(async () => {
-      setFinancial(
-        await requestJson<FinancialSummaryResponse>(
-          `/v1/workspaces/${workspaceId}/orders/${item.orderId}/financial-summary`,
-        ),
-      );
-    });
-  }
-
-  async function createAccountingExport() {
-    if (!item?.orderId) return;
-    await run(async () => {
-      const result = await requestJson<AccountingExportResponse>(
-        `/v1/workspaces/${workspaceId}/orders/${item.orderId}/accounting-exports`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            approvedAt: new Date().toISOString(),
-            idempotencyKey: crypto.randomUUID(),
-            humanApproved: true,
-          }),
-        },
-      );
-      setAccountingExport(result);
-      await refreshItems();
-    });
-  }
-
   if (loading) return <p role="status">実データを読み込んでいます…</p>;
 
   return (
@@ -420,6 +612,24 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
           {error}
         </p>
       ) : null}
+      <PilotPanel
+        busy={busy}
+        pilotRun={pilotRun}
+        pendingEventCount={pendingPilotEventCount}
+        nextFixture={nextPilotFixture}
+        onStart={startPilot}
+        onRetryPending={() => {
+          void run(async () => {
+            try {
+              await syncPendingPilotEvents(pilotRun?.runId);
+            } catch {
+              throw new PilotEventSyncPendingError(
+                "例外記録をまだ送信できません。通信を確認して、もう一度再送してください。",
+              );
+            }
+          });
+        }}
+      />
       <nav className="workflowStages" aria-label="試験商品の工程">
         {stages.map((entry, index) => (
           <button
@@ -471,7 +681,15 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
       ) : null}
 
       {stage === "purchase" ? (
-        <PurchasePanel busy={busy} onSubmit={createPurchase} item={item} />
+        <PurchasePanel
+          key={nextPilotFixture ?? "standard-purchase"}
+          busy={busy}
+          onSubmit={createPurchase}
+          item={item}
+          pilotRunId={pilotRun?.state === "active" ? pilotRun.runId : null}
+          pilotFixture={nextPilotFixture}
+          pilotBlocked={pilotRun?.state === "active" && nextPilotFixture === null}
+        />
       ) : null}
 
       {stage === "capture" && item ? (
@@ -633,16 +851,104 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
       ) : null}
 
       {stage === "accounting" && item ? (
-        <AccountingPanel
-          item={item}
-          busy={busy}
-          financial={financial}
-          accountingExport={accountingExport}
-          onLoad={loadFinancial}
-          onExport={createAccountingExport}
+        <AccountingWorkspace
+          workspaceId={workspaceId}
+          orderId={item.orderId}
+          preferredFormat="generic_journal_v1"
         />
       ) : null}
     </div>
+  );
+}
+
+function PilotPanel({
+  busy,
+  pilotRun,
+  pendingEventCount,
+  nextFixture,
+  onStart,
+  onRetryPending,
+}: {
+  busy: boolean;
+  pilotRun: PilotRunResponse | null;
+  pendingEventCount: number;
+  nextFixture: (typeof listingPrepPilotFixtures)[number] | null;
+  onStart: (form: FormData) => Promise<void>;
+  onRetryPending: () => void;
+}) {
+  const summary = pilotRun?.summary;
+  const finished = pilotRun && pilotRun.state !== "active";
+  return (
+    <section className="pilotPanel panel" aria-labelledby="pilot-heading">
+      <div className="workflowPanelHead">
+        <div>
+          <p className="eyebrow">10-PRODUCT LOCAL PILOT</p>
+          <h2 id="pilot-heading">10商品・出品準備時間の実測</h2>
+        </div>
+        <span className={summary?.passed ? "safeBadge" : "status"}>
+          {pilotRun ? `${summary?.completedItemCount ?? 0}/10・${pilotRun.state}` : "未開始"}
+        </span>
+      </div>
+      <p className="accountingDisclaimer">
+        Windowsの390×844表示・ローカルDB・架空商品だけで測ります。外部AI、販売サイト、Notion、Slack、会計サービスへ接続しません。
+      </p>
+      {pendingEventCount > 0 ? (
+        <div className="candidateNotice" role="alert">
+          <strong>例外記録 {pendingEventCount}件が同期待ちです</strong>
+          <p>サーバー保存が完了するまで、商品完了やパイロット合格として扱いません。</p>
+          <button type="button" disabled={busy} onClick={onRetryPending}>
+            例外記録を再送
+          </button>
+        </div>
+      ) : null}
+      {pilotRun ? (
+        <div className="pilotMetrics" aria-label="パイロット集計">
+          <span>
+            中央値{" "}
+            <strong>{summary?.p50Seconds === null ? "—" : `${summary?.p50Seconds}秒`}</strong>
+          </span>
+          <span>
+            P75 <strong>{summary?.p75Seconds === null ? "—" : `${summary?.p75Seconds}秒`}</strong>
+          </span>
+          <span>
+            無効試行 <strong>{summary?.invalidAttemptCount ?? 0}</strong>
+          </span>
+          <span>
+            再測定 <strong>{summary?.measurementReworkCount ?? 0}</strong>
+          </span>
+          <span>
+            誤格納 <strong>{summary?.misputawayCount ?? 0}</strong>
+          </span>
+        </div>
+      ) : null}
+      {pilotRun?.state === "active" ? (
+        <p>
+          次の固定商品: <strong>{nextFixture ?? "前の商品を完了してください"}</strong>
+          {nextFixture ? `（${pilotCategoryLabel(pilotFixtureCategories[nextFixture])}）` : ""}
+        </p>
+      ) : null}
+      {!pilotRun || finished ? (
+        <form className="compactForm" action={onStart}>
+          <label>
+            計測対象commit SHA（40文字）
+            <input
+              name="commitSha"
+              required
+              minLength={40}
+              maxLength={40}
+              pattern="[a-fA-F0-9]{40}"
+              placeholder="Gitの40文字の版番号"
+              autoComplete="off"
+            />
+          </label>
+          <label className="checkLine">
+            <input name="warmupCompleted" type="checkbox" required />
+            計測外の練習1点と、架空データだけを使うことを確認しました
+          </label>
+          <button disabled={busy || pendingEventCount > 0}>390×844で新しい10商品計測を開始</button>
+        </form>
+      ) : null}
+    </section>
   );
 }
 
@@ -650,11 +956,18 @@ function PurchasePanel({
   busy,
   onSubmit,
   item,
+  pilotRunId,
+  pilotFixture,
+  pilotBlocked,
 }: {
   busy: boolean;
   onSubmit: (form: FormData) => Promise<void>;
   item: P0ItemResponse | null;
+  pilotRunId: string | null;
+  pilotFixture: (typeof listingPrepPilotFixtures)[number] | null;
+  pilotBlocked: boolean;
 }) {
+  const category = pilotFixture ? pilotCategoryLabel(pilotFixtureCategories[pilotFixture]) : "";
   return (
     <section className="workflowPanel panel" aria-labelledby="purchase-heading">
       <div className="workflowPanelHead">
@@ -665,26 +978,57 @@ function PurchasePanel({
         <span className={item ? "safeBadge" : "status"}>{item ? "DB保存済み" : "未登録"}</span>
       </div>
       <form action={onSubmit}>
+        {pilotRunId && pilotFixture ? (
+          <>
+            <input name="pilotRunId" type="hidden" value={pilotRunId} />
+            <input name="productFixtureId" type="hidden" value={pilotFixture} />
+          </>
+        ) : null}
         <div className="measurementGrid">
           <label>
             SKUコード
-            <input name="skuCode" required defaultValue="SKU-2608-0001" />
+            <input
+              name="skuCode"
+              required
+              defaultValue={pilotFixture ? `PILOT-${pilotFixture}` : ""}
+              placeholder="例: SKU-2026-0001"
+            />
           </label>
           <label>
             商品名
-            <input name="title" required defaultValue="ネイビーシャツ" />
+            <input
+              name="title"
+              required
+              defaultValue={pilotFixture ? `架空試験商品 ${pilotFixture}` : ""}
+              placeholder="現物を確認して入力"
+            />
           </label>
           <label>
             カテゴリ
-            <input name="category" required defaultValue="トップス" />
+            <input
+              name="category"
+              required
+              readOnly={Boolean(pilotFixture)}
+              defaultValue={category}
+            />
           </label>
           <label>
             仕入先
-            <input name="supplierName" required defaultValue="仕入先A" />
+            <input
+              name="supplierName"
+              required
+              defaultValue={pilotFixture ? "架空試験仕入先" : ""}
+              placeholder="仕入先名"
+            />
           </label>
           <label>
             証憑参照番号
-            <input name="receiptReference" required defaultValue={`REC-${Date.now()}`} />
+            <input
+              name="receiptReference"
+              required
+              defaultValue={pilotFixture ? `PILOT-REC-${pilotFixture}` : ""}
+              placeholder="レシート・領収書の参照番号"
+            />
           </label>
           <label>
             購入日時
@@ -697,11 +1041,23 @@ function PurchasePanel({
           </label>
           <label>
             証憑合計（円）
-            <input name="receiptAmountMinor" type="number" min="0" required defaultValue="1500" />
+            <input
+              name="receiptAmountMinor"
+              type="number"
+              min="0"
+              required
+              defaultValue={pilotFixture ? "1500" : ""}
+            />
           </label>
           <label>
             このSKUの原価（円）
-            <input name="allocatedCostMinor" type="number" min="0" required defaultValue="1500" />
+            <input
+              name="allocatedCostMinor"
+              type="number"
+              min="0"
+              required
+              defaultValue={pilotFixture ? "1500" : ""}
+            />
           </label>
         </div>
         <div className="humanGate">
@@ -709,8 +1065,12 @@ function PurchasePanel({
             <strong>証憑参照と金額を人が照合</strong>
             <p>AIは原価・税区分を確定しません。住所などの個人情報は入力しないでください。</p>
           </div>
-          <button type="submit" disabled={busy}>
-            仕入を確認して在庫番号を発行
+          <button type="submit" disabled={busy || pilotBlocked}>
+            {pilotBlocked
+              ? "前の試験商品を完了してください"
+              : pilotFixture
+                ? `${pilotFixture}の計測を開始`
+                : "仕入を確認して在庫番号を発行"}
           </button>
         </div>
       </form>
@@ -766,23 +1126,29 @@ function OrderPanel({
           <div className="measurementGrid">
             <label>
               注文番号
-              <input name="orderNumber" required defaultValue={`ORD-${Date.now()}`} />
+              <input
+                name="orderNumber"
+                required
+                defaultValue=""
+                placeholder="公式画面の注文番号"
+                autoComplete="off"
+              />
             </label>
             <label>
               販売額
-              <input name="saleAmountMinor" type="number" min="1" required defaultValue="5000" />
+              <input name="saleAmountMinor" type="number" min="1" required defaultValue="" />
             </label>
             <label>
               販売手数料
-              <input name="sellingFeeMinor" type="number" min="0" required defaultValue="500" />
+              <input name="sellingFeeMinor" type="number" min="0" required defaultValue="" />
             </label>
             <label>
               送料
-              <input name="shippingCostMinor" type="number" min="0" required defaultValue="750" />
+              <input name="shippingCostMinor" type="number" min="0" required defaultValue="" />
             </label>
             <label>
               梱包費
-              <input name="packagingCostMinor" type="number" min="0" required defaultValue="100" />
+              <input name="packagingCostMinor" type="number" min="0" required defaultValue="" />
             </label>
             <label>
               発送先（暗号化保存）
@@ -850,97 +1216,6 @@ function OrderPanel({
   );
 }
 
-function AccountingPanel({
-  item,
-  busy,
-  financial,
-  accountingExport,
-  onLoad,
-  onExport,
-}: {
-  item: P0ItemResponse;
-  busy: boolean;
-  financial: FinancialSummaryResponse | null;
-  accountingExport: AccountingExportResponse | null;
-  onLoad: () => Promise<void>;
-  onExport: () => Promise<void>;
-}) {
-  return (
-    <section className="workflowPanel panel" aria-labelledby="accounting-heading">
-      <div className="workflowPanelHead">
-        <div>
-          <p className="eyebrow">ACCOUNTING CANDIDATE</p>
-          <h2 id="accounting-heading">実取引の運用収支と仕訳候補</h2>
-        </div>
-        <span className={accountingExport ? "safeBadge" : "status"}>
-          {accountingExport ? "人が承認済み" : "候補・未確定"}
-        </span>
-      </div>
-      {financial ? (
-        <div className="profitWaterfall">
-          <div>
-            <span>販売額</span>
-            <strong>{yen(financial.saleAmountMinor)}</strong>
-          </div>
-          <div>
-            <span>商品原価</span>
-            <strong>−{yen(financial.costAmountMinor)}</strong>
-          </div>
-          <div>
-            <span>販売手数料</span>
-            <strong>−{yen(financial.sellingFeeMinor)}</strong>
-          </div>
-          <div>
-            <span>送料</span>
-            <strong>−{yen(financial.shippingCostMinor)}</strong>
-          </div>
-          <div>
-            <span>梱包費</span>
-            <strong>−{yen(financial.packagingCostMinor)}</strong>
-          </div>
-          <div className="total">
-            <span>取引貢献利益</span>
-            <strong>
-              {financial.contributionProfitMinor === null
-                ? "—"
-                : yen(financial.contributionProfitMinor)}
-            </strong>
-          </div>
-        </div>
-      ) : (
-        <button type="button" disabled={busy || !item.orderId} onClick={() => void onLoad()}>
-          DBから収支を読み込む
-        </button>
-      )}
-      <p className="accountingDisclaimer">
-        運用分析の参考値です。会計上の売上・利益・所得・税額を示すものではありません。
-      </p>
-      <div className="humanGate">
-        <div>
-          <strong>帳簿へ直接登録しません</strong>
-          <p>人または税理士が根拠を確認した仕訳候補だけをCSVにします。</p>
-        </div>
-        <button
-          type="button"
-          disabled={busy || !financial || Boolean(accountingExport)}
-          onClick={() => void onExport()}
-        >
-          {accountingExport ? "CSV履歴を保存済み" : "根拠を確認してCSV作成"}
-        </button>
-      </div>
-      {accountingExport ? (
-        <a
-          className="exportButton"
-          href={accountingExport.contentUrl}
-          download={accountingExport.filename}
-        >
-          検証済みCSV候補をダウンロード
-        </a>
-      ) : null}
-    </section>
-  );
-}
-
 function WorkflowNext({
   enabled,
   label,
@@ -969,6 +1244,109 @@ async function requestJson<T = unknown>(url: string, init?: RequestInit): Promis
     );
   return payload as T;
 }
+
+async function postPilotEventRequest(event: PendingPilotEvent): Promise<PilotRunResponse> {
+  return requestJson<PilotRunResponse>(
+    `/v1/workspaces/${event.workspaceId}/pilot-runs/${event.runId}/events`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        eventType: event.eventType,
+        detailCode: event.detailCode,
+        idempotencyKey: event.idempotencyKey,
+        humanConfirmed: true,
+      }),
+    },
+  );
+}
+
+const pilotPendingStorageKey = "resale-ops:pilot-pending-events:v1";
+
+function readPendingPilotEvents(): PendingPilotEvent[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(pilotPendingStorageKey) ?? "[]") as unknown;
+    return Array.isArray(parsed) ? (parsed as PendingPilotEvent[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function pendingPilotEventsFor(workspaceId: string, runId?: string): PendingPilotEvent[] {
+  return readPendingPilotEvents().filter(
+    (event) => event.workspaceId === workspaceId && (!runId || event.runId === runId),
+  );
+}
+
+function countPendingPilotEvents(workspaceId: string, runId?: string): number {
+  return pendingPilotEventsFor(workspaceId, runId).length;
+}
+
+async function flushPendingPilotEvents(
+  workspaceId: string,
+  runId?: string,
+): Promise<{ latestRun: PilotRunResponse | null; remainingCount: number }> {
+  let latestRun: PilotRunResponse | null = null;
+  for (const event of pendingPilotEventsFor(workspaceId, runId)) {
+    latestRun = await postPilotEventRequest(event);
+    removePendingPilotEvent(event.idempotencyKey);
+  }
+  return {
+    latestRun,
+    remainingCount: countPendingPilotEvents(workspaceId, runId),
+  };
+}
+
+function enqueuePilotEvent(event: PendingPilotEvent): void {
+  const pending = readPendingPilotEvents();
+  if (pending.some((candidate) => candidate.idempotencyKey === event.idempotencyKey)) return;
+  try {
+    localStorage.setItem(pilotPendingStorageKey, JSON.stringify([...pending, event]));
+  } catch {
+    // The visible workflow error remains. A pilot run is never reported as passed without server data.
+  }
+}
+
+function removePendingPilotEvent(idempotencyKey: string): void {
+  try {
+    localStorage.setItem(
+      pilotPendingStorageKey,
+      JSON.stringify(
+        readPendingPilotEvents().filter((event) => event.idempotencyKey !== idempotencyKey),
+      ),
+    );
+  } catch {
+    // A repeated event reuses the same idempotency key and is safe to retry.
+  }
+}
+
+function pilotActiveMarkerKey(workspaceId: string): string {
+  return `resale-ops:pilot-active:${workspaceId}`;
+}
+
+function readPilotActiveMarker(workspaceId: string): {
+  pilotRunId: string;
+  skuId: string;
+  pageInstanceId: string;
+} | null {
+  try {
+    const parsed = JSON.parse(
+      sessionStorage.getItem(pilotActiveMarkerKey(workspaceId)) ?? "null",
+    ) as { pilotRunId?: unknown; skuId?: unknown; pageInstanceId?: unknown } | null;
+    return parsed &&
+      typeof parsed.pilotRunId === "string" &&
+      typeof parsed.skuId === "string" &&
+      typeof parsed.pageInstanceId === "string"
+      ? {
+          pilotRunId: parsed.pilotRunId,
+          skuId: parsed.skuId,
+          pageInstanceId: parsed.pageInstanceId,
+        }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 function textField(form: FormData, name: string): string {
   const value = form.get(name);
   if (typeof value !== "string" || !value.trim()) throw new Error(`${name}を入力してください。`);
@@ -987,8 +1365,9 @@ function localDateTimeValue(): string {
   const now = new Date(Date.now() - new Date().getTimezoneOffset() * 60_000);
   return now.toISOString().slice(0, 16);
 }
-function yen(value: number): string {
-  return `${new Intl.NumberFormat("ja-JP").format(value)}円`;
+
+function pilotCategoryLabel(category: "tops" | "outer" | "pants" | "knit"): string {
+  return { tops: "トップス", outer: "アウター", pants: "パンツ", knit: "ニット" }[category];
 }
 function workflowStateRank(state: P0ItemResponse["workflowState"] | undefined): number {
   return [

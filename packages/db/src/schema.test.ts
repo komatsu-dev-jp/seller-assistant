@@ -80,6 +80,51 @@ const observationCompletenessMigrationPath = fileURLToPath(
   new URL("../migrations/0020_stocktake_observation_completeness.sql", import.meta.url),
 );
 const observationCompletenessSql = readFileSync(observationCompletenessMigrationPath, "utf8");
+const pilotMigrationPath = fileURLToPath(
+  new URL("../migrations/0023_listing_prep_pilot.sql", import.meta.url),
+);
+const pilotSql = readFileSync(pilotMigrationPath, "utf8");
+const restorePilotEventsMigrationPath = fileURLToPath(
+  new URL("../migrations/0024_restore_location_owner_pulse.sql", import.meta.url),
+);
+const restorePilotEventsSql = readFileSync(restorePilotEventsMigrationPath, "utf8");
+const latePilotReconciliationMigrationPath = fileURLToPath(
+  new URL("../migrations/0025_pilot_late_exception_reconciliation.sql", import.meta.url),
+);
+const latePilotReconciliationSql = readFileSync(latePilotReconciliationMigrationPath, "utf8");
+const activeLatePilotReconciliationMigrationPath = fileURLToPath(
+  new URL("../migrations/0026_pilot_active_late_exception_reconciliation.sql", import.meta.url),
+);
+const activeLatePilotReconciliationSql = readFileSync(
+  activeLatePilotReconciliationMigrationPath,
+  "utf8",
+);
+const modeAwareStocktakeApprovalMigrationPath = fileURLToPath(
+  new URL("../migrations/0027_mode_aware_stocktake_approval.sql", import.meta.url),
+);
+const modeAwareStocktakeApprovalSql = readFileSync(modeAwareStocktakeApprovalMigrationPath, "utf8");
+const completeStocktakeApprovalMigrationPath = fileURLToPath(
+  new URL("../migrations/0028_complete_stocktake_approval.sql", import.meta.url),
+);
+const completeStocktakeApprovalSql = readFileSync(completeStocktakeApprovalMigrationPath, "utf8");
+const safeAccountMappingReplacementMigrationPath = fileURLToPath(
+  new URL("../migrations/0029_safe_account_mapping_replacement.sql", import.meta.url),
+);
+const safeAccountMappingReplacementSql = readFileSync(
+  safeAccountMappingReplacementMigrationPath,
+  "utf8",
+);
+const sameLocationRestoreMigrationPath = fileURLToPath(
+  new URL("../migrations/0030_same_location_discrepancy_restore.sql", import.meta.url),
+);
+const sameLocationRestoreSql = readFileSync(sameLocationRestoreMigrationPath, "utf8");
+const restoreActorMovementSnapshotMigrationPath = fileURLToPath(
+  new URL("../migrations/0031_restore_actor_and_movement_snapshot.sql", import.meta.url),
+);
+const restoreActorMovementSnapshotSql = readFileSync(
+  restoreActorMovementSnapshotMigrationPath,
+  "utf8",
+);
 
 describe("P0 PostgreSQL migration contract", () => {
   it("enables and forces workspace RLS for business tables", () => {
@@ -334,6 +379,253 @@ describe("P0 PostgreSQL migration contract", () => {
       "grant select, insert on count_session_post_start_movement to resale_app_runtime",
     );
     expect(postStartMovementSql).toContain("force row level security");
+  });
+
+  it("stores an immutable, RLS-protected ten-product pilot with server timestamps", () => {
+    expect(pilotSql).toContain("create table pilot_run");
+    expect(pilotSql).toContain("create table pilot_item_measurement");
+    expect(pilotSql).toContain("listing_prep_pilot_v1.0.0");
+    expect(pilotSql).toContain("viewport = '390x844'");
+    expect(pilotSql).toContain("statement_timestamp()");
+    expect(pilotSql).toContain("pilot run already contains ten products");
+    expect(pilotSql).toContain("completed pilot item measurements are immutable");
+    expect(pilotSql).toContain("force row level security");
+    expect(pilotSql).not.toMatch(/grant\s+(?:all|delete|truncate)/iu);
+  });
+
+  it("appends server-timestamped pilot events and restores inventory to the scanned location", () => {
+    expect(restorePilotEventsSql).toContain("create table pilot_exception_event");
+    expect(restorePilotEventsSql).toContain("pilot exception events are append-only");
+    expect(restorePilotEventsSql).toContain("idempotency_key uuid not null");
+    expect(restorePilotEventsSql).toContain(
+      "recorded_at timestamptz not null default statement_timestamp()",
+    );
+    expect(restorePilotEventsSql).toContain("force row level security");
+    expect(restorePilotEventsSql).toContain("'discrepancy_restore'");
+    expect(restorePilotEventsSql).toContain("set location_id = new.to_location_id");
+    expect(restorePilotEventsSql).not.toMatch(
+      /grant\s+(?:all|update|delete|truncate).*pilot_exception/iu,
+    );
+  });
+
+  it("consumes same-location restore scans without granting direct table updates", () => {
+    expect(sameLocationRestoreSql).toContain(
+      "create or replace function consume_discrepancy_confirmation_challenge",
+    );
+    expect(sameLocationRestoreSql).toContain("language plpgsql security definer");
+    expect(sameLocationRestoreSql).toContain(
+      "session_row.destination_location_id is not distinct from session_row.expected_location_id",
+    );
+    expect(sameLocationRestoreSql).toContain(
+      "unit_row.location_id is distinct from session_row.destination_location_id",
+    );
+    expect(sameLocationRestoreSql).toContain("the same-location restore scan became stale");
+    expect(sameLocationRestoreSql).toContain(
+      "revoke all on function consume_discrepancy_confirmation_challenge",
+    );
+    expect(sameLocationRestoreSql).toContain(
+      "grant execute on function consume_discrepancy_confirmation_challenge",
+    );
+    expect(sameLocationRestoreSql).not.toMatch(/grant\s+update\s+on\s+scan_session/iu);
+  });
+
+  it("rechecks the authenticated restore actor and an immutable movement snapshot", () => {
+    expect(restoreActorMovementSnapshotSql).toContain(
+      "add column inventory_movement_seq_snapshot bigint",
+    );
+    expect(restoreActorMovementSnapshotSql).toContain(
+      "new.inventory_movement_seq_snapshot := unit_row.movement_seq",
+    );
+    expect(restoreActorMovementSnapshotSql).toContain(
+      "target_actor_id is distinct from public.app_identity_id()",
+    );
+    expect(restoreActorMovementSnapshotSql).toContain(
+      "membership_row.role not in ('owner', 'inventory_manager')",
+    );
+    expect(restoreActorMovementSnapshotSql).toContain("for update");
+    expect(restoreActorMovementSnapshotSql).toContain("discrepancy_row.state <> expected_state");
+    expect(restoreActorMovementSnapshotSql).toContain(
+      "unit_row.movement_seq is distinct from session_row.inventory_movement_seq_snapshot",
+    );
+    expect(restoreActorMovementSnapshotSql).toContain("destination_row.state <> 'active'");
+    expect(restoreActorMovementSnapshotSql).toContain("not destination_row.can_store_inventory");
+    expect(restoreActorMovementSnapshotSql).toContain(
+      "the legacy discrepancy scan must be reissued",
+    );
+    expect(restoreActorMovementSnapshotSql).toContain("trusted-server boundary");
+    expect(restoreActorMovementSnapshotSql).not.toMatch(/grant\s+update\s+on\s+scan_session/iu);
+  });
+
+  it("reconciles queued safety exceptions without leaving a false pilot pass", () => {
+    expect(latePilotReconciliationSql).toContain("late pilot exception requires");
+    expect(latePilotReconciliationSql).toContain("latest_incomplete_item_id");
+    expect(latePilotReconciliationSql).toContain("latest_completed_item_id");
+    expect(latePilotReconciliationSql).toContain("new.state = 'failed'");
+    expect(latePilotReconciliationSql).toContain(
+      "finished pilot runs are immutable except for late exception invalidation",
+    );
+  });
+
+  it("accepts a lost-response event for only the latest eligible pilot item", () => {
+    expect(activeLatePilotReconciliationSql).toContain(
+      "migration_version in ('0023', '0024', '0025', '0026')",
+    );
+    expect(activeLatePilotReconciliationSql).toContain("latest_incomplete_item_id");
+    expect(activeLatePilotReconciliationSql).toContain("latest_completed_item_id");
+    expect(activeLatePilotReconciliationSql).toContain(
+      "pilot exception requires the latest incomplete item",
+    );
+    expect(activeLatePilotReconciliationSql).toContain(
+      "late pilot exception requires the latest completed item",
+    );
+    expect(activeLatePilotReconciliationSql).toContain(
+      "pilot exception requires the original run actor",
+    );
+    expect(activeLatePilotReconciliationSql).toContain(
+      "pilot exception item must belong to the run",
+    );
+    expect(activeLatePilotReconciliationSql).toContain("active run after a lost response");
+    expect(activeLatePilotReconciliationSql).not.toContain("if run_row.state = 'active'");
+  });
+
+  it("enforces the stocktake approval actor from the server-selected mode", () => {
+    const legacyRepairAt = modeAwareStocktakeApprovalSql.indexOf("update count_session");
+    const namedConstraintAt = modeAwareStocktakeApprovalSql.indexOf(
+      "add constraint count_session_approval_actor_mode_check",
+    );
+    const disableLegacyGuardAt = modeAwareStocktakeApprovalSql.indexOf(
+      "disable trigger inventory_discrepancy_transition_guard",
+    );
+    const synchronizeDiscrepancyAt = modeAwareStocktakeApprovalSql.indexOf(
+      "update inventory_discrepancy discrepancy",
+    );
+    const enableLegacyGuardAt = modeAwareStocktakeApprovalSql.indexOf(
+      "enable trigger inventory_discrepancy_transition_guard",
+    );
+
+    expect(disableLegacyGuardAt).toBeGreaterThan(-1);
+    expect(synchronizeDiscrepancyAt).toBeGreaterThan(disableLegacyGuardAt);
+    expect(enableLegacyGuardAt).toBeGreaterThan(synchronizeDiscrepancyAt);
+    expect(legacyRepairAt).toBeGreaterThan(enableLegacyGuardAt);
+    expect(legacyRepairAt).toBeGreaterThan(-1);
+    expect(namedConstraintAt).toBeGreaterThan(legacyRepairAt);
+    expect(modeAwareStocktakeApprovalSql).toMatch(
+      /The two distinct\s+-- stored actor IDs prove a minimum historical actor count of two/u,
+    );
+    expect(modeAwareStocktakeApprovalSql).toContain(
+      "active_member_count = greatest(active_member_count, 2)",
+    );
+    expect(modeAwareStocktakeApprovalSql).not.toMatch(/set\s+approved_by/iu);
+    expect(modeAwareStocktakeApprovalSql).not.toMatch(/set\s+approved_at/iu);
+    expect(modeAwareStocktakeApprovalSql).not.toMatch(/update\s+audit_event/iu);
+    expect(modeAwareStocktakeApprovalSql).not.toContain("session_replication_role");
+    expect(modeAwareStocktakeApprovalSql).not.toMatch(
+      /set\s+(?:state|evidence_media_id|confirmation_scan_session_id|reconfirmer_id|approver_id|confirmed_at|restored_at)/iu,
+    );
+    expect(modeAwareStocktakeApprovalSql).toContain(
+      "pg_get_expr(constraint_row.conbin, constraint_row.conrelid)",
+    );
+    expect(modeAwareStocktakeApprovalSql).toContain(
+      "approved_byisnullorapproved_by<>initial_counter_id",
+    );
+    expect(modeAwareStocktakeApprovalSql).toContain("matched_constraint_count <> 1");
+    expect(modeAwareStocktakeApprovalSql).toContain(
+      "expected exactly one legacy count_session approval actor constraint",
+    );
+    expect(modeAwareStocktakeApprovalSql).not.toContain(
+      "drop constraint count_session_state_check",
+    );
+    expect(modeAwareStocktakeApprovalSql).not.toContain(
+      "drop constraint count_session_membership_snapshot_check",
+    );
+    expect(modeAwareStocktakeApprovalSql).toContain(
+      "confirmation_mode = 'solo_reversible' and approved_by = initial_counter_id",
+    );
+    expect(modeAwareStocktakeApprovalSql).toContain(
+      "confirmation_mode = 'dual_actor' and approved_by <> initial_counter_id",
+    );
+    expect(modeAwareStocktakeApprovalSql).not.toContain("not valid");
+    expect(modeAwareStocktakeApprovalSql).toContain(
+      "migration_version in ('0023', '0024', '0025', '0026', '0027')",
+    );
+  });
+
+  it("requires complete approval metadata only in the approved state", () => {
+    const compatibilityCheckAt = completeStocktakeApprovalSql.indexOf(
+      "count_session approval state contains incomplete historical metadata",
+    );
+    const definitionMatchAt = completeStocktakeApprovalSql.indexOf(
+      "expected the 0027 count_session approval actor constraint",
+    );
+    const dropLegacyActorConstraintAt = completeStocktakeApprovalSql.indexOf(
+      "drop constraint count_session_approval_actor_mode_check",
+    );
+    const completeConstraintAt = completeStocktakeApprovalSql.indexOf(
+      "add constraint count_session_approval_state_actor_check",
+    );
+
+    expect(compatibilityCheckAt).toBeGreaterThan(-1);
+    expect(definitionMatchAt).toBeGreaterThan(compatibilityCheckAt);
+    expect(dropLegacyActorConstraintAt).toBeGreaterThan(definitionMatchAt);
+    expect(completeConstraintAt).toBeGreaterThan(dropLegacyActorConstraintAt);
+    expect(completeStocktakeApprovalSql).toContain(
+      "constraint_row.conname = 'count_session_approval_actor_mode_check'",
+    );
+    expect(completeStocktakeApprovalSql).toContain("approved_byisnull");
+    expect(completeStocktakeApprovalSql).toContain("approved_by=initial_counter_id");
+    expect(completeStocktakeApprovalSql).toContain("approved_by<>initial_counter_id");
+    expect(completeStocktakeApprovalSql).toContain("state = 'approved'");
+    expect(completeStocktakeApprovalSql).toContain("approved_by is not null");
+    expect(completeStocktakeApprovalSql).toContain("approved_at is not null");
+    expect(completeStocktakeApprovalSql).toContain(
+      "state <> 'approved' and approved_by is null and approved_at is null",
+    );
+    expect(completeStocktakeApprovalSql).not.toContain("drop constraint count_session_state_check");
+    expect(completeStocktakeApprovalSql).not.toContain(
+      "drop constraint count_session_confirmation_mode_check",
+    );
+    expect(completeStocktakeApprovalSql).not.toContain(
+      "drop constraint count_session_membership_snapshot_check",
+    );
+    expect(completeStocktakeApprovalSql).not.toContain("not valid");
+    expect(completeStocktakeApprovalSql).not.toMatch(/update\s+count_session/iu);
+    expect(completeStocktakeApprovalSql).toContain(
+      "migration_version in ('0023', '0024', '0025', '0026', '0027', '0028')",
+    );
+  });
+
+  it("replaces account mappings append-only without rewriting journal or export history", () => {
+    expect(safeAccountMappingReplacementSql).toContain("replaces_rule_id uuid");
+    expect(safeAccountMappingReplacementSql).toContain("change_reason_code text");
+    expect(safeAccountMappingReplacementSql).toContain(
+      "account mapping accounting fields are immutable; create a replacement version",
+    );
+    expect(safeAccountMappingReplacementSql).toContain(
+      "retiring an account mapping requires an atomic active replacement",
+    );
+    expect(safeAccountMappingReplacementSql).toContain("deferrable initially deferred");
+    expect(safeAccountMappingReplacementSql).toContain(
+      "mapping.status not in ('active', 'retired')",
+    );
+    expect(safeAccountMappingReplacementSql).toContain(
+      "tstzrange(existing.effective_from, existing.effective_until, '[)')",
+    );
+    expect(safeAccountMappingReplacementSql).toContain("new.created_by <> app_identity_id()");
+    expect(safeAccountMappingReplacementSql).toContain(
+      "new.approved_by is distinct from app_identity_id()",
+    );
+    expect(safeAccountMappingReplacementSql).toContain(
+      "membership.role in ('owner', 'accounting')",
+    );
+    expect(safeAccountMappingReplacementSql).toContain(
+      "an initial approved mapping must be active, open-ended, and approved by the session actor",
+    );
+    expect(safeAccountMappingReplacementSql).toContain("event.occurred_at >= new.effective_until");
+    expect(safeAccountMappingReplacementSql).toContain("or mapping.approved_at is null");
+    expect(safeAccountMappingReplacementSql).not.toMatch(/update\s+journal_candidate/iu);
+    expect(safeAccountMappingReplacementSql).not.toMatch(/update\s+export_batch/iu);
+    expect(safeAccountMappingReplacementSql).not.toMatch(/delete\s+from/iu);
+    expect(safeAccountMappingReplacementSql).not.toMatch(/update\s+audit_event/iu);
   });
 
   it("retains readable, duplicate, unknown and unreadable stocktake evidence", () => {

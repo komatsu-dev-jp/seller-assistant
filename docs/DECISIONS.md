@@ -116,3 +116,65 @@ APIキー、トークン、個人情報、生ログ、会話全文、一時的�
 - Verification: 公式Node.js Crypto文書とOWASP Password Storage Cheat Sheetを2026-08-15に確認。自動testと実画面で平文非保存、共通失敗、rate limit、Cookie、未接続停止を確認する。
 - Sources: https://nodejs.org/api/crypto.html / https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html
 - Follow-up: 実PostgreSQLを無料のローカル環境へ用意し、初期owner、session、rate limit、membership/RLSを結合検証する。
+
+### 2026-08-20 — 1人運用の時間差確認と会計未設定停止を採用する
+
+- Type: decision
+- Context: Claude Code第二次監査と現行mainの照合、ユーザーによる推奨Aの承認
+- Decision or rule: 有効メンバーが1人の期間だけ、在庫差異の重要確定へ `single_actor_delayed` を自動適用する。初回申請から24時間以上、別session、証拠写真1枚以上、定型理由と自由記述がそろった場合だけ本人の再確認を許す。有効メンバーが2人以上なら新規の重要確定は `dual_actor` とする。会計設定は `unconfigured` を既定にし、申告方式、消費税区分、インボイス登録、記帳方式、勘定科目mappingを本人または税理士が確認するまで会計CSVを出力しない。
+- Why: 完全無料の1人利用で在庫差異を閉じられるようにしながら即時の自己確定を防ぎ、未確認の税務・会計前提をアプリが推測してCSVへ混入させないため。
+- Applies to: M13/W11、M14/W12、P0仕様、会計profile、在庫差異、監査、AC/TA、Goal、CSV出力前検査
+- Verification: 24時間未満、同一session、証拠なし、理由なしを全件拒否する。2人以上では同一人物の承認を拒否する。会計項目が一つでも未設定ならCSV bytesを0件にし、理由を画面と監査へ残す。
+- Follow-up: P0は機能分割せずcore縦導線とexception・差異の2検証ゲートにする。既存在庫移行、古物台帳生成、同一SKU複数個体はP1の別Goalとし、10商品pilotの出品準備中央値5分以下を当面の効率目標へ昇格する。追補モックのSlack承認後に仕様本文へ反映する。
+
+### 2026-08-20 — 1人運用は即時の可逆変更、会計CSVは候補自動入力へ変更する
+
+- Type: decision
+- Context: Slack返信TS `1787201696.138589` と、会話内のユーザー回答「修正版Aでお願いします」
+- Decision or rule: 1人運用の24時間待機を廃止する。現物ラベルと場所ラベルの再読取、証拠写真、理由、最終確認を同一sessionで満たした場合、在庫を削除せず可逆な `missing_candidate` へ即時変更できる。発見時は履歴を残して復帰する。取消不能な廃棄確定はP0対象外とする。会計出力はMoney Forward指定仕訳帳CSVと汎用CSVを分け、外部へ自動送信しない。勘定科目は取引種別とユーザー承認済みmappingから候補を自動入力し、初回・低確信・未対応・税設定未完了では確定せずCSVを停止する。専門用語にはタップ可能な `?` ヘルプを付ける。
+- Why: 1人の現場作業を24時間止めず、誤操作時に復旧できる安全性を残し、会計入力の反復作業を減らしながら個別税務判断と誤ったCSV確定を避けるため。
+- Applies to: M13/W11、M14/W12、在庫差異、棚卸、会計profile、勘定科目mapping、CSV adapter、用語ヘルプ、AC/TA、Goal
+- Verification: 再読取・写真・理由・最終確認の一つでも欠ければ変更0件。`missing_candidate` は履歴付きで復帰可能。Money Forward adapterは公式sample列・必須項目・文字コードfixtureに合格し、外部通信0件。未確認候補が1件でもあればCSV bytesは0件。ヘルプはキーボードとタップで開閉できる。
+- Supersedes: 同日決定「1人運用の時間差確認と会計未設定停止を採用する」のうち、24時間待機と別session要件。会計未設定停止、2人以上の別担当確認、P1対象外境界は維持する。
+- Follow-up: 修正版4画面をSlackで承認後、仕様本文へ反映する。
+
+### 2026-08-20 — 修正版Aの4画面を承認しP0 gateを再開する
+
+- Type: decision
+- Context: Slack `#メルカリ自動化` 親TS `1787203224.255009`、ユーザー本人の返信TS `1787203707.087749`「修正版4画面で承認」
+- Decision or rule: M13 v2/W11 v4の1人用可逆差異フローと、M14 v2/W12 v2の会計profile・承認済みmapping・Money Forward/汎用CSV分離を正式採用する。旧P0合格は基礎証拠として保持するが、AC-039、AC-056〜061、TA-038〜043を含む現行gateが合格するまでP0完成扱いにしない。
+- Why: 1人運用の行き止まりを即時かつ復元可能な方法で解消し、会計前提の推測と誤出力を防ぎながら完全無料・手動公式経路を維持するため。
+- Applies to: MVP仕様、技術設計、財務数式、Goal契約、受け入れ対応表、Notion共有ミラー、実装、独立review
+- Verification: `docs/design/revised-a-approval-v2.md`の4 hash、Slack返信、AC-056〜061、TA-038〜043、`financial_formula_v1.0.0`、外部network 0件を照合する。
+- Supersedes: 同日決定「1人運用の時間差確認と会計未設定停止を採用する」の24時間/別session要件。後続の「1人運用は即時の可逆変更、会計CSVは候補自動入力へ変更する」を承認済み状態へ確定する。
+- Follow-up: Goal再開契約v2をユーザーが1回確認した後、paused Goalを再開して実装する。P1、本番公開、PR mergeは行わない。
+
+### 2026-08-20 — Goal再開契約v2を確認し無料PWA実装を再開する
+
+- Type: decision
+- Context: `docs/specs/goal-contract-revised-a-v2.md`、ユーザー回答「この契約でGoalを再開してください」
+- Decision or rule: 修正版A、完全無料PWA、Money Forward公式A〜AA 27列と汎用19列の分離、P0必須AC/TA、Draft PRまで・merge/本番公開なしを最終契約としてP0実装と評価Loopを再開する。Goal管理機能に残るnative iOS前提の旧Objectiveは実装根拠にしない。
+- Why: Slack UI承認、独立仕様review PASS、27列訂正を含む契約v2について、ユーザーの明示確認が得られたため。
+- Applies to: migration `0020`以後、domain/contracts/API/Web/PWA、検証、独立review、Draft PR
+- Verification: 契約v2の承認状態、AC-001〜061、TA-001〜043、外部runtime通信0件、費用0円、Draft PR境界を照合する。
+- Follow-up: 現行P0の全gateが合格するまでP1を開始しない。
+
+### 2026-08-20 — Slack承認画像を実装UIの受け入れ基準に固定する
+
+- Type: decision
+- Context: ユーザー指摘「モックが承認したイメージ（デザイン）とかなり違います」「Slackで承認したイメージ通りがいい」
+- Decision or rule: `docs/design/selected-direction.md` と修正版AのSlack承認画像を、配色だけでなく情報の優先順位、PC/スマホの役割分離、1画面1目的、工程順まで含むUI受け入れ基準とする。実装都合でPC表をスマホへ縮小した画面や、全工程を1ページへ縦積みした画面を合格にしない。
+- Data exception: モック内の架空金額、件数、担当者、写真、端末外枠はコピーしない。実装はDB保存値、空状態、監査状態を表示し、事実と異なるモック値を固定しない。
+- Applies to: Home C、W10/M12、W11v4/M13v2、W12v2/M14v2、実ブラウザ証拠、UI評価表、独立レビュー。
+- Verification: 390×844、768×1024、1440×1000で承認画像と実routeを対応付け、横overflow、主要操作切断、44px未満の主要操作、console errorを0件にする。独立確認者が同じcommitの実ブラウザで再判定する。
+- Follow-up: 実際の10商品pilotと実iPhone Safari確認は別の未完了gateとして残し、視覚修正だけでP0/Draft PRを完了扱いにしない。
+
+### 2026-08-21 — cost-optimizedモデル運転へ切り替える
+
+- Type: decision
+- Context: ユーザー依頼「実装難易度に合わせてサブエージェントを適切なモデルに振り分けるようにしてコストを削減」および `app-development-orchestrator` のモデル割当契約
+- Decision or rule: 現行P0の実装運転モードを `cost-optimized` にする。固定済みの画面・CSS・テスト・文書はLuna max、限定された複数層統合はTerra high/xhigh、DB・移行・認証・権限・機微情報・金額・重要状態・同時更新・安全性・原因不明の障害・最終独立レビューはSol maxへ割り当てる。
+- Why: Solを重大判断と品質ゲートへ集中させ、低リスク作業のコストを下げながら、承認済みデザイン、安全条件、検証基準を維持するため。
+- Applies to: `docs/implementation/model-routing-plan.md`、active handoff、以後の実装パケット、独立レビュー、Draft PR gate
+- Verification: 各パケットに実装担当、確認担当、変更範囲、検証、停止・昇格条件を記録し、下位モデルの自己承認0件、別Sol maxの最終レビューを確認する。
+- Follow-up: 同じworktreeへの書き込みは直列化し、実10商品pilotとUI 8 taskをモデルで代行・補完しない。

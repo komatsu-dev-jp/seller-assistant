@@ -13,6 +13,328 @@
   font-family: Inter, "Hiragino Sans", "Yu Gothic UI", sans-serif;
 }
 
+/* Owner Pulse — Slack approved Home C structure */
+.ownerPulseDashboard {
+  display: grid;
+  gap: 12px;
+}
+
+.ownerPulseDashboard .ownerMetricGrid {
+  margin: 0;
+}
+
+.ownerMetricCard {
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+}
+
+.ownerMetricCard > span {
+  order: 1;
+}
+
+.ownerMetricCard p {
+  order: 2;
+}
+
+.ownerMetricCard strong {
+  order: 3;
+  grid-row: auto;
+  margin-top: 3px;
+  font-size: clamp(21px, 2.2vw, 30px);
+}
+
+.ownerMetricCard small {
+  order: 4;
+  margin-top: 4px;
+}
+
+.ownerMetricCard.warning {
+  border-color: #f4c675;
+  background: #fffaf0;
+}
+
+.ownerPulsePrimaryGrid,
+.ownerPulseSecondaryGrid {
+  display: grid;
+  gap: 12px;
+}
+
+.ownerPulsePrimaryGrid {
+  grid-template-columns: minmax(0, 1.75fr) minmax(280px, 0.75fr);
+}
+
+.ownerPulseSecondaryGrid {
+  grid-template-columns: minmax(420px, 1.1fr) minmax(300px, 0.9fr);
+}
+
+.ownerFinancePanel,
+.ownerConfirmPanel,
+.ownerAgingPanel,
+.ownerCurrentWork {
+  min-width: 0;
+}
+
+.ownerWaterfall {
+  min-height: 225px;
+  padding: 10px 4px 0;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(72px, 1fr));
+  align-items: end;
+  gap: 8px;
+  overflow-x: auto;
+}
+
+.ownerWaterfallItem {
+  min-width: 0;
+  display: grid;
+  grid-template-rows: 142px auto auto;
+  align-items: end;
+  gap: 5px;
+  text-align: center;
+}
+
+.ownerWaterfallBar {
+  height: 142px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  border-bottom: 1px solid var(--line);
+}
+
+.ownerWaterfallBar span {
+  width: min(44px, 70%);
+  min-height: 8px;
+  border-radius: 4px 4px 0 0;
+  background: #9aa6b8;
+}
+
+.ownerWaterfallItem.positive .ownerWaterfallBar span,
+.ownerWaterfallItem.result .ownerWaterfallBar span {
+  background: var(--blue);
+}
+
+.ownerWaterfallItem.negative .ownerWaterfallBar span {
+  background: #aab2bf;
+}
+
+.ownerWaterfallItem strong {
+  color: var(--ink);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.ownerWaterfallItem small {
+  min-height: 28px;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+.ownerRestrictedState {
+  min-height: 200px;
+  display: grid;
+  place-content: center;
+  text-align: center;
+}
+
+.ownerAgingGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.ownerAgingCell {
+  min-height: 108px;
+  padding: 14px 8px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  background: white;
+  border-right: 1px solid var(--line);
+}
+
+.ownerAgingCell:last-child {
+  border-right: 0;
+}
+
+.ownerAgingCell span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.ownerAgingCell strong {
+  font-size: 28px;
+}
+
+.ownerAgingCell.warning {
+  color: var(--amber);
+  background: #fffaf0;
+  outline: 1px solid #f5c15f;
+  outline-offset: -1px;
+}
+
+.ownerSupplierPanel {
+  display: flex;
+  flex-direction: column;
+}
+
+.ownerSupplierList {
+  display: grid;
+  gap: 8px;
+}
+
+.ownerSupplierRow {
+  display: grid;
+  grid-template-columns: minmax(96px, 1fr) auto minmax(86px, auto) minmax(90px, 1.15fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  padding: 4px 0;
+}
+
+.ownerSupplierRow > span,
+.ownerSupplierRow small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.ownerSupplierBar {
+  height: 7px;
+  overflow: hidden;
+  background: #e6eaf0;
+  border-radius: 999px;
+}
+
+.ownerSupplierBar i {
+  display: block;
+  height: 100%;
+  background: var(--blue);
+  border-radius: inherit;
+}
+
+.ownerSupplierEmpty {
+  min-height: 94px;
+  display: grid;
+  place-content: center;
+  gap: 5px;
+}
+
+.ownerSupplierEmpty p,
+.ownerSupplierNote {
+  margin: 0;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.ownerSupplierNote {
+  margin-top: auto;
+  padding-top: 8px;
+}
+
+.ownerCompactFlow {
+  margin-block: 12px;
+}
+
+.flowStep.review {
+  color: #8a5200;
+  background: #fff3d8;
+  border-color: #f4bf5d;
+}
+
+.flowStep.review > span {
+  color: #8a5200;
+  background: #ffe2a7;
+}
+
+.status.warning {
+  color: #8a5200;
+  background: #fff1d3;
+}
+
+.ownerPulseDisclaimer {
+  margin: 0;
+  padding: 10px 14px;
+  color: #244b8f;
+  font-size: 11px;
+  background: #edf4ff;
+  border: 1px solid #c8dbff;
+  border-radius: 8px;
+}
+
+@media (max-width: 1100px) {
+  .ownerPulsePrimaryGrid,
+  .ownerPulseSecondaryGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 560px) {
+  .ownerPulseDashboard {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .ownerPulsePrimaryGrid,
+  .ownerPulseSecondaryGrid {
+    display: contents;
+  }
+
+  .ownerConfirmPanel {
+    order: 1;
+  }
+
+  .ownerPulseDashboard .ownerMetricGrid {
+    order: 2;
+    margin-top: 0;
+  }
+
+  .ownerAgingPanel {
+    order: 3;
+  }
+
+  .ownerFinancePanel {
+    order: 4;
+  }
+
+  .ownerSupplierPanel,
+  .ownerCurrentWork {
+    order: 5;
+  }
+
+  .ownerPulseDisclaimer {
+    order: 6;
+  }
+
+  .ownerWaterfall {
+    min-height: 190px;
+    grid-template-columns: repeat(7, 78px);
+  }
+
+  .ownerWaterfallItem {
+    grid-template-rows: 110px auto auto;
+  }
+
+  .ownerWaterfallBar {
+    height: 110px;
+  }
+
+  .ownerAgingGrid {
+    grid-template-columns: repeat(4, minmax(82px, 1fr));
+    overflow-x: auto;
+  }
+
+  .ownerAgingCell {
+    min-height: 92px;
+  }
+
+  .ownerAgingCell strong {
+    font-size: 23px;
+  }
+}
+
 /* Zero-cost login */
 .loginPage {
   min-height: 100dvh;
@@ -139,7 +461,7 @@ a {
 .shell {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 232px 1fr;
+  grid-template-columns: 232px minmax(0, 1fr);
 }
 .sidebar {
   position: sticky;
@@ -963,7 +1285,7 @@ a {
   font-weight: 800;
 }
 .stocktakeBar button {
-  min-height: 40px;
+  min-height: 44px;
   padding: 0 15px;
   border: 0;
   border-radius: 9px;
@@ -978,7 +1300,7 @@ a {
     grid-template-columns: 1fr;
   }
   .shell {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   .sidebar {
     position: static;
@@ -1047,6 +1369,13 @@ a {
   .sidebar nav .nav-secondary {
     display: none;
   }
+  .sidebar-accounting nav .nav-accounting {
+    display: grid;
+  }
+  .sidebar-accounting nav .nav-workflow,
+  .sidebar-accounting nav .nav-mobile {
+    display: none;
+  }
   .sidebar nav {
     flex: 1;
     display: grid;
@@ -1065,7 +1394,7 @@ a {
     margin: 0 0 0 2px;
   }
   .sidebar .logoutArea button {
-    min-height: 42px;
+    min-height: 44px;
     padding: 5px 3px;
     font-size: 9px;
   }
@@ -1221,7 +1550,7 @@ a {
   line-height: 1.5;
 }
 .mobileSyncStatus button {
-  min-height: 34px;
+  min-height: 44px;
   padding: 0 11px;
   color: white;
   background: var(--blue);
@@ -1360,12 +1689,13 @@ a {
   height: calc(64px + env(safe-area-inset-bottom));
   padding: 7px 12px max(7px, env(safe-area-inset-bottom));
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(56px, 1fr));
   background: rgba(255, 255, 255, 0.96);
   border-top: 1px solid var(--line);
   backdrop-filter: blur(15px);
 }
 .mobileBottomNav a {
+  min-height: 44px;
   display: grid;
   place-items: center;
   color: var(--muted);
@@ -1389,8 +1719,8 @@ a {
   align-items: center;
 }
 .mobileScanPage > header > a {
-  width: 42px;
-  height: 42px;
+  width: 44px;
+  height: 44px;
   display: grid;
   place-items: center;
   color: var(--ink);
@@ -1600,6 +1930,34 @@ a {
   display: grid;
   gap: 16px;
 }
+.pilotPanel {
+  padding: 20px 24px;
+  border-color: #b8c9ea;
+}
+.pilotPanel > p {
+  margin-bottom: 0;
+}
+.pilotMetrics {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+.pilotMetrics span {
+  min-width: 0;
+  padding: 10px;
+  color: var(--muted);
+  background: #f5f8fd;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  font-size: 10px;
+}
+.pilotMetrics strong {
+  display: block;
+  margin-top: 3px;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
 .workflowStages {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
@@ -1781,7 +2139,7 @@ a {
 .humanGate button,
 .workflowNext button,
 .exportButton {
-  min-height: 42px;
+  min-height: 44px;
   padding: 0 16px;
   flex: 0 0 auto;
   color: white;
@@ -1940,7 +2298,7 @@ a {
 .compactForm input,
 .compactForm select {
   width: 100%;
-  min-height: 42px;
+  min-height: 44px;
   padding: 9px 11px;
   color: var(--ink);
   background: white;
@@ -1975,7 +2333,7 @@ a {
 }
 .compactForm button,
 .inlineActions button {
-  min-height: 42px;
+  min-height: 44px;
   align-self: end;
 }
 .inlineActions {
@@ -2153,6 +2511,12 @@ a {
   .workflowPanel {
     padding: 17px;
   }
+  .pilotPanel {
+    padding: 17px;
+  }
+  .pilotMetrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
   .workflowPanelHead {
     align-items: flex-start;
   }
@@ -2185,4 +2549,2355 @@ a {
   .workflowNext button {
     width: 100%;
   }
+}
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.accountingControlCard,
+.discrepancyCard {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--paper);
+}
+
+.accountingOrderPicker {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(16rem, 1fr);
+  gap: 1rem;
+  align-items: end;
+}
+
+.accountingOrderPicker h2,
+.accountingOrderPicker p {
+  margin-top: 0;
+}
+
+.accountingOrderPicker label {
+  display: grid;
+  gap: 0.4rem;
+  min-width: 0;
+  font-weight: 700;
+}
+
+.accountingOrderPicker select {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.sectionTitle,
+.sectionTitle > div,
+.stocktakeModeBanner,
+.accountingActionRow {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.sectionTitle,
+.stocktakeModeBanner {
+  justify-content: space-between;
+}
+
+.sectionTitle h3,
+.sectionTitle p,
+.stocktakeModeBanner p {
+  margin: 0;
+}
+
+.sectionTitle > div > span {
+  display: grid;
+  min-width: 2rem;
+  min-height: 2rem;
+  place-items: center;
+  border-radius: 999px;
+  color: white;
+  background: var(--blue);
+  font-weight: 800;
+}
+
+.accountingFieldGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 0.8rem;
+}
+
+.accountingFieldGrid label,
+.discrepancyForm > label,
+.stocktakeCounting label {
+  display: grid;
+  gap: 0.4rem;
+  min-width: 0;
+  font-weight: 700;
+}
+
+.mappingTable {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.mappingRow {
+  display: grid;
+  grid-template-columns: minmax(6rem, 0.7fr) minmax(12rem, 2fr) minmax(5rem, 0.6fr);
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.65rem 0.75rem;
+  border-radius: 12px;
+  background: var(--wash);
+}
+
+.mappingDraft {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--wash);
+}
+
+.mappingDraft summary {
+  display: grid;
+  grid-template-columns: minmax(6rem, 0.7fr) minmax(12rem, 2fr) minmax(8rem, 0.8fr);
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.65rem 0.75rem;
+  cursor: pointer;
+}
+
+.mappingDraftFields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border-top: 1px solid var(--line);
+  background: var(--paper);
+}
+
+.mappingDraftFields label {
+  display: grid;
+  gap: 0.4rem;
+  min-width: 0;
+  font-weight: 700;
+}
+
+.confirmationCheck {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 0.8rem;
+  border-radius: 12px;
+  background: #fff8e6;
+}
+
+.termHelp {
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--wash);
+}
+
+.termHelpButton {
+  width: fit-content;
+  padding: 0;
+  cursor: pointer;
+  color: var(--blue);
+  background: transparent;
+  border: 0;
+  font-weight: 800;
+}
+
+.termHelpButton:focus-visible {
+  outline: 3px solid rgb(42 103 246 / 30%);
+  outline-offset: 4px;
+}
+
+.termHelp dl {
+  display: grid;
+  gap: 0.6rem;
+  margin-bottom: 0;
+}
+
+.termHelp dl > div {
+  display: grid;
+  grid-template-columns: minmax(7rem, 0.4fr) minmax(0, 1.6fr);
+  gap: 0.6rem;
+}
+
+.termHelp dt {
+  font-weight: 800;
+}
+
+.termHelp dd {
+  margin: 0;
+}
+
+.confirmationCheck input {
+  width: 1.15rem;
+  height: 1.15rem;
+  margin-top: 0.15rem;
+}
+
+.exportEvidence {
+  display: grid;
+  gap: 0.6rem;
+  overflow-wrap: anywhere;
+  padding: 0.9rem;
+  border-radius: 14px;
+  background: var(--wash);
+}
+
+.exportEvidence summary {
+  min-height: 44px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.exportEvidence summary::-webkit-details-marker {
+  display: none;
+}
+
+.exportEvidence summary::after {
+  content: "詳細を開く";
+  color: var(--blue);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.exportEvidence[open] summary::after {
+  content: "詳細を閉じる";
+}
+
+.exportEvidence summary span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.exportEvidenceDetails {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.stocktakeControl,
+.stocktakeCounting,
+.discrepancyForm,
+.challengePanel {
+  display: grid;
+  gap: 1rem;
+}
+
+.stocktakeModeBanner {
+  padding: 0.9rem 1rem;
+  border-radius: 14px;
+  background: var(--wash);
+}
+
+.warningBadge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  color: #7a4600;
+  background: #ffe5ae;
+  font-size: 0.85rem;
+  font-weight: 800;
+}
+
+.discrepancyFacts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin: 0;
+}
+
+.discrepancyFacts > div {
+  padding: 0.7rem;
+  border-radius: 12px;
+  background: var(--wash);
+}
+
+.discrepancyFacts dt {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.discrepancyFacts dd {
+  margin: 0.25rem 0 0;
+  font-weight: 750;
+}
+
+.stocktakeBlockNotice,
+.safeNotice {
+  margin: 0;
+  padding: 0.8rem;
+  border-radius: 12px;
+  font-weight: 700;
+}
+
+.stocktakeBlockNotice {
+  color: #7c2d12;
+  background: #ffedd5;
+}
+
+.safeNotice {
+  color: #14532d;
+  background: #dcfce7;
+}
+
+.challengePanel {
+  padding: 1rem;
+  border: 2px solid var(--blue);
+  border-radius: 14px;
+  background: #eff6ff;
+}
+
+.holdConfirm {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.holdConfirm > button {
+  min-height: 3.25rem;
+  touch-action: none;
+  user-select: none;
+  font-weight: 850;
+}
+
+.holdConfirm p {
+  min-height: 1.5rem;
+  margin: 0;
+  color: var(--muted);
+}
+
+@media (max-width: 720px) {
+  .accountingOrderPicker,
+  .mappingRow,
+  .mappingDraft summary,
+  .discrepancyFacts {
+    grid-template-columns: 1fr;
+  }
+
+  .termHelp dl > div {
+    grid-template-columns: 1fr;
+  }
+
+  .sectionTitle,
+  .stocktakeModeBanner,
+  .accountingActionRow {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
+/* Slackで承認された B+C / Owner Pulse / revised-A の共通ビジュアル */
+:root {
+  --ink: #0d1d3a;
+  --muted: #627089;
+  --line: #dce3ed;
+  --paper: #ffffff;
+  --wash: #f6f8fb;
+  --blue: #075ee8;
+  --blue-soft: #edf4ff;
+  --amber: #e88713;
+  --amber-soft: #fff5df;
+  --green: #168257;
+}
+
+body {
+  background: #eef2f7;
+  font-size: 14px;
+}
+
+.shell {
+  grid-template-columns: 154px minmax(0, 1fr);
+  background: var(--wash);
+}
+
+.sidebar {
+  z-index: 20;
+  padding: 16px 9px 12px;
+  color: var(--ink);
+  background: var(--paper);
+  border-right: 1px solid var(--line);
+  box-shadow: none;
+}
+
+.brand {
+  min-height: 44px;
+  margin: 0 7px 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  letter-spacing: 0;
+}
+
+.brandMark {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  color: white !important;
+  background: var(--blue);
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.brandText {
+  color: var(--muted) !important;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1.3;
+}
+
+.sidebar nav {
+  gap: 2px;
+}
+
+.sidebar nav a {
+  position: relative;
+  min-height: 44px;
+  padding: 8px 9px;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  border-radius: 7px;
+  color: #31405c;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.navIcon {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  color: #53647f;
+  font-size: 15px;
+}
+
+.sidebar nav a:hover,
+.sidebar nav a:focus-visible,
+.sidebar nav a[aria-current="page"] {
+  color: var(--blue);
+  background: var(--blue-soft);
+}
+
+.sidebar nav a[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  inset: 6px auto 6px -9px;
+  width: 4px;
+  border-radius: 0 4px 4px 0;
+  background: var(--blue);
+}
+
+.sidebar nav a[aria-current="page"] .navIcon {
+  color: var(--blue);
+}
+
+.logoutArea button {
+  min-height: 44px;
+  color: #3f4f69;
+  background: white;
+  border-color: var(--line);
+  border-radius: 7px;
+  font-size: 11px;
+}
+
+.logoutArea button:hover,
+.logoutArea button:focus-visible {
+  color: var(--blue);
+  border-color: #8ab2ff;
+}
+
+.safety {
+  padding: 10px;
+  color: #5c6a7f;
+  background: #f8faff;
+  border-color: #d9e5fb;
+  border-radius: 8px;
+  font-size: 9px;
+  line-height: 1.55;
+}
+
+.content,
+.inventoryContent {
+  width: 100%;
+  max-width: 1600px;
+  padding: 18px 22px 48px;
+  margin: 0 auto;
+}
+
+.topbar,
+.inventoryTopbar {
+  min-height: 66px;
+  margin: -18px -22px 16px;
+  padding: 12px 22px;
+  align-items: center;
+  background: white;
+  border-bottom: 1px solid var(--line);
+}
+
+.topbar h1,
+.inventoryTopbar h1 {
+  margin: 1px 0 2px;
+  font-size: clamp(21px, 2vw, 27px);
+  letter-spacing: -0.025em;
+}
+
+.topbar p,
+.inventoryTopbar p {
+  font-size: 11px;
+}
+
+.eyebrow {
+  margin: 0;
+  font-size: 9px;
+  letter-spacing: 0.13em;
+}
+
+.topbar button,
+.nextAction button,
+.primaryButton {
+  min-height: 44px;
+  padding-inline: 17px;
+  border-radius: 7px;
+  box-shadow: none;
+  font-size: 12px;
+}
+
+.secondaryButton,
+.tinyButton {
+  border-radius: 7px;
+}
+
+.workbench,
+.panel,
+.accountingControlCard,
+.discrepancyCard {
+  border-color: var(--line);
+  border-radius: 9px;
+  box-shadow: 0 2px 8px rgb(14 31 60 / 4%);
+}
+
+.panel,
+.workbench {
+  padding: 16px;
+}
+
+.panelHead h2 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.sectionKicker {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 800;
+}
+
+/* Owner Pulse */
+.ownerMetricGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.ownerMetricCard {
+  min-width: 0;
+  padding: 14px 16px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 10px;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+
+.ownerMetricCard > span,
+.ownerMetricCard small {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.ownerMetricCard strong {
+  grid-row: span 3;
+  align-self: center;
+  color: var(--ink);
+  font-size: 28px;
+}
+
+.ownerMetricCard p {
+  margin: 3px 0;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.ownerPulseLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.8fr) minmax(270px, 0.7fr);
+  grid-template-areas: "current confirm";
+  gap: 12px;
+}
+
+.ownerPulseLayout > * {
+  min-width: 0;
+}
+
+.ownerCurrentWork {
+  grid-area: current;
+}
+
+.ownerConfirmPanel {
+  grid-area: confirm;
+  align-self: stretch;
+}
+
+.ownerConfirmPanel .panelHead {
+  margin-bottom: 10px;
+}
+
+.ownerCheckList {
+  margin-bottom: 10px;
+  display: grid;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.ownerCheckRow {
+  min-height: 46px;
+  padding: 8px 10px;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto 10px;
+  align-items: center;
+  gap: 7px;
+  text-decoration: none;
+  background: white;
+  border-bottom: 1px solid var(--line);
+}
+
+.ownerCheckRow:last-child {
+  border-bottom: 0;
+}
+
+.ownerCheckRow strong {
+  font-size: 11px;
+}
+
+.ownerCheckRow b {
+  color: var(--ink);
+  font-size: 18px;
+}
+
+.ownerCheckRow.warning b,
+.ownerCheckRow.warning .ownerCheckIcon {
+  color: var(--amber);
+}
+
+.ownerCheckRow.info .ownerCheckIcon {
+  color: var(--blue);
+}
+
+.ownerCheckIcon {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  background: #f4f7fb;
+}
+
+.workbenchTitle {
+  align-items: flex-start;
+}
+
+.workbench h2 {
+  font-size: 16px;
+}
+
+.flow {
+  margin: 16px 0;
+  gap: 5px;
+}
+
+.flowStep {
+  padding: 9px;
+  border-radius: 7px;
+}
+
+.nextAction {
+  padding: 14px;
+  border-radius: 8px;
+}
+
+.lowerGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.ownerNote {
+  color: var(--ink);
+  background: white;
+  border-left: 3px solid #8db5ff;
+}
+
+.ownerNote p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+/* Inventory location workbench */
+.inventoryKpis {
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.inventoryKpi {
+  min-height: 64px;
+  padding: 10px 13px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  border-left-width: 3px;
+  border-radius: 8px;
+}
+
+.inventoryKpi strong {
+  font-size: 22px;
+}
+
+.inventoryWorkbenchGrid {
+  display: grid;
+  grid-template-columns: 220px minmax(520px, 1fr) 290px;
+  gap: 10px;
+  align-items: start;
+}
+
+.locationTree,
+.locationPhotoWorkbench,
+.inventoryCreatePanel {
+  min-width: 0;
+  min-height: 100%;
+}
+
+.locationTree {
+  padding: 12px;
+}
+
+.locationRow {
+  width: 100%;
+  min-height: 44px;
+  padding-block: 7px;
+  color: var(--ink);
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+
+.locationRow:hover,
+.locationRow:focus-visible,
+.locationRow.selected {
+  color: var(--blue);
+  background: var(--blue-soft);
+  outline: none;
+}
+
+.locationWorkbenchHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.locationWorkbenchHead h2,
+.inventoryCreatePanel h2 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.breadcrumb {
+  margin: 0 0 4px;
+  font-size: 10px;
+}
+
+.approvedLocationPhotos {
+  margin-top: 11px;
+  display: grid;
+  grid-template-columns: 1.35fr 0.8fr 0.8fr;
+  gap: 8px;
+}
+
+.locationPhotoCard {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.locationPhotoCard > span {
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.locationPhotoCard img,
+.locationPhotoEmpty {
+  width: 100%;
+  height: 145px;
+  object-fit: cover;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: linear-gradient(145deg, #f0f3f8, #e3e9f1);
+}
+
+.locationPhotoEmpty {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 5px;
+  color: #8a97a9;
+}
+
+.locationPhotoEmpty > span {
+  font-size: 28px;
+}
+
+.locationPhotoQuickForm {
+  margin-top: 12px;
+  grid-template-columns: minmax(120px, 0.6fr) minmax(220px, 1.4fr) auto;
+  align-items: end;
+}
+
+.locationPhotoQuickForm button {
+  grid-column: auto;
+  min-width: 105px;
+}
+
+.photoReviewQueue {
+  margin-top: 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  overflow: hidden;
+}
+
+.photoReviewQueue > [role="row"] {
+  min-height: 36px;
+  padding: 7px 9px;
+  display: grid;
+  grid-template-columns: 0.8fr 1fr 1.1fr auto;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--line);
+  font-size: 9px;
+}
+
+.photoReviewQueue > [role="row"]:last-child {
+  border-bottom: 0;
+}
+
+.photoReviewHead {
+  color: var(--muted);
+  background: #f7f9fc;
+  font-weight: 800;
+}
+
+.inventoryCreatePanel .inventoryFormGrid {
+  grid-template-columns: 1fr;
+  gap: 9px;
+  margin-top: 12px;
+}
+
+.inventoryCreatePanel .inventoryFormGrid button,
+.inventoryCreatePanel .inventoryFormGrid label {
+  grid-column: auto;
+}
+
+.inventoryTablePanel {
+  margin-top: 10px;
+  padding: 12px 14px;
+}
+
+/* Dedicated discrepancy workbench */
+.stocktakePage {
+  max-width: 1600px;
+}
+
+.stocktakeWorkspace {
+  display: grid;
+  gap: 12px;
+}
+
+.stocktakeWorkspaceTitle {
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+
+.stocktakeWorkspaceTitle h2 {
+  margin: 2px 0 0;
+  font-size: 17px;
+}
+
+.stocktakeJourney {
+  margin: 0;
+  padding: 10px 12px;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
+  list-style: none;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+
+.stocktakeJourney li {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.stocktakeJourney li span {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  color: white;
+  background: var(--blue);
+  border-radius: 50%;
+  font-size: 10px;
+}
+
+.stocktakeMobileStages {
+  display: none;
+}
+
+.stocktakeMobilePanel {
+  min-width: 0;
+}
+
+.stocktakeDetailStack > .stocktakeMobilePanel {
+  display: grid;
+  gap: 10px;
+}
+
+.stocktakeModeSummary {
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+
+.stocktakeModeSummary > button {
+  min-height: 44px;
+  display: none;
+}
+
+.stocktakeControl {
+  padding: 12px;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+
+.stocktakeModeBanner {
+  padding: 10px 12px;
+  border: 1px solid #e4e9f1;
+  border-radius: 7px;
+}
+
+@media (min-width: 901px) {
+  .stocktakeWorkspace {
+    gap: 8px;
+  }
+
+  .stocktakeWorkspaceTitle {
+    padding: 8px 12px;
+  }
+
+  .stocktakeJourney {
+    padding: 6px 10px;
+  }
+
+  .stocktakeModeSummary {
+    padding: 8px;
+    grid-template-columns: minmax(0, 1.15fr) minmax(360px, 0.85fr);
+    align-items: center;
+    gap: 8px;
+  }
+
+  .stocktakeModeSummary .stocktakeModeBanner,
+  .stocktakeModeSummary > .accountingDisclaimer {
+    margin: 0;
+    padding: 8px 10px;
+  }
+
+  .stocktakeControl {
+    padding: 10px;
+  }
+
+  .discrepancyCard,
+  .stocktakeAuditTimeline {
+    padding: 10px;
+  }
+
+  .discrepancyFacts > div,
+  .stocktakeAuditTimeline li {
+    padding: 6px;
+  }
+
+  .discrepancyEvidenceGallery {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .stocktakeAuditTimeline ol {
+    margin-top: 6px;
+  }
+}
+
+.stocktakeDesktopBoard {
+  display: grid;
+  grid-template-columns: minmax(520px, 1.45fr) minmax(410px, 0.95fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.stocktakeQueue {
+  padding: 12px;
+  background: #fbfcfe;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.stocktakeQueue h3 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.stocktakeQueueTable {
+  margin-top: 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  overflow: hidden;
+}
+
+.stocktakeQueueHeader,
+.stocktakeQueueRow {
+  display: grid;
+  grid-template-columns: minmax(120px, 1.15fr) minmax(90px, 0.8fr) minmax(120px, 1fr) minmax(
+      110px,
+      0.9fr
+    );
+  gap: 8px;
+  align-items: center;
+}
+
+.stocktakeQueueHeader {
+  padding: 8px 10px;
+  color: var(--muted);
+  background: #f4f7fb;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.stocktakeQueueRow {
+  width: 100%;
+  min-height: 48px;
+  padding: 9px 10px;
+  color: var(--ink);
+  background: white;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  text-align: left;
+  font-size: 10px;
+}
+
+.stocktakeQueueRow:last-child {
+  border-bottom: 0;
+}
+
+.stocktakeQueueRow:hover,
+.stocktakeQueueRow.selected {
+  background: var(--blue-soft);
+}
+
+.stocktakeQueueRow.selected {
+  box-shadow: inset 3px 0 0 var(--blue);
+}
+
+.stocktakeQueueRow small {
+  color: var(--muted);
+}
+
+.stocktakeDetailStack {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.discrepancyCard {
+  margin: 0;
+  padding: 13px;
+}
+
+.discrepancyForm .accountingFieldGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.discrepancyFacts > div {
+  padding: 8px;
+  border-radius: 7px;
+}
+
+.discrepancyEvidenceGallery {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.discrepancyEvidenceGallery a {
+  min-height: 44px;
+  padding: 5px;
+  display: grid;
+  gap: 4px;
+  color: var(--ink);
+  background: #f8fafd;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  text-decoration: none;
+  font-size: 9px;
+}
+
+.discrepancyEvidenceGallery img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: 5px;
+}
+
+.discrepancyEvidenceGallery > small {
+  grid-column: 1 / -1;
+  color: var(--muted);
+}
+
+.stocktakeWorkspace > .operationsFormGrid {
+  margin: 0;
+  padding: 12px;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+
+.stocktakeMobileDifferencePicker {
+  display: none;
+}
+
+.stocktakeAuditTimeline {
+  margin-top: 0;
+  padding: 12px;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.stocktakeAuditTimeline h3 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.stocktakeAuditTimeline ol {
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  list-style: none;
+}
+
+.stocktakeAuditTimeline li {
+  padding: 8px;
+  display: grid;
+  gap: 3px;
+  background: #f8fafd;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 9px;
+}
+
+.stocktakeAuditTimeline time,
+.stocktakeAuditTimeline span {
+  color: var(--muted);
+}
+
+/* Accounting export guard */
+.accountingPageBoard {
+  gap: 10px;
+}
+
+.accountingMobileStages {
+  display: none;
+}
+
+.accountingMobilePanel {
+  min-width: 0;
+}
+
+.accountingFormatTabs {
+  min-height: 42px;
+  padding: 5px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.accountingFormatTabs button {
+  min-width: 180px;
+  min-height: 44px;
+  padding: 8px 14px;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.accountingFormatTabs button strong,
+.accountingFormatTabs button span {
+  display: block;
+}
+
+.accountingFormatTabs button span {
+  margin-top: 2px;
+  font-size: 9px;
+  font-weight: 500;
+}
+
+.accountingFormatTabs button.active {
+  color: var(--blue);
+  background: var(--blue-soft);
+  box-shadow: inset 0 0 0 1px #8eb4ff;
+}
+
+.accountingFormatTabs small {
+  margin-left: auto;
+  margin-right: 8px;
+  color: var(--muted);
+}
+
+.accountingOrderPicker {
+  min-height: 68px;
+  margin: 0;
+  padding: 11px 13px;
+  grid-template-columns: minmax(190px, 0.55fr) minmax(320px, 1.45fr);
+  align-items: center;
+}
+
+.accountingOrderPicker h2 {
+  margin: 1px 0 0;
+  font-size: 15px;
+}
+
+.accountingOrderPicker p {
+  margin: 3px 0 0;
+}
+
+.accountingWorkspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(300px, 0.65fr);
+  grid-template-areas:
+    "heading heading"
+    "notice notice"
+    "setup preflight"
+    "history history"
+    "message message";
+  gap: 10px;
+  align-items: start;
+}
+
+@media (min-width: 561px) {
+  .accountingWorkspace {
+    grid-template-areas:
+      "notice notice"
+      "setup preflight"
+      "history history"
+      "message message";
+  }
+
+  .accountingWorkspace > .workflowPanelHead {
+    display: none;
+  }
+}
+
+.accountingWorkspace > .workflowPanelHead {
+  grid-area: heading;
+  padding: 12px 14px;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+
+.accountingWorkspace > .accountingDisclaimer {
+  grid-area: notice;
+  margin: 0;
+}
+
+.accountingWorkspace > [role="status"] {
+  grid-area: message;
+}
+
+.accountingSetupStack {
+  min-width: 0;
+  display: grid;
+  grid-area: setup;
+  gap: 10px;
+  align-self: start;
+}
+
+.accountingSetupStack > .accountingProfileCard,
+.accountingSetupStack > .accountingMappingCard {
+  grid-area: auto;
+}
+
+.accountingControlCard {
+  margin: 0;
+  padding: 12px;
+  gap: 10px;
+  border-radius: 9px;
+}
+
+.accountingProfileCard {
+  grid-area: profile;
+  grid-template-columns: 1fr;
+}
+
+.accountingProfileCard .termHelp {
+  padding: 4px 8px;
+}
+
+.accountingProfileCard .termHelpButton {
+  min-height: 44px;
+}
+
+.accountingMappingCard {
+  grid-area: mapping;
+}
+
+.accountingExportCard {
+  position: sticky;
+  top: 12px;
+  grid-area: preflight;
+}
+
+.accountingExportPrimary,
+.accountingExportSupport {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  align-content: start;
+}
+
+.accountingPreflight {
+  padding: 9px;
+  display: grid;
+  gap: 6px;
+  background: #f8fafd;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  font-size: 10px;
+}
+
+.accountingPreflight > span {
+  min-height: 32px;
+  padding: 7px 8px;
+  display: flex;
+  align-items: center;
+  border-radius: 6px;
+  font-weight: 800;
+}
+
+.accountingPreflight .pass {
+  color: #087a4f;
+  background: #ecf9f2;
+}
+
+.accountingPreflight .blocked {
+  color: #a15c00;
+  background: #fff5df;
+}
+
+.accountingHelpSummary {
+  padding: 9px;
+  color: var(--muted);
+  background: #f4f7fb;
+  border-radius: 7px;
+  font-size: 9px;
+}
+
+.accountingHelpSummary p {
+  margin: 5px 0 0;
+}
+
+.accountingHistoryCard {
+  grid-area: history;
+  padding: 12px;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+
+.accountingCsvPreview {
+  display: grid;
+  gap: 8px;
+}
+
+.accountingCsvPreview .panelHead {
+  align-items: flex-start;
+}
+
+.accountingCsvPreview .panelHead p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.accountingCsvPreview .panelHead > span {
+  color: #087a4f;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.accountingCsvPreviewScroll {
+  max-width: 100%;
+  max-height: 290px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  scrollbar-gutter: stable;
+}
+
+.accountingCsvPreviewScroll:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--blue) 35%, transparent);
+  outline-offset: 2px;
+}
+
+.accountingCsvPreview table {
+  min-width: 100%;
+  width: max-content;
+  border-collapse: collapse;
+  font-size: 9px;
+}
+
+.accountingCsvPreview th,
+.accountingCsvPreview td {
+  min-width: 110px;
+  max-width: 220px;
+  padding: 7px 8px;
+  overflow-wrap: anywhere;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.accountingCsvPreview th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f4f7fb;
+}
+
+.accountingExportCard .accountingHistoryCard {
+  grid-area: auto;
+  margin: 0;
+  padding: 10px;
+  box-shadow: none;
+}
+
+@media (min-width: 1101px) {
+  .accountingWorkspace {
+    grid-template-columns: minmax(0, 1.05fr) minmax(600px, 1fr);
+  }
+
+  .accountingExportCard {
+    position: static;
+    grid-template-columns: minmax(0, 1.1fr) minmax(220px, 0.9fr);
+    grid-template-areas:
+      "title title"
+      "primary support";
+    align-items: start;
+  }
+
+  .accountingExportCard > .sectionTitle {
+    grid-area: title;
+  }
+
+  .accountingExportPrimary {
+    grid-area: primary;
+    gap: 7px;
+  }
+
+  .accountingExportSupport {
+    grid-area: support;
+  }
+
+  .accountingExportCard .accountingCsvPreviewScroll {
+    max-height: 96px;
+  }
+
+  .accountingMappingCard .mappingTable {
+    max-height: 165px;
+  }
+}
+
+.accountingExportCard .accountingHistoryTable > [role="row"] {
+  min-height: 34px;
+  padding: 6px 7px;
+  grid-template-columns: minmax(0, 1fr) 72px;
+  font-size: 9px;
+}
+
+.accountingExportCard .accountingHistoryTable > [role="row"] > :nth-child(2),
+.accountingExportCard .accountingHistoryTable > [role="row"] > :nth-child(3) {
+  display: none;
+}
+
+.accountingHistoryTable {
+  margin-top: 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  overflow: hidden;
+  font-size: 9px;
+}
+
+.accountingHistoryTable > [role="row"] {
+  min-height: 38px;
+  padding: 7px 9px;
+  display: grid;
+  grid-template-columns: minmax(210px, 1.5fr) minmax(140px, 1fr) 70px 110px;
+  gap: 8px;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+}
+
+.accountingHistoryTable > [role="row"]:last-child {
+  border-bottom: 0;
+}
+
+.accountingHistoryHeader {
+  color: var(--muted);
+  background: #f4f7fb;
+  font-weight: 800;
+}
+
+.accountingFieldGrid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.accountingFieldGrid label,
+.mappingDraftFields label {
+  gap: 5px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.accountingFieldGrid select,
+.mappingDraftFields input,
+.mappingDraftFields select,
+.accountingOrderPicker select {
+  min-height: 44px;
+  padding: 6px 8px;
+  color: var(--ink);
+  background: white;
+  border: 1px solid #cbd5e3;
+  border-radius: 6px;
+}
+
+.termHelp {
+  padding: 7px 9px;
+  border-radius: 7px;
+}
+
+.mappingTable {
+  gap: 3px;
+  max-height: 230px;
+  overflow: auto;
+}
+
+.mappingRow,
+.mappingDraft summary {
+  min-height: 44px;
+  padding: 7px 9px;
+  border-radius: 6px;
+  font-size: 10px;
+}
+
+.mappingDraft {
+  border-radius: 6px;
+}
+
+.mappingDraftFields {
+  grid-template-columns: repeat(4, minmax(130px, 1fr));
+}
+
+.confirmationCheck {
+  padding: 8px;
+  border: 1px solid #f2d79f;
+  border-radius: 7px;
+  font-size: 10px;
+}
+
+.profitWaterfall {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.profitWaterfall > div {
+  padding: 8px;
+  border-radius: 6px;
+}
+
+.accountingActionRow {
+  align-items: stretch;
+  flex-direction: column;
+}
+
+.accountingActionRow button {
+  min-height: 44px;
+  width: 100%;
+}
+
+.accountingWorkspace button,
+.accountingWorkspace input:not([type="checkbox"]),
+.accountingWorkspace select,
+.accountingOrderPicker select {
+  min-height: 44px;
+}
+
+@media (max-width: 1100px) {
+  .inventoryWorkbenchGrid {
+    grid-template-columns: 200px minmax(0, 1fr);
+  }
+
+  .inventoryCreatePanel {
+    grid-column: 1 / -1;
+  }
+
+  .inventoryCreatePanel .inventoryFormGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .accountingWorkspace {
+    grid-template-columns: minmax(0, 1fr) 280px;
+  }
+
+  .accountingFieldGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sidebar {
+    position: static;
+    height: auto;
+    padding: 8px 12px;
+    flex-direction: row;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .sidebar nav {
+    display: flex;
+  }
+
+  .locationTree {
+    display: block;
+  }
+
+  .ownerPulseLayout,
+  .inventoryWorkbenchGrid,
+  .stocktakeDesktopBoard,
+  .accountingWorkspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .accountingWorkspace {
+    grid-template-areas:
+      "heading"
+      "notice"
+      "setup"
+      "preflight"
+      "history"
+      "message";
+  }
+
+  .ownerPulseLayout {
+    grid-template-areas:
+      "confirm"
+      "current";
+  }
+
+  .inventoryCreatePanel,
+  .accountingMappingCard,
+  .accountingExportCard {
+    grid-column: 1;
+  }
+
+  .accountingExportCard {
+    position: static;
+  }
+}
+
+@media (min-width: 561px) and (max-width: 900px) {
+  .sidebar {
+    padding: 6px 12px;
+    gap: 10px;
+    align-items: center;
+  }
+
+  .sidebar .brand {
+    min-width: 72px;
+    margin: 0;
+  }
+
+  .sidebar .brandText {
+    display: none;
+  }
+
+  .sidebar .safety,
+  .sidebar nav .nav-secondary {
+    display: none;
+  }
+
+  .sidebar-discrepancy nav .nav-discrepancy,
+  .sidebar-accounting nav .nav-accounting {
+    display: grid;
+  }
+
+  .sidebar nav {
+    flex: 1;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 2px;
+  }
+
+  .sidebar nav a {
+    min-height: 52px;
+    padding: 4px 2px;
+    grid-template-columns: 1fr;
+    grid-template-rows: 24px auto;
+    gap: 0;
+    place-items: center;
+    font-size: 9px;
+  }
+
+  .sidebar nav a[aria-current="page"]::before {
+    display: none;
+  }
+
+  .sidebar .logoutArea {
+    width: 48px;
+    margin-top: 0;
+  }
+
+  .sidebar .logoutArea button {
+    min-height: 48px;
+    padding: 4px 2px;
+    font-size: 9px;
+  }
+}
+
+@media (max-width: 560px) {
+  body {
+    background: #f7f9fc;
+    font-size: 13px;
+  }
+
+  .shell {
+    padding-bottom: 70px;
+  }
+
+  .sidebar {
+    position: fixed;
+    inset: auto 0 0;
+    z-index: 50;
+    height: calc(64px + env(safe-area-inset-bottom));
+    padding: 5px 5px max(5px, env(safe-area-inset-bottom));
+    background: rgb(255 255 255 / 97%);
+    border-top: 1px solid var(--line);
+    border-bottom: 0;
+    box-shadow: 0 -4px 16px rgb(12 29 57 / 6%);
+  }
+
+  .sidebar .brand,
+  .sidebar .safety,
+  .sidebar nav .nav-secondary {
+    display: none;
+  }
+
+  .sidebar-discrepancy nav .nav-discrepancy,
+  .sidebar-accounting nav .nav-accounting,
+  .sidebar-accounting nav .nav-workflow {
+    display: grid;
+  }
+
+  .sidebar-discrepancy nav .nav-mobile,
+  .sidebar-accounting nav .nav-mobile {
+    display: none;
+  }
+
+  .sidebar nav {
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1px;
+  }
+
+  .sidebar nav a {
+    min-height: 50px;
+    padding: 4px 2px;
+    grid-template-columns: 1fr;
+    grid-template-rows: 25px auto;
+    gap: 0;
+    place-items: center;
+    font-size: 9px;
+  }
+
+  .sidebar nav a[aria-current="page"]::before {
+    display: none;
+  }
+
+  .navIcon {
+    font-size: 17px;
+  }
+
+  .sidebar .logoutArea {
+    width: 54px;
+  }
+
+  .sidebar .logoutArea button {
+    min-height: 48px;
+    color: var(--muted);
+    border: 0;
+    font-size: 9px;
+  }
+
+  .content,
+  .inventoryContent {
+    padding: 14px 14px 30px;
+  }
+
+  .topbar,
+  .inventoryTopbar {
+    min-height: 58px;
+    margin: -14px -14px 14px;
+    padding: 10px 14px;
+    align-items: stretch;
+    gap: 9px;
+    flex-direction: column;
+  }
+
+  .topbar h1,
+  .inventoryTopbar h1 {
+    font-size: 20px;
+  }
+
+  .topbar p,
+  .inventoryTopbar p {
+    font-size: 11px;
+    line-height: 1.5;
+  }
+
+  .topbar .primaryButton,
+  .topbar .secondaryButton,
+  .actionGroup {
+    width: 100%;
+  }
+
+  .homeTopbar .primaryButton {
+    display: none;
+  }
+
+  .actionGroup {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .ownerMetricGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .homeDashboard {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .ownerPulseLayout {
+    order: 1;
+  }
+
+  .ownerMetricGrid {
+    order: 2;
+    margin-top: 9px;
+  }
+
+  .lowerGrid {
+    order: 3;
+  }
+
+  .ownerMetricCard {
+    padding: 11px;
+  }
+
+  .ownerMetricCard:nth-child(n + 3) {
+    display: none;
+  }
+
+  .ownerMetricCard strong {
+    font-size: 22px;
+  }
+
+  .ownerConfirmPanel,
+  .ownerCurrentWork,
+  .ownerNote,
+  .panel,
+  .workbench {
+    padding: 13px;
+  }
+
+  .ownerPulseLayout {
+    display: grid;
+  }
+
+  .ownerCheckRow {
+    min-height: 50px;
+  }
+
+  .ownerConfirmPanel .fullButton,
+  .ownerAgingPanel .panelHead a {
+    min-height: 44px;
+  }
+
+  .ownerAgingPanel .panelHead a {
+    padding-inline: 8px;
+    display: flex;
+    align-items: center;
+  }
+
+  .flow {
+    display: flex;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+  }
+
+  .flowStep {
+    min-width: 116px;
+    scroll-snap-align: start;
+  }
+
+  .nextAction {
+    align-items: stretch;
+  }
+
+  .lowerGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .inventoryKpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .inventoryKpi {
+    min-height: 70px;
+    padding: 10px;
+  }
+
+  .locationTree {
+    max-height: 220px;
+    overflow-y: auto;
+  }
+
+  .approvedLocationPhotos {
+    grid-template-columns: 1.4fr 1fr;
+    overflow-x: auto;
+  }
+
+  .locationPhotoCard {
+    min-width: 140px;
+  }
+
+  .locationPhotoCard img,
+  .locationPhotoEmpty {
+    height: 120px;
+  }
+
+  .locationPhotoQuickForm,
+  .inventoryCreatePanel .inventoryFormGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .locationPhotoQuickForm button {
+    width: 100%;
+  }
+
+  .photoReviewQueue > [role="row"] {
+    grid-template-columns: 1fr auto;
+  }
+
+  .photoReviewQueue > [role="row"] > :nth-child(3) {
+    display: none;
+  }
+
+  .inventoryTablePanel {
+    overflow: hidden;
+  }
+
+  .inventoryContent .actionGroup a,
+  .inventoryContent button,
+  .inventoryContent input:not([type="checkbox"]),
+  .inventoryContent select,
+  .inventoryContent textarea {
+    min-height: 44px;
+  }
+
+  .inventoryContent .actionGroup a {
+    display: flex;
+    align-items: center;
+  }
+
+  .inventoryContent input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+  }
+
+  .mobileScanPage > header > a {
+    width: 44px;
+    height: 44px;
+  }
+
+  .mobileAppHeader .brand {
+    min-width: 44px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+
+  .inventoryTable > [role="row"] {
+    min-width: 620px;
+  }
+
+  .stocktakeWorkspaceTitle {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .stocktakeWorkspaceTitle h2 {
+    font-size: 18px;
+  }
+
+  .stocktakeJourney {
+    display: none;
+  }
+
+  .stocktakeMobileStages {
+    padding: 5px;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 4px;
+    background: white;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+  }
+
+  .stocktakeMobileStages button {
+    min-width: 0;
+    min-height: 52px;
+    padding: 6px 3px;
+    display: grid;
+    justify-items: center;
+    gap: 3px;
+    color: var(--muted);
+    background: transparent;
+    border: 0;
+    border-radius: 7px;
+    font-size: 9px;
+    font-weight: 800;
+  }
+
+  .stocktakeMobileStages button span {
+    width: 22px;
+    height: 22px;
+    display: grid;
+    place-items: center;
+    color: var(--blue);
+    background: var(--blue-soft);
+    border-radius: 50%;
+  }
+
+  .stocktakeMobileStages button[aria-pressed="true"] {
+    color: var(--blue);
+    background: var(--blue-soft);
+  }
+
+  .stocktakeMobileStages button[aria-pressed="true"] span {
+    color: white;
+    background: var(--blue);
+  }
+
+  .stocktakeModeSummary > button {
+    display: block;
+  }
+
+  .stocktakeMobilePanel:not(.isActive) {
+    display: none !important;
+  }
+
+  .stocktakeControl[data-mobile-stage="mode"],
+  .stocktakeControl[data-mobile-stage="labels"] {
+    display: none;
+  }
+
+  .stocktakeQueue {
+    display: none;
+  }
+
+  .stocktakeMobileDifferencePicker {
+    padding: 9px;
+    display: grid;
+    gap: 5px;
+    background: white;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    font-size: 10px;
+    font-weight: 800;
+  }
+
+  .stocktakeAuditTimeline {
+    display: block;
+  }
+
+  .stocktakeControl,
+  .stocktakeWorkspace > .operationsFormGrid {
+    padding: 10px;
+  }
+
+  .stocktakeWorkspace button,
+  .stocktakeWorkspace input:not([type="checkbox"]),
+  .stocktakeWorkspace select,
+  .stocktakeWorkspace textarea,
+  .stocktakePage .secondaryButton {
+    min-height: 44px;
+  }
+
+  .stocktakePage .secondaryButton {
+    display: flex;
+    align-items: center;
+  }
+
+  .stocktakeModeBanner,
+  .sectionTitle,
+  .accountingActionRow {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .discrepancyFacts {
+    grid-template-columns: 1fr;
+  }
+
+  .discrepancyEvidenceGallery {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .operationsFormGrid,
+  .accountingFieldGrid,
+  .mappingDraftFields {
+    grid-template-columns: 1fr;
+  }
+
+  .accountingFormatTabs {
+    overflow: visible;
+  }
+
+  .accountingFormatTabs button {
+    min-width: 0;
+  }
+
+  .accountingFormatTabs small {
+    display: none;
+  }
+
+  .accountingMobileStages {
+    padding: 5px;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px;
+    background: white;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+  }
+
+  .accountingMobileStages button {
+    min-width: 0;
+    min-height: 52px;
+    padding: 6px 3px;
+    display: grid;
+    justify-items: center;
+    gap: 3px;
+    color: var(--muted);
+    background: transparent;
+    border: 0;
+    border-radius: 7px;
+    font-size: 9px;
+    font-weight: 800;
+  }
+
+  .accountingMobileStages button span {
+    width: 22px;
+    height: 22px;
+    display: grid;
+    place-items: center;
+    color: var(--blue);
+    background: var(--blue-soft);
+    border-radius: 50%;
+  }
+
+  .accountingMobileStages button[aria-pressed="true"] {
+    color: var(--blue);
+    background: var(--blue-soft);
+  }
+
+  .accountingMobileStages button[aria-pressed="true"] span {
+    color: white;
+    background: var(--blue);
+  }
+
+  .accountingMobilePanel:not(.isActive) {
+    display: none !important;
+  }
+
+  .accountingWorkspace[data-mobile-stage="format"] {
+    display: none;
+  }
+
+  .accountingFormatTabs.isActive {
+    padding: 11px;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .accountingFormatTabs.isActive button {
+    min-height: 92px;
+    padding: 14px;
+    text-align: left;
+    border: 1px solid var(--line);
+  }
+
+  .accountingOrderPicker {
+    grid-template-columns: 1fr;
+    padding: 11px;
+  }
+
+  .accountingWorkspace {
+    gap: 9px;
+  }
+
+  .accountingWorkspace > .workflowPanelHead {
+    align-items: flex-start;
+  }
+
+  .mappingTable {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .accountingControlCard {
+    padding: 12px;
+  }
+
+  .accountingFieldGrid label {
+    padding: 10px;
+    background: #f8fafd;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+  }
+
+  .mappingRow,
+  .mappingDraft summary {
+    grid-template-columns: 1fr;
+    gap: 4px;
+    padding: 10px;
+  }
+
+  .profitWaterfall {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* Keep the approved Home C overrides after the legacy dashboard rules. */
+.ownerPulseDashboard .ownerMetricCard {
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+}
+
+.ownerPulseDashboard .ownerMetricCard strong {
+  grid-row: auto;
+  font-size: clamp(21px, 2.2vw, 30px);
+}
+
+.ownerPulseDashboard .ownerCurrentWork,
+.ownerPulseDashboard .ownerConfirmPanel {
+  grid-area: auto;
 }

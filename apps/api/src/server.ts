@@ -10,6 +10,7 @@ import { PostgresOrderRepository } from "./order-repository.js";
 import { PostgresP0ItemRepository } from "./p0-item-repository.js";
 import { PostgresTeamRepository } from "./team-repository.js";
 import { PostgresStocktakeRepository } from "./stocktake-repository.js";
+import { PostgresAccountingRepository } from "./accounting-repository.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 const sessionSecret = process.env.SESSION_SECRET;
@@ -59,6 +60,7 @@ const app = buildApp({
   p0ItemRepository: new PostgresP0ItemRepository(databaseUrl),
   teamRepository: new PostgresTeamRepository(databaseUrl),
   stocktakeRepository: new PostgresStocktakeRepository(databaseUrl),
+  accountingRepository: new PostgresAccountingRepository(databaseUrl),
 });
 const port = Number(process.env.PORT ?? 3100);
 

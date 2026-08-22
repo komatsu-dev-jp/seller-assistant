@@ -1,6 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
   appendCodeCheckDigit,
+  listingPrepPilotFixtures,
+  pilotFixtureCategories,
   type CaptureTaskResponse,
   type ConfirmIdentityCandidateRequest,
   type CreateLocationRequest,
@@ -13,7 +15,11 @@ import {
   type P0ItemResponse,
   type ProductResearchResponse,
   type PutawayCatalogResponse,
+  type PilotRunResponse,
+  type RecordPilotExceptionRequest,
+  type StartPilotRunRequest,
 } from "@resale/contracts";
+import { summarizeListingPrepPilot } from "@resale/domain";
 import postgres from "postgres";
 
 import { RepositoryError, type RequestActor } from "./repository.js";
@@ -25,6 +31,18 @@ export interface P0ItemRepository {
     input: CreateP0ItemRequest,
   ): Promise<P0ItemResponse>;
   listItems(workspaceId: string, actor: RequestActor): Promise<P0ItemResponse[]>;
+  startPilotRun(
+    workspaceId: string,
+    actor: RequestActor,
+    input: StartPilotRunRequest,
+  ): Promise<PilotRunResponse>;
+  latestPilotRun(workspaceId: string, actor: RequestActor): Promise<PilotRunResponse | null>;
+  recordPilotException(
+    workspaceId: string,
+    runId: string,
+    actor: RequestActor,
+    input: RecordPilotExceptionRequest,
+  ): Promise<PilotRunResponse>;
   createLocation(
     workspaceId: string,
     actor: RequestActor,
@@ -138,6 +156,42 @@ interface ReferenceRow {
   created_at: Date;
 }
 
+interface PilotRunRow {
+  id: string;
+  workspace_id: string;
+  protocol_version: "listing_prep_pilot_v1.0.0";
+  commit_sha: string;
+  migration_version: PilotRunResponse["migrationVersion"];
+  platform: string;
+  browser: string;
+  viewport: "390x844";
+  actor_id: string;
+  warmup_completed_at: Date;
+  state: PilotRunResponse["state"];
+  externally_invalidated: boolean;
+  external_invalidation_reason: string | null;
+  started_at: Date;
+  completed_at: Date | null;
+}
+
+interface PilotItemRow {
+  id: string;
+  sku_id: string;
+  product_fixture_id: PilotRunResponse["items"][number]["productFixtureId"];
+  category: PilotRunResponse["items"][number]["category"];
+  started_at: Date;
+  completed_at: Date | null;
+  elapsed_seconds: number | string | null;
+  invalid_attempt_count: number;
+  missing_required_image_count: number;
+  measurement_rework_count: number;
+  label_location_mismatch_count: number;
+  misputaway_count: number;
+  network_retry_count: number;
+  manual_correction_count: number;
+  copy_ready_workflow_version: number | null;
+}
+
 export class PostgresP0ItemRepository implements P0ItemRepository {
   private readonly sql: postgres.Sql;
 
@@ -175,6 +229,38 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
         }
 
         await transaction`select pg_advisory_xact_lock(hashtext(${workspaceId}))`;
+        if (input.pilot) {
+          const runs = await transaction<Array<{ actor_id: string; item_count: number }>>`
+            select run.actor_id, count(item.id)::integer as item_count
+            from pilot_run run
+            left join pilot_item_measurement item
+              on item.workspace_id = run.workspace_id and item.pilot_run_id = run.id
+            where run.workspace_id = ${workspaceId} and run.id = ${input.pilot.runId}
+              and run.state = 'active'
+            group by run.actor_id
+          `;
+          const run = runs[0];
+          if (!run || run.actor_id !== actor.identityId) {
+            throw new RepositoryError(
+              "forbidden",
+              "The active pilot belongs to another actor or is unavailable",
+            );
+          }
+          const expectedFixture = listingPrepPilotFixtures[run.item_count];
+          if (!expectedFixture || input.pilot.productFixtureId !== expectedFixture) {
+            throw new RepositoryError(
+              "conflict",
+              `The next fixed pilot fixture is ${expectedFixture ?? "none"}`,
+            );
+          }
+          const category = pilotFixtureCategories[input.pilot.productFixtureId];
+          if (input.category !== pilotDisplayCategory(category)) {
+            throw new RepositoryError(
+              "conflict",
+              "The product category does not match the fixed pilot fixture",
+            );
+          }
+        }
         const skuId = randomUUID();
         const inventoryUnitId = randomUUID();
         const purchaseBatchId = randomUUID();
@@ -197,6 +283,36 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
           insert into product_sku (id, workspace_id, sku_code, title, category, human_confirmed_at)
           values (${skuId}, ${workspaceId}, ${input.skuCode}, ${input.title}, ${input.category}, ${input.purchasedAt})
         `;
+        if (input.pilot) {
+          const category = pilotFixtureCategories[input.pilot.productFixtureId];
+          const pilotRows = await transaction<Array<{ id: string }>>`
+            insert into pilot_item_measurement (
+              workspace_id, pilot_run_id, sku_id, product_fixture_id, category
+            ) values (
+              ${workspaceId}, ${input.pilot.runId}, ${skuId},
+              ${input.pilot.productFixtureId}, ${category}
+            ) returning id
+          `;
+          const pilotItemId = pilotRows[0]?.id;
+          if (!pilotItemId) {
+            throw new RepositoryError("database_error", "Pilot item start returned no row");
+          }
+          await transaction`
+            insert into audit_event (
+              workspace_id, actor_id, action, target_type, target_id, field_names,
+              redacted_changes, reference_ids, reason_code, approved_by
+            ) values (
+              ${workspaceId}, ${actor.identityId}, 'pilot_item_started',
+              'pilot_item_measurement', ${pilotItemId},
+              ${["product_fixture_id", "category", "started_at"]},
+              ${transaction.json({
+                after: { product_fixture_id: input.pilot.productFixtureId, category },
+              })},
+              ${[input.pilot.runId, skuId]}, 'server_accepted_product_creation',
+              ${actor.identityId}
+            )
+          `;
+        }
         await transaction`
           insert into inventory_unit (id, workspace_id, sku_id, inventory_number)
           values (${inventoryUnitId}, ${workspaceId}, ${skuId}, ${inventoryNumber})
@@ -288,6 +404,195 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
         await requireManagementRole(transaction, workspaceId, actor.identityId);
         const rows = await selectP0Items(transaction, workspaceId);
         return rows.map(toP0ItemResponse);
+      });
+    } catch (error) {
+      throw normalizeP0ItemError(error);
+    }
+  }
+
+  async startPilotRun(
+    workspaceId: string,
+    actor: RequestActor,
+    input: StartPilotRunRequest,
+  ): Promise<PilotRunResponse> {
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId);
+        await requireManagementRole(transaction, workspaceId, actor.identityId);
+        await transaction`select pg_advisory_xact_lock(hashtext(${`pilot:${workspaceId}`}))`;
+        const active = await transaction<Array<{ id: string }>>`
+          select id from pilot_run where workspace_id = ${workspaceId} and state = 'active'
+        `;
+        if (active[0]) {
+          throw new RepositoryError("conflict", "An active ten-product pilot already exists");
+        }
+        const runId = randomUUID();
+        await transaction`
+          insert into pilot_run (
+            id, workspace_id, protocol_version, commit_sha, migration_version,
+            platform, browser, viewport, actor_id, warmup_completed_at
+          ) values (
+            ${runId}, ${workspaceId}, ${input.protocolVersion}, ${input.commitSha},
+            ${input.migrationVersion}, ${input.platform}, ${input.browser}, ${input.viewport},
+            ${actor.identityId}, statement_timestamp()
+          )
+        `;
+        await transaction`
+          insert into audit_event (
+            workspace_id, actor_id, action, target_type, target_id, field_names,
+            redacted_changes, reference_ids, reason_code, approved_by
+          ) values (
+            ${workspaceId}, ${actor.identityId}, 'pilot_run.started', 'pilot_run', ${runId},
+            ${["protocol_version", "commit_sha", "migration_version", "viewport"]},
+            ${transaction.json({
+              after: {
+                protocol_version: input.protocolVersion,
+                commit_sha: input.commitSha,
+                migration_version: input.migrationVersion,
+                viewport: input.viewport,
+              },
+            })},
+            ${[]}, 'warmup_and_environment_human_confirmed', ${actor.identityId}
+          )
+        `;
+        return requirePilotRun(transaction, workspaceId, runId);
+      });
+    } catch (error) {
+      throw normalizeP0ItemError(error);
+    }
+  }
+
+  async latestPilotRun(workspaceId: string, actor: RequestActor): Promise<PilotRunResponse | null> {
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId);
+        await requireManagementRole(transaction, workspaceId, actor.identityId);
+        const rows = await transaction<Array<{ id: string }>>`
+          select id from pilot_run where workspace_id = ${workspaceId}
+          order by started_at desc limit 1
+        `;
+        return rows[0] ? requirePilotRun(transaction, workspaceId, rows[0].id) : null;
+      });
+    } catch (error) {
+      throw normalizeP0ItemError(error);
+    }
+  }
+
+  async recordPilotException(
+    workspaceId: string,
+    runId: string,
+    actor: RequestActor,
+    input: RecordPilotExceptionRequest,
+  ): Promise<PilotRunResponse> {
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId);
+        await requireManagementRole(transaction, workspaceId, actor.identityId);
+        await transaction`select pg_advisory_xact_lock(hashtext(${`pilot:${workspaceId}:${runId}`}))`;
+        const payloadHash = createHash("sha256")
+          .update(
+            JSON.stringify({ eventType: input.eventType, detailCode: input.detailCode }),
+            "utf8",
+          )
+          .digest("hex");
+        const prior = await transaction<Array<{ payload_hash: string }>>`
+          select payload_hash from pilot_exception_event
+          where workspace_id = ${workspaceId} and pilot_run_id = ${runId}
+            and idempotency_key = ${input.idempotencyKey}
+        `;
+        if (prior[0]) {
+          if (prior[0].payload_hash !== payloadHash) {
+            throw new RepositoryError(
+              "conflict",
+              "The pilot event idempotency key has another payload",
+            );
+          }
+          return requirePilotRun(transaction, workspaceId, runId);
+        }
+        const runs = await transaction<
+          Array<{ actor_id: string; item_id: string | null; state: PilotRunResponse["state"] }>
+        >`
+          select run.actor_id, run.state,
+            case when exists (
+              select 1 from pilot_item_measurement pending
+              where pending.workspace_id = run.workspace_id
+                and pending.pilot_run_id = run.id and pending.completed_at is null
+            ) then (
+              select item.id from pilot_item_measurement item
+              where item.workspace_id = run.workspace_id and item.pilot_run_id = run.id
+                and item.completed_at is null
+              order by item.started_at desc, item.id desc limit 1
+            ) else (
+              select item.id from pilot_item_measurement item
+              where item.workspace_id = run.workspace_id and item.pilot_run_id = run.id
+                and item.completed_at is not null
+              order by item.completed_at desc, item.started_at desc, item.id desc limit 1
+            ) end as item_id
+          from pilot_run run
+          where run.workspace_id = ${workspaceId} and run.id = ${runId}
+          for update of run
+        `;
+        const current = runs[0];
+        if (!current || !current.item_id || current.actor_id !== actor.identityId) {
+          throw new RepositoryError("conflict", "The pilot item is unavailable for this actor");
+        }
+        const eventId = randomUUID();
+        await transaction`
+          insert into pilot_exception_event (
+            id, workspace_id, pilot_run_id, pilot_item_measurement_id, event_type,
+            detail_code, idempotency_key, payload_hash, actor_id
+          ) values (
+            ${eventId}, ${workspaceId}, ${runId}, ${current.item_id}, ${input.eventType},
+            ${input.detailCode}, ${input.idempotencyKey}, ${payloadHash}, ${actor.identityId}
+          )
+        `;
+        await transaction`
+          insert into audit_event (
+            workspace_id, actor_id, action, target_type, target_id, field_names,
+            redacted_changes, reference_ids, reason_code, approved_by
+          ) values (
+            ${workspaceId}, ${actor.identityId}, 'pilot_exception.recorded',
+            'pilot_exception_event', ${eventId}, ${["event_type", "detail_code"]},
+            ${transaction.json({
+              after: { event_type: input.eventType, detail_code: input.detailCode },
+            })},
+            ${[runId, current.item_id]}, 'server_timestamped_exception', ${actor.identityId}
+          )
+        `;
+        if (input.eventType === "invalid_attempt" && current.state === "active") {
+          await transaction`
+            update pilot_run set state = 'failed', completed_at = statement_timestamp()
+            where workspace_id = ${workspaceId} and id = ${runId} and state = 'active'
+          `;
+        }
+        const invalidatesCompletedRun = [
+          "invalid_attempt",
+          "missing_required_image",
+          "label_location_mismatch",
+          "misputaway",
+        ].includes(input.eventType);
+        if (invalidatesCompletedRun && current.state === "completed") {
+          await transaction`
+            update pilot_run
+            set state = 'failed'
+            where workspace_id = ${workspaceId} and id = ${runId} and state = 'completed'
+          `;
+          await transaction`
+            insert into audit_event (
+              workspace_id, actor_id, action, target_type, target_id, field_names,
+              redacted_changes, reference_ids, reason_code, approved_by
+            ) values (
+              ${workspaceId}, ${actor.identityId}, 'pilot_run.failed_after_late_exception',
+              'pilot_run', ${runId}, ${["state"]},
+              ${transaction.json({
+                before: { state: "completed" },
+                after: { state: "failed" },
+              })},
+              ${[runId, current.item_id]}, 'late_safety_exception_sync', ${actor.identityId}
+            )
+          `;
+        }
+        return requirePilotRun(transaction, workspaceId, runId);
       });
     } catch (error) {
       throw normalizeP0ItemError(error);
@@ -1002,6 +1307,95 @@ function buildListingCandidate(
     confirmedBy,
     confirmedAt: confirmedAt?.toISOString() ?? null,
   };
+}
+
+async function requirePilotRun(
+  sql: postgres.TransactionSql,
+  workspaceId: string,
+  runId: string,
+): Promise<PilotRunResponse> {
+  const runs = await sql<PilotRunRow[]>`
+    select id, workspace_id, protocol_version, commit_sha, migration_version,
+           platform, browser, viewport, actor_id, warmup_completed_at, state,
+           externally_invalidated, external_invalidation_reason, started_at, completed_at
+    from pilot_run where workspace_id = ${workspaceId} and id = ${runId}
+  `;
+  const run = runs[0];
+  if (!run) throw new RepositoryError("forbidden", "The pilot run is unavailable");
+  const rows = await sql<PilotItemRow[]>`
+    select item.id, item.sku_id, item.product_fixture_id, item.category,
+           item.started_at, item.completed_at, item.elapsed_seconds,
+           coalesce(events.invalid_attempt_count, 0)::integer as invalid_attempt_count,
+           coalesce(events.missing_required_image_count, 0)::integer
+             as missing_required_image_count,
+           coalesce(events.measurement_rework_count, 0)::integer as measurement_rework_count,
+           coalesce(events.label_location_mismatch_count, 0)::integer
+             as label_location_mismatch_count,
+           coalesce(events.misputaway_count, 0)::integer as misputaway_count,
+           coalesce(events.network_retry_count, 0)::integer as network_retry_count,
+           coalesce(events.manual_correction_count, 0)::integer as manual_correction_count,
+           item.copy_ready_workflow_version
+    from pilot_item_measurement item
+    left join lateral (
+      select
+        count(*) filter (where event_type = 'invalid_attempt') as invalid_attempt_count,
+        count(*) filter (where event_type = 'missing_required_image')
+          as missing_required_image_count,
+        count(*) filter (where event_type = 'measurement_rework') as measurement_rework_count,
+        count(*) filter (where event_type = 'label_location_mismatch')
+          as label_location_mismatch_count,
+        count(*) filter (where event_type = 'misputaway') as misputaway_count,
+        count(*) filter (where event_type = 'network_retry') as network_retry_count,
+        count(*) filter (where event_type = 'manual_correction') as manual_correction_count
+      from pilot_exception_event event
+      where event.workspace_id = item.workspace_id
+        and event.pilot_item_measurement_id = item.id
+    ) events on true
+    where item.workspace_id = ${workspaceId} and item.pilot_run_id = ${runId}
+    order by item.started_at, item.product_fixture_id
+  `;
+  const items: PilotRunResponse["items"] = rows.map((row) => ({
+    measurementId: row.id,
+    skuId: row.sku_id,
+    productFixtureId: row.product_fixture_id,
+    category: row.category,
+    startedAt: row.started_at.toISOString(),
+    completedAt: row.completed_at?.toISOString() ?? null,
+    elapsedSeconds: row.elapsed_seconds === null ? null : Number(row.elapsed_seconds),
+    metrics: {
+      invalidAttemptCount: row.invalid_attempt_count,
+      missingRequiredImageCount: row.missing_required_image_count,
+      measurementReworkCount: row.measurement_rework_count,
+      labelLocationMismatchCount: row.label_location_mismatch_count,
+      misputawayCount: row.misputaway_count,
+      networkRetryCount: row.network_retry_count,
+      manualCorrectionCount: row.manual_correction_count,
+    },
+    copyReadyWorkflowVersion: row.copy_ready_workflow_version,
+  }));
+  return {
+    runId: run.id,
+    workspaceId: run.workspace_id,
+    protocolVersion: run.protocol_version,
+    commitSha: run.commit_sha,
+    migrationVersion: run.migration_version,
+    platform: run.platform,
+    browser: run.browser,
+    viewport: run.viewport,
+    actorId: run.actor_id,
+    state: run.state,
+    externallyInvalidated: run.externally_invalidated,
+    externalInvalidationReason: run.external_invalidation_reason,
+    warmupCompletedAt: run.warmup_completed_at.toISOString(),
+    startedAt: run.started_at.toISOString(),
+    completedAt: run.completed_at?.toISOString() ?? null,
+    items,
+    summary: summarizeListingPrepPilot(items, run.state),
+  };
+}
+
+function pilotDisplayCategory(category: "tops" | "outer" | "pants" | "knit"): string {
+  return { tops: "トップス", outer: "アウター", pants: "パンツ", knit: "ニット" }[category];
 }
 
 async function setWorkspace(sql: postgres.TransactionSql, workspaceId: string): Promise<void> {

@@ -1,41 +1,42 @@
 import { LogoutButton } from "./logout-button";
 
 const links = [
-  ["/", "ホーム", "primary"],
-  ["/workflow", "P0商品作業", "primary"],
-  ["/inventory", "在庫", "primary"],
-  ["/team", "外注・担当", "secondary"],
-  ["/mobile", "現場", "primary"],
-  ["/workflow", "仕入・出品", "secondary"],
-  ["/workflow", "注文・配送", "secondary"],
-  ["/workflow", "収支・会計", "secondary"],
+  ["/", "ホーム", "home", "primary", "⌂"],
+  ["/workflow", "商品", "workflow", "primary", "▣"],
+  ["/workflow", "仕入・出品", "listing", "secondary", "⇢"],
+  ["/shipping", "注文・配送", "orders", "secondary", "▱"],
+  ["/inventory", "在庫", "inventory", "primary", "◇"],
+  ["/inventory/stocktake", "差異・確認", "discrepancy", "secondary", "△"],
+  ["/accounting", "収支・帳簿", "accounting", "secondary", "▧"],
+  ["/team", "チーム", "team", "secondary", "◎"],
+  ["/mobile", "現場作業", "mobile", "primary", "▤"],
 ] as const;
 
 interface AppSidebarProps {
-  current: "home" | "inventory" | "workflow" | "team";
+  current: "home" | "inventory" | "discrepancy" | "workflow" | "team" | "accounting";
 }
 
 export function AppSidebar({ current }: AppSidebarProps) {
   return (
-    <aside className="sidebar" aria-label="メインナビゲーション">
+    <aside className={`sidebar sidebar-${current}`} aria-label="メインナビゲーション">
       <a className="brand" href="/" aria-label="Resale Operations ホーム">
-        R<span>O</span>
+        <span className="brandMark">OP</span>
+        <span className="brandText">オペレーション</span>
       </a>
       <nav>
-        {links.map(([href, label, mobilePriority]) => {
-          const isCurrent =
-            (current === "home" && label === "ホーム") ||
-            (current === "inventory" && label === "在庫") ||
-            (current === "workflow" && label === "P0商品作業") ||
-            (current === "team" && label === "外注・担当");
+        {links.map(([href, label, key, mobilePriority, icon]) => {
+          const isCurrent = current === key;
           return (
             <a
               aria-current={isCurrent ? "page" : undefined}
-              className={`nav-${mobilePriority}`}
+              className={`nav-${mobilePriority} nav-${key}`}
               href={href}
               key={label}
             >
-              {label}
+              <span className="navIcon" aria-hidden="true">
+                {icon}
+              </span>
+              <span>{label}</span>
             </a>
           );
         })}

@@ -18,7 +18,7 @@ import type {
   ShippingTaskResponse,
 } from "@resale/contracts";
 import {
-  calculateContribution,
+  calculateFinancialsV1,
   createAccountingCsv,
   validateOrderTransition,
   type JournalCandidate,
@@ -905,14 +905,15 @@ export class PostgresOrderRepository implements OrderRepository {
           insert into return_inspection (
             workspace_id, order_id, inventory_unit_id, resolution, confirmed_by, confirmed_at
           ) values (
-            ${workspaceId}, ${orderId}, ${order.inventory_unit_id}, ${input.resolution},
+            ${workspaceId}, ${orderId}, ${order.inventory_unit_id},
+            ${input.resolution === "restock" ? "restock" : "disposal_pending"},
             ${actor.identityId}, ${input.inspectedAt}
           )
         `;
         return {
           state: "returned" as const,
           inventoryStatus:
-            input.resolution === "restock" ? ("available" as const) : ("disposed" as const),
+            input.resolution === "restock" ? ("available" as const) : ("disposal_pending" as const),
         };
       },
     );
@@ -1555,17 +1556,26 @@ function toFinancialSummary(
     };
   };
   const sale = fact("sale", "channel");
-  const contribution = calculateContribution({
+  const zeroFact: MoneyFact = {
+    ...sale,
+    amountMinor: 0,
+    sourceMeaning: "人が入力した取引に該当額なし",
+  };
+  const result = calculateFinancialsV1({
     orderPrice: sale,
-    sellerDiscount: { ...sale, amountMinor: 0 },
-    channelCoupon: { ...sale, amountMinor: 0 },
+    sellerDiscount: zeroFact,
+    channelCoupon: zeroFact,
     sellerRevenueBeforeRefund: sale,
-    successfulRefund: null,
+    successfulRefund: zeroFact,
     sourceRevenueAlreadyNetOfRefund: false,
-    costOfGoods: fact("cost", "seller"),
-    sellingFee: fact("fee", "seller"),
+    sellingFeeCharged: fact("fee", "seller"),
+    sellingFeeRefund: zeroFact,
+    promotionCost: zeroFact,
     sellerShipping: fact("shipping", "seller"),
     packagingCost: fact("packaging", "seller"),
+    returnDirectCost: zeroFact,
+    costOfGoods: fact("cost", "seller"),
+    costReturnedToInventory: zeroFact,
   });
   const skuId = events[0]?.sku_id;
   if (!skuId) throw new RepositoryError("conflict", "The order financial SKU is missing");
@@ -1578,8 +1588,10 @@ function toFinancialSummary(
     sellingFeeMinor: amount("fee"),
     shippingCostMinor: amount("shipping"),
     packagingCostMinor: amount("packaging"),
-    netRevenueMinor: contribution.netRevenue,
-    contributionProfitMinor: contribution.contributionProfit,
+    netRevenueMinor: result.netProductSales ?? 0,
+    contributionProfitMinor: result.transactionContribution,
+    formulaVersion: result.formulaVersion,
+    missingInputs: result.missing,
     currency: "JPY",
     disclaimer: "運用分析の参考値です。会計上の売上・利益・所得・税額を示すものではありません。",
   };

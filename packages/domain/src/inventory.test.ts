@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  canSetInventoryStatusInP0,
+  canTransitionMissingCandidate,
   canResolveMissingInventory,
   decideIdempotency,
+  discrepancyModeForActiveMembers,
   validatePlacement,
+  validateMissingCandidateConfirmation,
   validateScanSession,
   validateUnitLocation,
   type InventoryLabel,
@@ -145,5 +149,78 @@ describe("stocktake separation of duties", () => {
         approverId: "person-a",
       }),
     ).toBe(false);
+  });
+
+  it("selects solo or dual mode from server-counted active membership only", () => {
+    expect(discrepancyModeForActiveMembers(1)).toBe("solo_reversible");
+    expect(discrepancyModeForActiveMembers(2)).toBe("dual_actor");
+    expect(() => discrepancyModeForActiveMembers(0)).toThrow("at least one");
+  });
+
+  it("requires all reversible solo evidence and a server-enforced three-second challenge", () => {
+    const valid = {
+      mode: "solo_reversible" as const,
+      activeMembershipCountAtSelection: 1,
+      initialCounterId: "person-a",
+      confirmerId: "person-a",
+      inventoryLabelCurrent: true,
+      locationLabelCurrent: true,
+      sameOnlineScanSession: true,
+      privateEvidenceCount: 1,
+      evidenceServerInspected: true,
+      reasonCode: "not_seen_during_count",
+      humanConfirmed: true,
+      challengeNotBeforeEpochMs: 3_000,
+      confirmedAtEpochMs: 3_000,
+      challengeAlreadyConsumed: false,
+    };
+    expect(validateMissingCandidateConfirmation(valid)).toEqual([]);
+    expect(
+      validateMissingCandidateConfirmation({
+        ...valid,
+        privateEvidenceCount: 0,
+        confirmedAtEpochMs: 2_999,
+        challengeAlreadyConsumed: true,
+      }),
+    ).toEqual(
+      expect.arrayContaining([
+        "private_evidence_required",
+        "confirmation_too_early",
+        "challenge_already_consumed",
+      ]),
+    );
+  });
+
+  it("requires another person in dual mode and permits only confirm then restore", () => {
+    expect(
+      validateMissingCandidateConfirmation({
+        mode: "dual_actor",
+        activeMembershipCountAtSelection: 2,
+        initialCounterId: "person-a",
+        confirmerId: "person-a",
+        inventoryLabelCurrent: true,
+        locationLabelCurrent: true,
+        sameOnlineScanSession: true,
+        privateEvidenceCount: 1,
+        evidenceServerInspected: true,
+        reasonCode: "not_seen_during_count",
+        humanConfirmed: true,
+        challengeNotBeforeEpochMs: 3_000,
+        confirmedAtEpochMs: 3_000,
+        challengeAlreadyConsumed: false,
+      }),
+    ).toContain("second_actor_required");
+    expect(canTransitionMissingCandidate("reconfirmation_required", "candidate_confirmed")).toBe(
+      true,
+    );
+    expect(canTransitionMissingCandidate("candidate_confirmed", "restored")).toBe(true);
+    expect(canTransitionMissingCandidate("reconfirmation_required", "restored")).toBe(false);
+  });
+
+  it("blocks irreversible lost and disposed states in P0", () => {
+    expect(canSetInventoryStatusInP0("available")).toBe(true);
+    expect(canSetInventoryStatusInP0("disposal_pending")).toBe(true);
+    expect(canSetInventoryStatusInP0("lost")).toBe(false);
+    expect(canSetInventoryStatusInP0("disposed")).toBe(false);
   });
 });

@@ -258,3 +258,50 @@
 - 検証: `npm.cmd run check`は20 files / 112 tests、statements 84.09%、branch 81.81%、functions 100%、lines 91.36%、本番buildまでPASS。PostgreSQL 0001〜0018、37-table RLS、P0結合PASS。
 - 外部境界: 検証先はPC内Web/API/PostgreSQLだけ。外部API、SaaS、CI、deploy、Slack、Notion、GitHub pushは0件。
 - 次の一手: local commitへ固定し、別担当の読み取り専用再レビューでCritical/High 0を確認する。
+
+## Iteration 25 — 2026-08-20 修正版Aの承認と再開契約
+
+- 入力: Claude Code第二次監査と現mainの照合、ユーザーのA案選択、修正版M13 v2/W11 v4/M14 v2/W12 v2。
+- Slack証拠: 親TS `1787203224.255009`、ユーザー本人の承認返信TS `1787203707.087749`、「修正版4画面で承認」。
+- 仕様変更: 1人運用は24時間待機/別sessionを廃止し、同じonline作業の二重読取・非公開証拠・理由・最終確認で可逆な`missing_candidate`だけを確認する。2人以上は別担当確認を維持する。P0の不可逆な紛失/廃棄/数量調整を禁止する。
+- 会計変更: `accounting_profile`、承認済み`account_mapping_rule`、用語ヘルプ、Money Forward向けA〜AA 27列adapter、汎用19列adapter、出力停止・重複警告・取込確認履歴をP0へ追加する。外部API/自動送信は0件。
+- 数式: `docs/specs/financial-formulas-v1.md`を新設し、`financial_formula_v1.0.0`、二重控除防止、月次指標、必須fixtureを正本化した。
+- Gate: AC-039をP0へ追加し、AC-056〜061/TA-038〜043を新設した。旧P0合格は基礎証拠として保持するが、現行gateは再オープンした。
+- Notion: 既存MVP/技術/Goal/実装計画へ追補し、子ページを削除せず再取得検証した。
+- 独立仕様review初回: Critical 1 / High 4 / Medium 4。P0/P1完了範囲、`missing_candidate`のgeneric `resolved`、重複停止/警告、月次貢献利益の二重式、Money Forward列仕様、3秒確認、membership競合、pilot/UI採点、solo証拠写真の表現を検出した。
+- 修正: P0必須AC/TAを明示し、P1固有条件はflag OFF/禁止経路だけとした。紛失候補は`restored`だけで閉じる。重複を同一batch hard block/過去batch明示確認へ分離し、月次式を取引合計へ一本化した。
+- CSV: 2026-08-20の公式ページ再確認でMoney ForwardがA〜AA 27列であることを確認し、汎用19列と分離したschema/fixture JSON、SHA-256、serializer規則を正本化した。公式ページに文字コード指定がないため、UTF-8 BOMは本アプリの決定的契約と明記し、実import互換性を未確認扱いにした。
+- 測定: server `not_before`付き3秒/keyboard同等確認、membership lock、10商品pilot手順、100点UI採点表を追加した。
+- 独立再review: pilotの製品起因invalid除外とUI配点に残ったMedium 2件を修正し、最終 **PASS — Critical 0 / High 0 / Medium 0 / Low 0**。
+- 実装: Goal再確認前のためコード・migration・testは未変更。25列理解を公式A〜AA 27列へ訂正した点を含め、ユーザーの最終契約確認で停止した。
+
+## Iteration 26 — 2026-08-20 Goal契約v2確認・実装再開
+
+- 再開入力: ユーザー回答「この契約でGoalを再開してください」。Money Forward A〜AA 27列、完全無料PWA、修正版A、P0/P1境界を含む契約v2を確認済みとした。
+- 正本: `docs/specs/goal-contract-revised-a-v2.md`。Goal管理機能に残るnative iOS前提の旧Objectiveは履歴であり、実装判断へ使わない。
+- 基準値: 現行mainのmigrationは`0020`まで。旧P0実装は基礎として保持するが、AC-056〜061/TA-038〜043と全P0回帰が合格するまで現行P0を完了扱いにしない。
+- 最大の問題: 未測定。依存導入後に全checkとPostgreSQL migrationを実行し、最初の失敗または最大の仕様差分を一つ選ぶ。
+- 変更範囲: まず承認状態と進捗記録だけを更新。コード変更は基準測定後に開始する。
+- 次の一手: 現行コード、migration、テスト構成を照合し、無料ローカル環境で基準品質ゲートを実行する。
+
+# 2026-08-20 承認済みデザイン忠実度修正
+
+- Slack承認済みのB+Cハイブリッド、ホームC、在庫W10/M12、棚卸W11v4/M13v2、会計W12v2/M14v2と実装画面を原寸比較した。
+- 大きな濃紺サイドバーと縦長フォーム中心の初期UIは不合格と判断し、白い高密度ワークベンチへ再構成した。
+- 在庫と棚卸差異を別routeへ分離し、ホームのモバイル表示は「今日の確認」を先頭へ移した。
+- 390×844でホーム・在庫・棚卸・会計の横overflow 0pxを測定した。
+- `npm.cmd run check`: 22 files / 139 tests、coverage、lint、typecheck、Next.js buildをPASSした。
+- fresh PostgreSQL 23 migrationsとexisting-data upgrade 0001〜0023をPASSした。
+- 詳細証拠: `docs/implementation/design-fidelity-evidence.md`。
+
+## Iteration 27 — 2026-08-20 Slack承認画像との再照合と1画面1目的への修正
+
+- 再開入力: ユーザーから、実装画面がSlack承認画像とかなり異なり、承認イメージどおりを希望するとの指摘を受けた。
+- 原因: `/inventory` のPC管理画面を390pxへ縮めた表示と、M12の現場用 `/mobile`・`/mobile/scan` を同じ比較対象として扱っていた。また棚卸と会計は全工程を1ページへ縦積みし、M13/M14の1画面1目的を満たしていなかった。
+- 修正: M12は `/mobile`・`/mobile/scan` を正しい実装routeとして固定。棚卸は運用モード・商品読取・差異確認・ラベル、会計は出力形式・会計設定・科目候補・CSV確認の工程切替を追加した。PCのW10/W11/W12高密度作業台は維持した。
+- 表示値: モック内の架空値へ合わせず、ホームKPI、在庫数、場所、会計履歴はローカルDBの保存値を表示する。未取得値は空状態または `—` とする。
+- 操作領域: 5項目のモバイル下部ナビが4列指定で折り返していた不具合を修正した。主要リンク・ボタン・入力欄を44px以上にし、非表示file inputと標準checkboxは表示ラベル/操作行から操作する。
+- 実ブラウザ: 390×844、768×1024、1440×1000のホーム・在庫・棚卸・会計で横overflow 0px。`/`、`/inventory`、`/inventory/stocktake`、`/accounting`、`/mobile`、`/mobile/scan` の再読込でconsole error 0件。
+- 自動検証: `npm.cmd run check`は22 files / 143 tests、line 90.47%、branch 80.56%、functions 100%、lint、typecheck、production buildまでPASS。
+- DB証拠: migration 0001〜0024、49-table RLS matrix、既存データupgrade 0001〜0024は直前の同一API/DB実装でPASS。今回の最終差分はWeb表示/CSS/証拠文書でありDB挙動は変更していない。
+- 未完了: UI評価表の8 task独立完走、実際の10商品pilot、実iPhone Safari。これらを完了するまでGoal/Draft PRを完了扱いにしない。

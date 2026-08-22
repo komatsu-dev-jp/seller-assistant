@@ -1,5 +1,9 @@
 import type { NextRequest } from "next/server";
 import { matchesConfiguredAppOrigin } from "../../../../../lib/request-origin";
+import {
+  createWorkspaceProxyRequestInit,
+  type WorkspaceProxyRequestBody,
+} from "../../../../../lib/workspace-proxy-request";
 
 const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/iu;
 const orderActions = new Set([
@@ -11,7 +15,6 @@ const orderActions = new Set([
   "return-quarantine",
   "return-inspection",
   "financial-summary",
-  "accounting-exports",
   "assignment",
 ]);
 
@@ -48,35 +51,35 @@ async function proxyWorkspaceRequest(
   try {
     const binaryUpload =
       method === "POST" &&
-      segments.length === 3 &&
-      (segments[2] === "media-uploads" ||
-        (segments[0] === "locations" && segments[2] === "photos"));
+      ((segments.length === 3 &&
+        (segments[2] === "media-uploads" ||
+          (segments[0] === "locations" && segments[2] === "photos"))) ||
+        (segments.length === 5 &&
+          segments[0] === "stocktakes" &&
+          segments[2] === "discrepancies" &&
+          segments[4] === "evidence"));
     const encodedPath = segments.map(encodeURIComponent).join("/");
     const endpoint = new URL(
       `/v1/workspaces/${encodeURIComponent(workspaceId)}/${encodedPath}${request.nextUrl.search}`,
       apiOrigin,
     );
-    const upstreamInit: RequestInit = {
-      method,
-      headers: {
-        accept: request.headers.get("accept") ?? "application/json",
-        ...(method === "POST"
+    const body: WorkspaceProxyRequestBody | undefined =
+      method === "POST"
+        ? binaryUpload
           ? {
-              "content-type": binaryUpload
-                ? (request.headers.get("content-type") ?? "")
-                : "application/json",
+              kind: "binary",
+              data: await request.arrayBuffer(),
+              contentType: request.headers.get("content-type") ?? "",
             }
-          : {}),
-        cookie: request.headers.get("cookie") ?? "",
-        ...(appOrigin ? { origin: appOrigin } : {}),
-        "sec-fetch-site": "same-origin",
-      },
-      cache: "no-store",
-      redirect: "manual",
-    };
-    if (method === "POST") {
-      upstreamInit.body = binaryUpload ? await request.arrayBuffer() : await request.text();
-    }
+          : { kind: "json", text: await request.text() }
+        : undefined;
+    const upstreamInit = createWorkspaceProxyRequestInit({
+      method,
+      accept: request.headers.get("accept") ?? "application/json",
+      cookie: request.headers.get("cookie") ?? "",
+      ...(appOrigin ? { appOrigin } : {}),
+      ...(body ? { body } : {}),
+    });
     const upstream = await fetch(endpoint, upstreamInit);
     const safeStatus = [200, 201, 400, 401, 403, 404, 409].includes(upstream.status)
       ? upstream.status
@@ -94,22 +97,59 @@ async function proxyWorkspaceRequest(
       return new Response(await upstream.arrayBuffer(), { status: safeStatus, headers });
     }
     if (contentType.startsWith("image/jpeg") || contentType.startsWith("image/png")) {
+      const headers = new Headers({
+        "content-type": contentType,
+        "cache-control": "private, no-store",
+      });
+      for (const name of ["content-disposition", "x-content-type-options"]) {
+        const value = upstream.headers.get(name);
+        if (value) headers.set(name, value);
+      }
       return new Response(await upstream.arrayBuffer(), {
         status: safeStatus,
-        headers: { "content-type": contentType, "cache-control": "private, no-store" },
+        headers,
       });
     }
-    const payload = (await upstream.json().catch(() => null)) as Record<string, unknown> | null;
-    return Response.json(
-      payload ?? { code: "upstream_response_invalid", message: "API応答を確認できません。" },
-      { status: safeStatus, headers: { "cache-control": "private, no-store" } },
-    );
+    const source = await upstream.text();
+    let payload: unknown;
+    try {
+      payload = JSON.parse(source) as unknown;
+    } catch {
+      return apiError(503, "upstream_response_invalid", "API応答を確認できません。");
+    }
+    return Response.json(payload, {
+      status: safeStatus,
+      headers: { "cache-control": "private, no-store" },
+    });
   } catch {
     return apiError(503, "api_unreachable", "APIへ接続できません。");
   }
 }
 
 function isAllowedPath(method: "GET" | "POST", segments: string[]): boolean {
+  if (method === "GET" && segments.length === 1 && segments[0] === "owner-pulse") {
+    return true;
+  }
+  if (method === "POST" && segments.length === 1 && segments[0] === "pilot-runs") {
+    return true;
+  }
+  if (
+    method === "POST" &&
+    segments.length === 3 &&
+    segments[0] === "pilot-runs" &&
+    uuid.test(segments[1] ?? "") &&
+    segments[2] === "events"
+  ) {
+    return true;
+  }
+  if (
+    method === "GET" &&
+    segments.length === 2 &&
+    segments[0] === "pilot-runs" &&
+    segments[1] === "latest"
+  ) {
+    return true;
+  }
   if (method === "GET" && segments.length === 1 && segments[0] === "shipping-tasks") {
     return true;
   }
@@ -124,6 +164,20 @@ function isAllowedPath(method: "GET" | "POST", segments: string[]): boolean {
   )
     return true;
   if (
+    method === "GET" &&
+    segments[0] === "stocktakes" &&
+    uuid.test(segments[1] ?? "") &&
+    segments[2] === "discrepancies" &&
+    uuid.test(segments[3] ?? "") &&
+    ((segments.length === 5 && segments[4] === "evidence") ||
+      (segments.length === 7 &&
+        segments[4] === "evidence" &&
+        uuid.test(segments[5] ?? "") &&
+        segments[6] === "content"))
+  ) {
+    return true;
+  }
+  if (
     method === "POST" &&
     segments[0] === "stocktakes" &&
     uuid.test(segments[1] ?? "") &&
@@ -132,7 +186,7 @@ function isAllowedPath(method: "GET" | "POST", segments: string[]): boolean {
       (segments.length === 5 &&
         segments[2] === "discrepancies" &&
         uuid.test(segments[3] ?? "") &&
-        segments[4] === "resolve"))
+        ["resolve", "evidence", "challenges", "confirm", "restore"].includes(segments[4] ?? "")))
   )
     return true;
   if (
@@ -210,19 +264,41 @@ function isAllowedPath(method: "GET" | "POST", segments: string[]): boolean {
   ) {
     return true;
   }
+  if (
+    segments[0] === "accounting" &&
+    ((method === "GET" && segments.length === 2 && segments[1] === "orders") ||
+      (segments.length === 2 && ["profile", "mapping-rules"].includes(segments[1] ?? "")) ||
+      (method === "GET" && segments.length === 2 && segments[1] === "exports") ||
+      (method === "POST" &&
+        segments.length === 4 &&
+        segments[1] === "mapping-rules" &&
+        uuid.test(segments[2] ?? "") &&
+        segments[3] === "replacements") ||
+      (method === "GET" &&
+        segments.length === 3 &&
+        segments[1] === "exports" &&
+        segments[2] === "preflight") ||
+      (method === "POST" && segments.length === 2 && segments[1] === "exports") ||
+      (method === "GET" &&
+        segments.length === 4 &&
+        segments[1] === "exports" &&
+        uuid.test(segments[2] ?? "") &&
+        segments[3] === "preview") ||
+      (method === "POST" &&
+        segments.length === 4 &&
+        segments[1] === "exports" &&
+        uuid.test(segments[2] ?? "") &&
+        ["download", "import-confirmation"].includes(segments[3] ?? "")))
+  ) {
+    return true;
+  }
   if (segments[0] !== "orders" || !uuid.test(segments[1] ?? "")) return false;
   if (segments.length === 3 && orderActions.has(segments[2] ?? "")) {
     if (method === "GET") return segments[2] === "financial-summary";
     return segments[2] !== "financial-summary";
   }
   if (method === "GET" && segments.length === 3 && segments[2] === "address") return true;
-  return (
-    method === "GET" &&
-    segments.length === 5 &&
-    segments[2] === "accounting-exports" &&
-    uuid.test(segments[3] ?? "") &&
-    segments[4] === "content"
-  );
+  return false;
 }
 
 function apiError(status: number, code: string, message: string): Response {

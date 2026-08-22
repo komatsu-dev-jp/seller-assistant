@@ -8,12 +8,21 @@ import type {
 } from "@resale/contracts";
 import { useCallback, useEffect, useState } from "react";
 
-export function InventoryWorkspace({ workspaceId }: { workspaceId: string }) {
+export type InventoryFocus = "all" | "pending-location-photo" | "disposal-candidate";
+
+export function InventoryWorkspace({
+  workspaceId,
+  initialFocus = "all",
+}: {
+  workspaceId: string;
+  initialFocus?: InventoryFocus;
+}) {
   const [summary, setSummary] = useState<InventorySummary | null>(null);
   const [locations, setLocations] = useState<LocationNodeResponse[]>([]);
   const [items, setItems] = useState<P0ItemResponse[]>([]);
   const [selectedLocationId, setSelectedLocationId] = useState("");
   const [locationPhotos, setLocationPhotos] = useState<LocationPhotoResponse[]>([]);
+  const [pendingPhotoLocationIds, setPendingPhotoLocationIds] = useState<string[] | null>(null);
   const [photoNotice, setPhotoNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -49,6 +58,45 @@ export function InventoryWorkspace({ workspaceId }: { workspaceId: string }) {
   useEffect(() => {
     refreshLocationPhotos().catch((reason: unknown) => setError(errorMessage(reason)));
   }, [refreshLocationPhotos]);
+
+  useEffect(() => {
+    if (initialFocus !== "pending-location-photo") {
+      setPendingPhotoLocationIds(null);
+      return;
+    }
+    if (locations.length === 0) {
+      setPendingPhotoLocationIds([]);
+      return;
+    }
+
+    let cancelled = false;
+    void Promise.all(
+      locations.map(async (location) => {
+        const photos = await requestJson<LocationPhotoResponse[]>(
+          `/v1/workspaces/${workspaceId}/locations/${location.id}/photo-review-queue`,
+        );
+        return {
+          locationId: location.id,
+          hasPendingPhoto: photos.some((photo) => photo.reviewState === "pending"),
+        };
+      }),
+    )
+      .then((results) => {
+        if (cancelled) return;
+        const ids = results
+          .filter((result) => result.hasPendingPhoto)
+          .map((result) => result.locationId);
+        setPendingPhotoLocationIds(ids);
+        if (ids[0]) setSelectedLocationId(ids[0]);
+      })
+      .catch((reason: unknown) => {
+        if (!cancelled) setError(errorMessage(reason));
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [initialFocus, locations, workspaceId]);
 
   async function createLocation(form: FormData) {
     setBusy(true);
@@ -131,11 +179,38 @@ export function InventoryWorkspace({ workspaceId }: { workspaceId: string }) {
     }
   }
 
+  const selectedLocation =
+    locations.find((location) => location.id === selectedLocationId) ?? locations[0] ?? null;
+  const visibleLocations =
+    initialFocus === "pending-location-photo" &&
+    pendingPhotoLocationIds !== null &&
+    pendingPhotoLocationIds.length > 0
+      ? locations.filter((location) => pendingPhotoLocationIds.includes(location.id))
+      : locations;
+  const visibleItems =
+    initialFocus === "disposal-candidate"
+      ? items.filter((item) => item.inventoryStatus === "disposal_pending")
+      : items;
+
   return (
     <>
       {error ? (
         <p className="accountingDisclaimer" role="alert">
           {error}
+        </p>
+      ) : null}
+      {initialFocus === "pending-location-photo" ? (
+        <p className="safeNotice" role="status">
+          {pendingPhotoLocationIds === null
+            ? "未承認の場所写真を確認しています。"
+            : pendingPhotoLocationIds.length > 0
+              ? "未承認の場所写真がある保管場所だけを表示しています。"
+              : "未承認の場所写真はありません。通常の在庫画面を表示します。"}
+        </p>
+      ) : null}
+      {initialFocus === "disposal-candidate" ? (
+        <p className="safeNotice" role="status">
+          廃棄候補の現物だけを表示しています。廃棄の確定はここでは行いません。
         </p>
       ) : null}
       <section className="inventoryKpis" aria-label="在庫の概要">
@@ -153,20 +228,26 @@ export function InventoryWorkspace({ workspaceId }: { workspaceId: string }) {
         ))}
       </section>
 
-      <div className="inventoryGrid">
+      <div className="inventoryWorkbenchGrid">
         <section className="panel locationTree" aria-labelledby="location-tree-heading">
           <div className="panelHead">
             <h2 id="location-tree-heading">場所ツリー</h2>
             <span className="safeBadge">DB実データ</span>
           </div>
-          {locations.length === 0 ? (
-            <p>場所がありません。最初に部屋を登録してください。</p>
+          {visibleLocations.length === 0 ? (
+            <p>
+              {initialFocus === "pending-location-photo"
+                ? "未承認の場所写真がある保管場所はありません。"
+                : "場所がありません。最初に部屋を登録してください。"}
+            </p>
           ) : (
-            locations.map((location) => (
-              <div
-                className="locationRow"
+            visibleLocations.map((location) => (
+              <button
+                type="button"
+                className={`locationRow ${location.id === selectedLocationId ? "selected" : ""}`}
                 key={location.id}
                 style={{ paddingInlineStart: `${location.depth * 18 + 8}px` }}
+                onClick={() => setSelectedLocationId(location.id)}
               >
                 <div>
                   <strong>{location.name}</strong>
@@ -175,12 +256,110 @@ export function InventoryWorkspace({ workspaceId }: { workspaceId: string }) {
                 <span>
                   {location.activeInventoryCount}点 / 写真{location.approvedPhotoCount}枚
                 </span>
-              </div>
+              </button>
             ))
           )}
         </section>
 
-        <section className="panel" aria-labelledby="location-create-heading">
+        <section className="panel locationPhotoWorkbench" aria-labelledby="location-photo-heading">
+          <div className="locationWorkbenchHead">
+            <div>
+              <p className="breadcrumb">
+                {selectedLocation
+                  ? `${selectedLocation.name} › ${selectedLocation.code}`
+                  : "場所未選択"}
+              </p>
+              <h2 id="location-photo-heading">保管場所の写真</h2>
+            </div>
+            <span className="safeBadge">原本非公開・表示画像はGPS 0件</span>
+          </div>
+
+          <div className="approvedLocationPhotos" aria-label="選択場所の写真">
+            {(["room", "shelf", "exact_position"] as const).map((kind) => {
+              const photo = locationPhotos.find(
+                (candidate) => candidate.photoKind === kind && candidate.reviewState === "approved",
+              );
+              return (
+                <article className="locationPhotoCard" key={kind}>
+                  <span>{photoKindLabel(kind)}</span>
+                  {photo?.contentUrl ? (
+                    <img src={photo.contentUrl} alt={`${photoKindLabel(kind)}の確認済み写真`} />
+                  ) : (
+                    <div className="locationPhotoEmpty" aria-hidden="true">
+                      <span>▧</span>
+                      <small>確認済み写真なし</small>
+                    </div>
+                  )}
+                  <small>{photo ? "確認済み" : "登録待ち"}</small>
+                </article>
+              );
+            })}
+          </div>
+
+          <form action={uploadLocationPhoto} className="locationPhotoForm locationPhotoQuickForm">
+            <label>
+              写真の種類
+              <select name="photoKind" defaultValue="exact_position">
+                <option value="room">部屋の全景</option>
+                <option value="shelf">棚・ラック</option>
+                <option value="exact_position">商品の正確な位置</option>
+              </select>
+            </label>
+            <label>
+              iPhoneで撮影または写真を選択
+              <input
+                name="photo"
+                type="file"
+                accept="image/jpeg,image/png"
+                capture="environment"
+                required
+              />
+            </label>
+            <button type="submit" disabled={busy || !selectedLocationId}>
+              写真を登録
+            </button>
+          </form>
+          {photoNotice ? <p className="safeNotice">{photoNotice}</p> : null}
+
+          <div className="photoReviewQueue" role="table" aria-label="場所写真の確認一覧">
+            <div className="photoReviewHead" role="row">
+              <span>種類</span>
+              <span>状態</span>
+              <span>撮影日時</span>
+              <span>操作</span>
+            </div>
+            {locationPhotos.map((photo) => (
+              <div role="row" key={photo.photoId}>
+                <strong>{photoKindLabel(photo.photoKind)}</strong>
+                <span>{photo.reviewState === "approved" ? "確認済み" : "別担当の確認待ち"}</span>
+                <span>{new Date(photo.capturedAt).toLocaleString("ja-JP")}</span>
+                <span>
+                  {photo.reviewState === "pending" ? (
+                    <button
+                      type="button"
+                      className="tinyButton"
+                      disabled={busy}
+                      onClick={() => void approveLocationPhoto(photo)}
+                    >
+                      別担当で確認
+                    </button>
+                  ) : photo.contentUrl ? (
+                    <a href={photo.contentUrl} target="_blank" rel="noreferrer">
+                      写真を開く
+                    </a>
+                  ) : (
+                    "—"
+                  )}
+                </span>
+              </div>
+            ))}
+          </div>
+          <p className="accountingDisclaimer">
+            撮影者本人は承認できません。別担当の確認後、位置情報を除いた写真だけを表示します。
+          </p>
+        </section>
+
+        <section className="panel inventoryCreatePanel" aria-labelledby="location-create-heading">
           <div className="panelHead">
             <h2 id="location-create-heading">場所を登録</h2>
           </div>
@@ -228,114 +407,45 @@ export function InventoryWorkspace({ workspaceId }: { workspaceId: string }) {
         </section>
       </div>
 
-      <section className="panel inventoryTablePanel" aria-labelledby="location-photo-heading">
-        <div className="panelHead">
-          <h2 id="location-photo-heading">保管場所の写真</h2>
-          <span className="safeBadge">原本は非公開・GPS除去</span>
-        </div>
-        <div className="locationPhotoFormLayout">
-          <label>
-            写真を登録する場所
-            <select
-              value={selectedLocationId}
-              onChange={(event) => setSelectedLocationId(event.target.value)}
-            >
-              <option value="">場所を選択</option>
-              {locations.map((location) => (
-                <option value={location.id} key={location.id}>
-                  {"　".repeat(location.depth)}
-                  {location.name} / {location.code}
-                </option>
-              ))}
-            </select>
-          </label>
-          <form action={uploadLocationPhoto} className="locationPhotoForm">
-            <label>
-              写真の種類
-              <select name="photoKind" defaultValue="exact_position">
-                <option value="room">部屋の全景</option>
-                <option value="shelf">棚・ラック</option>
-                <option value="exact_position">商品の正確な位置</option>
-              </select>
-            </label>
-            <label>
-              iPhoneで撮影または写真を選択
-              <input
-                name="photo"
-                type="file"
-                accept="image/jpeg,image/png"
-                capture="environment"
-                required
-              />
-            </label>
-            <button type="submit" disabled={busy || !selectedLocationId}>
-              写真原本を安全に登録
-            </button>
-          </form>
-        </div>
-        {photoNotice ? <p className="accountingDisclaimer">{photoNotice}</p> : null}
-        <p className="accountingDisclaimer">
-          撮影者本人は承認できません。別の在庫管理担当が内容を確認すると、位置情報を除去した写真だけが表示されます。
-        </p>
-        <div className="inventoryTable" role="table" aria-label="場所写真の確認一覧">
-          <div className="inventoryTableHead" role="row">
-            <span>種類</span>
-            <span>状態</span>
-            <span>撮影日時</span>
-            <span>位置情報</span>
-            <span>操作</span>
-          </div>
-          {locationPhotos.map((photo) => (
-            <div role="row" key={photo.photoId}>
-              <strong>{photoKindLabel(photo.photoKind)}</strong>
-              <span>{photo.reviewState === "approved" ? "確認済み" : "別担当の確認待ち"}</span>
-              <span>{new Date(photo.capturedAt).toLocaleString("ja-JP")}</span>
-              <span>{photo.reviewState === "approved" ? "GPS 0件" : "表示前"}</span>
-              <span>
-                {photo.reviewState === "pending" ? (
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void approveLocationPhoto(photo)}
-                  >
-                    別担当として確認
-                  </button>
-                ) : photo.contentUrl ? (
-                  <a href={photo.contentUrl} target="_blank" rel="noreferrer">
-                    写真を開く
-                  </a>
-                ) : (
-                  "—"
-                )}
-              </span>
-            </div>
-          ))}
-        </div>
-      </section>
-
       <section className="panel inventoryTablePanel" aria-labelledby="inventory-list-heading">
         <div className="panelHead">
-          <h2 id="inventory-list-heading">現物在庫</h2>
-          <span>{items.length}点</span>
+          <h2 id="inventory-list-heading">
+            {initialFocus === "disposal-candidate" ? "廃棄候補の現物在庫" : "現物在庫"}
+          </h2>
+          <span>{visibleItems.length}点</span>
         </div>
-        <div className="inventoryTable" role="table" aria-label="実在庫一覧">
-          <div className="inventoryTableHead" role="row">
-            <span>在庫番号</span>
-            <span>SKU</span>
-            <span>商品</span>
-            <span>状態</span>
-            <span>場所</span>
-          </div>
-          {items.map((item) => (
-            <div role="row" key={item.inventoryUnitId}>
-              <strong>{item.inventoryNumber}</strong>
-              <span>{item.skuCode}</span>
-              <span>{item.title}</span>
-              <span>{item.inventoryStatus}</span>
-              <span>{item.locationCode ?? "未格納"}</span>
+        {visibleItems.length === 0 ? (
+          <p className="safeNotice">
+            {initialFocus === "disposal-candidate"
+              ? "廃棄候補の現物はありません。"
+              : "表示できる現物在庫はありません。"}
+          </p>
+        ) : (
+          <div
+            className="inventoryTable"
+            role="table"
+            aria-label={
+              initialFocus === "disposal-candidate" ? "廃棄候補の実在庫一覧" : "実在庫一覧"
+            }
+          >
+            <div className="inventoryTableHead" role="row">
+              <span>在庫番号</span>
+              <span>SKU</span>
+              <span>商品</span>
+              <span>状態</span>
+              <span>場所</span>
             </div>
-          ))}
-        </div>
+            {visibleItems.map((item) => (
+              <div role="row" key={item.inventoryUnitId}>
+                <strong>{item.inventoryNumber}</strong>
+                <span>{item.skuCode}</span>
+                <span>{item.title}</span>
+                <span>{item.inventoryStatus}</span>
+                <span>{item.locationCode ?? "未格納"}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
     </>
   );

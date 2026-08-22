@@ -1,6 +1,6 @@
 # Notion同期記録
 
-- 状態: 在庫ロケーション版に加え、完全無料PWAへの方針変更と実装進捗を同期・再取得検証済み
+- 状態: 修正版AとGoal再開確認をNotion共有ミラーへ追補し、再取得検証済み
 - 確認日: 2026-08-15（JST）
 - 同期方式: ローカルMarkdownを内容の作業正本とし、Notionへ仕様共有用ページを作成
 
@@ -16,7 +16,7 @@
 - Page ID: `3bb1548a-971b-81fc-9c03-db521b930b50`
 - URL: https://app.notion.com/p/3bb1548a971b81fc9c03db521b930b50?pvs=204
 - ローカル正本: `docs/specs/mvp-product-spec-v1.md`
-- 再取得確認: 18章、P0/P1、M12/W10、在庫管理番号/場所階層/位置写真/二重読取/棚卸差異、AC-001〜AC-055、完全無料PWA方針、対象外、子ページ参照を確認
+- 再取得確認: 前版18章と子ページ参照を保持したまま、2026-08-20追補、M13/W11/M14/W12、AC-056〜AC-061、Slack承認TSを確認。
 
 ## 技術設計
 
@@ -32,7 +32,7 @@
 - Page ID: `3bb1548a-971b-8185-bb0d-ecb105980aad`
 - URL: https://app.notion.com/p/3bb1548a971b8185bb0decb105980aad?pvs=204
 - ローカル正本: `docs/specs/goal-contract-v1.md`
-- 再取得確認: 完成像、在庫番号/場所写真付きP0縦導線、P1高度在庫、MVP、対象外、AC-001〜AC-055/TA-001〜TA-037、外部開始条件、本番公開/PRマージ禁止を確認
+- 再取得確認: 前版を保持したまま、Goal再開契約v2、AC-001〜061、TA-001〜043、無料PWA、Draft PR/merge禁止を確認。
 
 ## 旧実装資産監査
 
@@ -52,7 +52,22 @@
 
 ## 更新ルール
 
-1. Goalは開始済み。P0合格前にP1を開始しない。
+1. ユーザーは2026-08-20にGoal契約v2を確認し、P0実装再開を指示した。Goal管理機能の旧表示はpausedかつ旧契約のままなので、実装判断には使わず、承認済みのローカル契約v2を正本とする。現行P0合格前にP1を開始しない。
+
+## 2026-08-20 Goal再開確認の同期結果
+
+- Goalページへ「Goal再開確認」を追記し、ユーザー確認文、A〜AA 27列、旧Objectiveを履歴扱いにする境界を再取得した。
+- 実装計画へIteration 26を追記し、AC-056〜061/TA-038〜043、基準測定、未確認の実iPhone、P1/公開/merge禁止を再取得した。
+
+## 2026-08-20 修正版A 同期結果
+
+- ローカル正本: `mvp-product-spec-v1.md`、`technical-architecture-v1.md`、`financial-formulas-v1.md`、`goal-contract-revised-a-v2.md`、`acceptance-map.md`。
+- 変更範囲: 1人時の即時・可逆な紛失候補、2人以上の別担当確認、P0不可逆操作禁止、会計profile/mapping、Money Forward/汎用CSV分離、用語help、AC-039/056〜061、TA-038〜043。
+- Slack証拠: 親TS `1787203224.255009`、承認返信TS `1787203707.087749`。
+- 更新先: MVP `3bb1548a-971b-81fc-9c03-db521b930b50`、技術 `3bb1548a-971b-81ab-9ab0-d0246d7de566`、Goal `3bb1548a-971b-8185-bb0d-ecb105980aad`、実装計画 `3bc1548a-971b-81fd-9ddc-c17dfacb34eb`。
+- 既存本文・子ページを削除せず末尾追補した。初回再取得では4ページの修正版見出し、現行AC/TA、当時の25列表現、外部送信0件、Goal契約/Iteration 25を確認した。その後、公式A〜AA 27列へ訂正した。
+- 独立review修正後、Money Forward A〜AA 27列/汎用19列、P0必須AC/TA、`missing_candidate → restored`限定、3秒keyboard同等確認、二段階重複規則へ再同期した。4ページを再取得し、旧25列表現を現行追補から除去したことと修正語を確認した。
+- 独立再review最終PASS（Critical 0 / High 0 / Medium 0 / Low 0）をGoal/実装計画へ追補し、再取得でPASS、A〜AA 27列、ユーザー最終確認待ちを確認した。
 2. 仕様変更は先にローカル正本と `docs/DECISIONS.md` へ記録し、その後Notionへ反映する。
 3. 対象ユーザー、公式操作境界、税務AI境界、標準ホーム、課金区分、主要導線を変える場合は再承認する。
 4. APIキー、トークン、住所、取得原価、利益、税務証憑などの機密情報は仕様ページへ保存しない。

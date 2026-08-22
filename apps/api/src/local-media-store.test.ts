@@ -94,10 +94,76 @@ describe("zero-cost local private media store", () => {
     await expect(stat(join(root, ...key.split("/")))).rejects.toMatchObject({ code: "ENOENT" });
   });
 
+  it("reads discrepancy originals only after hash, size, MIME and dimensions match", async () => {
+    const root = await mkdtemp(join(tmpdir(), "resale-media-test-"));
+    roots.push(root);
+    const store = new LocalPrivateMediaStore(root);
+    const original = jpegWithGpsMetadata();
+    const key = `workspaces/${workspaceId}/originals/discrepancy-safe.jpg`;
+    const saved = await store.saveOriginal(key, original);
+    const expected = {
+      storageKey: key,
+      expectedSha256: saved.sha256,
+      expectedMimeType: "image/jpeg" as const,
+      expectedSizeBytes: original.length,
+      expectedWidth: 2000,
+      expectedHeight: 1500,
+    };
+
+    const sanitized = await store.readSanitizedOriginal(expected);
+    expect(sanitized.toString("utf8")).not.toContain("GPSLatitude");
+    expect(sha256(await readFile(join(root, ...key.split("/"))))).toBe(saved.sha256);
+    await expect(
+      store.readSanitizedOriginal({ ...expected, expectedSha256: "0".repeat(64) }),
+    ).rejects.toThrow(/database record/u);
+    await expect(store.readSanitizedOriginal({ ...expected, expectedWidth: 1999 })).rejects.toThrow(
+      /metadata/u,
+    );
+    await expect(
+      store.readSanitizedOriginal({
+        ...expected,
+        storageKey: `workspaces/${workspaceId}/originals/../escape.jpg`,
+      }),
+    ).rejects.toThrow(/invalid/u);
+  });
+
+  it("cuts every byte after the first JPEG end marker", () => {
+    const secret = Buffer.from("PRIVATE-EVIDENCE-AFTER-EOI", "utf8");
+    const sanitized = stripLocationMetadata(
+      Buffer.concat([jpegWithGpsMetadata(), secret]),
+      "image/jpeg",
+    );
+    expect(sanitized.subarray(-2)).toEqual(Buffer.from([0xff, 0xd9]));
+    expect(sanitized.includes(secret)).toBe(false);
+    expect(firstJpegEndMarker(sanitized)).toBe(sanitized.length - 2);
+  });
+
+  it("keeps stuffed bytes, restart markers and marker fill inside JPEG scan data", () => {
+    const entropy = Buffer.from([0x11, 0xff, 0x00, 0x22, 0xff, 0xd0, 0x33, 0xff]);
+    const sanitized = stripLocationMetadata(jpegWithGpsMetadata(entropy), "image/jpeg");
+    expect(sanitized.includes(Buffer.from([0xff, 0x00]))).toBe(true);
+    expect(sanitized.includes(Buffer.from([0xff, 0xd0]))).toBe(true);
+    expect(sanitized.subarray(-3)).toEqual(Buffer.from([0xff, 0xff, 0xd9]));
+    expect(sanitized.toString("utf8")).not.toContain("GPSLatitude");
+  });
+
+  it("fails closed when JPEG scan data has no end marker", () => {
+    expect(() =>
+      stripLocationMetadata(jpegWithGpsMetadata(Buffer.from([0x11, 0x22]), false), "image/jpeg"),
+    ).toThrow(/end marker/u);
+  });
+
   it("rejects PNG metadata without changing image chunks", () => {
     expect(() => stripLocationMetadata(Buffer.from("not-png"), "image/png")).toThrow(
       /Invalid PNG/u,
     );
+    const validPng = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "base64",
+    );
+    expect(() =>
+      stripLocationMetadata(Buffer.concat([validPng, Buffer.from("trailing-secret")]), "image/png"),
+    ).toThrow(/trailing bytes/u);
   });
 
   it("derives MIME type and dimensions from server-received bytes", () => {
@@ -110,7 +176,7 @@ describe("zero-cost local private media store", () => {
   });
 });
 
-function jpegWithGpsMetadata(): Buffer {
+function jpegWithGpsMetadata(entropy = Buffer.from([0x11, 0x22]), includeEndMarker = true): Buffer {
   const exif = Buffer.from("Exif\0\0GPSLatitude=35.0;GPSLongitude=139.0", "utf8");
   const app1Length = Buffer.alloc(2);
   app1Length.writeUInt16BE(exif.length + 2);
@@ -118,8 +184,19 @@ function jpegWithGpsMetadata(): Buffer {
     0xff, 0xc0, 0x00, 0x11, 0x08, 0x05, 0xdc, 0x07, 0xd0, 0x03, 0x01, 0x11, 0x00, 0x02, 0x11, 0x00,
     0x03, 0x11, 0x00,
   ]);
-  const scan = Buffer.from([0xff, 0xda, 0x00, 0x02, 0x11, 0x22, 0xff, 0xd9]);
+  const scan = Buffer.concat([
+    Buffer.from([0xff, 0xda, 0x00, 0x02]),
+    entropy,
+    includeEndMarker ? Buffer.from([0xff, 0xd9]) : Buffer.alloc(0),
+  ]);
   return Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe1]), app1Length, exif, dimensions, scan]);
+}
+
+function firstJpegEndMarker(bytes: Buffer): number {
+  for (let index = 0; index + 1 < bytes.length; index += 1) {
+    if (bytes[index] === 0xff && bytes[index + 1] === 0xd9) return index;
+  }
+  return -1;
 }
 
 function sha256(bytes: Buffer): string {

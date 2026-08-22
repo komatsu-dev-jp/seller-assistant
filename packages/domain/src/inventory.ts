@@ -6,6 +6,7 @@ export type InventoryStatus =
   | "packed"
   | "shipped"
   | "quarantined"
+  | "disposal_pending"
   | "lost"
   | "disposed";
 
@@ -176,6 +177,86 @@ export function canResolveMissingInventory(actors: CountResolutionActors): boole
     actors.requesterId !== actors.approverId &&
     distinctActors.size >= 2
   );
+}
+
+export type DiscrepancyConfirmationMode = "solo_reversible" | "dual_actor";
+export type MissingCandidateState = "reconfirmation_required" | "candidate_confirmed" | "restored";
+
+export interface MissingCandidateConfirmationContext {
+  mode: DiscrepancyConfirmationMode;
+  activeMembershipCountAtSelection: number;
+  initialCounterId: string;
+  confirmerId: string;
+  inventoryLabelCurrent: boolean;
+  locationLabelCurrent: boolean;
+  sameOnlineScanSession: boolean;
+  privateEvidenceCount: number;
+  evidenceServerInspected: boolean;
+  reasonCode: string | null;
+  humanConfirmed: boolean;
+  challengeNotBeforeEpochMs: number;
+  confirmedAtEpochMs: number;
+  challengeAlreadyConsumed: boolean;
+}
+
+export type MissingCandidateViolation =
+  | "membership_mode_mismatch"
+  | "second_actor_required"
+  | "current_inventory_label_required"
+  | "current_location_label_required"
+  | "same_online_scan_session_required"
+  | "private_evidence_required"
+  | "server_inspection_required"
+  | "reason_required"
+  | "human_confirmation_required"
+  | "confirmation_too_early"
+  | "challenge_already_consumed";
+
+export function discrepancyModeForActiveMembers(
+  activeMembershipCount: number,
+): DiscrepancyConfirmationMode {
+  if (!Number.isSafeInteger(activeMembershipCount) || activeMembershipCount < 1) {
+    throw new Error("at least one active workspace member is required");
+  }
+  return activeMembershipCount === 1 ? "solo_reversible" : "dual_actor";
+}
+
+export function validateMissingCandidateConfirmation(
+  context: MissingCandidateConfirmationContext,
+): MissingCandidateViolation[] {
+  const violations: MissingCandidateViolation[] = [];
+  if (discrepancyModeForActiveMembers(context.activeMembershipCountAtSelection) !== context.mode) {
+    violations.push("membership_mode_mismatch");
+  }
+  if (context.mode === "dual_actor" && context.initialCounterId === context.confirmerId) {
+    violations.push("second_actor_required");
+  }
+  if (!context.inventoryLabelCurrent) violations.push("current_inventory_label_required");
+  if (!context.locationLabelCurrent) violations.push("current_location_label_required");
+  if (!context.sameOnlineScanSession) violations.push("same_online_scan_session_required");
+  if (context.privateEvidenceCount < 1) violations.push("private_evidence_required");
+  if (!context.evidenceServerInspected) violations.push("server_inspection_required");
+  if (!context.reasonCode?.trim()) violations.push("reason_required");
+  if (!context.humanConfirmed) violations.push("human_confirmation_required");
+  if (context.confirmedAtEpochMs < context.challengeNotBeforeEpochMs) {
+    violations.push("confirmation_too_early");
+  }
+  if (context.challengeAlreadyConsumed) violations.push("challenge_already_consumed");
+  return [...new Set(violations)];
+}
+
+export function canTransitionMissingCandidate(
+  from: MissingCandidateState,
+  to: MissingCandidateState,
+): boolean {
+  return (
+    (from === "reconfirmation_required" && to === "candidate_confirmed") ||
+    (from === "candidate_confirmed" && to === "restored")
+  );
+}
+
+export function canSetInventoryStatusInP0(status: InventoryStatus): boolean {
+  return status !== "lost" && status !== "disposed";
 }
 
 export interface IdempotencyRecord<TResult> {

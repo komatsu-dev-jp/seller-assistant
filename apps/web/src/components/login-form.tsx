@@ -37,7 +37,9 @@ export function LoginForm() {
           ? "/shipping"
           : context.role === "field_worker"
             ? "/mobile"
-            : "/",
+            : context.role === "accounting"
+              ? "/accounting"
+              : "/",
       );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "ログインを確認できませんでした。");

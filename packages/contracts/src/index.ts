@@ -77,6 +77,51 @@ export const inventorySummarySchema = z.object({
   lastSyncedAt: z.iso.datetime(),
 });
 
+export const ownerPulseResponseSchema = z.object({
+  periodStart: z.iso.datetime(),
+  periodEnd: z.iso.datetime(),
+  completedOrderCount: z.number().int().nonnegative(),
+  completedSalesMinor: z.number().int().nonnegative(),
+  refundsMinor: z.number().int().nonnegative(),
+  netSalesMinor: z.number().int(),
+  costOfGoodsMinor: z.number().int().nonnegative(),
+  grossProfitMinor: z.number().int().nullable(),
+  sellingFeesMinor: z.number().int(),
+  shippingCostMinor: z.number().int().nonnegative(),
+  packagingCostMinor: z.number().int().nonnegative(),
+  contributionProfitMinor: z.number().int().nullable(),
+  inventoryCostMinor: z.number().int().nonnegative().nullable(),
+  missingCostCount: z.number().int().nonnegative(),
+  missingShippingCount: z.number().int().nonnegative(),
+  approvalPendingCount: z.number().int().nonnegative(),
+  approvalPendingBreakdown: z.object({
+    stocktakeDiscrepancyCount: z.number().int().nonnegative(),
+    locationPhotoCount: z.number().int().nonnegative(),
+    disposalCandidateCount: z.number().int().nonnegative(),
+    listingReviewCount: z.number().int().nonnegative(),
+  }),
+  aging: z.object({
+    days0To30: z.number().int().nonnegative(),
+    days31To60: z.number().int().nonnegative(),
+    days61To90: z.number().int().nonnegative(),
+    olderThan90Days: z.number().int().nonnegative(),
+  }),
+  supplierOverview: z
+    .array(
+      z.object({
+        supplierName: z.string().trim().min(1).max(160),
+        itemCount: z.number().int().nonnegative(),
+        coreDataCompletenessPercent: z.number().int().min(0).max(100),
+      }),
+    )
+    .max(3),
+  formulaVersion: z.literal("financial_formula_v1.0.0"),
+  disclaimer: z.literal(
+    "運用分析の参考値です。会計上の売上・利益・所得・税額を示すものではありません。",
+  ),
+  lastCalculatedAt: z.iso.datetime(),
+});
+
 export const workspaceRoleSchema = z.enum([
   "owner",
   "inventory_manager",
@@ -249,6 +294,73 @@ export const p0WorkflowActionSchema = z.enum([
   "approve_journal",
 ]);
 
+export const listingPrepPilotFixtures = [
+  "TOP-01",
+  "TOP-02",
+  "TOP-03",
+  "TOP-04",
+  "OUTER-01",
+  "OUTER-02",
+  "PANTS-01",
+  "PANTS-02",
+  "KNIT-01",
+  "KNIT-02",
+] as const;
+
+export const pilotFixtureIdSchema = z.enum(listingPrepPilotFixtures);
+export const pilotCategorySchema = z.enum(["tops", "outer", "pants", "knit"]);
+export const pilotFixtureCategories = {
+  "TOP-01": "tops",
+  "TOP-02": "tops",
+  "TOP-03": "tops",
+  "TOP-04": "tops",
+  "OUTER-01": "outer",
+  "OUTER-02": "outer",
+  "PANTS-01": "pants",
+  "PANTS-02": "pants",
+  "KNIT-01": "knit",
+  "KNIT-02": "knit",
+} as const satisfies Record<
+  (typeof listingPrepPilotFixtures)[number],
+  "tops" | "outer" | "pants" | "knit"
+>;
+
+export const pilotExceptionMetricsSchema = z
+  .object({
+    invalidAttemptCount: z.number().int().nonnegative().max(100).default(0),
+    missingRequiredImageCount: z.number().int().nonnegative().max(100).default(0),
+    measurementReworkCount: z.number().int().nonnegative().max(100).default(0),
+    labelLocationMismatchCount: z.number().int().nonnegative().max(100).default(0),
+    misputawayCount: z.number().int().nonnegative().max(100).default(0),
+    networkRetryCount: z.number().int().nonnegative().max(100).default(0),
+    manualCorrectionCount: z.number().int().nonnegative().max(100).default(0),
+  })
+  .strict();
+
+export const pilotEventTypeSchema = z.enum([
+  "invalid_attempt",
+  "missing_required_image",
+  "measurement_rework",
+  "label_location_mismatch",
+  "misputaway",
+  "network_retry",
+  "manual_correction",
+]);
+
+export const recordPilotExceptionRequestSchema = z
+  .object({
+    eventType: pilotEventTypeSchema,
+    detailCode: z
+      .string()
+      .trim()
+      .min(1)
+      .max(80)
+      .regex(/^[a-z0-9_]+$/u),
+    idempotencyKey: z.string().uuid(),
+    humanConfirmed: z.literal(true),
+  })
+  .strict();
+
 export const advanceP0WorkflowRequestSchema = z
   .object({
     action: p0WorkflowActionSchema,
@@ -393,12 +505,81 @@ export const createP0ItemRequestSchema = z
     allocatedCostMinor: z.number().int().nonnegative().max(100_000_000),
     idempotencyKey: z.string().uuid(),
     humanConfirmed: z.literal(true),
+    pilot: z
+      .object({
+        runId: z.string().uuid(),
+        productFixtureId: pilotFixtureIdSchema,
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .refine((value) => value.allocatedCostMinor <= value.receiptAmountMinor, {
     message: "Allocated cost cannot exceed the receipt amount",
     path: ["allocatedCostMinor"],
   });
+
+export const startPilotRunRequestSchema = z
+  .object({
+    protocolVersion: z.literal("listing_prep_pilot_v1.0.0"),
+    commitSha: z.string().regex(/^[a-f0-9]{40}$/u),
+    migrationVersion: z.literal("0028"),
+    platform: z.string().trim().min(1).max(120),
+    browser: z.string().trim().min(1).max(200),
+    viewport: z.literal("390x844"),
+    warmupCompleted: z.literal(true),
+    humanConfirmed: z.literal(true),
+  })
+  .strict();
+
+export const pilotItemMeasurementSchema = z.object({
+  measurementId: z.string().uuid(),
+  skuId: z.string().uuid(),
+  productFixtureId: pilotFixtureIdSchema,
+  category: pilotCategorySchema,
+  startedAt: z.iso.datetime(),
+  completedAt: z.iso.datetime().nullable(),
+  elapsedSeconds: z.number().nonnegative().nullable(),
+  metrics: pilotExceptionMetricsSchema,
+  copyReadyWorkflowVersion: z.number().int().positive().nullable(),
+});
+
+export const pilotRunSummarySchema = z.object({
+  itemCount: z.number().int().min(0).max(10),
+  completedItemCount: z.number().int().min(0).max(10),
+  p50Seconds: z.number().nonnegative().nullable(),
+  p75Seconds: z.number().nonnegative().nullable(),
+  minSeconds: z.number().nonnegative().nullable(),
+  maxSeconds: z.number().nonnegative().nullable(),
+  invalidAttemptCount: z.number().int().nonnegative(),
+  missingRequiredImageCount: z.number().int().nonnegative(),
+  measurementReworkCount: z.number().int().nonnegative(),
+  labelLocationMismatchCount: z.number().int().nonnegative(),
+  misputawayCount: z.number().int().nonnegative(),
+  networkRetryCount: z.number().int().nonnegative(),
+  manualCorrectionCount: z.number().int().nonnegative(),
+  passed: z.boolean().nullable(),
+});
+
+export const pilotRunResponseSchema = z.object({
+  runId: z.string().uuid(),
+  workspaceId: workspaceIdSchema,
+  protocolVersion: z.literal("listing_prep_pilot_v1.0.0"),
+  commitSha: z.string().regex(/^[a-f0-9]{40}$/u),
+  migrationVersion: z.enum(["0023", "0024", "0025", "0026", "0027", "0028"]),
+  platform: z.string(),
+  browser: z.string(),
+  viewport: z.literal("390x844"),
+  actorId: z.string().uuid(),
+  state: z.enum(["active", "completed", "failed", "externally_invalidated"]),
+  externallyInvalidated: z.boolean(),
+  externalInvalidationReason: z.string().nullable(),
+  warmupCompletedAt: z.iso.datetime(),
+  startedAt: z.iso.datetime(),
+  completedAt: z.iso.datetime().nullable(),
+  items: pilotItemMeasurementSchema.array().max(10),
+  summary: pilotRunSummarySchema,
+});
 
 export const p0CaptureMeasurementSchema = z.object({
   id: z.string().uuid(),
@@ -526,6 +707,7 @@ export const p0ItemResponseSchema = z.object({
     "packed",
     "shipped",
     "quarantined",
+    "disposal_pending",
     "lost",
     "disposed",
   ]),
@@ -628,6 +810,7 @@ export const orderOperationResponseSchema = z.object({
     "shipped",
     "quarantined",
     "available",
+    "disposal_pending",
     "disposed",
   ]),
   updatedAt: z.iso.datetime(),
@@ -769,9 +952,20 @@ export const stocktakeDiscrepancySchema = z.object({
   discrepancyId: z.string().uuid(),
   inventoryUnitId: z.string().uuid().nullable(),
   inventoryNumber: inventoryNumberSchema.nullable(),
+  expectedLocationId: z.string().uuid().nullable(),
+  expectedLocationCode: checkedLocationCodeSchema.nullable(),
+  currentLocationId: z.string().uuid().nullable(),
+  currentLocationCode: checkedLocationCodeSchema.nullable(),
   kind: z.enum(["missing_candidate", "misplaced", "unexpected", "duplicate", "unreadable"]),
-  state: z.enum(["open", "reconfirmation_required", "approval_required", "resolved"]),
+  state: z.enum(["reconfirmation_required", "candidate_confirmed", "restored", "resolved"]),
   resolution: z.string().nullable(),
+  confirmationMode: z.enum(["solo_reversible", "dual_actor"]),
+  activeMembershipCountAtSelection: z.number().int().positive(),
+  membershipRevisionAtSelection: z.number().int().nonnegative(),
+  evidenceCount: z.number().int().nonnegative(),
+  reasonCode: z.string().nullable(),
+  confirmedAt: z.iso.datetime().nullable(),
+  restoredAt: z.iso.datetime().nullable(),
 });
 
 export const stocktakePostStartMovementSchema = z.object({
@@ -793,6 +987,9 @@ export const stocktakeResponseSchema = z.object({
   locationCode: checkedLocationCodeSchema,
   state: z.enum(["counting", "reconciliation", "approved"]),
   initialCounterId: z.string().uuid(),
+  confirmationMode: z.enum(["solo_reversible", "dual_actor"]),
+  activeMembershipCountAtSelection: z.number().int().positive(),
+  membershipRevisionAtSelection: z.number().int().nonnegative(),
   observationCount: z.number().int().nonnegative(),
   observations: stocktakeObservationRecordSchema.array(),
   discrepancies: stocktakeDiscrepancySchema.array(),
@@ -804,6 +1001,105 @@ export const stocktakeResponseSchema = z.object({
 export const resolveStocktakeDiscrepancyRequestSchema = z
   .object({
     resolution: z.enum(["found_in_place", "moved_to_correct_place", "no_inventory_adjustment"]),
+    humanConfirmed: z.literal(true),
+  })
+  .strict();
+
+export const uploadDiscrepancyEvidenceQuerySchema = z
+  .object({ mimeType: z.enum(["image/jpeg", "image/png"]) })
+  .strict();
+
+export const discrepancyEvidenceResponseSchema = z.object({
+  evidenceId: z.string().uuid(),
+  discrepancyId: z.string().uuid(),
+  mimeType: z.enum(["image/jpeg", "image/png"]),
+  width: z.number().int().positive(),
+  height: z.number().int().positive(),
+  sizeBytes: z.number().int().positive(),
+  sha256: z.string().regex(/^[a-f0-9]{64}$/u),
+  serverInspected: z.literal(true),
+  createdAt: z.iso.datetime(),
+});
+
+export const discrepancyEvidenceListItemSchema = z.object({
+  evidenceId: z.string().uuid(),
+  discrepancyId: z.string().uuid(),
+  mimeType: z.enum(["image/jpeg", "image/png"]),
+  width: z.number().int().positive().max(12_000),
+  height: z.number().int().positive().max(12_000),
+  sizeBytes: z
+    .number()
+    .int()
+    .positive()
+    .max(25 * 1024 * 1024),
+  contentUrl: z.string().startsWith("/v1/workspaces/"),
+  createdAt: z.iso.datetime(),
+});
+
+export const createDiscrepancyChallengeRequestSchema = z
+  .object({
+    action: z.enum(["confirm", "restore"]),
+    inventoryNumber: inventoryNumberSchema,
+    locationCode: checkedLocationCodeSchema,
+    inventoryLabelVersion: z.number().int().positive(),
+    locationLabelVersion: z.number().int().positive(),
+    inventoryScannedAt: z.iso.datetime(),
+    locationScannedAt: z.iso.datetime(),
+    humanInitiated: z.literal(true),
+  })
+  .strict();
+
+export const discrepancyChallengeResponseSchema = z.object({
+  challengeId: z.string().uuid(),
+  discrepancyId: z.string().uuid(),
+  action: z.enum(["confirm", "restore"]),
+  notBefore: z.iso.datetime(),
+  expiresAt: z.iso.datetime(),
+  consumedAt: z.iso.datetime().nullable(),
+});
+
+const discrepancyScanEvidenceSchema = z.object({
+  inventoryNumber: inventoryNumberSchema,
+  locationCode: checkedLocationCodeSchema,
+  inventoryLabelVersion: z.number().int().positive(),
+  locationLabelVersion: z.number().int().positive(),
+  inventoryScannedAt: z.iso.datetime(),
+  locationScannedAt: z.iso.datetime(),
+});
+
+export const confirmMissingCandidateRequestSchema = discrepancyScanEvidenceSchema
+  .omit({
+    inventoryNumber: true,
+    locationCode: true,
+    inventoryLabelVersion: true,
+    locationLabelVersion: true,
+    inventoryScannedAt: true,
+    locationScannedAt: true,
+  })
+  .extend({
+    challengeId: z.string().uuid(),
+    evidenceId: z.string().uuid(),
+    reasonCode: z.enum(["not_seen_during_count", "label_unreadable", "location_mismatch"]),
+    reasonNote: z.string().trim().min(1).max(500),
+    confirmedAt: z.iso.datetime(),
+    humanConfirmed: z.literal(true),
+  })
+  .strict();
+
+export const restoreMissingCandidateRequestSchema = discrepancyScanEvidenceSchema
+  .omit({
+    inventoryNumber: true,
+    locationCode: true,
+    inventoryLabelVersion: true,
+    locationLabelVersion: true,
+    inventoryScannedAt: true,
+    locationScannedAt: true,
+  })
+  .extend({
+    challengeId: z.string().uuid(),
+    reasonCode: z.enum(["found_in_place", "found_after_move", "counting_error"]),
+    reasonNote: z.string().trim().min(1).max(500),
+    confirmedAt: z.iso.datetime(),
     humanConfirmed: z.literal(true),
   })
   .strict();
@@ -927,6 +1223,23 @@ export const financialSummaryResponseSchema = z.object({
   packagingCostMinor: z.number().int(),
   netRevenueMinor: z.number().int(),
   contributionProfitMinor: z.number().int().nullable(),
+  formulaVersion: z.literal("financial_formula_v1.0.0"),
+  missingInputs: z
+    .enum([
+      "orderPrice",
+      "sellerDiscount",
+      "channelCoupon",
+      "successfulRefund",
+      "sellingFeeCharged",
+      "sellingFeeRefund",
+      "promotionCost",
+      "sellerShipping",
+      "packagingCost",
+      "returnDirectCost",
+      "costOfGoods",
+      "costReturnedToInventory",
+    ])
+    .array(),
   currency: z.literal("JPY"),
   disclaimer: z.literal(
     "運用分析の参考値です。会計上の売上・利益・所得・税額を示すものではありません。",
@@ -951,9 +1264,253 @@ export const accountingExportResponseSchema = z.object({
   createdAt: z.iso.datetime(),
 });
 
+export const accountingProfileSchema = z.object({
+  workspaceId: workspaceIdSchema,
+  businessContext: z.enum(["unconfigured", "individual_business", "company"]),
+  filingContext: z.enum(["unconfigured", "blue_return", "white_return", "corporate_return"]),
+  consumptionTaxTreatment: z.enum([
+    "unconfigured",
+    "tax_exempt",
+    "general_taxation",
+    "simplified_taxation",
+  ]),
+  invoiceRegistrationStatus: z.enum(["unconfigured", "not_registered", "registered"]),
+  bookkeepingMethod: z.enum(["unconfigured", "single_entry", "double_entry"]),
+  revision: z.number().int().positive(),
+  humanConfirmedBy: z.string().uuid().nullable(),
+  humanConfirmedAt: z.iso.datetime().nullable(),
+  updatedAt: z.iso.datetime(),
+});
+
+export const accountingOrderOptionSchema = z.object({
+  orderId: z.string().uuid(),
+  orderNumber: z.string().min(1),
+  orderState: z.enum(["confirmed", "picking", "packed", "shipped", "returned"]),
+  skuCode: z.string().min(1),
+  title: z.string().min(1),
+  financialEventCount: z.number().int().nonnegative(),
+});
+
+export const updateAccountingProfileRequestSchema = accountingProfileSchema
+  .pick({
+    businessContext: true,
+    filingContext: true,
+    consumptionTaxTreatment: true,
+    invoiceRegistrationStatus: true,
+    bookkeepingMethod: true,
+  })
+  .extend({ expectedRevision: z.number().int().positive(), humanConfirmed: z.literal(true) })
+  .strict();
+
+export const accountMappingChangeReasonSchema = z.enum([
+  "account_review",
+  "tax_review",
+  "bookkeeping_policy_update",
+  "correction",
+  "other_reviewed_change",
+]);
+
+export const accountMappingRuleSchema = z
+  .object({
+    ruleId: z.string().uuid(),
+    eventType: z.enum(["sale", "refund", "fee", "fee_reversal", "shipping", "packaging", "cost"]),
+    version: z.string().min(1).max(80),
+    debitAccount: z.string().min(1).max(30),
+    debitSubaccount: z.string().max(30),
+    debitTaxCategory: z.string().min(1).max(50),
+    debitInvoiceCategory: z.enum([
+      "適格",
+      "80％控除",
+      "70％控除",
+      "50％控除",
+      "30％控除",
+      "控除なし",
+    ]),
+    creditAccount: z.string().min(1).max(30),
+    creditSubaccount: z.string().max(30),
+    creditTaxCategory: z.string().min(1).max(50),
+    creditInvoiceCategory: z.enum([
+      "適格",
+      "80％控除",
+      "70％控除",
+      "50％控除",
+      "30％控除",
+      "控除なし",
+    ]),
+    effectiveFrom: z.iso.datetime(),
+    effectiveUntil: z.iso.datetime().nullable(),
+    status: z.enum(["draft", "active", "retired"]),
+    approvedBy: z.string().uuid().nullable(),
+    approvedAt: z.iso.datetime().nullable(),
+    replacesRuleId: z.string().uuid().nullable(),
+    changeReasonCode: accountMappingChangeReasonSchema.nullable(),
+    confirmationStatus: z.enum(["candidate", "human_confirmed"]),
+  })
+  .strict();
+
+export const createAccountMappingRuleRequestSchema = accountMappingRuleSchema
+  .omit({
+    ruleId: true,
+    approvedBy: true,
+    approvedAt: true,
+    status: true,
+    replacesRuleId: true,
+    changeReasonCode: true,
+    confirmationStatus: true,
+  })
+  .extend({ humanApproved: z.literal(true) })
+  .strict();
+
+export const replaceAccountMappingRuleRequestSchema = accountMappingRuleSchema
+  .pick({
+    debitAccount: true,
+    debitSubaccount: true,
+    debitTaxCategory: true,
+    debitInvoiceCategory: true,
+    creditAccount: true,
+    creditSubaccount: true,
+    creditTaxCategory: true,
+    creditInvoiceCategory: true,
+    effectiveFrom: true,
+  })
+  .extend({
+    expectedVersion: z.string().min(1).max(80),
+    expectedStatus: z.literal("active"),
+    changeReasonCode: accountMappingChangeReasonSchema,
+    humanConfirmed: z.literal(true),
+  })
+  .strict();
+
+export const replaceAccountMappingRuleResponseSchema = z
+  .object({
+    retiredRule: accountMappingRuleSchema,
+    activeRule: accountMappingRuleSchema,
+    changeReasonCode: accountMappingChangeReasonSchema,
+    humanConfirmed: z.literal(true),
+  })
+  .strict();
+
+export const createVersionedAccountingExportRequestSchema = z
+  .object({
+    format: z.enum(["money_forward_journal_v1", "generic_journal_v1"]),
+    orderId: z.string().uuid(),
+    idempotencyKey: z.string().uuid(),
+    approvedAt: z.iso.datetime(),
+    humanApproved: z.literal(true),
+    duplicateOverrideConfirmed: z.boolean().default(false),
+    supersedesBatchId: z.string().uuid().nullable().default(null),
+  })
+  .strict();
+
+export const versionedAccountingExportResponseSchema = z.object({
+  batchId: z.string().uuid(),
+  orderId: z.string().uuid(),
+  format: z.enum(["money_forward_journal_v1", "generic_journal_v1"]),
+  formatVersion: z.enum(["money_forward_journal_v1.0.0", "generic_journal_v1.0.0"]),
+  filename: z.enum(["money-forward-journal-v1.csv", "generic-journal-v1.csv"]),
+  sha256: z.string().regex(/^[a-f0-9]{64}$/u),
+  sourceSetSha256: z.string().regex(/^[a-f0-9]{64}$/u),
+  schemaSha256: z.string().regex(/^[a-f0-9]{64}$/u),
+  fixtureSha256: z.string().regex(/^[a-f0-9]{64}$/u),
+  rowCount: z.number().int().positive(),
+  columnCount: z.union([z.literal(27), z.literal(19)]),
+  state: z.enum(["ready", "downloaded", "import_confirmed", "voided", "superseded"]),
+  supersedesBatchId: z.string().uuid().nullable(),
+  contentUrl: z.string().startsWith("/v1/workspaces/"),
+  createdAt: z.iso.datetime(),
+});
+
+const accountingExportDuplicateReferenceSchema = z.object({
+  batchId: z.string().uuid(),
+  format: z.enum(["money_forward_journal_v1", "generic_journal_v1"]),
+  filename: z.enum(["money-forward-journal-v1.csv", "generic-journal-v1.csv"]),
+  sourceSetSha256: z.string().regex(/^[a-f0-9]{64}$/u),
+  state: z.enum(["ready", "downloaded", "import_confirmed", "superseded"]),
+});
+
+export const accountingExportPreflightResponseSchema = z
+  .object({
+    orderId: z.string().uuid(),
+    currentSourceSetSha256: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/u)
+      .nullable(),
+    exactPriorDuplicate: accountingExportDuplicateReferenceSchema.nullable(),
+    canCreateFresh: z.boolean(),
+    canSupersede: z.boolean(),
+  })
+  .superRefine((value, context) => {
+    const hasCurrentSources = value.currentSourceSetSha256 !== null;
+    const hasExactPrior = value.exactPriorDuplicate !== null;
+    if (value.canCreateFresh !== (hasCurrentSources && !hasExactPrior)) {
+      context.addIssue({
+        code: "custom",
+        path: ["canCreateFresh"],
+        message: "Fresh export permission does not match the exact duplicate result",
+      });
+    }
+    if (value.canSupersede !== (hasCurrentSources && hasExactPrior)) {
+      context.addIssue({
+        code: "custom",
+        path: ["canSupersede"],
+        message: "Supersession permission does not match the exact duplicate result",
+      });
+    }
+    if (
+      value.exactPriorDuplicate &&
+      value.exactPriorDuplicate.sourceSetSha256 !== value.currentSourceSetSha256
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["exactPriorDuplicate", "sourceSetSha256"],
+        message: "Prior duplicate must match the current source set",
+      });
+    }
+  });
+
+export const accountingExportPreviewResponseSchema = z
+  .object({
+    batchId: z.string().uuid(),
+    formatVersion: z.enum(["money_forward_journal_v1.0.0", "generic_journal_v1.0.0"]),
+    filename: z.enum(["money-forward-journal-v1.csv", "generic-journal-v1.csv"]),
+    sha256: z.string().regex(/^[a-f0-9]{64}$/u),
+    columnCount: z.union([z.literal(27), z.literal(19)]),
+    totalRowCount: z.number().int().positive(),
+    previewRowCount: z.number().int().min(0).max(10),
+    truncated: z.boolean(),
+    headers: z.string().max(100).array().min(19).max(27),
+    rows: z.string().max(500).array().max(27).array().max(10),
+  })
+  .superRefine((value, context) => {
+    if (value.headers.length !== value.columnCount) {
+      context.addIssue({ code: "custom", message: "Preview header count does not match format" });
+    }
+    if (value.rows.some((row) => row.length !== value.columnCount)) {
+      context.addIssue({ code: "custom", message: "Preview row count does not match format" });
+    }
+    if (value.previewRowCount !== value.rows.length) {
+      context.addIssue({ code: "custom", message: "Preview row count does not match rows" });
+    }
+    if (value.truncated !== value.totalRowCount > value.previewRowCount) {
+      context.addIssue({ code: "custom", message: "Preview truncation flag is inconsistent" });
+    }
+  });
+
+export const confirmAccountingImportRequestSchema = z
+  .object({
+    idempotencyKey: z.string().uuid(),
+    result: z.enum(["success", "failed"]),
+    importedRowCount: z.number().int().nonnegative(),
+    note: z.string().trim().max(500).nullable(),
+    confirmedAt: z.iso.datetime(),
+    humanConfirmed: z.literal(true),
+  })
+  .strict();
+
 export type CreateSkuRequest = z.infer<typeof createSkuRequestSchema>;
 export type SkuResponse = z.infer<typeof skuResponseSchema>;
 export type InventorySummary = z.infer<typeof inventorySummarySchema>;
+export type OwnerPulseResponse = z.infer<typeof ownerPulseResponseSchema>;
 export type PutawayCatalogResponse = z.infer<typeof putawayCatalogResponseSchema>;
 export type WorkspaceRole = z.infer<typeof workspaceRoleSchema>;
 export type SessionContextResponse = z.infer<typeof sessionContextResponseSchema>;
@@ -985,6 +1542,11 @@ export type CaptureSummary = z.infer<typeof captureSummarySchema>;
 export type CreateOrderRequest = z.infer<typeof createOrderRequestSchema>;
 export type CreateP0ItemRequest = z.infer<typeof createP0ItemRequestSchema>;
 export type P0ItemResponse = z.infer<typeof p0ItemResponseSchema>;
+export type StartPilotRunRequest = z.infer<typeof startPilotRunRequestSchema>;
+export type RecordPilotExceptionRequest = z.infer<typeof recordPilotExceptionRequestSchema>;
+export type PilotExceptionMetrics = z.infer<typeof pilotExceptionMetricsSchema>;
+export type PilotItemMeasurement = z.infer<typeof pilotItemMeasurementSchema>;
+export type PilotRunResponse = z.infer<typeof pilotRunResponseSchema>;
 export type CreateLocationRequest = z.infer<typeof createLocationRequestSchema>;
 export type LocationNodeResponse = z.infer<typeof locationNodeResponseSchema>;
 export type OrderOperationResponse = z.infer<typeof orderOperationResponseSchema>;
@@ -1003,6 +1565,15 @@ export type StocktakeResponse = z.infer<typeof stocktakeResponseSchema>;
 export type ResolveStocktakeDiscrepancyRequest = z.infer<
   typeof resolveStocktakeDiscrepancyRequestSchema
 >;
+export type UploadDiscrepancyEvidenceQuery = z.infer<typeof uploadDiscrepancyEvidenceQuerySchema>;
+export type DiscrepancyEvidenceResponse = z.infer<typeof discrepancyEvidenceResponseSchema>;
+export type DiscrepancyEvidenceListItem = z.infer<typeof discrepancyEvidenceListItemSchema>;
+export type CreateDiscrepancyChallengeRequest = z.infer<
+  typeof createDiscrepancyChallengeRequestSchema
+>;
+export type DiscrepancyChallengeResponse = z.infer<typeof discrepancyChallengeResponseSchema>;
+export type ConfirmMissingCandidateRequest = z.infer<typeof confirmMissingCandidateRequestSchema>;
+export type RestoreMissingCandidateRequest = z.infer<typeof restoreMissingCandidateRequestSchema>;
 export type ApproveStocktakeRequest = z.infer<typeof approveStocktakeRequestSchema>;
 export type ReissueInventoryLabelRequest = z.infer<typeof reissueInventoryLabelRequestSchema>;
 export type ReissuedInventoryLabelResponse = z.infer<typeof reissuedInventoryLabelResponseSchema>;
@@ -1019,3 +1590,26 @@ export type InspectReturnRequest = z.infer<typeof inspectReturnRequestSchema>;
 export type FinancialSummaryResponse = z.infer<typeof financialSummaryResponseSchema>;
 export type CreateAccountingExportRequest = z.infer<typeof createAccountingExportRequestSchema>;
 export type AccountingExportResponse = z.infer<typeof accountingExportResponseSchema>;
+export type AccountingProfileResponse = z.infer<typeof accountingProfileSchema>;
+export type AccountingOrderOptionResponse = z.infer<typeof accountingOrderOptionSchema>;
+export type UpdateAccountingProfileRequest = z.infer<typeof updateAccountingProfileRequestSchema>;
+export type AccountMappingRuleResponse = z.infer<typeof accountMappingRuleSchema>;
+export type CreateAccountMappingRuleRequest = z.infer<typeof createAccountMappingRuleRequestSchema>;
+export type AccountMappingChangeReason = z.infer<typeof accountMappingChangeReasonSchema>;
+export type ReplaceAccountMappingRuleRequest = z.infer<
+  typeof replaceAccountMappingRuleRequestSchema
+>;
+export type ReplaceAccountMappingRuleResponse = z.infer<
+  typeof replaceAccountMappingRuleResponseSchema
+>;
+export type CreateVersionedAccountingExportRequest = z.infer<
+  typeof createVersionedAccountingExportRequestSchema
+>;
+export type VersionedAccountingExportResponse = z.infer<
+  typeof versionedAccountingExportResponseSchema
+>;
+export type AccountingExportPreflightResponse = z.infer<
+  typeof accountingExportPreflightResponseSchema
+>;
+export type AccountingExportPreviewResponse = z.infer<typeof accountingExportPreviewResponseSchema>;
+export type ConfirmAccountingImportRequest = z.infer<typeof confirmAccountingImportRequestSchema>;
