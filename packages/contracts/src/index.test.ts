@@ -8,10 +8,16 @@ import {
   assignOrderRequestSchema,
   checkedLocationCodeSchema,
   createMarketplaceReferenceRequestSchema,
+  createP0ItemRequestSchema,
   createTeamAssignmentRequestSchema,
+  financialSummaryResponseSchema,
   hasValidCodeCheckDigit,
   inventoryNumberSchema,
+  listingPrepPilotFixtureManifestSha256,
   listingPrepPilotMigrationVersion,
+  listingPrepPilotMeasurementTemplates,
+  listingPrepPilotProtocolVersion,
+  measurementProfileResponseSchema,
   pilotRunResponseSchema,
   recordPilotExceptionRequestSchema,
   replaceAccountMappingRuleRequestSchema,
@@ -23,6 +29,26 @@ import {
 } from "./index.js";
 
 describe("safe discrepancy and accounting preview read models", () => {
+  it("keeps an unknown tax basis visible as an accounting export blocker", () => {
+    const parsed = financialSummaryResponseSchema.parse({
+      workspaceId: "10000000-0000-4000-8000-000000000001",
+      orderId: "10000000-0000-4000-8000-000000000002",
+      skuId: "10000000-0000-4000-8000-000000000003",
+      saleAmountMinor: 5800,
+      costAmountMinor: 1800,
+      sellingFeeMinor: 580,
+      shippingCostMinor: 750,
+      packagingCostMinor: 120,
+      netRevenueMinor: 5800,
+      contributionProfitMinor: 2550,
+      formulaVersion: "financial_formula_v1.0.0",
+      missingInputs: ["taxBasis"],
+      currency: "JPY",
+      disclaimer: "運用分析の参考値です。会計上の売上・利益・所得・税額を示すものではありません。",
+    });
+    expect(parsed.missingInputs).toEqual(["taxBasis"]);
+  });
+
   it("requires optimistic locking, a fixed reason, an effective date, and human confirmation", () => {
     const request = {
       expectedVersion: "sale-v1",
@@ -136,10 +162,14 @@ describe("safe discrepancy and accounting preview read models", () => {
       membershipRevisionAtSelection: 1,
       evidenceCount: 1,
       reasonCode: "found_after_move",
+      confirmedReasonCode: "not_seen_during_count",
+      restoredReasonCode: "found_after_move",
       confirmedAt: "2026-08-21T00:00:00.000Z",
       restoredAt: "2026-08-21T00:01:00.000Z",
     });
     expect(parsed.expectedLocationCode).not.toBe(parsed.currentLocationCode);
+    expect(parsed.confirmedReasonCode).toBe("not_seen_during_count");
+    expect(parsed.restoredReasonCode).toBe("found_after_move");
   });
 
   it("bounds CSV preview to ten rows and requires every saved column", () => {
@@ -208,14 +238,15 @@ describe("safe discrepancy and accounting preview read models", () => {
 });
 
 describe("ten-product pilot contract", () => {
-  it("locks the protocol, commit, migration and 390x844 viewport", () => {
+  it("locks new starts to the generated v1.1 manifest, latest migration and 390x844 viewport", () => {
     const latestMigrationVersion = readdirSync(new URL("../../db/migrations/", import.meta.url))
       .filter((name) => /^\d{4}_.+\.sql$/u.test(name))
       .sort()
       .at(-1)
       ?.slice(0, 4);
     const valid = {
-      protocolVersion: "listing_prep_pilot_v1.0.0",
+      protocolVersion: listingPrepPilotProtocolVersion,
+      fixtureManifestSha256: listingPrepPilotFixtureManifestSha256,
       commitSha: "a".repeat(40),
       migrationVersion: listingPrepPilotMigrationVersion,
       platform: "Windows",
@@ -225,17 +256,126 @@ describe("ten-product pilot contract", () => {
       humanConfirmed: true,
     } as const;
     expect(startPilotRunRequestSchema.safeParse(valid).success).toBe(true);
-    expect(listingPrepPilotMigrationVersion).toBe("0032");
+    expect(listingPrepPilotMigrationVersion).toBe("0033");
     expect(listingPrepPilotMigrationVersion).toBe(latestMigrationVersion);
     expect(
       startPilotRunRequestSchema.safeParse({ ...valid, migrationVersion: "0028" }).success,
     ).toBe(false);
-    expect(pilotRunResponseSchema.shape.migrationVersion.safeParse("0028").success).toBe(true);
-    expect(pilotRunResponseSchema.shape.migrationVersion.safeParse("0032").success).toBe(true);
-    expect(pilotRunResponseSchema.shape.migrationVersion.safeParse("0033").success).toBe(false);
+    expect(
+      startPilotRunRequestSchema.safeParse({
+        ...valid,
+        fixtureManifestSha256: "b".repeat(64),
+      }).success,
+    ).toBe(false);
     expect(startPilotRunRequestSchema.safeParse({ ...valid, viewport: "1440x1000" }).success).toBe(
       false,
     );
+  });
+
+  it("keeps historical v1.0 runs readable while accepting only v1.1 at migration 0033", () => {
+    const base = {
+      runId: "10000000-0000-4000-8000-000000000001",
+      workspaceId: "10000000-0000-4000-8000-000000000002",
+      commitSha: "a".repeat(40),
+      platform: "Windows",
+      browser: "Chrome 140",
+      viewport: "390x844",
+      actorId: "10000000-0000-4000-8000-000000000003",
+      state: "active",
+      externallyInvalidated: false,
+      externalInvalidationReason: null,
+      warmupCompletedAt: "2026-08-24T00:00:00.000Z",
+      startedAt: "2026-08-24T00:01:00.000Z",
+      completedAt: null,
+      items: [],
+      summary: {
+        itemCount: 0,
+        completedItemCount: 0,
+        p50Seconds: null,
+        p75Seconds: null,
+        minSeconds: null,
+        maxSeconds: null,
+        invalidAttemptCount: 0,
+        missingRequiredImageCount: 0,
+        measurementReworkCount: 0,
+        labelLocationMismatchCount: 0,
+        misputawayCount: 0,
+        networkRetryCount: 0,
+        manualCorrectionCount: 0,
+        passed: null,
+      },
+    } as const;
+    const historical = {
+      ...base,
+      protocolVersion: "listing_prep_pilot_v1.0.0",
+      fixtureManifestSha256: null,
+      migrationVersion: "0028",
+    } as const;
+    const current = {
+      ...base,
+      protocolVersion: listingPrepPilotProtocolVersion,
+      fixtureManifestSha256: listingPrepPilotFixtureManifestSha256,
+      migrationVersion: "0033",
+    } as const;
+
+    expect(pilotRunResponseSchema.safeParse(historical).success).toBe(true);
+    expect(pilotRunResponseSchema.safeParse(current).success).toBe(true);
+    expect(
+      pilotRunResponseSchema.safeParse({ ...historical, migrationVersion: "0033" }).success,
+    ).toBe(false);
+    expect(pilotRunResponseSchema.safeParse({ ...current, migrationVersion: "0034" }).success).toBe(
+      false,
+    );
+    expect(
+      pilotRunResponseSchema.safeParse({ ...current, fixtureManifestSha256: null }).success,
+    ).toBe(false);
+  });
+
+  it("publishes exact category measurement templates and rejects category mismatches", () => {
+    const pantsDefinitions =
+      listingPrepPilotMeasurementTemplates.pants_standard_v1.measurements.map((definition) => ({
+        ...definition,
+        state: listingPrepPilotMeasurementTemplates.pants_standard_v1.state,
+      }));
+    expect(pantsDefinitions).toHaveLength(5);
+    expect(pantsDefinitions.map((definition) => definition.definitionId)).toEqual([
+      "waist_flat_width",
+      "rise_length",
+      "inseam_length",
+      "thigh_width",
+      "hem_width",
+    ]);
+    expect(
+      measurementProfileResponseSchema.safeParse({
+        category: "pants",
+        measurementTemplateId: "pants_standard_v1",
+        measurementTemplateVersion: 1,
+        definitions: pantsDefinitions,
+        confirmedBy: "10000000-0000-4000-8000-000000000001",
+        confirmedAt: "2026-08-24T00:00:00.000Z",
+      }).success,
+    ).toBe(true);
+
+    const item = {
+      skuCode: "SKU-PANTS-001",
+      title: "テスト用パンツ",
+      category: "pants",
+      measurementTemplateId: "pants_standard_v1",
+      receiptReference: "RCPT-PANTS-001",
+      supplierName: "テスト仕入先",
+      purchasedAt: "2026-08-24T00:00:00.000Z",
+      receiptAmountMinor: 1000,
+      allocatedCostMinor: 1000,
+      idempotencyKey: "10000000-0000-4000-8000-000000000002",
+      humanConfirmed: true,
+    } as const;
+    expect(createP0ItemRequestSchema.safeParse(item).success).toBe(true);
+    expect(
+      createP0ItemRequestSchema.safeParse({
+        ...item,
+        measurementTemplateId: "tops_standard_v1",
+      }).success,
+    ).toBe(false);
   });
 
   it("accepts append-only exception events and rejects client-computed totals", () => {

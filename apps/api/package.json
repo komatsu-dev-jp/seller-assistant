@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "bootstrap:owner": "tsx src/bootstrap-owner.ts",
+    "seed:ui-evaluation": "tsx src/ui-evaluation-fixture.ts",
     "test:postgres": "tsx src/postgres-integration.ts",
     "test:postgres-upgrade": "tsx src/postgres-upgrade-integration.ts",
     "build": "tsc -p tsconfig.json",

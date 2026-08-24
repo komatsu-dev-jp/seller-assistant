@@ -1579,6 +1579,10 @@ function toFinancialSummary(
   });
   const skuId = events[0]?.sku_id;
   if (!skuId) throw new RepositoryError("conflict", "The order financial SKU is missing");
+  const missingInputs = accountingSummaryMissingInputs(
+    result.missing,
+    events.some((event) => event.tax_basis === "unknown"),
+  );
   return {
     workspaceId,
     orderId,
@@ -1591,10 +1595,21 @@ function toFinancialSummary(
     netRevenueMinor: result.netProductSales ?? 0,
     contributionProfitMinor: result.transactionContribution,
     formulaVersion: result.formulaVersion,
-    missingInputs: result.missing,
+    missingInputs,
     currency: "JPY",
     disclaimer: "運用分析の参考値です。会計上の売上・利益・所得・税額を示すものではありません。",
   };
+}
+
+type FinancialMissingInput = FinancialSummaryResponse["missingInputs"][number];
+
+export function accountingSummaryMissingInputs(
+  missingInputs: readonly FinancialMissingInput[],
+  hasUnknownTaxBasis: boolean,
+): FinancialMissingInput[] {
+  const result = [...missingInputs];
+  if (hasUnknownTaxBasis && !result.includes("taxBasis")) result.push("taxBasis");
+  return result;
 }
 
 function journalCandidate(event: FinancialEventRow, approvedBy: string): JournalCandidate {

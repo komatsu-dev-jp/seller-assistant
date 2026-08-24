@@ -32,7 +32,18 @@ export default tseslint.config(
   },
   {
     ...tseslint.configs.disableTypeChecked,
-    files: ["**/*.test.ts", "apps/*/public/**/*.js"],
+    files: ["**/*.test.ts", "apps/*/public/**/*.js", "scripts/**/*.mjs"],
+  },
+  {
+    files: ["scripts/**/*.mjs"],
+    languageOptions: {
+      globals: {
+        Buffer: "readonly",
+        console: "readonly",
+        process: "readonly",
+        URL: "readonly",
+      },
+    },
   },
   {
     files: ["apps/*/public/**/*.js"],

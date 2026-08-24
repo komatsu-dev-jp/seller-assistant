@@ -1,10 +1,15 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
   appendCodeCheckDigit,
+  listingPrepPilotFixtureManifestSha256,
+  listingPrepPilotFixtureProfiles,
   listingPrepPilotFixtures,
+  listingPrepPilotMeasurementTemplates,
+  listingPrepPilotProtocolVersion,
   pilotFixtureCategories,
   type CaptureTaskResponse,
   type ConfirmIdentityCandidateRequest,
+  type ConfirmProductAttributesRequest,
   type CreateLocationRequest,
   type CreateIdentityCandidateRequest,
   type CreateMarketplaceReferenceRequest,
@@ -12,7 +17,9 @@ import {
   type IdentityCandidateResponse,
   type LocationNodeResponse,
   type MarketplaceReferenceResponse,
+  type MeasurementProfileResponse,
   type P0ItemResponse,
+  type ProductAttributeConfirmationResponse,
   type ProductResearchResponse,
   type PutawayCatalogResponse,
   type PilotRunResponse,
@@ -64,6 +71,12 @@ export interface P0ItemRepository {
     actor: RequestActor,
     input: ConfirmIdentityCandidateRequest,
   ): Promise<IdentityCandidateResponse>;
+  confirmProductAttributes(
+    workspaceId: string,
+    skuId: string,
+    actor: RequestActor,
+    input: ConfirmProductAttributesRequest,
+  ): Promise<ProductAttributeConfirmationResponse>;
   addMarketplaceReference(
     workspaceId: string,
     skuId: string,
@@ -84,6 +97,21 @@ interface P0ItemRow {
   sku_code: string;
   title: string;
   category: string | null;
+  profile_category: MeasurementProfileResponse["category"] | null;
+  measurement_template_id: MeasurementProfileResponse["measurementTemplateId"] | null;
+  measurement_template_version: 1 | null;
+  measurement_profile_confirmed_by: string | null;
+  measurement_profile_confirmed_at: Date | null;
+  attribute_confirmation_id: string | null;
+  attribute_revision: number | null;
+  confirmed_brand: string | null;
+  confirmed_size_label: string | null;
+  confirmed_color: string | null;
+  attribute_evidence_asset_id: string | null;
+  attribute_source_candidate_id: string | null;
+  supersedes_confirmation_id: string | null;
+  attributes_confirmed_by: string | null;
+  attributes_confirmed_at: Date | null;
   inventory_unit_id: string;
   inventory_number: string;
   inventory_status: P0ItemResponse["inventoryStatus"];
@@ -138,8 +166,23 @@ interface CandidateRow {
   model_candidate: string | null;
   material_candidate: string | null;
   size_candidate: string | null;
+  color_candidate: string | null;
   status: IdentityCandidateResponse["status"];
   created_at: Date;
+}
+
+interface AttributeConfirmationRow {
+  id: string;
+  sku_id: string;
+  revision: number;
+  brand: string;
+  size_label: string;
+  color: string;
+  evidence_asset_id: string;
+  source_candidate_id: string | null;
+  supersedes_confirmation_id: string | null;
+  confirmed_by: string;
+  confirmed_at: Date;
 }
 
 interface ReferenceRow {
@@ -159,7 +202,8 @@ interface ReferenceRow {
 interface PilotRunRow {
   id: string;
   workspace_id: string;
-  protocol_version: "listing_prep_pilot_v1.0.0";
+  protocol_version: PilotRunResponse["protocolVersion"];
+  fixture_manifest_sha256: string | null;
   commit_sha: string;
   migration_version: PilotRunResponse["migrationVersion"];
   platform: string;
@@ -179,6 +223,8 @@ interface PilotItemRow {
   sku_id: string;
   product_fixture_id: PilotRunResponse["items"][number]["productFixtureId"];
   category: PilotRunResponse["items"][number]["category"];
+  measurement_template_id: PilotRunResponse["items"][number]["measurementTemplateId"];
+  measurement_template_version: 1 | null;
   started_at: Date;
   completed_at: Date | null;
   elapsed_seconds: number | string | null;
@@ -229,15 +275,31 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
         }
 
         await transaction`select pg_advisory_xact_lock(hashtext(${workspaceId}))`;
+        const measurementTemplate =
+          listingPrepPilotMeasurementTemplates[input.measurementTemplateId];
+        let pilotRun:
+          | {
+              protocol_version: PilotRunResponse["protocolVersion"];
+              fixture_manifest_sha256: string | null;
+            }
+          | undefined;
         if (input.pilot) {
-          const runs = await transaction<Array<{ actor_id: string; item_count: number }>>`
-            select run.actor_id, count(item.id)::integer as item_count
+          const runs = await transaction<
+            Array<{
+              actor_id: string;
+              item_count: number;
+              protocol_version: PilotRunResponse["protocolVersion"];
+              fixture_manifest_sha256: string | null;
+            }>
+          >`
+            select run.actor_id, run.protocol_version, run.fixture_manifest_sha256,
+                   count(item.id)::integer as item_count
             from pilot_run run
             left join pilot_item_measurement item
               on item.workspace_id = run.workspace_id and item.pilot_run_id = run.id
             where run.workspace_id = ${workspaceId} and run.id = ${input.pilot.runId}
               and run.state = 'active'
-            group by run.actor_id
+            group by run.actor_id, run.protocol_version, run.fixture_manifest_sha256
           `;
           const run = runs[0];
           if (!run || run.actor_id !== actor.identityId) {
@@ -260,6 +322,22 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
               "The product category does not match the fixed pilot fixture",
             );
           }
+          if (run.protocol_version === listingPrepPilotProtocolVersion) {
+            const profile = requirePilotFixtureProfile(input.pilot.productFixtureId);
+            if (
+              run.fixture_manifest_sha256 !== listingPrepPilotFixtureManifestSha256 ||
+              profile.category !== category ||
+              profile.templateId !== input.measurementTemplateId ||
+              profile.templateVersion !== measurementTemplate.version ||
+              profile.title !== input.title
+            ) {
+              throw new RepositoryError(
+                "conflict",
+                "The product does not match the generated pilot fixture profile",
+              );
+            }
+          }
+          pilotRun = run;
         }
         const skuId = randomUUID();
         const inventoryUnitId = randomUUID();
@@ -283,14 +361,28 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
           insert into product_sku (id, workspace_id, sku_code, title, category, human_confirmed_at)
           values (${skuId}, ${workspaceId}, ${input.skuCode}, ${input.title}, ${input.category}, ${input.purchasedAt})
         `;
+        await transaction`
+          insert into product_measurement_profile (
+            workspace_id, sku_id, category, measurement_template_id,
+            measurement_template_version, confirmed_by, confirmed_at
+          ) values (
+            ${workspaceId}, ${skuId}, ${measurementTemplate.category},
+            ${measurementTemplate.id}, ${measurementTemplate.version},
+            ${actor.identityId}, statement_timestamp()
+          )
+        `;
         if (input.pilot) {
           const category = pilotFixtureCategories[input.pilot.productFixtureId];
+          const currentProtocol = pilotRun?.protocol_version === listingPrepPilotProtocolVersion;
           const pilotRows = await transaction<Array<{ id: string }>>`
             insert into pilot_item_measurement (
-              workspace_id, pilot_run_id, sku_id, product_fixture_id, category
+              workspace_id, pilot_run_id, sku_id, product_fixture_id, category,
+              measurement_template_id, measurement_template_version
             ) values (
               ${workspaceId}, ${input.pilot.runId}, ${skuId},
-              ${input.pilot.productFixtureId}, ${category}
+              ${input.pilot.productFixtureId}, ${category},
+              ${currentProtocol ? measurementTemplate.id : null},
+              ${currentProtocol ? measurementTemplate.version : null}
             ) returning id
           `;
           const pilotItemId = pilotRows[0]?.id;
@@ -304,9 +396,13 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
             ) values (
               ${workspaceId}, ${actor.identityId}, 'pilot_item_started',
               'pilot_item_measurement', ${pilotItemId},
-              ${["product_fixture_id", "category", "started_at"]},
+              ${["product_fixture_id", "category", "measurement_template_id", "started_at"]},
               ${transaction.json({
-                after: { product_fixture_id: input.pilot.productFixtureId, category },
+                after: {
+                  product_fixture_id: input.pilot.productFixtureId,
+                  category,
+                  measurement_template_id: currentProtocol ? measurementTemplate.id : null,
+                },
               })},
               ${[input.pilot.runId, skuId]}, 'server_accepted_product_creation',
               ${actor.identityId}
@@ -429,10 +525,12 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
         const runId = randomUUID();
         await transaction`
           insert into pilot_run (
-            id, workspace_id, protocol_version, commit_sha, migration_version,
+            id, workspace_id, protocol_version, fixture_manifest_sha256,
+            commit_sha, migration_version,
             platform, browser, viewport, actor_id, warmup_completed_at
           ) values (
-            ${runId}, ${workspaceId}, ${input.protocolVersion}, ${input.commitSha},
+            ${runId}, ${workspaceId}, ${input.protocolVersion},
+            ${input.fixtureManifestSha256}, ${input.commitSha},
             ${input.migrationVersion}, ${input.platform}, ${input.browser}, ${input.viewport},
             ${actor.identityId}, statement_timestamp()
           )
@@ -443,10 +541,17 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
             redacted_changes, reference_ids, reason_code, approved_by
           ) values (
             ${workspaceId}, ${actor.identityId}, 'pilot_run.started', 'pilot_run', ${runId},
-            ${["protocol_version", "commit_sha", "migration_version", "viewport"]},
+            ${[
+              "protocol_version",
+              "fixture_manifest_sha256",
+              "commit_sha",
+              "migration_version",
+              "viewport",
+            ]},
             ${transaction.json({
               after: {
                 protocol_version: input.protocolVersion,
+                fixture_manifest_sha256: input.fixtureManifestSha256,
                 commit_sha: input.commitSha,
                 migration_version: input.migrationVersion,
                 viewport: input.viewport,
@@ -757,6 +862,11 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
             sku_code: string;
             title: string;
             category: string | null;
+            profile_category: MeasurementProfileResponse["category"] | null;
+            measurement_template_id: MeasurementProfileResponse["measurementTemplateId"] | null;
+            measurement_template_version: 1 | null;
+            profile_confirmed_by: string | null;
+            profile_confirmed_at: Date | null;
             photo_asset_ids: string[];
             photo_roles: CaptureTaskResponse["photoRoles"];
             measurements: CaptureTaskResponse["measurements"];
@@ -764,6 +874,10 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
           }>
         >`
           select sku.id as sku_id, sku.sku_code, sku.title, sku.category,
+                 profile.category as profile_category,
+                 profile.measurement_template_id, profile.measurement_template_version,
+                 profile.confirmed_by as profile_confirmed_by,
+                 profile.confirmed_at as profile_confirmed_at,
                  coalesce(photos.ids, array[]::uuid[]) as photo_asset_ids,
                  coalesce(photos.roles, array[]::text[]) as photo_roles,
                  coalesce(measurements.items, '[]'::jsonb) as measurements,
@@ -771,6 +885,8 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
           from product_sku sku
           join p0_workflow workflow
             on workflow.workspace_id = sku.workspace_id and workflow.sku_id = sku.id
+          left join product_measurement_profile profile
+            on profile.workspace_id = sku.workspace_id and profile.sku_id = sku.id
           left join lateral (
             select array_agg(asset.id order by asset.created_at) as ids,
                    array_agg(asset.role order by asset.created_at) as roles
@@ -815,6 +931,13 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
           skuCode: row.sku_code,
           title: row.title,
           category: row.category,
+          measurementProfile: toMeasurementProfileResponse({
+            category: row.profile_category,
+            measurementTemplateId: row.measurement_template_id,
+            measurementTemplateVersion: row.measurement_template_version,
+            confirmedBy: row.profile_confirmed_by,
+            confirmedAt: row.profile_confirmed_at,
+          }),
           photoAssetIds: row.photo_asset_ids,
           photoRoles: row.photo_roles,
           measurements: row.measurements,
@@ -853,14 +976,14 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
         const rows = await transaction<CandidateRow[]>`
           insert into product_identity_candidate (
             id, workspace_id, sku_id, source_asset_id, source_text_sha256,
-            brand_candidate, model_candidate, material_candidate, size_candidate,
+            brand_candidate, model_candidate, material_candidate, size_candidate, color_candidate,
             source_kind, created_by
           ) values (
             ${id}, ${workspaceId}, ${skuId}, ${input.sourceAssetId}, ${hash},
-            ${parsed.brand}, ${parsed.model}, ${parsed.material}, ${parsed.size},
+            ${parsed.brand}, ${parsed.model}, ${parsed.material}, ${parsed.size}, ${parsed.color},
             'manual_ocr_text', ${actor.identityId}
           ) returning id, sku_id, source_asset_id, brand_candidate, model_candidate,
-              material_candidate, size_candidate, status, created_at
+              material_candidate, size_candidate, color_candidate, status, created_at
         `;
         const row = rows[0];
         if (!row) throw new RepositoryError("database_error", "The OCR candidate was not stored");
@@ -902,7 +1025,7 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
           where workspace_id = ${workspaceId} and sku_id = ${skuId} and id = ${candidateId}
             and status = 'candidate'
           returning id, sku_id, source_asset_id, brand_candidate, model_candidate,
-                    material_candidate, size_candidate, status, created_at
+                    material_candidate, size_candidate, color_candidate, status, created_at
         `;
         if (!rows[0]) throw new RepositoryError("conflict", "The candidate is unavailable");
         await auditResearch(
@@ -916,6 +1039,97 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
           "identity_candidate_human_decision",
         );
         return toCandidate(rows[0]);
+      });
+    } catch (error) {
+      throw normalizeP0ItemError(error);
+    }
+  }
+
+  async confirmProductAttributes(
+    workspaceId: string,
+    skuId: string,
+    actor: RequestActor,
+    input: ConfirmProductAttributesRequest,
+  ): Promise<ProductAttributeConfirmationResponse> {
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId);
+        await requireManagementRole(transaction, workspaceId, actor.identityId);
+        await requireResearchEditable(transaction, workspaceId, skuId, true);
+        const lockedSkus = await transaction<Array<{ id: string }>>`
+          select id from product_sku
+          where workspace_id = ${workspaceId} and id = ${skuId}
+          for update
+        `;
+        if (!lockedSkus[0]) {
+          throw new RepositoryError("forbidden", "The SKU is not available in this workspace");
+        }
+        const evidence = await transaction<Array<{ id: string }>>`
+          select id from media_asset
+          where workspace_id = ${workspaceId} and sku_id = ${skuId}
+            and id = ${input.evidenceAssetId} and role in ('brand_tag','care_label')
+        `;
+        if (!evidence[0]) {
+          throw new RepositoryError(
+            "forbidden",
+            "Product attributes require a same-SKU brand-tag or care-label photo",
+          );
+        }
+        if (input.sourceCandidateId) {
+          const candidates = await transaction<Array<{ id: string }>>`
+            select id from product_identity_candidate
+            where workspace_id = ${workspaceId} and sku_id = ${skuId}
+              and id = ${input.sourceCandidateId} and source_asset_id = ${input.evidenceAssetId}
+              and status <> 'rejected'
+          `;
+          if (!candidates[0]) {
+            throw new RepositoryError("conflict", "The source candidate is unavailable");
+          }
+        }
+        const latest = await transaction<AttributeConfirmationRow[]>`
+          select id, sku_id, revision, brand, size_label, color, evidence_asset_id,
+                 source_candidate_id, supersedes_confirmation_id, confirmed_by, confirmed_at
+          from product_attribute_confirmation
+          where workspace_id = ${workspaceId} and sku_id = ${skuId}
+          order by revision desc
+          limit 1
+        `;
+        const current = latest[0];
+        if ((input.supersedesConfirmationId ?? null) !== (current?.id ?? null)) {
+          throw new RepositoryError(
+            "conflict",
+            "Product attributes changed; reload the latest confirmation before saving",
+          );
+        }
+        const id = randomUUID();
+        const rows = await transaction<AttributeConfirmationRow[]>`
+          insert into product_attribute_confirmation (
+            id, workspace_id, sku_id, revision, brand, size_label, color,
+            evidence_asset_id, source_candidate_id, supersedes_confirmation_id,
+            confirmed_by, confirmed_at
+          ) values (
+            ${id}, ${workspaceId}, ${skuId}, ${(current?.revision ?? 0) + 1},
+            ${input.brand}, ${input.sizeLabel}, ${input.color}, ${input.evidenceAssetId},
+            ${input.sourceCandidateId ?? null}, ${current?.id ?? null},
+            ${actor.identityId}, statement_timestamp()
+          ) returning id, sku_id, revision, brand, size_label, color, evidence_asset_id,
+              source_candidate_id, supersedes_confirmation_id, confirmed_by, confirmed_at
+        `;
+        const row = rows[0];
+        if (!row) {
+          throw new RepositoryError("database_error", "Product attributes returned no row");
+        }
+        await auditResearch(
+          transaction,
+          workspaceId,
+          actor.identityId,
+          "research.product_attributes.confirmed",
+          id,
+          { revision: current?.revision ?? 0 },
+          { revision: row.revision, fields: ["brand", "size_label", "color"] },
+          "product_attributes_human_confirmed",
+        );
+        return toAttributeConfirmation(row);
       });
     } catch (error) {
       throw normalizeP0ItemError(error);
@@ -975,7 +1189,7 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
         await requireManagementRole(transaction, workspaceId, actor.identityId);
         const candidateRows = await transaction<CandidateRow[]>`
           select id, sku_id, source_asset_id, brand_candidate, model_candidate,
-                 material_candidate, size_candidate, status, created_at
+                 material_candidate, size_candidate, color_candidate, status, created_at
           from product_identity_candidate
           where workspace_id = ${workspaceId} and sku_id = ${skuId}
           order by created_at desc
@@ -985,6 +1199,13 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
                  item_condition, shipping_basis, included, exclusion_reason, checked_at, created_at
           from marketplace_reference where workspace_id = ${workspaceId} and sku_id = ${skuId}
           order by checked_at desc
+        `;
+        const attributeRows = await transaction<AttributeConfirmationRow[]>`
+          select id, sku_id, revision, brand, size_label, color, evidence_asset_id,
+                 source_candidate_id, supersedes_confirmation_id, confirmed_by, confirmed_at
+          from product_attribute_confirmation
+          where workspace_id = ${workspaceId} and sku_id = ${skuId}
+          order by revision desc limit 1
         `;
         const included = referenceRows
           .filter((row) => row.included && row.sold_state)
@@ -1001,6 +1222,7 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
           workspaceId,
           skuId,
           candidates: candidateRows.map(toCandidate),
+          confirmedAttributes: attributeRows[0] ? toAttributeConfirmation(attributeRows[0]) : null,
           references: referenceRows.map(toReference),
           includedSoldCount: included.length,
           displayedPriceMedianMinor: median,
@@ -1079,6 +1301,20 @@ async function selectP0Items(
 ): Promise<P0ItemRow[]> {
   return sql<P0ItemRow[]>`
     select sku.workspace_id, sku.id as sku_id, sku.sku_code, sku.title, sku.category,
+           profile.category as profile_category,
+           profile.measurement_template_id, profile.measurement_template_version,
+           profile.confirmed_by as measurement_profile_confirmed_by,
+           profile.confirmed_at as measurement_profile_confirmed_at,
+           latest_attributes.id as attribute_confirmation_id,
+           latest_attributes.revision as attribute_revision,
+           latest_attributes.brand as confirmed_brand,
+           latest_attributes.size_label as confirmed_size_label,
+           latest_attributes.color as confirmed_color,
+           latest_attributes.evidence_asset_id as attribute_evidence_asset_id,
+           latest_attributes.source_candidate_id as attribute_source_candidate_id,
+           latest_attributes.supersedes_confirmation_id,
+           latest_attributes.confirmed_by as attributes_confirmed_by,
+           latest_attributes.confirmed_at as attributes_confirmed_at,
            unit.id as inventory_unit_id, unit.inventory_number, unit.status as inventory_status,
            location.code as location_code, item_label.version as inventory_label_version,
            location_label.version as location_label_version, receipt.id as receipt_id,
@@ -1113,6 +1349,8 @@ async function selectP0Items(
       on batch.workspace_id = receipt.workspace_id and batch.id = receipt.purchase_batch_id
     join p0_workflow workflow
       on workflow.workspace_id = sku.workspace_id and workflow.sku_id = sku.id
+    left join product_measurement_profile profile
+      on profile.workspace_id = sku.workspace_id and profile.sku_id = sku.id
     left join location_node location
       on location.workspace_id = unit.workspace_id and location.id = unit.location_id
     left join inventory_label location_label
@@ -1152,6 +1390,16 @@ async function selectP0Items(
         order by attempt.definition_id, attempt.attempt desc, attempt.created_at desc
       ) measured
     ) capture_measurements on true
+    left join lateral (
+      select confirmation.id, confirmation.revision, confirmation.brand,
+             confirmation.size_label, confirmation.color, confirmation.evidence_asset_id,
+             confirmation.source_candidate_id, confirmation.supersedes_confirmation_id,
+             confirmation.confirmed_by, confirmation.confirmed_at
+      from product_attribute_confirmation confirmation
+      where confirmation.workspace_id = sku.workspace_id and confirmation.sku_id = sku.id
+      order by confirmation.revision desc
+      limit 1
+    ) latest_attributes on true
     left join lateral (
       select action.actor_id, action.created_at
       from p0_workflow_action action
@@ -1201,9 +1449,18 @@ async function requireP0Item(
 }
 
 function toP0ItemResponse(row: P0ItemRow): P0ItemResponse {
+  const measurementProfile = toMeasurementProfileResponse({
+    category: row.profile_category,
+    measurementTemplateId: row.measurement_template_id,
+    measurementTemplateVersion: row.measurement_template_version,
+    confirmedBy: row.measurement_profile_confirmed_by,
+    confirmedAt: row.measurement_profile_confirmed_at,
+  });
+  const confirmedAttributes = toAttributeConfirmationFromP0Item(row);
   const referenceIds = [
     ...row.photo_asset_ids,
     ...row.measurements.map((measurement) => measurement.id),
+    ...(confirmedAttributes ? [confirmedAttributes.confirmationId] : []),
   ];
   const listingCandidate = buildListingCandidate(
     row.title,
@@ -1211,6 +1468,8 @@ function toP0ItemResponse(row: P0ItemRow): P0ItemResponse {
     referenceIds,
     row.listing_confirmed_by,
     row.listing_confirmed_at,
+    measurementProfile,
+    confirmedAttributes,
   );
   return {
     workspaceId: row.workspace_id,
@@ -1218,6 +1477,8 @@ function toP0ItemResponse(row: P0ItemRow): P0ItemResponse {
     skuCode: row.sku_code,
     title: row.title,
     category: row.category,
+    measurementProfile,
+    confirmedAttributes,
     inventoryUnitId: row.inventory_unit_id,
     inventoryNumber: row.inventory_number,
     inventoryStatus: row.inventory_status,
@@ -1274,33 +1535,123 @@ function accountingExportContentUrl(
   return `/v1/workspaces/${workspaceId}/orders/${orderId}/accounting-exports/${exportId}/content`;
 }
 
+function toMeasurementProfileResponse(input: {
+  category: MeasurementProfileResponse["category"] | null;
+  measurementTemplateId: MeasurementProfileResponse["measurementTemplateId"] | null;
+  measurementTemplateVersion: 1 | null;
+  confirmedBy: string | null;
+  confirmedAt: Date | null;
+}): MeasurementProfileResponse | null {
+  if (
+    !input.category ||
+    !input.measurementTemplateId ||
+    input.measurementTemplateVersion !== 1 ||
+    !input.confirmedBy ||
+    !input.confirmedAt
+  ) {
+    return null;
+  }
+  const template = listingPrepPilotMeasurementTemplates[input.measurementTemplateId];
+  return {
+    category: input.category,
+    measurementTemplateId: input.measurementTemplateId,
+    measurementTemplateVersion: input.measurementTemplateVersion,
+    definitions: template.measurements.map((definition) => ({
+      ...definition,
+      state: template.state,
+    })),
+    confirmedBy: input.confirmedBy,
+    confirmedAt: input.confirmedAt.toISOString(),
+  };
+}
+
+function toAttributeConfirmation(
+  row: AttributeConfirmationRow,
+): ProductAttributeConfirmationResponse {
+  return {
+    confirmationId: row.id,
+    skuId: row.sku_id,
+    revision: row.revision,
+    brand: row.brand,
+    sizeLabel: row.size_label,
+    color: row.color,
+    evidenceAssetId: row.evidence_asset_id,
+    sourceCandidateId: row.source_candidate_id,
+    supersedesConfirmationId: row.supersedes_confirmation_id,
+    confirmedBy: row.confirmed_by,
+    confirmedAt: row.confirmed_at.toISOString(),
+  };
+}
+
+function toAttributeConfirmationFromP0Item(
+  row: P0ItemRow,
+): ProductAttributeConfirmationResponse | null {
+  if (
+    !row.attribute_confirmation_id ||
+    row.attribute_revision === null ||
+    !row.confirmed_brand ||
+    !row.confirmed_size_label ||
+    !row.confirmed_color ||
+    !row.attribute_evidence_asset_id ||
+    !row.attributes_confirmed_by ||
+    !row.attributes_confirmed_at
+  ) {
+    return null;
+  }
+  return {
+    confirmationId: row.attribute_confirmation_id,
+    skuId: row.sku_id,
+    revision: row.attribute_revision,
+    brand: row.confirmed_brand,
+    sizeLabel: row.confirmed_size_label,
+    color: row.confirmed_color,
+    evidenceAssetId: row.attribute_evidence_asset_id,
+    sourceCandidateId: row.attribute_source_candidate_id,
+    supersedesConfirmationId: row.supersedes_confirmation_id,
+    confirmedBy: row.attributes_confirmed_by,
+    confirmedAt: row.attributes_confirmed_at.toISOString(),
+  };
+}
+
 function buildListingCandidate(
   title: string,
   measurements: P0ItemResponse["capture"]["measurements"],
   referenceIds: string[],
   confirmedBy: string | null,
   confirmedAt: Date | null,
+  measurementProfile: MeasurementProfileResponse | null,
+  confirmedAttributes: ProductAttributeConfirmationResponse | null,
 ): P0ItemResponse["listingCandidate"] {
-  const labels = [
-    ["shoulder_width", "肩幅"],
-    ["chest_width", "身幅"],
-    ["sleeve_length", "袖丈"],
-    ["body_length", "着丈"],
-  ] as const;
+  const labels: ReadonlyArray<readonly [string, string]> = measurementProfile
+    ? measurementProfile.definitions.map(
+        (definition) => [definition.definitionId, definition.label] as const,
+      )
+    : [
+        ["shoulder_width", "肩幅"],
+        ["chest_width", "身幅"],
+        ["sleeve_length", "袖丈"],
+        ["body_length", "着丈"],
+      ];
   const byDefinition = new Map(
     measurements.map((measurement) => [measurement.definitionId, measurement]),
   );
   const unconfirmedFields = labels
     .filter(([definitionId]) => !byDefinition.has(definitionId))
     .map(([, label]) => label);
+  if (measurementProfile && !confirmedAttributes) {
+    unconfirmedFields.unshift("ブランド", "サイズ", "色");
+  }
   const facts = labels
     .map(([definitionId, label]) => {
       const measurement = byDefinition.get(definitionId);
       return `${label}${measurement ? measurement.value : "未確認"}${measurement ? "cm" : ""}`;
     })
     .join("、");
+  const text = measurementProfile
+    ? `${confirmedAttributes?.brand ?? "ブランド未確認"} ${title}です。サイズは${confirmedAttributes?.sizeLabel ?? "未確認"}、色は${confirmedAttributes?.color ?? "未確認"}です。実寸は${facts}です。写真と実寸をご確認のうえ、購入をご検討ください。`
+    : `${title}です。平置き実寸は${facts}です。写真と実寸をご確認のうえ、購入をご検討ください。`;
   return {
-    text: `${title}です。平置き実寸は${facts}です。写真と実寸をご確認のうえ、購入をご検討ください。`,
+    text,
     referenceIds,
     unconfirmedFields,
     status: confirmedAt ? "human_confirmed" : "candidate",
@@ -1315,7 +1666,8 @@ async function requirePilotRun(
   runId: string,
 ): Promise<PilotRunResponse> {
   const runs = await sql<PilotRunRow[]>`
-    select id, workspace_id, protocol_version, commit_sha, migration_version,
+    select id, workspace_id, protocol_version, fixture_manifest_sha256,
+           commit_sha, migration_version,
            platform, browser, viewport, actor_id, warmup_completed_at, state,
            externally_invalidated, external_invalidation_reason, started_at, completed_at
     from pilot_run where workspace_id = ${workspaceId} and id = ${runId}
@@ -1324,6 +1676,7 @@ async function requirePilotRun(
   if (!run) throw new RepositoryError("forbidden", "The pilot run is unavailable");
   const rows = await sql<PilotItemRow[]>`
     select item.id, item.sku_id, item.product_fixture_id, item.category,
+           item.measurement_template_id, item.measurement_template_version,
            item.started_at, item.completed_at, item.elapsed_seconds,
            coalesce(events.invalid_attempt_count, 0)::integer as invalid_attempt_count,
            coalesce(events.missing_required_image_count, 0)::integer
@@ -1354,11 +1707,13 @@ async function requirePilotRun(
     where item.workspace_id = ${workspaceId} and item.pilot_run_id = ${runId}
     order by item.started_at, item.product_fixture_id
   `;
-  const items: PilotRunResponse["items"] = rows.map((row) => ({
+  const items = rows.map((row) => ({
     measurementId: row.id,
     skuId: row.sku_id,
     productFixtureId: row.product_fixture_id,
     category: row.category,
+    measurementTemplateId: row.measurement_template_id,
+    measurementTemplateVersion: row.measurement_template_version,
     startedAt: row.started_at.toISOString(),
     completedAt: row.completed_at?.toISOString() ?? null,
     elapsedSeconds: row.elapsed_seconds === null ? null : Number(row.elapsed_seconds),
@@ -1373,12 +1728,10 @@ async function requirePilotRun(
     },
     copyReadyWorkflowVersion: row.copy_ready_workflow_version,
   }));
-  return {
+  const common = {
     runId: run.id,
     workspaceId: run.workspace_id,
-    protocolVersion: run.protocol_version,
     commitSha: run.commit_sha,
-    migrationVersion: run.migration_version,
     platform: run.platform,
     browser: run.browser,
     viewport: run.viewport,
@@ -1392,6 +1745,51 @@ async function requirePilotRun(
     items,
     summary: summarizeListingPrepPilot(items, run.state),
   };
+  if (run.protocol_version === "listing_prep_pilot_v1.0.0") {
+    return {
+      ...common,
+      protocolVersion: run.protocol_version,
+      fixtureManifestSha256: null,
+      migrationVersion: run.migration_version as Exclude<
+        PilotRunResponse["migrationVersion"],
+        "0033"
+      >,
+      items: items.map((item) => ({
+        ...item,
+        measurementTemplateId: null,
+        measurementTemplateVersion: null,
+      })),
+    };
+  }
+  if (run.fixture_manifest_sha256 !== listingPrepPilotFixtureManifestSha256) {
+    throw new RepositoryError("database_error", "The pilot manifest evidence is invalid");
+  }
+  return {
+    ...common,
+    protocolVersion: listingPrepPilotProtocolVersion,
+    fixtureManifestSha256: listingPrepPilotFixtureManifestSha256,
+    migrationVersion: "0033",
+    items: items.map((item) => {
+      if (!item.measurementTemplateId || item.measurementTemplateVersion !== 1) {
+        throw new RepositoryError("database_error", "The pilot item template evidence is missing");
+      }
+      return {
+        ...item,
+        measurementTemplateId: item.measurementTemplateId,
+        measurementTemplateVersion: item.measurementTemplateVersion,
+      };
+    }),
+  };
+}
+
+function requirePilotFixtureProfile(
+  fixtureId: (typeof listingPrepPilotFixtures)[number],
+): (typeof listingPrepPilotFixtureProfiles)[number] {
+  const profile = listingPrepPilotFixtureProfiles.find((entry) => entry.fixtureId === fixtureId);
+  if (!profile) {
+    throw new RepositoryError("conflict", "The generated pilot fixture is unavailable");
+  }
+  return profile;
 }
 
 function pilotDisplayCategory(category: "tops" | "outer" | "pants" | "knit"): string {
@@ -1464,6 +1862,7 @@ function parseOcrCandidate(rawText: string): {
   model: string | null;
   material: string | null;
   size: string | null;
+  color: string | null;
 } {
   const lines = rawText
     .split(/\r?\n/u)
@@ -1474,6 +1873,7 @@ function parseOcrCandidate(rawText: string): {
     lines.map((line) => line.match(pattern)?.[1]?.trim() ?? null).find(Boolean) ?? null;
   const model = findValue(/(?:品番|型番|model|style)\s*[:：#]?\s*([A-Z0-9][A-Z0-9._/-]{2,40})/iu);
   const size = findValue(/(?:サイズ|size)\s*[:：]?\s*([A-Z0-9][A-Z0-9._/-]{0,15})/iu);
+  const color = findValue(/(?:カラー|色|color)\s*[:：]?\s*(.{1,80})/iu);
   const material =
     findValue(/(?:素材|material|組成)\s*[:：]?\s*(.{1,80})/iu) ??
     lines.find((line) => /(綿|コットン|ポリエステル|ウール|毛|ナイロン|レーヨン|麻)/u.test(line)) ??
@@ -1481,9 +1881,10 @@ function parseOcrCandidate(rawText: string): {
   const brand =
     lines.find(
       (line) =>
-        line.length <= 80 && !/(品番|型番|model|style|サイズ|size|素材|material|組成)/iu.test(line),
+        line.length <= 80 &&
+        !/(品番|型番|model|style|サイズ|size|カラー|色|color|素材|material|組成)/iu.test(line),
     ) ?? null;
-  return { brand, model, material, size };
+  return { brand, model, material, size, color };
 }
 
 function toCandidate(row: CandidateRow): IdentityCandidateResponse {
@@ -1495,6 +1896,7 @@ function toCandidate(row: CandidateRow): IdentityCandidateResponse {
     modelCandidate: row.model_candidate,
     materialCandidate: row.material_candidate,
     sizeCandidate: row.size_candidate,
+    colorCandidate: row.color_candidate,
     status: row.status,
     createdAt: row.created_at.toISOString(),
   };

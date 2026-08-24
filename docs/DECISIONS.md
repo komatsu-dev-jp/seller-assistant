@@ -178,3 +178,32 @@ APIキー、トークン、個人情報、生ログ、会話全文、一時的�
 - Applies to: `docs/implementation/model-routing-plan.md`、active handoff、以後の実装パケット、独立レビュー、Draft PR gate
 - Verification: 各パケットに実装担当、確認担当、変更範囲、検証、停止・昇格条件を記録し、下位モデルの自己承認0件、別Sol maxの最終レビューを確認する。
 - Follow-up: 同じworktreeへの書き込みは直列化し、実10商品pilotとUI 8 taskをモデルで代行・補完しない。
+
+### 2026-08-24 — 固定fixtureに結び付けたpilot v1.1を採用する
+
+- Type: decision
+- Context: `docs/specs/pilot-protocol-v1.1.md`、`fixtures/listing-prep-pilot-v1.1/manifest.json`、migration `0033`
+- Decision or rule: 新しい10商品pilotは`listing_prep_pilot_v1.1.0`、migration `0033`、manifest SHA-256 `a44d25d914d721c1a62aa4330688bf64264eae54c8ddb38c833cd20b6827fa18`を一組として記録する。計測外の`WARMUP-01`と固定10商品のローカル画像・架空属性・カテゴリ別採寸templateを使い、人が画像選択と最終確認を行う。`listing_prep_pilot_v1.0.0`は過去runを読むための履歴として保持し、新しいrunには使わない。
+- Why: IDとカテゴリだけの旧fixtureでは入力素材と採寸を再現できず、商品差し替えや手動訂正の欠落によって時間指標が変わるため。
+- Applies to: pilot契約、fixture生成物、migration `0033`、API/Webのpilot計測、AC-061、P06、証拠文書
+- Verification: `npm.cmd run pilot:fixtures:check`で44 PNGとmanifestを照合し、fresh/upgrade PostgreSQL、現行commitの実ブラウザ、実利用者warm-up＋10商品の順に別gateで確認する。
+- Follow-up: root check（fixture整合、format、lint、typecheck、26 files / 192 tests、build）は合格済み。PostgreSQL実走、実ブラウザ照合、実利用者pilot、最終独立Solレビューは未実施のため、本pilotとDraft PRを開始しない。
+
+### 2026-08-24 — v1.1実走・部分UI証拠・loopback固定を分離して記録する
+
+- Type: reusable feedback
+- Context: `docs/implementation/acceptance-map.md`、`docs/implementation/design-fidelity-evidence.md`、`docs/implementation/loop-log.md`、migration `0033`、UI evaluation seed、`memory/incidents/INC-20260824-002-local-web-broad-bind.md`
+- Decision or rule: fresh/upgrade PostgreSQLはmigration `0033`までPASSとして記録する。UIはcaptureとsolo/dual棚卸の確認済み部分だけをPASSとし、seeded browser評価全体のPASS・最終点数へ拡張しない。会計、棚卸の3秒確定・復元・最終承認、200% zoom、capture全属性採否、全network捕捉、実利用者pilot、iPhone、最終Sol reviewは未確認または未実施として残す。Webはloopback `127.0.0.1`固定を維持し、full checkの合格は対象差分と実行時点を併記する。
+- Why: DB実走、部分的なUI確認、起動境界の安全修正、最終受け入れを混同せず、未確認操作をPASSへ繰り上げないため。
+- Applies to: v1.1 evidence、P04/P05/P06/P08 gate、UI評価、local-only runtime、Draft PR判定
+- Verification: fresh/upgrade PostgreSQL `0033`までPASS、最新`npm.cmd run check`は27 files / 196 tests・coverage・API/Web build PASS、seedは4独立workspace生成と再実行拒否、修正版runtime netstatは`127.0.0.1:4173`だけ、targeted 24 testsとWeb build PASS。外部request、課金、merge、公開0件。
+- Follow-up: seeded browserの未確認操作と最終採点、200% zoom、capture全属性採否、全network捕捉、実10商品pilot、実iPhone Safari、別Sol最終レビューを完了するまで、本pilotとDraft PRを開始しない。
+
+### 2026-08-24 — v1.1 seeded証拠と未確認gateを分離する
+
+- Type: reusable feedback
+- Context: v1.1 seeded browser再評価、Money Forward CSV fixture、fresh/upgrade PostgreSQL 0033実走、`npm.cmd run check`
+- Decision or rule: 会計7/7 human mapping、27列5行CSV（1649 bytes、SHA-256 `e833a060cc7fef30fa90140fd4330e5523579d34e871d2fc061aeed349dc1e01`）、solo/dual棚卸の承認・復元、capture TOPSの人確認、390px responsiveを確認済み証拠として記録する。税未設定、候補不一致、元担当者dual承認は停止する。実MF import、実利用者pilot、実iPhone、最終Sol/UI review、Draft PR readyは未確認のまま維持する。
+- Why: seeded UIの確認済み範囲を正確に残し、部分PASSやfixture CSVを実サービス取込・実利用・最終審査の代替にしないため。
+- Verification: full check 29 files / 201 tests、coverage、API/Web build、fresh/upgrade 0001〜0033、49-table RLS/immutable reason fields、runtime loopbackのみ、外部/paid/deploy/merge 0。使い捨てDBは削除済み。
+- Follow-up: 実利用者WARMUP＋10商品、実機・実MF import、独立Sol/UI最終確認後までGoalを完了扱いせず、Draft PR readyへ進めない。

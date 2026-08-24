@@ -1,5 +1,7 @@
 # 10商品・出品準備時間pilot手順 v1
 
+> この文書は`listing_prep_pilot_v1.0.0`の履歴です。新しいpilotは`docs/specs/pilot-protocol-v1.1.md`を参照し、この旧版では開始しません。
+
 - 状態: 手順・計測基盤確定、実利用者による10商品pilot待ち
 - 更新日: 2026-08-24（JST）
 - 計測版: `listing_prep_pilot_v1.0.0`

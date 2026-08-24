@@ -237,7 +237,9 @@ function isAllowedPath(method: "GET" | "POST", segments: string[]): boolean {
     segments.length === 3 &&
     segments[0] === "skus" &&
     uuid.test(segments[1] ?? "") &&
-    ["p0-actions", "measurements", "media-uploads"].includes(segments[2] ?? "")
+    ["p0-actions", "measurements", "media-uploads", "product-attributes"].includes(
+      segments[2] ?? "",
+    )
   ) {
     return true;
   }

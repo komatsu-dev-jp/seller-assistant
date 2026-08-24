@@ -1,10 +1,17 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import postgres from "postgres";
-import { appendCodeCheckDigit, listingPrepPilotMigrationVersion } from "@resale/contracts";
+import {
+  appendCodeCheckDigit,
+  listingPrepPilotFixtureManifestSha256,
+  listingPrepPilotFixtureProfiles,
+  listingPrepPilotMigrationVersion,
+  listingPrepPilotProtocolVersion,
+  type StocktakeResponse,
+} from "@resale/contracts";
 import { buildApp } from "./app.js";
 import { PostgresLoginService } from "./auth.js";
 import { bootstrapInitialOwner } from "./bootstrap-owner.js";
@@ -30,6 +37,16 @@ if (!adminUrl || !runtimeUrl || !sessionSecret) {
 
 function hashFixture(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+const top01PilotFixture = listingPrepPilotFixtureProfiles.find(
+  (profile) => profile.fixtureId === "TOP-01",
+);
+const top02PilotFixture = listingPrepPilotFixtureProfiles.find(
+  (profile) => profile.fixtureId === "TOP-02",
+);
+if (!top01PilotFixture || !top02PilotFixture) {
+  throw new Error("Generated TOP-01 and TOP-02 pilot fixtures are required");
 }
 
 function hasDatabaseCode(expectedCode: string): (error: unknown) => boolean {
@@ -74,6 +91,8 @@ const workspaceProtectedTables = [
   "p0_workflow",
   "p0_workflow_action",
   "product_identity_candidate",
+  "product_attribute_confirmation",
+  "product_measurement_profile",
   "product_sku",
   "purchase_batch",
   "packing_evidence",
@@ -260,7 +279,8 @@ try {
     url: `/v1/workspaces/${owner.workspaceId}/pilot-runs`,
     headers: { cookie },
     payload: {
-      protocolVersion: "listing_prep_pilot_v1.0.0",
+      protocolVersion: listingPrepPilotProtocolVersion,
+      fixtureManifestSha256: listingPrepPilotFixtureManifestSha256,
       commitSha: "a".repeat(40),
       migrationVersion: listingPrepPilotMigrationVersion,
       platform: "Windows test fixture",
@@ -278,8 +298,9 @@ try {
   const acquisitionKey = randomUUID();
   const acquisitionPayload = {
     skuCode: "SKU-P0-ACQUIRED",
-    title: "架空の仕入証憑付きシャツ",
+    title: top01PilotFixture.title,
     category: "トップス",
+    measurementTemplateId: top01PilotFixture.templateId,
     supplierName: "架空テスト仕入先",
     receiptReference: "RECEIPT-P0-0001",
     purchasedAt: new Date().toISOString(),
@@ -378,24 +399,33 @@ try {
   });
   assert.equal(acquisitionPutaway.statusCode, 201, acquisitionPutaway.body);
   const acquisitionAssets: string[] = [];
-  for (const role of ["front", "back", "brand_tag", "care_label"] as const) {
-    const assetId = randomUUID();
+  const acquisitionAssetByRole = new Map<string, string>();
+  const wrongFrontImage = top02PilotFixture.images[0];
+  assert.equal(wrongFrontImage.role, "front");
+  for (const image of top01PilotFixture.images) {
+    const uploadedImage = image.role === "front" ? wrongFrontImage : image;
+    const assetId = image.role === "front" ? "10000000-0000-4000-8000-000000000101" : randomUUID();
+    const imageBytes = await readFile(
+      new URL(`../../../${uploadedImage.relativePath}`, import.meta.url),
+    );
     const upload = await app.inject({
       method: "POST",
-      url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/media-uploads?assetId=${assetId}&role=${role}`,
-      headers: { cookie, "content-type": "image/jpeg" },
-      payload: jpegWithGpsMetadata(),
+      url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/media-uploads?assetId=${assetId}&role=${image.role}`,
+      headers: { cookie, "content-type": uploadedImage.mimeType },
+      payload: imageBytes,
     });
     assert.equal(upload.statusCode, 201, upload.body);
+    assert.equal(upload.json<{ originalSha256: string }>().originalSha256, uploadedImage.sha256);
     acquisitionAssets.push(assetId);
+    acquisitionAssetByRole.set(image.role, assetId);
   }
   const identityCandidate = await app.inject({
     method: "POST",
     url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/identity-candidates`,
     headers: { cookie },
     payload: {
-      sourceAssetId: acquisitionAssets[2],
-      rawOcrText: "架空ブランド\n品番: TEST-100\nサイズ: M\n素材: 綿100%",
+      sourceAssetId: acquisitionAssetByRole.get("brand_tag"),
+      rawOcrText: top01PilotFixture.tagText,
       humanConfirmedSource: true,
     },
   });
@@ -409,32 +439,69 @@ try {
     payload: { status: "human_confirmed", humanConfirmed: true },
   });
   assert.equal(decidedCandidate.statusCode, 200, decidedCandidate.body);
-  for (const [definitionId, value] of [
-    ["shoulder_width", 44],
-    ["chest_width", 52],
-    ["sleeve_length", 60],
-    ["body_length", 70],
+  const firstPilotMeasurement = top01PilotFixture.measurements[0];
+  const pilotMeasurementInput = (
+    measurement: (typeof top01PilotFixture.measurements)[number],
+    input: { evidenceAssetId: string; attempt: number; value?: number },
+  ) => ({
+    definitionId: measurement.definitionId,
+    definitionVersion: measurement.definitionVersion,
+    value: input.value ?? measurement.value,
+    unit: measurement.unit,
+    basis: measurement.basis,
+    state: measurement.state,
+    measuredAt: new Date().toISOString(),
+    evidenceAssetId: input.evidenceAssetId,
+    attempt: input.attempt,
+    humanConfirmed: true as const,
+  });
+  for (const invalidMeasurement of [
+    {
+      ...pilotMeasurementInput(firstPilotMeasurement, {
+        evidenceAssetId: acquisitionAssetByRole.get("front") ?? "",
+        attempt: 1,
+      }),
+      definitionId: "unknown_measurement",
+    },
+    {
+      ...pilotMeasurementInput(firstPilotMeasurement, {
+        evidenceAssetId: acquisitionAssetByRole.get("front") ?? "",
+        attempt: 1,
+      }),
+      basis: "flat_width",
+    },
+    {
+      ...pilotMeasurementInput(firstPilotMeasurement, {
+        evidenceAssetId: acquisitionAssetByRole.get("front") ?? "",
+        attempt: 1,
+      }),
+      state: "closed",
+    },
   ] as const) {
-    const measurement = await app.inject({
+    const rejectedMeasurement = await app.inject({
       method: "POST",
       url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/measurements`,
       headers: { cookie },
       payload: {
-        definitionId,
-        definitionVersion: 1,
-        value,
-        unit: "cm",
-        basis: "flat_width",
-        state: "natural",
-        measuredAt: new Date().toISOString(),
-        evidenceAssetId: acquisitionAssets[0],
-        attempt: 1,
-        humanConfirmed: true,
+        ...invalidMeasurement,
       },
+    });
+    assert.equal(rejectedMeasurement.statusCode, 409, rejectedMeasurement.body);
+  }
+  for (const [index, expectedMeasurement] of top01PilotFixture.measurements.entries()) {
+    const measurement = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/measurements`,
+      headers: { cookie },
+      payload: pilotMeasurementInput(expectedMeasurement, {
+        value: index === 0 ? expectedMeasurement.value + 1 : expectedMeasurement.value,
+        evidenceAssetId: acquisitionAssetByRole.get("front") ?? "",
+        attempt: 1,
+      }),
     });
     assert.equal(measurement.statusCode, 201, measurement.body);
   }
-  const captureAdvanced = await app.inject({
+  const rejectedWrongImageCapture = await app.inject({
     method: "POST",
     url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/p0-actions`,
     headers: { cookie },
@@ -446,7 +513,97 @@ try {
       requiredFactsConfirmed: true,
     },
   });
+  assert.equal(rejectedWrongImageCapture.statusCode, 409, rejectedWrongImageCapture.body);
+  assert.match(rejectedWrongImageCapture.body, /current pilot image/iu);
+
+  const expectedFrontImage = top01PilotFixture.images.find((image) => image.role === "front");
+  assert.ok(expectedFrontImage);
+  const correctedFrontAssetId = "f0000000-0000-4000-8000-000000000101";
+  const correctedFrontUpload = await app.inject({
+    method: "POST",
+    url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/media-uploads?assetId=${correctedFrontAssetId}&role=front`,
+    headers: { cookie, "content-type": expectedFrontImage.mimeType },
+    payload: await readFile(
+      new URL(`../../../${expectedFrontImage.relativePath}`, import.meta.url),
+    ),
+  });
+  assert.equal(correctedFrontUpload.statusCode, 201, correctedFrontUpload.body);
+  assert.equal(
+    correctedFrontUpload.json<{ originalSha256: string }>().originalSha256,
+    expectedFrontImage.sha256,
+  );
+  acquisitionAssets.push(correctedFrontAssetId);
+  acquisitionAssetByRole.set("front", correctedFrontAssetId);
+
+  const rejectedWrongValueCapture = await app.inject({
+    method: "POST",
+    url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/p0-actions`,
+    headers: { cookie },
+    payload: {
+      action: "confirm_capture",
+      evidenceReferenceIds: [...acquisitionAssetByRole.values()],
+      manualChannelHandoff: false,
+      idempotencyKey: randomUUID(),
+      requiredFactsConfirmed: true,
+    },
+  });
+  assert.equal(rejectedWrongValueCapture.statusCode, 409, rejectedWrongValueCapture.body);
+  assert.match(rejectedWrongValueCapture.body, /current pilot measurement/iu);
+
+  const correctedMeasurement = await app.inject({
+    method: "POST",
+    url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/measurements`,
+    headers: { cookie },
+    payload: pilotMeasurementInput(firstPilotMeasurement, {
+      evidenceAssetId: correctedFrontAssetId,
+      attempt: 2,
+    }),
+  });
+  assert.equal(correctedMeasurement.statusCode, 201, correctedMeasurement.body);
+
+  const captureAdvanced = await app.inject({
+    method: "POST",
+    url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/p0-actions`,
+    headers: { cookie },
+    payload: {
+      action: "confirm_capture",
+      evidenceReferenceIds: [...acquisitionAssetByRole.values()],
+      manualChannelHandoff: false,
+      idempotencyKey: randomUUID(),
+      requiredFactsConfirmed: true,
+    },
+  });
   assert.equal(captureAdvanced.statusCode, 200, captureAdvanced.body);
+  const pilotAfterCapture = await app.inject({
+    method: "GET",
+    url: `/v1/workspaces/${owner.workspaceId}/pilot-runs/latest`,
+    headers: { cookie },
+  });
+  assert.equal(pilotAfterCapture.statusCode, 200, pilotAfterCapture.body);
+  const pilotAfterCaptureBody = pilotAfterCapture.json<{
+    summary: { completedItemCount: number };
+    items: Array<{ completedAt: string | null; copyReadyWorkflowVersion: number | null }>;
+  }>();
+  assert.equal(pilotAfterCaptureBody.summary.completedItemCount, 0);
+  assert.equal(pilotAfterCaptureBody.items[0]?.completedAt, null);
+  assert.equal(pilotAfterCaptureBody.items[0]?.copyReadyWorkflowVersion, null);
+  const postCaptureMedia = await app.inject({
+    method: "POST",
+    url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/media-uploads?assetId=${randomUUID()}&role=flaw`,
+    headers: { cookie, "content-type": "image/jpeg" },
+    payload: jpegWithGpsMetadata(),
+  });
+  assert.equal(postCaptureMedia.statusCode, 409, postCaptureMedia.body);
+  const postCaptureMeasurement = await app.inject({
+    method: "POST",
+    url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/measurements`,
+    headers: { cookie },
+    payload: pilotMeasurementInput(firstPilotMeasurement, {
+      evidenceAssetId: correctedFrontAssetId,
+      attempt: 3,
+    }),
+  });
+  assert.equal(postCaptureMeasurement.statusCode, 409, postCaptureMeasurement.body);
   for (const [index, price] of [3200, 3500, 4100].entries()) {
     const reference = await app.inject({
       method: "POST",
@@ -501,9 +658,104 @@ try {
     .find((item) => item.skuId === acquiredItem.skuId);
   assert.ok(reloadedItem);
   assert.equal(reloadedItem.capture.measurements.length, 4);
-  assert.equal(reloadedItem.listingCandidate.text.includes("肩幅44cm"), true);
-  assert.deepEqual(reloadedItem.listingCandidate.unconfirmedFields, []);
+  assert.equal(reloadedItem.listingCandidate.text.includes("肩幅42cm"), true);
+  assert.deepEqual(reloadedItem.listingCandidate.unconfirmedFields, ["ブランド", "サイズ", "色"]);
   assert.equal(reloadedItem.listingCandidate.status, "candidate");
+  const wrongAttributeConfirmation = await app.inject({
+    method: "POST",
+    url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/product-attributes`,
+    headers: { cookie },
+    payload: {
+      brand: "WRONG-PILOT-BRAND",
+      sizeLabel: top01PilotFixture.attributes.sizeLabel,
+      color: top01PilotFixture.attributes.color,
+      evidenceAssetId: acquisitionAssetByRole.get("brand_tag"),
+      sourceCandidateId: candidateId,
+      humanConfirmed: true,
+    },
+  });
+  assert.equal(wrongAttributeConfirmation.statusCode, 201, wrongAttributeConfirmation.body);
+  const wrongConfirmationId = wrongAttributeConfirmation.json<{ confirmationId: string }>()
+    .confirmationId;
+  const wrongAttributeReadModel = await app.inject({
+    method: "GET",
+    url: `/v1/workspaces/${owner.workspaceId}/p0-items`,
+    headers: { cookie },
+  });
+  const wrongAttributeItem = wrongAttributeReadModel
+    .json<Array<{ skuId: string; listingCandidate: { referenceIds: string[] } }>>()
+    .find((item) => item.skuId === acquiredItem.skuId);
+  assert.ok(wrongAttributeItem);
+  const rejectedWrongAttributes = await app.inject({
+    method: "POST",
+    url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/p0-actions`,
+    headers: { cookie },
+    payload: {
+      action: "confirm_listing",
+      evidenceReferenceIds: wrongAttributeItem.listingCandidate.referenceIds,
+      manualChannelHandoff: true,
+      idempotencyKey: randomUUID(),
+      requiredFactsConfirmed: true,
+    },
+  });
+  assert.equal(rejectedWrongAttributes.statusCode, 409, rejectedWrongAttributes.body);
+  assert.match(rejectedWrongAttributes.body, /confirmed pilot attributes/iu);
+  const correctedAttributePayload = {
+    ...top01PilotFixture.attributes,
+    evidenceAssetId: acquisitionAssetByRole.get("brand_tag"),
+    sourceCandidateId: candidateId,
+    supersedesConfirmationId: wrongConfirmationId,
+    humanConfirmed: true,
+  };
+  const correctedAttributeAttempts = await Promise.all([
+    app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/product-attributes`,
+      headers: { cookie },
+      payload: correctedAttributePayload,
+    }),
+    app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/product-attributes`,
+      headers: { cookie },
+      payload: correctedAttributePayload,
+    }),
+  ]);
+  const correctedAttributeConfirmation = correctedAttributeAttempts.find(
+    (response) => response.statusCode === 201,
+  );
+  const staleAttributeConfirmation = correctedAttributeAttempts.find(
+    (response) => response.statusCode === 409,
+  );
+  assert.ok(correctedAttributeConfirmation, JSON.stringify(correctedAttributeAttempts));
+  assert.ok(staleAttributeConfirmation, JSON.stringify(correctedAttributeAttempts));
+  assert.match(staleAttributeConfirmation.body, /Product attributes changed/iu);
+  const correctedConfirmationId = correctedAttributeConfirmation.json<{ confirmationId: string }>()
+    .confirmationId;
+  const correctedReadModel = await app.inject({
+    method: "GET",
+    url: `/v1/workspaces/${owner.workspaceId}/p0-items`,
+    headers: { cookie },
+  });
+  const correctedItem = correctedReadModel
+    .json<
+      Array<{
+        skuId: string;
+        listingCandidate: { text: string; referenceIds: string[]; unconfirmedFields: string[] };
+      }>
+    >()
+    .find((item) => item.skuId === acquiredItem.skuId);
+  assert.ok(correctedItem);
+  assert.equal(
+    correctedItem.listingCandidate.text.includes(top01PilotFixture.attributes.brand),
+    true,
+  );
+  assert.equal(
+    correctedItem.listingCandidate.text.includes(top01PilotFixture.attributes.color),
+    true,
+  );
+  assert.deepEqual(correctedItem.listingCandidate.unconfirmedFields, []);
+  assert.equal(correctedItem.listingCandidate.referenceIds.includes(correctedConfirmationId), true);
   const pilotReworkEvent = await app.inject({
     method: "POST",
     url: `/v1/workspaces/${owner.workspaceId}/pilot-runs/${pilotRunId}/events`,
@@ -522,7 +774,7 @@ try {
     headers: { cookie },
     payload: {
       action: "confirm_listing",
-      evidenceReferenceIds: reloadedItem.listingCandidate.referenceIds,
+      evidenceReferenceIds: correctedItem.listingCandidate.referenceIds,
       manualChannelHandoff: true,
       idempotencyKey: randomUUID(),
       requiredFactsConfirmed: true,
@@ -552,31 +804,6 @@ try {
   assert.equal(pilotResult.summary.passed, null);
   assert.equal(pilotResult.items[0]?.productFixtureId, "TOP-01");
   assert.equal(pilotResult.items[0]?.copyReadyWorkflowVersion, 4);
-  const postConfirmationMedia = await app.inject({
-    method: "POST",
-    url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/media-uploads?assetId=${randomUUID()}&role=flaw`,
-    headers: { cookie, "content-type": "image/jpeg" },
-    payload: jpegWithGpsMetadata(),
-  });
-  assert.equal(postConfirmationMedia.statusCode, 409, postConfirmationMedia.body);
-  const postConfirmationMeasurement = await app.inject({
-    method: "POST",
-    url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/measurements`,
-    headers: { cookie },
-    payload: {
-      definitionId: "shoulder_width",
-      definitionVersion: 1,
-      value: 45,
-      unit: "cm",
-      basis: "flat_width",
-      state: "natural",
-      measuredAt: new Date().toISOString(),
-      evidenceAssetId: acquisitionAssets[0],
-      attempt: 2,
-      humanConfirmed: true,
-    },
-  });
-  assert.equal(postConfirmationMeasurement.statusCode, 409, postConfirmationMeasurement.body);
   const manualOrderWorkflowBypass = await app.inject({
     method: "POST",
     url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/p0-actions`,
@@ -4653,6 +4880,21 @@ try {
         },
       });
       assert.equal(restoredSameLocation.statusCode, 200, restoredSameLocation.body);
+      const restoredSameLocationDiscrepancy = restoredSameLocation
+        .json<StocktakeResponse>()
+        .discrepancies.find(
+          (discrepancy) => discrepancy.discrepancyId === dualSameDiscrepancy.discrepancyId,
+        );
+      assert.equal(
+        restoredSameLocationDiscrepancy?.confirmedReasonCode,
+        "not_seen_during_count",
+        "The confirmation timeline must keep its original immutable audit reason",
+      );
+      assert.equal(
+        restoredSameLocationDiscrepancy?.restoredReasonCode,
+        "found_in_place",
+        "The restoration timeline must read the later immutable audit reason separately",
+      );
 
       const stateRaceChallengeId = sameLocationStateRaceChallenge.json<{
         challengeId: string;
@@ -4851,8 +5093,9 @@ try {
     headers: { cookie },
     payload: {
       skuCode: "SKU-PILOT-INTERRUPTED",
-      title: "架空の中断確認商品",
+      title: top02PilotFixture.title,
       category: "トップス",
+      measurementTemplateId: top02PilotFixture.templateId,
       supplierName: "架空テスト仕入先",
       receiptReference: "RECEIPT-PILOT-INTERRUPTED",
       purchasedAt: new Date().toISOString(),

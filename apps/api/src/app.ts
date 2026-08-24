@@ -18,6 +18,7 @@ import {
   captureSummarySchema,
   captureTaskResponseSchema,
   confirmIdentityCandidateRequestSchema,
+  confirmProductAttributesRequestSchema,
   confirmAccountingImportRequestSchema,
   confirmMissingCandidateRequestSchema,
   createIdentityCandidateRequestSchema,
@@ -53,6 +54,7 @@ import {
   p0ItemResponseSchema,
   pilotRunResponseSchema,
   productMediaUploadResponseSchema,
+  productAttributeConfirmationResponseSchema,
   productResearchResponseSchema,
   putawayInventoryRequestSchema,
   putawayInventoryResponseSchema,
@@ -625,6 +627,41 @@ export function buildApp(options: BuildAppOptions = {}) {
       }
     },
   );
+
+  app.post<{
+    Params: { workspaceId: string; skuId: string };
+    Body: unknown;
+    Reply: ReturnType<typeof productAttributeConfirmationResponseSchema.parse> | ApiError;
+  }>("/v1/workspaces/:workspaceId/skus/:skuId/product-attributes", async (request, reply) => {
+    const context = await skuRequestContext(
+      request.params,
+      request.headers,
+      request.id,
+      authenticate,
+    );
+    const input = confirmProductAttributesRequestSchema.safeParse(request.body);
+    if (context.error) return reply.code(context.status).send(context.error);
+    if (!input.success) return reply.code(400).send(invalidP0ItemInput(request.id));
+    if (!options.p0ItemRepository)
+      return reply.code(503).send(p0ItemServiceUnavailable(request.id));
+    try {
+      return reply
+        .code(201)
+        .send(
+          productAttributeConfirmationResponseSchema.parse(
+            await options.p0ItemRepository.confirmProductAttributes(
+              context.workspaceId,
+              context.skuId,
+              context.actor,
+              input.data,
+            ),
+          ),
+        );
+    } catch (error) {
+      const mapped = mapRepositoryError(error, request.id);
+      return reply.code(mapped.status).send(mapped.payload);
+    }
+  });
 
   app.post<{
     Params: { workspaceId: string; stocktakeId: string; discrepancyId: string };

@@ -77,6 +77,22 @@ const mappingChangeReasons: ReadonlyArray<readonly [AccountMappingChangeReason, 
   ["other_reviewed_change", "その他（会計方針を確認済み）"],
 ];
 
+const financialMissingLabels: Record<FinancialSummaryResponse["missingInputs"][number], string> = {
+  orderPrice: "注文金額",
+  sellerDiscount: "出品者負担の値引き",
+  channelCoupon: "販売チャネルのクーポン",
+  successfulRefund: "返金額",
+  sellingFeeCharged: "販売手数料",
+  sellingFeeRefund: "手数料返還",
+  promotionCost: "販促費",
+  sellerShipping: "出品者負担送料",
+  packagingCost: "梱包費",
+  returnDirectCost: "返品直接費",
+  costOfGoods: "商品原価",
+  costReturnedToInventory: "在庫へ戻した原価",
+  taxBasis: "税込・税抜・税区分",
+};
+
 const initialMappingDrafts: Record<EventType, MappingDraft> = Object.fromEntries(
   (Object.keys(eventLabels) as EventType[]).map((eventType) => [
     eventType,
@@ -179,6 +195,7 @@ export function AccountingWorkspace({
     profile.invoiceRegistrationStatus !== "unconfigured" &&
     profile.bookkeepingMethod !== "unconfigured" &&
     profile.humanConfirmedAt !== null;
+  const financialReady = financial !== null && financial.missingInputs.length === 0;
 
   async function run(action: () => Promise<void>) {
     setBusy(true);
@@ -344,6 +361,9 @@ export function AccountingWorkspace({
   ) {
     if (!orderId) return Promise.resolve();
     return run(async () => {
+      if (!financialReady) {
+        throw new Error("原資料の未確認項目を解消してからCSVを作成してください。");
+      }
       if (supersedes && !supersedeConfirmed) {
         throw new Error("置換対象と履歴を確認してください。");
       }
@@ -948,7 +968,9 @@ export function AccountingWorkspace({
               <p className="candidateReferences">
                 計算版: {financial.formulaVersion}
                 {financial.missingInputs.length > 0
-                  ? ` / 未入力: ${financial.missingInputs.join("・")}`
+                  ? ` / 未確認: ${financial.missingInputs
+                      .map((input) => financialMissingLabels[input])
+                      .join("・")}`
                   : " / 必須入力の欠損なし"}
               </p>
             </>
@@ -963,7 +985,7 @@ export function AccountingWorkspace({
               disabled={
                 busy ||
                 !orderId ||
-                !financial ||
+                !financialReady ||
                 !profileReady ||
                 activeEventTypes.size < 7 ||
                 !exportPreflight?.canCreateFresh
@@ -993,7 +1015,7 @@ export function AccountingWorkspace({
                 disabled={
                   busy ||
                   !orderId ||
-                  !financial ||
+                  !financialReady ||
                   !profileReady ||
                   activeEventTypes.size < 7 ||
                   !exportPreflight?.canSupersede ||
@@ -1159,7 +1181,7 @@ function SelectField({
   return (
     <label>
       {label}
-      <select name={name} defaultValue={current} required>
+      <select key={`${name}-${current}`} name={name} defaultValue={current} required>
         {options.map(([value, text]) => (
           <option key={value} value={value}>
             {text}

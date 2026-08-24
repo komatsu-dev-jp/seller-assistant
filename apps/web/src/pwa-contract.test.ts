@@ -7,6 +7,15 @@ import manifest from "./app/manifest";
 import { selectFocusedStocktake } from "./lib/stocktake-focus";
 
 describe("zero-cost PWA contract", () => {
+  it("binds the local web server to this PC only", () => {
+    const packageManifest = JSON.parse(readFileSync(resolve("apps/web/package.json"), "utf8")) as {
+      scripts?: Record<string, string>;
+    };
+
+    expect(packageManifest.scripts?.dev).toContain("--hostname 127.0.0.1");
+    expect(packageManifest.scripts?.start).toContain("--hostname 127.0.0.1");
+  });
+
   it("is installable from the mobile route without a native app store", () => {
     const value = manifest();
     expect(value.display).toBe("standalone");
@@ -92,6 +101,7 @@ describe("zero-cost PWA contract", () => {
     expect(accounting).toContain('aria-controls="accounting-profile-terms"');
     expect(accounting).toContain("aria-expanded={profileHelpOpen}");
     expect(accounting).toContain("setProfileHelpOpen((open) => !open)");
+    expect(accounting).toContain("key={`${name}-${current}`}");
     expect(sidebar).toContain("sidebar-${current}");
     expect(sidebar).toContain("nav-${key}");
   });
@@ -120,6 +130,10 @@ describe("zero-cost PWA contract", () => {
     expect(accounting).toContain('creditTaxCategory: ""');
     expect(accounting).toContain('effectiveFrom: ""');
     expect(accounting).toContain("アプリは勘定科目・税区分を推測しません");
+    expect(accounting).toContain('taxBasis: "税込・税抜・税区分"');
+    expect(accounting).toContain("const financialReady =");
+    expect(accounting).toContain("!financialReady");
+    expect(accounting).toContain("原資料の未確認項目を解消してからCSVを作成してください。");
   });
 
   it("routes every Home approval breakdown to a real, safe review target", () => {
@@ -159,6 +173,7 @@ describe("zero-cost PWA contract", () => {
     expect(stocktakePage).toContain('if (value === "approval-pending") return value');
     expect(stocktakePage).toContain('return "all"');
     expect(stocktakePage).toContain("initialFocus={initialFocus}");
+    expect(stocktakePage).toContain("currentIdentityId={session.identityId}");
     expect(stocktakePage).not.toContain("stocktakeId?:");
 
     expect(stocktake).toContain('import { selectFocusedStocktake } from "../lib/stocktake-focus"');
@@ -183,6 +198,15 @@ describe("zero-cost PWA contract", () => {
     expect(stocktakeFocus).toContain('discrepancy.state === "candidate_confirmed"');
     expect(stocktake).toContain('active.state === "reconciliation"');
     expect(stocktake).toContain('active?.state !== "approved"');
+    expect(stocktake).toContain("active.initialCounterId === currentIdentityId");
+    expect(stocktake).toContain("active.initialCounterId !== currentIdentityId");
+    expect(stocktake).toContain("disabled={busy || pendingChallenge !== null || !canApprove}");
+    expect(stocktake).toContain("最初の担当者とは別の担当者でログインして承認してください");
+    expect(stocktake).toContain("棚卸を開始した担当者でログインして承認してください");
+    expect(stocktake).toContain("successMessage?: string");
+    expect(stocktake).toContain("if (successMessage) setMessage(successMessage);");
+    expect(stocktake).toContain('"棚卸を承認しました。"');
+    expect(stocktake).toContain('{message ? <p role="status">{message}</p> : null}');
   });
 
   it("selects an approved missing candidate from Home without accepting arbitrary ids", () => {
@@ -246,6 +270,21 @@ describe("zero-cost PWA contract", () => {
     expect(accounting).toContain("accountingSetupStack");
     expect(stocktake).toContain("現在のシステム場所");
     expect(stocktake).toContain("discrepancyEvidenceGallery");
+  });
+
+  it("reflows long mobile stocktake audit history details without clipping them", () => {
+    const styles = readFileSync(resolve("apps/web/src/app/globals.css"), "utf8");
+    const mobileStyles = styles.slice(
+      styles.lastIndexOf("@media (max-width: 560px)"),
+      styles.indexOf("/* Keep the approved Home C overrides after the legacy dashboard rules. */"),
+    );
+
+    expect(mobileStyles).toMatch(
+      /\.stocktakeAuditTimeline \{[\s\S]*?min-width: 0;[\s\S]*?\.stocktakeAuditTimeline ol \{[\s\S]*?grid-template-columns: minmax\(0, 1fr\);/u,
+    );
+    expect(mobileStyles).toMatch(
+      /\.stocktakeAuditTimeline li,[\s\S]*?\.stocktakeAuditTimeline li span \{[\s\S]*?min-width: 0;[\s\S]*?overflow-wrap: anywhere;/u,
+    );
   });
 
   it("keeps the W12 desktop export check, CSV preview, help, and history in one view", () => {
@@ -347,9 +386,51 @@ describe("zero-cost PWA contract", () => {
     expect(capture).toContain("reason.status === 403");
     expect(capture).not.toContain("reason.status === 401 || reason.status === 403");
     const outbox = readFileSync(resolve("apps/web/src/lib/capture-outbox.ts"), "utf8");
+    const styles = readFileSync(resolve("apps/web/src/app/globals.css"), "utf8");
     expect(outbox).toContain('crypto.subtle.digest("SHA-256"');
     expect(outbox).toContain("existing.fileSha256 === fileSha256");
     expect(capture).toContain('capture="environment"');
+    expect(capture).toContain('className="mobileCaptureSave"');
+
+    const captureSaveStyles = styles.slice(
+      styles.indexOf(".mobileCaptureSave {"),
+      styles.indexOf(".researchPanel {"),
+    );
+    expect(captureSaveStyles).toContain("min-height: 48px");
+    const headerLinkStyles = styles.slice(
+      styles.indexOf(".mobileAppHeader > a {"),
+      styles.indexOf(".mobileAppContent {"),
+    );
+    expect(headerLinkStyles).toContain("min-width: 44px");
+    expect(headerLinkStyles).toContain("min-height: 44px");
+    const measurementStyles = styles.slice(
+      styles.indexOf(".measurementGrid input {"),
+      styles.indexOf(".candidateNotice {"),
+    );
+    expect(measurementStyles).toContain("min-height: 44px");
+  });
+
+  it("keeps the mobile product summary readable and its next-step link touchable", () => {
+    const styles = readFileSync(resolve("apps/web/src/app/globals.css"), "utf8");
+    const workflow = readFileSync(resolve("apps/web/src/components/p0-workspace.tsx"), "utf8");
+    const summaryStyles = styles.slice(
+      styles.indexOf(".workflowItemSummary {"),
+      styles.indexOf(".workflowPanel {"),
+    );
+    expect(summaryStyles).toContain(".workflowItemSummary > label");
+    expect(summaryStyles).toContain(".workflowItemSummary select");
+    expect(summaryStyles).toContain("min-width: 0");
+    expect(summaryStyles).toContain("min-height: 44px");
+    expect(styles).toMatch(
+      /\.workflowItemSummary > label \{[\s\S]*?grid-column: 1 \/ -1;[\s\S]*?\.workflowItemSummary > div \{[\s\S]*?padding: 13px 11px;/u,
+    );
+    const noticeStyles = styles.slice(
+      styles.indexOf(".candidateNotice a {"),
+      styles.indexOf(".workflowPanel textarea {"),
+    );
+    expect(noticeStyles).toContain("min-height: 44px");
+    expect(workflow).toContain("inventoryStatusLabel(item.inventoryStatus)");
+    expect(workflow).toContain('putaway_pending: "格納待ち"');
   });
 
   it("clears the application cache even before a service worker controls the page", () => {

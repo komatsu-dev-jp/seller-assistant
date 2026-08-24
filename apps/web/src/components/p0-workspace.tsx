@@ -7,9 +7,11 @@ import type {
   PilotRunResponse,
 } from "@resale/contracts";
 import {
+  listingPrepPilotFixtureManifestSha256,
+  listingPrepPilotFixtureProfiles,
   listingPrepPilotFixtures,
   listingPrepPilotMigrationVersion,
-  pilotFixtureCategories,
+  listingPrepPilotProtocolVersion,
 } from "@resale/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -18,11 +20,17 @@ import {
   markCaptureUploaded,
   prepareCaptureUpload,
 } from "../lib/capture-outbox";
+import {
+  categoryTemplates,
+  completeMeasurements,
+  measurementDefinitionsFor,
+  templateForCategory,
+} from "../lib/measurement-profile";
+import { recoverablePilotCorrection } from "../lib/pilot-correction";
 import { AccountingWorkspace } from "./accounting-workspace";
 import { ProductResearchPanel } from "./product-research-panel";
 
 type Stage = "purchase" | "capture" | "listing" | "order" | "accounting";
-type MeasurementKey = "肩幅" | "身幅" | "袖丈" | "着丈";
 type PhotoRole = "front" | "back" | "brand_tag" | "care_label";
 
 const stages: ReadonlyArray<{ id: Stage; label: string }> = [
@@ -38,18 +46,6 @@ const photoRoles: ReadonlyArray<{ id: PhotoRole; label: string }> = [
   { id: "brand_tag", label: "ブランドタグ" },
   { id: "care_label", label: "品質表示" },
 ];
-const measurementDefinitions: Record<MeasurementKey, string> = {
-  肩幅: "shoulder_width",
-  身幅: "chest_width",
-  袖丈: "sleeve_length",
-  着丈: "body_length",
-};
-const emptyMeasurements: Record<MeasurementKey, string> = {
-  肩幅: "",
-  身幅: "",
-  袖丈: "",
-  着丈: "",
-};
 
 type PilotEventType =
   | "invalid_attempt"
@@ -70,6 +66,14 @@ type PendingPilotEvent = {
 
 class ExpectedPilotReworkError extends Error {}
 class PilotEventSyncPendingError extends Error {}
+class HttpResponseError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
 
 export function P0Workspace({ workspaceId }: { workspaceId: string }) {
   const [stage, setStage] = useState<Stage>("purchase");
@@ -79,8 +83,7 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [photos, setPhotos] = useState<Partial<Record<PhotoRole, File>>>({});
-  const [measurements, setMeasurements] =
-    useState<Record<MeasurementKey, string>>(emptyMeasurements);
+  const [measurements, setMeasurements] = useState<Record<string, string>>({});
   const [measurementReviewReason, setMeasurementReviewReason] = useState("");
   const [addressLeaseId, setAddressLeaseId] = useState<string | null>(null);
   const [shippingAddressView, setShippingAddressView] = useState<string | null>(null);
@@ -91,6 +94,7 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
   const initialPilotResumeChecked = useRef(false);
 
   const item = items.find((candidate) => candidate.skuId === selectedSkuId) ?? items[0] ?? null;
+  const activeMeasurementDefinitions = measurementDefinitionsFor(item?.measurementProfile ?? null);
   const refreshItems = useCallback(async () => {
     const result = await requestJson<P0ItemResponse[]>(`/v1/workspaces/${workspaceId}/p0-items`);
     setItems(result);
@@ -181,29 +185,38 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
 
   useEffect(() => {
     if (!item) return;
-    const restored = { ...emptyMeasurements };
+    const restored = Object.fromEntries(
+      activeMeasurementDefinitions.map((definition) => [definition.definitionId, ""]),
+    ) as Record<string, string>;
     for (const measurement of item.capture.measurements) {
-      const entry = Object.entries(measurementDefinitions).find(
-        ([, definitionId]) => definitionId === measurement.definitionId,
-      );
-      if (entry) restored[entry[0] as MeasurementKey] = String(measurement.value);
+      if (measurement.definitionId in restored) {
+        restored[measurement.definitionId] = String(measurement.value);
+      }
     }
     setMeasurements(restored);
-  }, [item]);
+  }, [activeMeasurementDefinitions, item]);
 
   useEffect(() => {
-    if (!item || workflowStateRank(item.workflowState) >= workflowStateRank("capture_confirmed"))
-      return;
-    loadCaptureUploads(workspaceId, item.skuId)
+    let cancelled = false;
+    setPhotos({});
+    if (!item || workflowStateRank(item.workflowState) >= workflowStateRank("capture_confirmed")) {
+      return () => {
+        cancelled = true;
+      };
+    }
+    const skuId = item.skuId;
+    void loadCaptureUploads(workspaceId, skuId)
       .then((records) => {
-        setPhotos((current) => {
-          const restored = { ...current };
-          for (const record of records) restored[record.role] = record.file;
-          return restored;
-        });
+        if (cancelled) return;
+        const restored: Partial<Record<PhotoRole, File>> = {};
+        for (const record of records) restored[record.role] = record.file;
+        setPhotos(restored);
       })
       .catch(() => undefined);
-  }, [item, workspaceId]);
+    return () => {
+      cancelled = true;
+    };
+  }, [item?.skuId, item?.workflowState, workspaceId]);
 
   const workflowRank = workflowStateRank(item?.workflowState);
   const completed: Record<Stage, boolean> = {
@@ -213,9 +226,7 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
     order: item?.orderState === "shipped" || item?.orderState === "returned",
     accounting: workflowRank >= workflowStateRank("journal_approved"),
   };
-  const measurementComplete = Object.values(measurements).every(
-    (value) => Number(value) > 0 && Number(value) <= 250,
-  );
+  const measurementComplete = completeMeasurements(activeMeasurementDefinitions, measurements);
   const description = item?.listingCandidate.text ?? "商品情報を読み込んでいます。";
   const activePilotItem =
     pilotRun?.state === "active" && item
@@ -227,6 +238,10 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
   const nextPilotFixture = canStartNextPilotItem
     ? (listingPrepPilotFixtures[pilotRun.items.length] ?? null)
     : null;
+  const nextPilotProfile = nextPilotFixture
+    ? (listingPrepPilotFixtureProfiles.find((profile) => profile.fixtureId === nextPilotFixture) ??
+      null)
+    : null;
 
   async function run(action: () => Promise<void>) {
     setBusy(true);
@@ -234,18 +249,29 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
     try {
       await action();
     } catch (reason) {
+      const correction =
+        reason instanceof HttpResponseError
+          ? recoverablePilotCorrection(
+              reason.status,
+              reason.message,
+              pilotRun?.protocolVersion ?? null,
+              activePilotItem?.completedAt === null,
+            )
+          : null;
+      const visibleReason = correction ? new ExpectedPilotReworkError(correction.message) : reason;
+      if (correction) await recordPilotEvent("manual_correction", correction.detailCode);
       if (activePilotItem && activePilotItem.completedAt === null) {
         if (
-          !(reason instanceof ExpectedPilotReworkError) &&
-          !(reason instanceof PilotEventSyncPendingError)
+          !(visibleReason instanceof ExpectedPilotReworkError) &&
+          !(visibleReason instanceof PilotEventSyncPendingError)
         ) {
-          if (reason instanceof TypeError) {
+          if (visibleReason instanceof TypeError) {
             await recordPilotEvent("network_retry", "request_transport_error");
           }
           await recordPilotEvent("invalid_attempt", "workflow_action_error");
         }
       }
-      setError(errorMessage(reason));
+      setError(errorMessage(visibleReason));
     } finally {
       setBusy(false);
     }
@@ -280,6 +306,7 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
           skuCode: textField(form, "skuCode").toUpperCase(),
           title: textField(form, "title"),
           category: textField(form, "category"),
+          measurementTemplateId: textField(form, "measurementTemplateId"),
           supplierName: textField(form, "supplierName"),
           receiptReference: textField(form, "receiptReference"),
           purchasedAt: new Date(textField(form, "purchasedAt")).toISOString(),
@@ -315,11 +342,11 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
     if (!item) return;
     if (photoRoles.some(({ id }) => !photos[id])) {
       await recordPilotEvent("missing_required_image", "capture_confirm_without_four_photos");
-      setError("写真4種（正面・背面・ブランドタグ・品質表示）を選択してください。");
+      setError(requiredPhotoMessage());
       return;
     }
     if (!measurementComplete) {
-      setError("4項目の採寸値を確認してください。");
+      setError(requiredMeasurementMessage(activeMeasurementDefinitions));
       return;
     }
     await run(async () => {
@@ -327,7 +354,7 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
       const assetIds: string[] = [];
       for (const { id: role } of photoRoles) {
         const file = photos[role];
-        if (!file) throw new Error("写真4種を選択してください。");
+        if (!file) throw new Error(requiredPhotoMessage());
         const pending = await prepareCaptureUpload(workspaceId, item.skuId, role, file);
         if (!pending.uploaded) {
           await requestJson(
@@ -340,12 +367,16 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
       }
       const measuredAt = new Date().toISOString();
       const savedMeasurements: Array<{ requiresReview: boolean }> = [];
-      for (const key of Object.keys(measurements) as MeasurementKey[]) {
-        const definitionId = measurementDefinitions[key];
+      for (const definition of activeMeasurementDefinitions) {
+        const definitionId = definition.definitionId;
         const previous = item.capture.measurements
           .filter((measurement) => measurement.definitionId === definitionId)
           .sort((left, right) => right.attempt - left.attempt)[0];
-        if (previous && previous.value === Number(measurements[key]) && !previous.requiresReview) {
+        if (
+          previous &&
+          previous.value === Number(measurements[definitionId]) &&
+          !previous.requiresReview
+        ) {
           savedMeasurements.push(previous);
           continue;
         }
@@ -355,11 +386,11 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
             method: "POST",
             body: JSON.stringify({
               definitionId,
-              definitionVersion: 1,
-              value: Number(measurements[key]),
+              definitionVersion: definition.definitionVersion,
+              value: Number(measurements[definitionId]),
               unit: "cm",
-              basis: "flat_width",
-              state: "natural",
+              basis: definition.basis,
+              state: definition.state,
               measuredAt,
               evidenceAssetId: assetIds[0],
               attempt: (previous?.attempt ?? 0) + 1,
@@ -444,20 +475,23 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
           "以前のパイロット記録が同期待ちです。再送を完了してから新しい計測を開始してください。",
         );
       }
+      const warmupCompleted = form.get("warmupCompleted") === "on";
+      if (!warmupCompleted) throw new Error("計測外の練習1点を確認してください。");
       const viewport = `${window.innerWidth}x${window.innerHeight}`;
       const created = await requestJson<PilotRunResponse>(
         `/v1/workspaces/${workspaceId}/pilot-runs`,
         {
           method: "POST",
           body: JSON.stringify({
-            protocolVersion: "listing_prep_pilot_v1.0.0",
+            protocolVersion: listingPrepPilotProtocolVersion,
+            fixtureManifestSha256: listingPrepPilotFixtureManifestSha256,
             commitSha: textField(form, "commitSha").toLowerCase(),
             migrationVersion: listingPrepPilotMigrationVersion,
             platform: navigator.platform || "Windows",
             browser: navigator.userAgent.slice(0, 200),
             viewport,
-            warmupCompleted: true,
-            humanConfirmed: true,
+            warmupCompleted,
+            humanConfirmed: warmupCompleted,
           }),
         },
       );
@@ -621,6 +655,7 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
         pilotRun={pilotRun}
         pendingEventCount={pendingPilotEventCount}
         nextFixture={nextPilotFixture}
+        nextProfile={nextPilotProfile}
         onStart={startPilot}
         onRetryPending={() => {
           void run(async () => {
@@ -675,7 +710,7 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
           </div>
           <div>
             <span>状態</span>
-            <strong>{item?.inventoryStatus}</strong>
+            <strong>{item ? inventoryStatusLabel(item.inventoryStatus) : "—"}</strong>
           </div>
           <div>
             <span>現在地</span>
@@ -692,6 +727,7 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
           item={item}
           pilotRunId={pilotRun?.state === "active" ? pilotRun.runId : null}
           pilotFixture={nextPilotFixture}
+          pilotProfile={nextPilotProfile}
           pilotBlocked={pilotRun?.state === "active" && nextPilotFixture === null}
         />
       ) : null}
@@ -724,9 +760,9 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
             ))}
           </div>
           <div className="measurementGrid">
-            {(Object.keys(measurements) as MeasurementKey[]).map((key) => (
-              <label key={key}>
-                {key}
+            {activeMeasurementDefinitions.map((definition) => (
+              <label key={definition.definitionId}>
+                {definition.label}（{definition.basis}・{definition.state}）
                 <span>
                   <input
                     type="number"
@@ -734,9 +770,12 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
                     min="0.1"
                     max="250"
                     step="0.1"
-                    value={measurements[key]}
+                    value={measurements[definition.definitionId] ?? ""}
                     onChange={(event) =>
-                      setMeasurements((current) => ({ ...current, [key]: event.target.value }))
+                      setMeasurements((current) => ({
+                        ...current,
+                        [definition.definitionId]: event.target.value,
+                      }))
                     }
                   />
                   cm
@@ -805,11 +844,25 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
               ? `／未確認: ${item.listingCandidate.unconfirmedFields.join("・")}`
               : "／未確認なし"}
           </p>
-          <ProductResearchPanel workspaceId={workspaceId} skuId={item.skuId} />
+          <ProductResearchPanel
+            workspaceId={workspaceId}
+            skuId={item.skuId}
+            attributeEvidence={item.capture.photoRoles.flatMap((role, index) => {
+              const assetId = item.capture.photoAssetIds[index];
+              return assetId && (role === "brand_tag" || role === "care_label")
+                ? [{ assetId, role }]
+                : [];
+            })}
+            onChanged={refreshItems}
+          />
           <div className="humanGate">
             <div>
               <strong>コピー用内容を人が確認</strong>
-              <p>未確認事実は自動補完しません。</p>
+              <p>
+                {item.measurementProfile !== null && item.confirmedAttributes === null
+                  ? "新しい採寸プロフィールの商品は、ブランド・サイズ・色を人が確認して保存するまで確定できません。"
+                  : "未確認事実は自動補完しません。"}
+              </p>
             </div>
             <button
               type="button"
@@ -817,7 +870,8 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
                 busy ||
                 completed.listing ||
                 item.listingCandidate.unconfirmedFields.length > 0 ||
-                item.listingCandidate.referenceIds.length === 0
+                item.listingCandidate.referenceIds.length === 0 ||
+                (item.measurementProfile !== null && item.confirmedAttributes === null)
               }
               onClick={() => void confirmListing()}
             >
@@ -870,6 +924,7 @@ function PilotPanel({
   pilotRun,
   pendingEventCount,
   nextFixture,
+  nextProfile,
   onStart,
   onRetryPending,
 }: {
@@ -877,6 +932,7 @@ function PilotPanel({
   pilotRun: PilotRunResponse | null;
   pendingEventCount: number;
   nextFixture: (typeof listingPrepPilotFixtures)[number] | null;
+  nextProfile: (typeof listingPrepPilotFixtureProfiles)[number] | null;
   onStart: (form: FormData) => Promise<void>;
   onRetryPending: () => void;
 }) {
@@ -926,10 +982,42 @@ function PilotPanel({
         </div>
       ) : null}
       {pilotRun?.state === "active" ? (
-        <p>
-          次の固定商品: <strong>{nextFixture ?? "前の商品を完了してください"}</strong>
-          {nextFixture ? `（${pilotCategoryLabel(pilotFixtureCategories[nextFixture])}）` : ""}
-        </p>
+        <div className="candidateNotice">
+          <strong>次の固定商品: {nextFixture ?? "前の商品を完了してください"}</strong>
+          {nextProfile ? (
+            <>
+              <p>
+                照合: manifest SHA-256 {listingPrepPilotFixtureManifestSha256.slice(0, 12)}…
+                と、下記の相対パス・属性・採寸値を人が原本と照合します。 自動入力はしません。
+              </p>
+              <p>
+                {nextProfile.title}／{nextProfile.categoryLabel}／{nextProfile.templateId} v
+                {nextProfile.templateVersion}
+              </p>
+              <ul>
+                {nextProfile.images.map((image) => (
+                  <li key={image.role}>
+                    {image.role}: {image.relativePath}
+                  </li>
+                ))}
+              </ul>
+              <p>
+                期待属性: ブランド {nextProfile.attributes.brand}／サイズ{" "}
+                {nextProfile.attributes.sizeLabel}
+                ／色 {nextProfile.attributes.color}
+              </p>
+              <ul>
+                {nextProfile.measurements.map((measurement) => (
+                  <li key={measurement.definitionId}>
+                    {measurement.label}: {measurement.value}
+                    {measurement.unit}／定義v
+                    {measurement.definitionVersion}／{measurement.basis}／{measurement.state}
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : null}
+        </div>
       ) : null}
       {!pilotRun || finished ? (
         <form className="compactForm" action={onStart}>
@@ -962,6 +1050,7 @@ function PurchasePanel({
   item,
   pilotRunId,
   pilotFixture,
+  pilotProfile,
   pilotBlocked,
 }: {
   busy: boolean;
@@ -969,9 +1058,11 @@ function PurchasePanel({
   item: P0ItemResponse | null;
   pilotRunId: string | null;
   pilotFixture: (typeof listingPrepPilotFixtures)[number] | null;
+  pilotProfile: (typeof listingPrepPilotFixtureProfiles)[number] | null;
   pilotBlocked: boolean;
 }) {
-  const category = pilotFixture ? pilotCategoryLabel(pilotFixtureCategories[pilotFixture]) : "";
+  const [category, setCategory] = useState<string>(pilotProfile?.category ?? "tops");
+  const measurementTemplateId = pilotProfile?.templateId ?? templateForCategory(category);
   return (
     <section className="workflowPanel panel" aria-labelledby="purchase-heading">
       <div className="workflowPanelHead">
@@ -1003,18 +1094,30 @@ function PurchasePanel({
             <input
               name="title"
               required
-              defaultValue={pilotFixture ? `架空試験商品 ${pilotFixture}` : ""}
+              defaultValue={pilotProfile?.title ?? ""}
+              readOnly={Boolean(pilotProfile)}
               placeholder="現物を確認して入力"
             />
           </label>
           <label>
             カテゴリ
-            <input
+            <select
               name="category"
               required
-              readOnly={Boolean(pilotFixture)}
-              defaultValue={category}
-            />
+              disabled={Boolean(pilotProfile)}
+              value={category}
+              onChange={(event) => setCategory(event.target.value)}
+            >
+              {categoryTemplates.map((template) => (
+                <option key={template.category} value={template.category}>
+                  {template.label}
+                </option>
+              ))}
+            </select>
+            {pilotProfile ? (
+              <input name="category" type="hidden" value={pilotProfile.category} />
+            ) : null}
+            <input name="measurementTemplateId" type="hidden" value={measurementTemplateId ?? ""} />
           </label>
           <label>
             仕入先
@@ -1243,10 +1346,19 @@ async function requestJson<T = unknown>(url: string, init?: RequestInit): Promis
   const response = await fetch(url, { cache: "no-store", ...init });
   const payload = (await response.json().catch(() => null)) as { message?: string } | T | null;
   if (!response.ok)
-    throw new Error(
+    throw new HttpResponseError(
       (payload as { message?: string } | null)?.message ?? "操作を確認できませんでした。",
+      response.status,
     );
   return payload as T;
+}
+
+function requiredPhotoMessage(): string {
+  return `写真${photoRoles.length}種（${photoRoles.map((role) => role.label).join("・")}）を選択してください。`;
+}
+
+function requiredMeasurementMessage(definitions: readonly { label: string }[]): string {
+  return `採寸${definitions.length}項目（${definitions.map((definition) => definition.label).join("・")}）を確認してください。`;
 }
 
 async function postPilotEventRequest(event: PendingPilotEvent): Promise<PilotRunResponse> {
@@ -1370,9 +1482,6 @@ function localDateTimeValue(): string {
   return now.toISOString().slice(0, 16);
 }
 
-function pilotCategoryLabel(category: "tops" | "outer" | "pants" | "knit"): string {
-  return { tops: "トップス", outer: "アウター", pants: "パンツ", knit: "ニット" }[category];
-}
 function workflowStateRank(state: P0ItemResponse["workflowState"] | undefined): number {
   return [
     "sku_created",
@@ -1385,6 +1494,21 @@ function workflowStateRank(state: P0ItemResponse["workflowState"] | undefined): 
     "shipped",
     "journal_approved",
   ].indexOf(state ?? "sku_created");
+}
+
+function inventoryStatusLabel(status: P0ItemResponse["inventoryStatus"]): string {
+  return {
+    putaway_pending: "格納待ち",
+    available: "在庫中",
+    reserved: "引当済み",
+    picked: "ピッキング済み",
+    packed: "梱包済み",
+    shipped: "発送済み",
+    quarantined: "返品隔離・要確認",
+    disposal_pending: "廃棄候補・要確認",
+    lost: "紛失確認",
+    disposed: "廃棄確認",
+  }[status];
 }
 
 function nextStageForItem(item: P0ItemResponse): Stage {

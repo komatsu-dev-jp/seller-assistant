@@ -28,7 +28,11 @@ export default async function StocktakePage({
             在庫ロケーションへ戻る
           </a>
         </header>
-        <StocktakeWorkspace workspaceId={session.workspaceId} initialFocus={initialFocus} />
+        <StocktakeWorkspace
+          currentIdentityId={session.identityId}
+          initialFocus={initialFocus}
+          workspaceId={session.workspaceId}
+        />
       </section>
     </main>
   );

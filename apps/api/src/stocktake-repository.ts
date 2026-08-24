@@ -1182,6 +1182,16 @@ async function selectStocktakes(
                where evidence.workspace_id = discrepancy.workspace_id
                  and evidence.discrepancy_id = discrepancy.id),
              'reasonCode', discrepancy.reason_code,
+             'confirmedReasonCode', (select event.reason_code from audit_event event
+               where event.workspace_id = discrepancy.workspace_id
+                 and event.target_id = discrepancy.id
+                 and event.action = 'stocktake.missing_candidate.confirmed'
+               order by event.occurred_at desc limit 1),
+             'restoredReasonCode', (select event.reason_code from audit_event event
+               where event.workspace_id = discrepancy.workspace_id
+                 and event.target_id = discrepancy.id
+                 and event.action = 'stocktake.missing_candidate.restored'
+               order by event.occurred_at desc limit 1),
              'confirmedAt', case when discrepancy.confirmed_at is null then null else
                to_char(discrepancy.confirmed_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') end,
              'restoredAt', case when discrepancy.restored_at is null then null else

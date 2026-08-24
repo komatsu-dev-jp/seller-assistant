@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import postgres from "postgres";
-import { appendCodeCheckDigit } from "@resale/contracts";
+import {
+  appendCodeCheckDigit,
+  listingPrepPilotFixtureManifestSha256,
+  listingPrepPilotProtocolVersion,
+} from "@resale/contracts";
 
 const adminUrl = process.env.TEST_UPGRADE_DATABASE_ADMIN_URL;
 if (!adminUrl) {
@@ -16,8 +20,22 @@ const legacyMigrations = migrationNames.filter((name) => Number(name.slice(0, 4)
 const upgradeMigrations = migrationNames.filter((name) => Number(name.slice(0, 4)) > 14);
 assert.ok(legacyMigrations.length > 0, "Legacy migrations must be present");
 assert.deepEqual(
-  upgradeMigrations.slice(-12).map((name) => name.slice(0, 4)),
-  ["0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032"],
+  upgradeMigrations.slice(-13).map((name) => name.slice(0, 4)),
+  [
+    "0021",
+    "0022",
+    "0023",
+    "0024",
+    "0025",
+    "0026",
+    "0027",
+    "0028",
+    "0029",
+    "0030",
+    "0031",
+    "0032",
+    "0033",
+  ],
   "The upgrade fixture must include the revised-A migrations",
 );
 const modeAwareApprovalMigration = upgradeMigrations.find((name) => name.startsWith("0027_"));
@@ -30,12 +48,14 @@ const restoreActorMovementSnapshotMigration = upgradeMigrations.find((name) =>
 const pilotMigrationVersionAlignmentMigration = upgradeMigrations.find((name) =>
   name.startsWith("0032_"),
 );
+const listingPrepPilotV11Migration = upgradeMigrations.find((name) => name.startsWith("0033_"));
 assert.ok(modeAwareApprovalMigration, "Migration 0027 must be present");
 assert.ok(completeApprovalMigration, "Migration 0028 must be present");
 assert.ok(safeMappingReplacementMigration, "Migration 0029 must be present");
 assert.ok(sameLocationRestoreMigration, "Migration 0030 must be present");
 assert.ok(restoreActorMovementSnapshotMigration, "Migration 0031 must be present");
 assert.ok(pilotMigrationVersionAlignmentMigration, "Migration 0032 must be present");
+assert.ok(listingPrepPilotV11Migration, "Migration 0033 must be present");
 const upgradesBeforeApprovalRepair = upgradeMigrations.filter(
   (name) => Number(name.slice(0, 4)) < 27,
 );
@@ -79,6 +99,7 @@ try {
     exportIdempotency: "00000000-0000-4000-8000-000000000119",
     historicalPilotRun: "00000000-0000-4000-8000-000000000120",
     currentPilotRun: "00000000-0000-4000-8000-000000000121",
+    currentPilotV11Run: "00000000-0000-4000-8000-000000000123",
   } as const;
 
   await sql.begin(async (transaction) => {
@@ -952,6 +973,111 @@ try {
     /pilot_run_migration_version_check/u,
   );
 
+  await applyMigration(listingPrepPilotV11Migration);
+  const historicalPilotAfterV11 = await sql<
+    Array<{
+      id: string;
+      fixture_manifest_sha256: string | null;
+      profile_count: number;
+      attribute_count: number;
+    }>
+  >`
+    select run.id, run.fixture_manifest_sha256,
+           (select count(*)::integer from product_measurement_profile profile
+             where profile.workspace_id = run.workspace_id) as profile_count,
+           (select count(*)::integer from product_attribute_confirmation confirmation
+             where confirmation.workspace_id = run.workspace_id) as attribute_count
+    from pilot_run run
+    where run.workspace_id = ${ids.workspace} and run.id = ${ids.historicalPilotRun}
+  `;
+  assert.deepEqual(
+    Array.from(historicalPilotAfterV11, (row) => ({ ...row })),
+    [
+      {
+        id: ids.historicalPilotRun,
+        fixture_manifest_sha256: null,
+        profile_count: 0,
+        attribute_count: 0,
+      },
+    ],
+  );
+  await sql`
+    insert into pilot_run (
+      id, workspace_id, protocol_version, fixture_manifest_sha256, commit_sha,
+      migration_version, platform, browser, viewport, actor_id, warmup_completed_at,
+      state, completed_at
+    ) values (
+      ${ids.currentPilotV11Run}, ${ids.workspace}, ${listingPrepPilotProtocolVersion},
+      ${listingPrepPilotFixtureManifestSha256}, ${"1".repeat(40)}, '0033',
+      'Current v1.1 Windows fixture', 'Current v1.1 Chromium fixture', '390x844',
+      ${ids.owner}, statement_timestamp(), 'completed', statement_timestamp()
+    )
+  `;
+  const [currentPilotV11] = await sql<
+    Array<{ protocol_version: string; fixture_manifest_sha256: string; migration_version: string }>
+  >`
+    select protocol_version, fixture_manifest_sha256, migration_version
+    from pilot_run
+    where workspace_id = ${ids.workspace} and id = ${ids.currentPilotV11Run}
+  `;
+  assert.deepEqual(currentPilotV11, {
+    protocol_version: listingPrepPilotProtocolVersion,
+    fixture_manifest_sha256: listingPrepPilotFixtureManifestSha256,
+    migration_version: "0033",
+  });
+  await assert.rejects(
+    () => sql`
+      insert into pilot_run (
+        id, workspace_id, protocol_version, fixture_manifest_sha256, commit_sha,
+        migration_version, platform, browser, viewport, actor_id, warmup_completed_at
+      ) values (
+        ${"00000000-0000-4000-8000-000000000124"}, ${ids.workspace},
+        ${listingPrepPilotProtocolVersion}, ${listingPrepPilotFixtureManifestSha256},
+        ${"2".repeat(40)}, '0034', 'Unsupported Windows fixture',
+        'Unsupported Chromium fixture', '390x844', ${ids.owner}, statement_timestamp()
+      )
+    `,
+    /pilot_run_migration_version_check/u,
+  );
+  await assert.rejects(
+    () => sql`
+      insert into pilot_run (
+        id, workspace_id, protocol_version, fixture_manifest_sha256, commit_sha,
+        migration_version, platform, browser, viewport, actor_id, warmup_completed_at
+      ) values (
+        ${"00000000-0000-4000-8000-000000000125"}, ${ids.workspace},
+        ${listingPrepPilotProtocolVersion}, ${"f".repeat(64)}, ${"3".repeat(40)}, '0033',
+        'Wrong manifest Windows fixture', 'Wrong manifest Chromium fixture', '390x844',
+        ${ids.owner}, statement_timestamp()
+      )
+    `,
+    /pilot_run_protocol_fixture_check/u,
+  );
+  const v11TableProtection = await sql<
+    Array<{ table_name: string; row_security: boolean; force_row_security: boolean }>
+  >`
+    select relname as table_name, relrowsecurity as row_security,
+           relforcerowsecurity as force_row_security
+    from pg_class
+    where relname in ('product_measurement_profile', 'product_attribute_confirmation')
+    order by relname
+  `;
+  assert.deepEqual(
+    Array.from(v11TableProtection, (row) => ({ ...row })),
+    [
+      {
+        table_name: "product_attribute_confirmation",
+        row_security: true,
+        force_row_security: true,
+      },
+      {
+        table_name: "product_measurement_profile",
+        row_security: true,
+        force_row_security: true,
+      },
+    ],
+  );
+
   const [inventory] = await sql<
     [{ inventory_number: string; status: string; location_id: string | null }]
   >`
@@ -1098,7 +1224,7 @@ try {
   );
 
   process.stdout.write(
-    `postgres-upgrade-integration: PASS (${legacyMigrations[0]} through ${upgradeMigrations.at(-1)}, historical two-actor approval preserved and mode-normalized, state/evidence/actors/timestamps/audit preserved, injected 0028, 0029, 0030 and 0031 failures fully rolled back after reconnect, actor-bound movement-snapshot restore function upgraded without direct scan UPDATE, historical mapping/candidate IDs and export hashes/bytes preserved, historical pilot environment preserved and current 0032 accepted, non-approved approval metadata remains null, return dispose mapped to disposal_pending)\n`,
+    `postgres-upgrade-integration: PASS (${legacyMigrations[0]} through ${upgradeMigrations.at(-1)}, historical two-actor approval preserved and mode-normalized, state/evidence/actors/timestamps/audit preserved, injected 0028, 0029, 0030 and 0031 failures fully rolled back after reconnect, actor-bound movement-snapshot restore function upgraded without direct scan UPDATE, historical mapping/candidate IDs and export hashes/bytes preserved, historical v1.0 pilot environment preserved with nullable v1.1 fields and current v1.1/0033 accepted, non-approved approval metadata remains null, return dispose mapped to disposal_pending)\n`,
   );
 } finally {
   await sql.end({ timeout: 5 });

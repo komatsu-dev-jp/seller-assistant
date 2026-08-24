@@ -8,6 +8,7 @@ import type {
   InventorySummary,
   OwnerPulseResponse,
   LocationPhotoResponse,
+  MeasurementProfileResponse,
   MeasurementResponse,
   MediaAssetResponse,
   P0WorkflowResponse,
@@ -18,6 +19,13 @@ import type {
   RegisterMediaAssetRequest,
   SessionContextResponse,
   SkuResponse,
+  ProductAttributeConfirmationResponse,
+} from "@resale/contracts";
+import {
+  listingPrepPilotFixtureManifestSha256,
+  listingPrepPilotFixtureProfiles,
+  listingPrepPilotMeasurementTemplates,
+  listingPrepPilotProtocolVersion,
 } from "@resale/contracts";
 import {
   decideP0WorkflowAction,
@@ -459,7 +467,7 @@ export class InMemoryWorkflowRepository implements WorkflowRepository {
       const measurements = [...this.measurements.values()].filter(
         (measurement) => measurement.workspaceId === workspaceId && measurement.skuId === skuId,
       );
-      assertCaptureEvidenceForWorkflow(workspaceId, skuId, input, assets, measurements);
+      assertCaptureEvidenceForWorkflow(workspaceId, skuId, input, assets, measurements, null, null);
     }
     const decision = decideP0WorkflowAction({
       currentState: current.state,
@@ -602,7 +610,7 @@ export class InMemoryWorkflowRepository implements WorkflowRepository {
     const measurements = [...this.measurements.values()].filter(
       (measurement) => measurement.workspaceId === workspaceId && measurement.skuId === skuId,
     );
-    return Promise.resolve(buildCaptureSummary(workspaceId, skuId, assets, measurements));
+    return Promise.resolve(buildCaptureSummary(workspaceId, skuId, assets, measurements, null));
   }
 
   private requireSku(workspaceId: string, skuId: string): SkuResponse {
@@ -694,6 +702,39 @@ interface MeasurementRow {
   violations: string[];
   review_reason_code: MeasurementResponse["reviewReasonCode"];
   created_at: Date;
+}
+
+interface MeasurementProfileRow {
+  category: MeasurementProfileResponse["category"];
+  measurement_template_id: MeasurementProfileResponse["measurementTemplateId"];
+  measurement_template_version: 1;
+  confirmed_by: string;
+  confirmed_at: Date;
+}
+
+interface AttributeConfirmationRow {
+  id: string;
+  sku_id: string;
+  revision: number;
+  brand: string;
+  size_label: string;
+  color: string;
+  evidence_asset_id: string;
+  source_candidate_id: string | null;
+  supersedes_confirmation_id: string | null;
+  confirmed_by: string;
+  confirmed_at: Date;
+}
+
+interface ActivePilotItemRow {
+  id: string;
+  pilot_run_id: string;
+  product_fixture_id: (typeof listingPrepPilotFixtureProfiles)[number]["fixtureId"];
+  category: MeasurementProfileResponse["category"];
+  measurement_template_id: MeasurementProfileResponse["measurementTemplateId"] | null;
+  measurement_template_version: 1 | null;
+  protocol_version: "listing_prep_pilot_v1.0.0" | typeof listingPrepPilotProtocolVersion;
+  fixture_manifest_sha256: string | null;
 }
 
 interface PutawayUnitRow {
@@ -1726,6 +1767,20 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
         const current = rows[0];
         if (!current)
           throw new RepositoryError("forbidden", "The SKU is not available in this workspace");
+        const pilotItems =
+          input.action === "confirm_capture" || input.action === "confirm_listing"
+            ? await transaction<ActivePilotItemRow[]>`
+                select item.id, item.pilot_run_id, item.product_fixture_id, item.category,
+                       item.measurement_template_id, item.measurement_template_version,
+                       run.protocol_version, run.fixture_manifest_sha256
+                from pilot_item_measurement item
+                join pilot_run run
+                  on run.workspace_id = item.workspace_id and run.id = item.pilot_run_id
+                where item.workspace_id = ${workspaceId} and item.sku_id = ${skuId}
+                  and item.completed_at is null and run.state = 'active'
+              `
+            : [];
+        const pilotItem = pilotItems[0];
         if (input.action === "confirm_capture" || input.action === "confirm_listing") {
           const assets = await transaction<MediaAssetRow[]>`
             select id, workspace_id, sku_id, role, original_sha256, original_storage_key,
@@ -1740,24 +1795,35 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
             from measurement_attempt
             where workspace_id = ${workspaceId} and sku_id = ${skuId}
           `;
+          const measurementProfile = await loadMeasurementProfile(transaction, workspaceId, skuId);
+          const confirmedAttributes = await loadLatestAttributeConfirmation(
+            transaction,
+            workspaceId,
+            skuId,
+          );
+          const assetResponses = assets.map(toMediaAssetResponse);
+          const measurementResponses = measurements.map(toMeasurementResponse);
           assertCaptureEvidenceForWorkflow(
             workspaceId,
             skuId,
             input,
-            assets.map(toMediaAssetResponse),
-            measurements.map(toMeasurementResponse),
+            assetResponses,
+            measurementResponses,
+            measurementProfile,
+            confirmedAttributes,
           );
+          if (pilotItem?.protocol_version === listingPrepPilotProtocolVersion) {
+            assertCurrentPilotCaptureEvidence(
+              pilotItem,
+              measurementProfile,
+              assetResponses,
+              measurementResponses,
+            );
+            if (input.action === "confirm_listing") {
+              assertCurrentPilotAttributeEvidence(pilotItem, confirmedAttributes, assetResponses);
+            }
+          }
         }
-        const pilotItems =
-          input.action === "confirm_listing"
-            ? await transaction<Array<{ id: string; pilot_run_id: string }>>`
-                select item.id, item.pilot_run_id
-                from pilot_item_measurement item
-                where item.workspace_id = ${workspaceId} and item.sku_id = ${skuId}
-                  and item.completed_at is null
-              `
-            : [];
-        const pilotItem = pilotItems[0];
         const decision = decideP0WorkflowAction({
           currentState: current.state,
           action: input.action,
@@ -1807,7 +1873,7 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
             'human_workflow_confirmation', ${actor.identityId}
           )
         `;
-        if (pilotItem) {
+        if (input.action === "confirm_listing" && pilotItem) {
           const completed = await transaction<Array<{ completed_at: Date }>>`
             update pilot_item_measurement
             set completed_at = statement_timestamp(),
@@ -2025,6 +2091,10 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
           role,
         );
         await requireCaptureEditable(transaction, workspaceId, skuId);
+        const measurementProfile = await loadMeasurementProfile(transaction, workspaceId, skuId);
+        if (measurementProfile) {
+          assertMeasurementMatchesProfile(input, measurementProfile);
+        }
         const evidence = await transaction<Array<{ id: string }>>`
           select id from media_asset
           where workspace_id = ${workspaceId} and sku_id = ${skuId}
@@ -2139,11 +2209,13 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
                confirmed_by, requires_review, difference_cm, violations, review_reason_code, created_at
         from measurement_attempt where workspace_id = ${workspaceId} and sku_id = ${skuId}
       `;
+      const measurementProfile = await loadMeasurementProfile(transaction, workspaceId, skuId);
       return buildCaptureSummary(
         workspaceId,
         skuId,
         assets.map(toMediaAssetResponse),
         measurements.map(toMeasurementResponse),
+        measurementProfile,
       );
     });
   }
@@ -2339,6 +2411,202 @@ function assertLocationPhotoStorageKey(value: string, expectedPrefix: string): v
   }
 }
 
+async function loadMeasurementProfile(
+  sql: postgres.TransactionSql,
+  workspaceId: string,
+  skuId: string,
+): Promise<MeasurementProfileResponse | null> {
+  const rows = await sql<MeasurementProfileRow[]>`
+    select category, measurement_template_id, measurement_template_version,
+           confirmed_by, confirmed_at
+    from product_measurement_profile
+    where workspace_id = ${workspaceId} and sku_id = ${skuId}
+  `;
+  const row = rows[0];
+  if (!row) return null;
+  const template = listingPrepPilotMeasurementTemplates[row.measurement_template_id];
+  if (template.category !== row.category || template.version !== row.measurement_template_version) {
+    throw new RepositoryError("database_error", "The measurement profile is inconsistent");
+  }
+  return {
+    category: row.category,
+    measurementTemplateId: row.measurement_template_id,
+    measurementTemplateVersion: row.measurement_template_version,
+    definitions: template.measurements.map((definition) => ({
+      ...definition,
+      state: template.state,
+    })),
+    confirmedBy: row.confirmed_by,
+    confirmedAt: row.confirmed_at.toISOString(),
+  };
+}
+
+async function loadLatestAttributeConfirmation(
+  sql: postgres.TransactionSql,
+  workspaceId: string,
+  skuId: string,
+): Promise<ProductAttributeConfirmationResponse | null> {
+  const rows = await sql<AttributeConfirmationRow[]>`
+    select id, sku_id, revision, brand, size_label, color, evidence_asset_id,
+           source_candidate_id, supersedes_confirmation_id, confirmed_by, confirmed_at
+    from product_attribute_confirmation
+    where workspace_id = ${workspaceId} and sku_id = ${skuId}
+    order by revision desc limit 1
+  `;
+  const row = rows[0];
+  return row
+    ? {
+        confirmationId: row.id,
+        skuId: row.sku_id,
+        revision: row.revision,
+        brand: row.brand,
+        sizeLabel: row.size_label,
+        color: row.color,
+        evidenceAssetId: row.evidence_asset_id,
+        sourceCandidateId: row.source_candidate_id,
+        supersedesConfirmationId: row.supersedes_confirmation_id,
+        confirmedBy: row.confirmed_by,
+        confirmedAt: row.confirmed_at.toISOString(),
+      }
+    : null;
+}
+
+function assertMeasurementMatchesProfile(
+  input: RecordMeasurementRequest,
+  profile: MeasurementProfileResponse,
+): void {
+  const expected = profile.definitions.find(
+    (definition) => definition.definitionId === input.definitionId,
+  );
+  if (
+    !expected ||
+    input.definitionVersion !== expected.definitionVersion ||
+    input.basis !== expected.basis ||
+    input.state !== expected.state
+  ) {
+    throw new RepositoryError(
+      "conflict",
+      "The measurement definition, version, basis or state does not match the SKU profile",
+    );
+  }
+}
+
+function assertCurrentPilotCaptureEvidence(
+  pilotItem: ActivePilotItemRow,
+  measurementProfile: MeasurementProfileResponse | null,
+  assets: MediaAssetResponse[],
+  measurements: MeasurementResponse[],
+): void {
+  if (pilotItem.fixture_manifest_sha256 !== listingPrepPilotFixtureManifestSha256) {
+    throw new RepositoryError("conflict", "The pilot manifest hash does not match");
+  }
+  const fixture = listingPrepPilotFixtureProfiles.find(
+    (entry) => entry.fixtureId === pilotItem.product_fixture_id,
+  );
+  if (
+    !fixture ||
+    !measurementProfile ||
+    pilotItem.category !== fixture.category ||
+    pilotItem.measurement_template_id !== fixture.templateId ||
+    pilotItem.measurement_template_version !== fixture.templateVersion ||
+    measurementProfile.category !== fixture.category ||
+    measurementProfile.measurementTemplateId !== fixture.templateId ||
+    measurementProfile.measurementTemplateVersion !== fixture.templateVersion
+  ) {
+    throw new RepositoryError("conflict", "The pilot category or measurement template is invalid");
+  }
+
+  const currentAssetByRole = new Map<MediaAssetResponse["role"], MediaAssetResponse>();
+  for (const asset of assets) {
+    const current = currentAssetByRole.get(asset.role);
+    if (
+      !current ||
+      Date.parse(asset.createdAt) > Date.parse(current.createdAt) ||
+      (asset.createdAt === current.createdAt && asset.assetId > current.assetId)
+    ) {
+      currentAssetByRole.set(asset.role, asset);
+    }
+  }
+  if (
+    currentAssetByRole.size !== fixture.images.length ||
+    [...currentAssetByRole.keys()].some(
+      (role) => !fixture.images.some((image) => image.role === role),
+    )
+  ) {
+    throw new RepositoryError(
+      "conflict",
+      "The pilot requires the generated four current image roles",
+    );
+  }
+  for (const expectedImage of fixture.images) {
+    const current = currentAssetByRole.get(expectedImage.role);
+    if (!current || current.originalSha256 !== expectedImage.sha256) {
+      throw new RepositoryError(
+        "conflict",
+        "A current pilot image does not match the fixture manifest",
+      );
+    }
+  }
+
+  const latestByDefinition = new Map<string, MeasurementResponse>();
+  for (const measurement of measurements) {
+    const current = latestByDefinition.get(measurement.definitionId);
+    if (!current || current.attempt < measurement.attempt) {
+      latestByDefinition.set(measurement.definitionId, measurement);
+    }
+  }
+  if (latestByDefinition.size !== fixture.measurements.length) {
+    throw new RepositoryError("conflict", "The pilot measurement set is incomplete or unexpected");
+  }
+  for (const expected of fixture.measurements) {
+    const actual = latestByDefinition.get(expected.definitionId);
+    if (
+      !actual ||
+      actual.definitionVersion !== expected.definitionVersion ||
+      actual.value !== expected.value ||
+      actual.unit !== expected.unit ||
+      actual.basis !== expected.basis ||
+      actual.state !== expected.state ||
+      actual.requiresReview
+    ) {
+      throw new RepositoryError(
+        "conflict",
+        "A current pilot measurement does not match the fixture profile",
+      );
+    }
+  }
+}
+
+function assertCurrentPilotAttributeEvidence(
+  pilotItem: ActivePilotItemRow,
+  confirmedAttributes: ProductAttributeConfirmationResponse | null,
+  assets: MediaAssetResponse[],
+): void {
+  const fixture = listingPrepPilotFixtureProfiles.find(
+    (entry) => entry.fixtureId === pilotItem.product_fixture_id,
+  );
+  if (!fixture) {
+    throw new RepositoryError("conflict", "The pilot fixture is unavailable");
+  }
+  if (
+    !confirmedAttributes ||
+    confirmedAttributes.brand !== fixture.attributes.brand ||
+    confirmedAttributes.sizeLabel !== fixture.attributes.sizeLabel ||
+    confirmedAttributes.color !== fixture.attributes.color
+  ) {
+    throw new RepositoryError(
+      "conflict",
+      "The confirmed pilot attributes do not match the fixture",
+    );
+  }
+  const attributeEvidence = assets.find(
+    (asset) => asset.assetId === confirmedAttributes.evidenceAssetId,
+  );
+  if (!attributeEvidence || !["brand_tag", "care_label"].includes(attributeEvidence.role)) {
+    throw new RepositoryError("conflict", "The confirmed pilot attributes lack tag evidence");
+  }
+}
+
 const requiredCaptureRoles: MediaAssetResponse["role"][] = [
   "front",
   "back",
@@ -2358,12 +2626,14 @@ function assertCaptureEvidenceForWorkflow(
   input: AdvanceP0WorkflowRequest,
   assets: MediaAssetResponse[],
   measurements: MeasurementResponse[],
+  measurementProfile: MeasurementProfileResponse | null,
+  confirmedAttributes: ProductAttributeConfirmationResponse | null,
 ): void {
-  const summary = buildCaptureSummary(workspaceId, skuId, assets, measurements);
+  const summary = buildCaptureSummary(workspaceId, skuId, assets, measurements, measurementProfile);
   if (!summary.readyForHumanReview) {
     throw new RepositoryError(
       "conflict",
-      "撮影4種類と必須採寸4項目を、警告なしで確認してから完了してください。",
+      "撮影4種類とカテゴリ別の必須採寸を、警告なしで確認してから完了してください。",
     );
   }
 
@@ -2387,6 +2657,13 @@ function assertCaptureEvidenceForWorkflow(
     return;
   }
 
+  if (measurementProfile && !confirmedAttributes) {
+    throw new RepositoryError(
+      "conflict",
+      "ブランド・サイズ・色をタグ写真の根拠付きで人が確認してから文章を確定してください。",
+    );
+  }
+
   const latestByDefinition = new Map<string, MeasurementResponse>();
   for (const measurement of measurements) {
     const current = latestByDefinition.get(measurement.definitionId);
@@ -2397,6 +2674,7 @@ function assertCaptureEvidenceForWorkflow(
   const expected = new Set([
     ...assets.map((asset) => asset.assetId),
     ...[...latestByDefinition.values()].map((measurement) => measurement.id),
+    ...(confirmedAttributes ? [confirmedAttributes.confirmationId] : []),
   ]);
   if (
     submitted.size !== expected.size ||
@@ -2415,6 +2693,7 @@ function buildCaptureSummary(
   skuId: string,
   assets: MediaAssetResponse[],
   measurements: MeasurementResponse[],
+  measurementProfile: MeasurementProfileResponse | null,
 ): CaptureSummary {
   const photoRoles = [...new Set(assets.map((asset) => asset.role))].sort();
   const latestByDefinition = new Map<string, MeasurementResponse>();
@@ -2429,11 +2708,31 @@ function buildCaptureSummary(
   const requiredPhotoRolesComplete = requiredCaptureRoles.every((role) =>
     photoRoles.includes(role),
   );
-  const requiredMeasurementsComplete = requiredCaptureMeasurements.every((definitionId) => {
-    const measurement = latestByDefinition.get(definitionId);
-    return Boolean(measurement && !measurement.requiresReview);
-  });
-  const hasReviewWarnings = latest.some((measurement) => measurement.requiresReview);
+  const requiredMeasurementsComplete = measurementProfile
+    ? measurementProfile.definitions.every((definition) => {
+        const measurement = latestByDefinition.get(definition.definitionId);
+        return (
+          measurement !== undefined &&
+          !measurement.requiresReview &&
+          measurement.definitionVersion === definition.definitionVersion &&
+          measurement.basis === definition.basis &&
+          measurement.state === definition.state
+        );
+      })
+    : requiredCaptureMeasurements.every((definitionId) => {
+        const measurement = latestByDefinition.get(definitionId);
+        return measurement !== undefined && !measurement.requiresReview;
+      });
+  const hasUnexpectedDefinitions = measurementProfile
+    ? latest.some(
+        (measurement) =>
+          !measurementProfile.definitions.some(
+            (definition) => definition.definitionId === measurement.definitionId,
+          ),
+      )
+    : false;
+  const hasReviewWarnings =
+    hasUnexpectedDefinitions || latest.some((measurement) => measurement.requiresReview);
   const timestamps = [
     ...assets.map((asset) => asset.createdAt),
     ...measurements.map((measurement) => measurement.createdAt),
@@ -2441,13 +2740,17 @@ function buildCaptureSummary(
   return {
     workspaceId,
     skuId,
+    measurementProfile,
     photoRoles,
     measurementDefinitionIds,
     requiredPhotoRolesComplete,
     requiredMeasurementsComplete,
     hasReviewWarnings,
     readyForHumanReview:
-      requiredPhotoRolesComplete && requiredMeasurementsComplete && !hasReviewWarnings,
+      requiredPhotoRolesComplete &&
+      requiredMeasurementsComplete &&
+      !hasReviewWarnings &&
+      !hasUnexpectedDefinitions,
     updatedAt:
       timestamps.length === 0
         ? new Date().toISOString()

@@ -16,12 +16,9 @@ export interface CaptureDraftRecord {
   key: string;
   workspaceId: string;
   skuId: string;
-  measurements: {
-    shoulder_width: string;
-    chest_width: string;
-    sleeve_length: string;
-    body_length: string;
-  };
+  measurements: Record<string, string>;
+  measurementTemplateId: string | null;
+  measurementTemplateVersion: number | null;
   reviewReasonCode: string;
   tagText: string;
   savedAt: string;
@@ -30,7 +27,7 @@ export interface CaptureDraftRecord {
 const DB_NAME = "resale-capture-outbox-v1";
 const STORE_NAME = "capture_uploads";
 const DRAFT_STORE_NAME = "capture_drafts";
-const DATABASE_VERSION = 2;
+const DATABASE_VERSION = 3;
 
 export async function prepareCaptureUpload(
   workspaceId: string,
@@ -149,6 +146,7 @@ export async function saveCaptureDraft(
 export async function loadCaptureDraft(
   workspaceId: string,
   skuId: string,
+  expectedTemplate: { id: string; version: number } | null = null,
 ): Promise<CaptureDraftRecord | null> {
   const database = await openDatabase();
   const result = await new Promise<unknown>((resolve, reject) => {
@@ -161,7 +159,32 @@ export async function loadCaptureDraft(
       reject(request.error ?? new Error("採寸・タグの途中入力を読めません。"));
   });
   database.close();
-  return isCaptureDraftRecord(result) ? result : null;
+  const normalized = normalizeCaptureDraft(result);
+  if (!normalized) return null;
+  if (
+    expectedTemplate &&
+    (normalized.measurementTemplateId !== expectedTemplate.id ||
+      normalized.measurementTemplateVersion !== expectedTemplate.version)
+  ) {
+    return null;
+  }
+  if (!expectedTemplate && normalized.measurementTemplateId !== null) return null;
+  return normalized;
+}
+
+function normalizeCaptureDraft(value: unknown): CaptureDraftRecord | null {
+  if (isCaptureDraftRecord(value)) return value;
+  if (!value || typeof value !== "object") return null;
+  const legacy = value as Omit<
+    CaptureDraftRecord,
+    "measurementTemplateId" | "measurementTemplateVersion"
+  >;
+  const normalized = {
+    ...legacy,
+    measurementTemplateId: null,
+    measurementTemplateVersion: null,
+  };
+  return isCaptureDraftRecord(normalized) ? normalized : null;
 }
 
 function isCaptureDraftRecord(value: unknown): value is CaptureDraftRecord {
@@ -171,14 +194,25 @@ function isCaptureDraftRecord(value: unknown): value is CaptureDraftRecord {
   if (!measurements || typeof measurements !== "object") return false;
   const safeNumber = (candidate: unknown) =>
     typeof candidate === "string" && /^(?:|[0-9]{1,3}(?:\.[0-9])?)$/u.test(candidate);
+  const validMeasurements =
+    Object.entries(measurements).length > 0 &&
+    Object.entries(measurements).length <= 12 &&
+    Object.entries(measurements).every(
+      ([definitionId, measurement]) =>
+        /^[a-z][a-z0-9_]{1,63}$/u.test(definitionId) && safeNumber(measurement),
+    );
+  const templateIsConsistent =
+    (record.measurementTemplateId === null && record.measurementTemplateVersion === null) ||
+    (typeof record.measurementTemplateId === "string" &&
+      /^[a-z][a-z0-9_]{1,63}$/u.test(record.measurementTemplateId) &&
+      Number.isInteger(record.measurementTemplateVersion) &&
+      (record.measurementTemplateVersion ?? 0) > 0);
   return (
     typeof record.key === "string" &&
     typeof record.workspaceId === "string" &&
     typeof record.skuId === "string" &&
-    safeNumber(measurements.shoulder_width) &&
-    safeNumber(measurements.chest_width) &&
-    safeNumber(measurements.sleeve_length) &&
-    safeNumber(measurements.body_length) &&
+    validMeasurements &&
+    templateIsConsistent &&
     typeof record.reviewReasonCode === "string" &&
     ["", "previous_entry_error", "garment_stretch", "measurement_definition_corrected"].includes(
       record.reviewReasonCode,

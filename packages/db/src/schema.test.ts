@@ -129,6 +129,10 @@ const pilotMigrationVersionAlignmentPath = fileURLToPath(
   new URL("../migrations/0032_pilot_migration_version_alignment.sql", import.meta.url),
 );
 const pilotMigrationVersionAlignmentSql = readFileSync(pilotMigrationVersionAlignmentPath, "utf8");
+const listingPrepPilotV11MigrationPath = fileURLToPath(
+  new URL("../migrations/0033_listing_prep_pilot_v1_1.sql", import.meta.url),
+);
+const listingPrepPilotV11Sql = readFileSync(listingPrepPilotV11MigrationPath, "utf8");
 
 describe("P0 PostgreSQL migration contract", () => {
   it("enables and forces workspace RLS for business tables", () => {
@@ -470,6 +474,44 @@ describe("P0 PostgreSQL migration contract", () => {
     expect(pilotMigrationVersionAlignmentSql).not.toMatch(/update\s+pilot_run/iu);
     expect(pilotMigrationVersionAlignmentSql).not.toMatch(/delete\s+from\s+pilot_run/iu);
     expect(pilotMigrationVersionAlignmentSql).not.toContain("not valid");
+  });
+
+  it("adds v1.1 manifest and category-template evidence without rewriting v1.0 history", () => {
+    expect(listingPrepPilotV11Sql).toContain("listing_prep_pilot_v1.0.0");
+    expect(listingPrepPilotV11Sql).toContain("listing_prep_pilot_v1.1.0");
+    expect(listingPrepPilotV11Sql).toContain("fixture_manifest_sha256 char(64)");
+    expect(listingPrepPilotV11Sql).toContain("migration_version = '0033'");
+    expect(listingPrepPilotV11Sql).toContain("migration_version <> '0033'");
+    expect(listingPrepPilotV11Sql).toContain("measurement_template_id text");
+    expect(listingPrepPilotV11Sql).toContain("create table product_measurement_profile");
+    expect(listingPrepPilotV11Sql).toContain("product measurement profiles are immutable");
+    expect(listingPrepPilotV11Sql).toContain("create table product_attribute_confirmation");
+    expect(listingPrepPilotV11Sql).toContain("product attribute confirmations are append-only");
+    expect(listingPrepPilotV11Sql).toContain("add column color_candidate text");
+    expect(listingPrepPilotV11Sql).toContain("same-SKU brand-tag or care-label evidence");
+    expect(listingPrepPilotV11Sql).toContain("candidate_source_asset_id uuid");
+    expect(listingPrepPilotV11Sql).not.toMatch(/^\s+source_asset_id uuid;$/mu);
+    expect(listingPrepPilotV11Sql.match(/force row level security/g)).toHaveLength(2);
+    expect(listingPrepPilotV11Sql).toContain(
+      "grant select, insert on product_measurement_profile, product_attribute_confirmation",
+    );
+    expect(listingPrepPilotV11Sql).not.toMatch(/update\s+pilot_run/iu);
+    expect(listingPrepPilotV11Sql).not.toMatch(/update\s+pilot_item_measurement/iu);
+    expect(listingPrepPilotV11Sql).not.toMatch(/delete\s+from/iu);
+  });
+
+  it("retains the late-event exception while making v1.1 evidence immutable", () => {
+    expect(listingPrepPilotV11Sql).toContain(
+      "old.fixture_manifest_sha256 is distinct from new.fixture_manifest_sha256",
+    );
+    expect(listingPrepPilotV11Sql).toContain(
+      "old.measurement_template_id is distinct from new.measurement_template_id",
+    );
+    expect(listingPrepPilotV11Sql).toContain("old.state = 'completed'");
+    expect(listingPrepPilotV11Sql).toContain("and new.state = 'failed'");
+    expect(listingPrepPilotV11Sql).toContain(
+      "finished pilot runs are immutable except for late exception invalidation",
+    );
   });
 
   it("reconciles queued safety exceptions without leaving a false pilot pass", () => {

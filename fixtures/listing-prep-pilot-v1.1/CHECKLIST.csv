@@ -1,0 +1,45 @@
+fixture_id,measured,category,template_id,brand,size_label,color,tag_text,measurements,front_path,back_path,brand_tag_path,care_label_path,files_prepared,fixed_values_checked
+WARMUP-01,false,tops,tops_standard_v1,PILOT-BRAND-W0,M,ブルー,"PILOT-BRAND-W0
+サイズ: M
+カラー: ブルー
+素材: 綿100%",肩幅=41cm / 身幅=49cm / 着丈=67cm / 袖丈=58cm,fixtures/listing-prep-pilot-v1.1/WARMUP-01/front.png,fixtures/listing-prep-pilot-v1.1/WARMUP-01/back.png,fixtures/listing-prep-pilot-v1.1/WARMUP-01/brand_tag.png,fixtures/listing-prep-pilot-v1.1/WARMUP-01/care_label.png,,
+TOP-01,true,tops,tops_standard_v1,PILOT-BRAND-01,M,ネイビー,"PILOT-BRAND-01
+サイズ: M
+カラー: ネイビー
+素材: 綿100%",肩幅=42cm / 身幅=50cm / 着丈=68cm / 袖丈=59cm,fixtures/listing-prep-pilot-v1.1/TOP-01/front.png,fixtures/listing-prep-pilot-v1.1/TOP-01/back.png,fixtures/listing-prep-pilot-v1.1/TOP-01/brand_tag.png,fixtures/listing-prep-pilot-v1.1/TOP-01/care_label.png,,
+TOP-02,true,tops,tops_standard_v1,PILOT-BRAND-02,L,ホワイト,"PILOT-BRAND-02
+サイズ: L
+カラー: ホワイト
+素材: 綿100%",肩幅=44cm / 身幅=53cm / 着丈=71cm / 袖丈=61cm,fixtures/listing-prep-pilot-v1.1/TOP-02/front.png,fixtures/listing-prep-pilot-v1.1/TOP-02/back.png,fixtures/listing-prep-pilot-v1.1/TOP-02/brand_tag.png,fixtures/listing-prep-pilot-v1.1/TOP-02/care_label.png,,
+TOP-03,true,tops,tops_standard_v1,PILOT-BRAND-03,S,グレー,"PILOT-BRAND-03
+サイズ: S
+カラー: グレー
+素材: ポリエステル100%",肩幅=40cm / 身幅=48cm / 着丈=66cm / 袖丈=57cm,fixtures/listing-prep-pilot-v1.1/TOP-03/front.png,fixtures/listing-prep-pilot-v1.1/TOP-03/back.png,fixtures/listing-prep-pilot-v1.1/TOP-03/brand_tag.png,fixtures/listing-prep-pilot-v1.1/TOP-03/care_label.png,,
+TOP-04,true,tops,tops_standard_v1,PILOT-BRAND-04,XL,ブラック,"PILOT-BRAND-04
+サイズ: XL
+カラー: ブラック
+素材: 綿60% ポリエステル40%",肩幅=46cm / 身幅=56cm / 着丈=74cm / 袖丈=63cm,fixtures/listing-prep-pilot-v1.1/TOP-04/front.png,fixtures/listing-prep-pilot-v1.1/TOP-04/back.png,fixtures/listing-prep-pilot-v1.1/TOP-04/brand_tag.png,fixtures/listing-prep-pilot-v1.1/TOP-04/care_label.png,,
+OUTER-01,true,outer,outer_standard_v1,PILOT-BRAND-05,M,カーキ,"PILOT-BRAND-05
+サイズ: M
+カラー: カーキ
+素材: ポリエステル100%",肩幅=45cm / 身幅=55cm / 着丈=72cm / 袖丈=62cm,fixtures/listing-prep-pilot-v1.1/OUTER-01/front.png,fixtures/listing-prep-pilot-v1.1/OUTER-01/back.png,fixtures/listing-prep-pilot-v1.1/OUTER-01/brand_tag.png,fixtures/listing-prep-pilot-v1.1/OUTER-01/care_label.png,,
+OUTER-02,true,outer,outer_standard_v1,PILOT-BRAND-06,L,ベージュ,"PILOT-BRAND-06
+サイズ: L
+カラー: ベージュ
+素材: ナイロン100%",肩幅=47cm / 身幅=58cm / 着丈=76cm / 袖丈=64cm,fixtures/listing-prep-pilot-v1.1/OUTER-02/front.png,fixtures/listing-prep-pilot-v1.1/OUTER-02/back.png,fixtures/listing-prep-pilot-v1.1/OUTER-02/brand_tag.png,fixtures/listing-prep-pilot-v1.1/OUTER-02/care_label.png,,
+PANTS-01,true,pants,pants_standard_v1,PILOT-BRAND-07,M,インディゴ,"PILOT-BRAND-07
+サイズ: M
+カラー: インディゴ
+素材: 綿98% ポリウレタン2%",ウエスト平置幅=39cm / 股上=28cm / 股下=72cm / わたり幅=31cm / 裾幅=19cm,fixtures/listing-prep-pilot-v1.1/PANTS-01/front.png,fixtures/listing-prep-pilot-v1.1/PANTS-01/back.png,fixtures/listing-prep-pilot-v1.1/PANTS-01/brand_tag.png,fixtures/listing-prep-pilot-v1.1/PANTS-01/care_label.png,,
+PANTS-02,true,pants,pants_standard_v1,PILOT-BRAND-08,L,チャコール,"PILOT-BRAND-08
+サイズ: L
+カラー: チャコール
+素材: ポリエステル65% レーヨン35%",ウエスト平置幅=41cm / 股上=30cm / 股下=75cm / わたり幅=33cm / 裾幅=20cm,fixtures/listing-prep-pilot-v1.1/PANTS-02/front.png,fixtures/listing-prep-pilot-v1.1/PANTS-02/back.png,fixtures/listing-prep-pilot-v1.1/PANTS-02/brand_tag.png,fixtures/listing-prep-pilot-v1.1/PANTS-02/care_label.png,,
+KNIT-01,true,knit,knit_set_in_v1,PILOT-BRAND-09,M,ボルドー,"PILOT-BRAND-09
+サイズ: M
+カラー: ボルドー
+素材: 毛50% アクリル50%",肩幅=43cm / 自然状態の身幅=52cm / 着丈=69cm / 袖丈=60cm,fixtures/listing-prep-pilot-v1.1/KNIT-01/front.png,fixtures/listing-prep-pilot-v1.1/KNIT-01/back.png,fixtures/listing-prep-pilot-v1.1/KNIT-01/brand_tag.png,fixtures/listing-prep-pilot-v1.1/KNIT-01/care_label.png,,
+KNIT-02,true,knit,knit_set_in_v1,PILOT-BRAND-10,L,アイボリー,"PILOT-BRAND-10
+サイズ: L
+カラー: アイボリー
+素材: 綿70% ナイロン30%",肩幅=45cm / 自然状態の身幅=55cm / 着丈=72cm / 袖丈=62cm,fixtures/listing-prep-pilot-v1.1/KNIT-02/front.png,fixtures/listing-prep-pilot-v1.1/KNIT-02/back.png,fixtures/listing-prep-pilot-v1.1/KNIT-02/brand_tag.png,fixtures/listing-prep-pilot-v1.1/KNIT-02/care_label.png,,

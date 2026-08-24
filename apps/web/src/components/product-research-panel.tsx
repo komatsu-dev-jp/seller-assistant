@@ -6,13 +6,20 @@ import { useCallback, useEffect, useState } from "react";
 export function ProductResearchPanel({
   workspaceId,
   skuId,
+  attributeEvidence,
+  onChanged,
 }: {
   workspaceId: string;
   skuId: string;
+  attributeEvidence: readonly { assetId: string; role: "brand_tag" | "care_label" }[];
+  onChanged: () => Promise<void>;
 }) {
   const [research, setResearch] = useState<ProductResearchResponse | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [brand, setBrand] = useState("");
+  const [sizeLabel, setSizeLabel] = useState("");
+  const [color, setColor] = useState("");
   const refresh = useCallback(async () => {
     const response = await fetch(`/v1/workspaces/${workspaceId}/skus/${skuId}/research`, {
       cache: "no-store",
@@ -23,6 +30,11 @@ export function ProductResearchPanel({
   useEffect(() => {
     refresh().catch((reason: unknown) => setError(message(reason)));
   }, [refresh]);
+  useEffect(() => {
+    setBrand(research?.confirmedAttributes?.brand ?? "");
+    setSizeLabel(research?.confirmedAttributes?.sizeLabel ?? "");
+    setColor(research?.confirmedAttributes?.color ?? "");
+  }, [research?.confirmedAttributes]);
 
   async function decide(candidateId: string, status: "human_confirmed" | "rejected") {
     await act(async () => {
@@ -34,6 +46,7 @@ export function ProductResearchPanel({
         },
       );
       await refresh();
+      await onChanged();
     });
   }
 
@@ -52,6 +65,36 @@ export function ProductResearchPanel({
         humanConfirmed: true,
       });
       await refresh();
+    });
+  }
+
+  async function saveAttributes(form: FormData) {
+    await act(async () => {
+      const evidenceAssetId = text(form, "evidenceAssetId");
+      if (!evidenceAssetId)
+        throw new Error("ブランドタグまたは品質表示の根拠写真を選択してください。");
+      const sourceCandidateId = text(form, "sourceCandidateId");
+      const sourceCandidate = research?.candidates.find(
+        (candidate) => candidate.candidateId === sourceCandidateId,
+      );
+      if (sourceCandidateId && sourceCandidate?.sourceAssetId !== evidenceAssetId) {
+        throw new Error(
+          "OCR候補を根拠として使う場合は、その候補を作った同じタグ写真を根拠写真に選択してください。",
+        );
+      }
+      await send(`/v1/workspaces/${workspaceId}/skus/${skuId}/product-attributes`, {
+        brand: brand.trim(),
+        sizeLabel: sizeLabel.trim(),
+        color: color.trim(),
+        evidenceAssetId,
+        ...(sourceCandidateId ? { sourceCandidateId } : {}),
+        ...(research?.confirmedAttributes
+          ? { supersedesConfirmationId: research.confirmedAttributes.confirmationId }
+          : {}),
+        humanConfirmed: true,
+      });
+      await refresh();
+      await onChanged();
     });
   }
 
@@ -85,8 +128,8 @@ export function ProductResearchPanel({
             {candidate.brandCandidate ?? "ブランド不明"}／{candidate.modelCandidate ?? "型番不明"}
           </strong>
           <p>
-            素材 {candidate.materialCandidate ?? "—"}・サイズ {candidate.sizeCandidate ?? "—"}・状態{" "}
-            {candidate.status}
+            素材 {candidate.materialCandidate ?? "—"}・サイズ {candidate.sizeCandidate ?? "—"}・色{" "}
+            {candidate.colorCandidate ?? "—"}・状態 {candidate.status}
           </p>
           {candidate.status === "candidate" ? (
             <div className="inlineActions">
@@ -109,6 +152,64 @@ export function ProductResearchPanel({
           ) : null}
         </article>
       ))}
+      <form className="compactForm" action={(form) => void saveAttributes(form)}>
+        <h4>ブランド・サイズ・色を人が確認して保存</h4>
+        <p className="accountingDisclaimer">
+          OCR候補の採否とは別の確認です。候補を選んでも、入力値を自動で確定しません。
+        </p>
+        <label>
+          ブランド
+          <input required value={brand} onChange={(event) => setBrand(event.target.value)} />
+        </label>
+        <label>
+          サイズ表記
+          <input
+            required
+            value={sizeLabel}
+            onChange={(event) => setSizeLabel(event.target.value)}
+          />
+        </label>
+        <label>
+          色
+          <input required value={color} onChange={(event) => setColor(event.target.value)} />
+        </label>
+        <label>
+          根拠写真（同じSKUのブランドタグ／品質表示のみ）
+          <select name="evidenceAssetId" required defaultValue="">
+            <option value="" disabled>
+              根拠写真を選択
+            </option>
+            {attributeEvidence.map((asset) => (
+              <option key={asset.assetId} value={asset.assetId}>
+                {asset.role === "brand_tag" ? "ブランドタグ" : "品質表示"}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          使用したOCR候補（任意・明示選択時だけ記録）
+          <select name="sourceCandidateId" defaultValue="">
+            <option value="">候補を根拠として使わない</option>
+            {research?.candidates
+              .filter((candidate) => candidate.status !== "rejected")
+              .map((candidate) => (
+                <option key={candidate.candidateId} value={candidate.candidateId}>
+                  {candidate.brandCandidate ?? "ブランド不明"}／
+                  {candidate.sizeCandidate ?? "サイズ不明"}／{candidate.colorCandidate ?? "色不明"}
+                </option>
+              ))}
+          </select>
+        </label>
+        <button disabled={busy || attributeEvidence.length === 0}>人が確認して属性を保存</button>
+      </form>
+      {research?.confirmedAttributes ? (
+        <p className="successMessage" role="status">
+          確認済み: {research.confirmedAttributes.brand}／{research.confirmedAttributes.sizeLabel}／
+          {research.confirmedAttributes.color}（revision {research.confirmedAttributes.revision}
+          、根拠 {research.confirmedAttributes.evidenceAssetId}、訂正元{" "}
+          {research.confirmedAttributes.supersedesConfirmationId ?? "なし"}）
+        </p>
+      ) : null}
       <form className="compactForm" action={(form) => void addReference(form)}>
         <label>
           確認した公式画面のURL

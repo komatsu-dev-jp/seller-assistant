@@ -1,5 +1,27 @@
 import { z } from "zod";
 
+import {
+  listingPrepPilotFixtureIds,
+  listingPrepPilotFixtureManifestSha256,
+  listingPrepPilotFixtureProfiles,
+  listingPrepPilotMeasurementTemplates,
+  listingPrepPilotProtocolVersion,
+  listingPrepPilotWarmupFixture,
+  type ListingPrepPilotFixtureProfile,
+  type ListingPrepPilotMeasurementTemplateId,
+} from "./pilot-fixtures.generated.js";
+
+export {
+  listingPrepPilotFixtureIds,
+  listingPrepPilotFixtureManifestSha256,
+  listingPrepPilotFixtureProfiles,
+  listingPrepPilotMeasurementTemplates,
+  listingPrepPilotProtocolVersion,
+  listingPrepPilotWarmupFixture,
+  type ListingPrepPilotFixtureProfile,
+  type ListingPrepPilotMeasurementTemplateId,
+};
+
 export const workspaceIdSchema = z.string().uuid();
 
 export function codeCheckDigit(baseCode: string): number {
@@ -294,36 +316,64 @@ export const p0WorkflowActionSchema = z.enum([
   "approve_journal",
 ]);
 
-export const listingPrepPilotFixtures = [
-  "TOP-01",
-  "TOP-02",
-  "TOP-03",
-  "TOP-04",
-  "OUTER-01",
-  "OUTER-02",
-  "PANTS-01",
-  "PANTS-02",
-  "KNIT-01",
-  "KNIT-02",
-] as const;
+export const listingPrepPilotFixtures = listingPrepPilotFixtureIds;
 
 export const pilotFixtureIdSchema = z.enum(listingPrepPilotFixtures);
 export const pilotCategorySchema = z.enum(["tops", "outer", "pants", "knit"]);
-export const pilotFixtureCategories = {
-  "TOP-01": "tops",
-  "TOP-02": "tops",
-  "TOP-03": "tops",
-  "TOP-04": "tops",
-  "OUTER-01": "outer",
-  "OUTER-02": "outer",
-  "PANTS-01": "pants",
-  "PANTS-02": "pants",
-  "KNIT-01": "knit",
-  "KNIT-02": "knit",
-} as const satisfies Record<
-  (typeof listingPrepPilotFixtures)[number],
-  "tops" | "outer" | "pants" | "knit"
->;
+export const pilotFixtureCategories = Object.fromEntries(
+  listingPrepPilotFixtureProfiles.map((profile) => [profile.fixtureId, profile.category]),
+) as Record<(typeof listingPrepPilotFixtures)[number], z.infer<typeof pilotCategorySchema>>;
+
+const listingPrepPilotMeasurementTemplateIds = Object.keys(
+  listingPrepPilotMeasurementTemplates,
+) as [ListingPrepPilotMeasurementTemplateId, ...ListingPrepPilotMeasurementTemplateId[]];
+
+export const measurementTemplateIdSchema = z.enum(listingPrepPilotMeasurementTemplateIds);
+
+export const measurementDefinitionSchema = z
+  .object({
+    definitionId: z.string().regex(/^[a-z][a-z0-9_]{1,63}$/u),
+    label: z.string().trim().min(1).max(80),
+    definitionVersion: z.number().int().positive().max(100),
+    basis: z.enum(["flat_width", "circumference", "length"]),
+    state: z.enum(["natural", "closed", "unstretched"]),
+  })
+  .strict();
+
+export const measurementProfileResponseSchema = z
+  .object({
+    category: pilotCategorySchema,
+    measurementTemplateId: measurementTemplateIdSchema,
+    measurementTemplateVersion: z.literal(1),
+    definitions: measurementDefinitionSchema.array().min(1).max(12),
+    confirmedBy: z.string().uuid(),
+    confirmedAt: z.iso.datetime(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    const template = listingPrepPilotMeasurementTemplates[value.measurementTemplateId];
+    if (
+      template.category !== value.category ||
+      template.version !== value.measurementTemplateVersion
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Measurement template does not match its category or version",
+        path: ["measurementTemplateId"],
+      });
+    }
+    const expectedDefinitions = template.measurements.map((definition) => ({
+      ...definition,
+      state: template.state,
+    }));
+    if (JSON.stringify(value.definitions) !== JSON.stringify(expectedDefinitions)) {
+      context.addIssue({
+        code: "custom",
+        message: "Measurement profile definitions must exactly match the generated template",
+        path: ["definitions"],
+      });
+    }
+  });
 
 export const pilotExceptionMetricsSchema = z
   .object({
@@ -455,6 +505,7 @@ export const measurementResponseSchema = recordMeasurementRequestSchema
 export const captureSummarySchema = z.object({
   workspaceId: workspaceIdSchema,
   skuId: z.string().uuid(),
+  measurementProfile: measurementProfileResponseSchema.nullable(),
   photoRoles: z.array(photoRoleSchema),
   measurementDefinitionIds: z.array(z.string()),
   requiredPhotoRolesComplete: z.boolean(),
@@ -498,6 +549,7 @@ export const createP0ItemRequestSchema = z
       .regex(/^[A-Z0-9-]+$/u),
     title: z.string().trim().min(1).max(160),
     category: z.string().trim().min(1).max(80),
+    measurementTemplateId: measurementTemplateIdSchema,
     supplierName: z.string().trim().min(1).max(160),
     receiptReference: z.string().trim().min(1).max(120),
     purchasedAt: z.iso.datetime(),
@@ -517,13 +569,30 @@ export const createP0ItemRequestSchema = z
   .refine((value) => value.allocatedCostMinor <= value.receiptAmountMinor, {
     message: "Allocated cost cannot exceed the receipt amount",
     path: ["allocatedCostMinor"],
+  })
+  .superRefine((value, context) => {
+    const template = listingPrepPilotMeasurementTemplates[value.measurementTemplateId];
+    const acceptedCategoryNames: Record<z.infer<typeof pilotCategorySchema>, readonly string[]> = {
+      tops: ["tops", "トップス"],
+      outer: ["outer", "アウター"],
+      pants: ["pants", "パンツ"],
+      knit: ["knit", "ニット"],
+    };
+    if (!acceptedCategoryNames[template.category].includes(value.category)) {
+      context.addIssue({
+        code: "custom",
+        message: "The measurement template does not match the product category",
+        path: ["measurementTemplateId"],
+      });
+    }
   });
 
-export const listingPrepPilotMigrationVersion = "0032" as const;
+export const listingPrepPilotMigrationVersion = "0033" as const;
 
 export const startPilotRunRequestSchema = z
   .object({
-    protocolVersion: z.literal("listing_prep_pilot_v1.0.0"),
+    protocolVersion: z.literal(listingPrepPilotProtocolVersion),
+    fixtureManifestSha256: z.literal(listingPrepPilotFixtureManifestSha256),
     commitSha: z.string().regex(/^[a-f0-9]{40}$/u),
     migrationVersion: z.literal(listingPrepPilotMigrationVersion),
     platform: z.string().trim().min(1).max(120),
@@ -534,17 +603,40 @@ export const startPilotRunRequestSchema = z
   })
   .strict();
 
-export const pilotItemMeasurementSchema = z.object({
-  measurementId: z.string().uuid(),
-  skuId: z.string().uuid(),
-  productFixtureId: pilotFixtureIdSchema,
-  category: pilotCategorySchema,
-  startedAt: z.iso.datetime(),
-  completedAt: z.iso.datetime().nullable(),
-  elapsedSeconds: z.number().nonnegative().nullable(),
-  metrics: pilotExceptionMetricsSchema,
-  copyReadyWorkflowVersion: z.number().int().positive().nullable(),
-});
+export const pilotItemMeasurementSchema = z
+  .object({
+    measurementId: z.string().uuid(),
+    skuId: z.string().uuid(),
+    productFixtureId: pilotFixtureIdSchema,
+    category: pilotCategorySchema,
+    measurementTemplateId: measurementTemplateIdSchema.nullable(),
+    measurementTemplateVersion: z.literal(1).nullable(),
+    startedAt: z.iso.datetime(),
+    completedAt: z.iso.datetime().nullable(),
+    elapsedSeconds: z.number().nonnegative().nullable(),
+    metrics: pilotExceptionMetricsSchema,
+    copyReadyWorkflowVersion: z.number().int().positive().nullable(),
+  })
+  .superRefine((value, context) => {
+    if ((value.measurementTemplateId === null) !== (value.measurementTemplateVersion === null)) {
+      context.addIssue({
+        code: "custom",
+        message: "Pilot measurement template ID and version must both be present or absent",
+        path: ["measurementTemplateId"],
+      });
+      return;
+    }
+    if (value.measurementTemplateId !== null) {
+      const template = listingPrepPilotMeasurementTemplates[value.measurementTemplateId];
+      if (template.category !== value.category) {
+        context.addIssue({
+          code: "custom",
+          message: "Pilot measurement template does not match its category",
+          path: ["measurementTemplateId"],
+        });
+      }
+    }
+  });
 
 export const pilotRunSummarySchema = z.object({
   itemCount: z.number().int().min(0).max(10),
@@ -563,23 +655,10 @@ export const pilotRunSummarySchema = z.object({
   passed: z.boolean().nullable(),
 });
 
-export const pilotRunResponseSchema = z.object({
+const pilotRunResponseBaseSchema = z.object({
   runId: z.string().uuid(),
   workspaceId: workspaceIdSchema,
-  protocolVersion: z.literal("listing_prep_pilot_v1.0.0"),
   commitSha: z.string().regex(/^[a-f0-9]{40}$/u),
-  migrationVersion: z.enum([
-    "0023",
-    "0024",
-    "0025",
-    "0026",
-    "0027",
-    "0028",
-    "0029",
-    "0030",
-    "0031",
-    "0032",
-  ]),
   platform: z.string(),
   browser: z.string(),
   viewport: z.literal("390x844"),
@@ -590,9 +669,44 @@ export const pilotRunResponseSchema = z.object({
   warmupCompletedAt: z.iso.datetime(),
   startedAt: z.iso.datetime(),
   completedAt: z.iso.datetime().nullable(),
-  items: pilotItemMeasurementSchema.array().max(10),
   summary: pilotRunSummarySchema,
 });
+
+const historicalPilotItemMeasurementSchema = pilotItemMeasurementSchema.safeExtend({
+  measurementTemplateId: z.null(),
+  measurementTemplateVersion: z.null(),
+});
+
+const currentPilotItemMeasurementSchema = pilotItemMeasurementSchema.safeExtend({
+  measurementTemplateId: measurementTemplateIdSchema,
+  measurementTemplateVersion: z.literal(1),
+});
+
+export const pilotRunResponseSchema = z.discriminatedUnion("protocolVersion", [
+  pilotRunResponseBaseSchema.extend({
+    protocolVersion: z.literal("listing_prep_pilot_v1.0.0"),
+    fixtureManifestSha256: z.null(),
+    migrationVersion: z.enum([
+      "0023",
+      "0024",
+      "0025",
+      "0026",
+      "0027",
+      "0028",
+      "0029",
+      "0030",
+      "0031",
+      "0032",
+    ]),
+    items: historicalPilotItemMeasurementSchema.array().max(10),
+  }),
+  pilotRunResponseBaseSchema.extend({
+    protocolVersion: z.literal(listingPrepPilotProtocolVersion),
+    fixtureManifestSha256: z.literal(listingPrepPilotFixtureManifestSha256),
+    migrationVersion: z.literal(listingPrepPilotMigrationVersion),
+    items: currentPilotItemMeasurementSchema.array().max(10),
+  }),
+]);
 
 export const p0CaptureMeasurementSchema = z.object({
   id: z.string().uuid(),
@@ -620,6 +734,7 @@ export const captureTaskResponseSchema = z.object({
   skuCode: z.string(),
   title: z.string(),
   category: z.string().nullable(),
+  measurementProfile: measurementProfileResponseSchema.nullable(),
   photoAssetIds: z.array(z.string().uuid()),
   photoRoles: z.array(photoRoleSchema),
   measurements: z.array(p0CaptureMeasurementSchema),
@@ -642,6 +757,7 @@ export const identityCandidateResponseSchema = z.object({
   modelCandidate: z.string().nullable(),
   materialCandidate: z.string().nullable(),
   sizeCandidate: z.string().nullable(),
+  colorCandidate: z.string().nullable(),
   status: z.enum(["candidate", "human_confirmed", "rejected"]),
   createdAt: z.iso.datetime(),
 });
@@ -652,6 +768,32 @@ export const confirmIdentityCandidateRequestSchema = z
     humanConfirmed: z.literal(true),
   })
   .strict();
+
+export const confirmProductAttributesRequestSchema = z
+  .object({
+    brand: z.string().trim().min(1).max(160),
+    sizeLabel: z.string().trim().min(1).max(80),
+    color: z.string().trim().min(1).max(80),
+    evidenceAssetId: z.string().uuid(),
+    sourceCandidateId: z.string().uuid().nullable().optional(),
+    supersedesConfirmationId: z.string().uuid().nullable().optional(),
+    humanConfirmed: z.literal(true),
+  })
+  .strict();
+
+export const productAttributeConfirmationResponseSchema = z.object({
+  confirmationId: z.string().uuid(),
+  skuId: z.string().uuid(),
+  revision: z.number().int().positive(),
+  brand: z.string().min(1),
+  sizeLabel: z.string().min(1),
+  color: z.string().min(1),
+  evidenceAssetId: z.string().uuid(),
+  sourceCandidateId: z.string().uuid().nullable(),
+  supersedesConfirmationId: z.string().uuid().nullable(),
+  confirmedBy: z.string().uuid(),
+  confirmedAt: z.iso.datetime(),
+});
 
 export const createMarketplaceReferenceRequestSchema = z
   .object({
@@ -689,6 +831,7 @@ export const productResearchResponseSchema = z.object({
   workspaceId: workspaceIdSchema,
   skuId: z.string().uuid(),
   candidates: identityCandidateResponseSchema.array(),
+  confirmedAttributes: productAttributeConfirmationResponseSchema.nullable(),
   references: marketplaceReferenceResponseSchema.array(),
   includedSoldCount: z.number().int().nonnegative(),
   displayedPriceMedianMinor: z.number().int().nonnegative().nullable(),
@@ -710,6 +853,8 @@ export const p0ItemResponseSchema = z.object({
   skuCode: z.string(),
   title: z.string(),
   category: z.string().nullable(),
+  measurementProfile: measurementProfileResponseSchema.nullable(),
+  confirmedAttributes: productAttributeConfirmationResponseSchema.nullable(),
   inventoryUnitId: z.string().uuid(),
   inventoryNumber: inventoryNumberSchema,
   inventoryStatus: z.enum([
@@ -977,6 +1122,8 @@ export const stocktakeDiscrepancySchema = z.object({
   membershipRevisionAtSelection: z.number().int().nonnegative(),
   evidenceCount: z.number().int().nonnegative(),
   reasonCode: z.string().nullable(),
+  confirmedReasonCode: z.string().nullable(),
+  restoredReasonCode: z.string().nullable(),
   confirmedAt: z.iso.datetime().nullable(),
   restoredAt: z.iso.datetime().nullable(),
 });
@@ -1251,6 +1398,7 @@ export const financialSummaryResponseSchema = z.object({
       "returnDirectCost",
       "costOfGoods",
       "costReturnedToInventory",
+      "taxBasis",
     ])
     .array(),
   currency: z.literal("JPY"),
@@ -1546,6 +1694,11 @@ export type CaptureTaskResponse = z.infer<typeof captureTaskResponseSchema>;
 export type CreateIdentityCandidateRequest = z.infer<typeof createIdentityCandidateRequestSchema>;
 export type ConfirmIdentityCandidateRequest = z.infer<typeof confirmIdentityCandidateRequestSchema>;
 export type IdentityCandidateResponse = z.infer<typeof identityCandidateResponseSchema>;
+export type ConfirmProductAttributesRequest = z.infer<typeof confirmProductAttributesRequestSchema>;
+export type ProductAttributeConfirmationResponse = z.infer<
+  typeof productAttributeConfirmationResponseSchema
+>;
+export type MeasurementProfileResponse = z.infer<typeof measurementProfileResponseSchema>;
 export type CreateMarketplaceReferenceRequest = z.infer<
   typeof createMarketplaceReferenceRequestSchema
 >;

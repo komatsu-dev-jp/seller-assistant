@@ -17,6 +17,7 @@ import {
   type KeyboardEvent,
   type PointerEvent,
 } from "react";
+import { stocktakeAuditEntries } from "../lib/stocktake-audit";
 import { selectFocusedStocktake } from "../lib/stocktake-focus";
 
 type PendingChallenge = {
@@ -33,9 +34,11 @@ type MobileStocktakeStage = "mode" | "count" | "difference" | "audit" | "labels"
 export type StocktakeFocus = "all" | "approval-pending";
 
 export function StocktakeWorkspace({
+  currentIdentityId,
   workspaceId,
   initialFocus = "all",
 }: {
+  currentIdentityId: string;
   workspaceId: string;
   initialFocus?: StocktakeFocus;
 }) {
@@ -53,6 +56,11 @@ export function StocktakeWorkspace({
     initialFocus === "approval-pending"
       ? selectFocusedStocktake(stocktakes, selectedStocktakeId)
       : (stocktakes.find((stocktake) => stocktake.state !== "approved") ?? null);
+  const canApprove =
+    active !== null &&
+    (active.confirmationMode === "solo_reversible"
+      ? active.initialCounterId === currentIdentityId
+      : active.initialCounterId !== currentIdentityId);
   const selectedDiscrepancy =
     active?.discrepancies.find(
       (difference) => difference.discrepancyId === selectedDiscrepancyId,
@@ -150,10 +158,11 @@ export function StocktakeWorkspace({
     }
   }
 
-  function act(url: string, body: Record<string, unknown>) {
+  function act(url: string, body: Record<string, unknown>, successMessage?: string) {
     return run(async () => {
       await requestJson(url, { method: "POST", body: JSON.stringify(body) });
       await reload();
+      if (successMessage) setMessage(successMessage);
     });
   }
 
@@ -540,20 +549,30 @@ export function StocktakeWorkspace({
                   <p className="safeNotice">現在、確認が必要な差異はありません。</p>
                 )}
                 {active.state === "reconciliation" ? (
-                  <button
-                    disabled={busy || pendingChallenge !== null}
-                    type="button"
-                    onClick={() =>
-                      void act(
-                        `/v1/workspaces/${workspaceId}/stocktakes/${active.stocktakeId}/approve`,
-                        { humanConfirmed: true },
-                      )
-                    }
-                  >
-                    {active.confirmationMode === "dual_actor"
-                      ? "別担当として棚卸承認"
-                      : "復元可能な差異を確認して棚卸承認"}
-                  </button>
+                  <>
+                    <button
+                      disabled={busy || pendingChallenge !== null || !canApprove}
+                      type="button"
+                      onClick={() =>
+                        void act(
+                          `/v1/workspaces/${workspaceId}/stocktakes/${active.stocktakeId}/approve`,
+                          { humanConfirmed: true },
+                          "棚卸を承認しました。",
+                        )
+                      }
+                    >
+                      {active.confirmationMode === "dual_actor"
+                        ? "別担当として棚卸承認"
+                        : "復元可能な差異を確認して棚卸承認"}
+                    </button>
+                    {!canApprove ? (
+                      <p className="stocktakeBlockNotice" role="status">
+                        {active.confirmationMode === "dual_actor"
+                          ? "最初の担当者とは別の担当者でログインして承認してください"
+                          : "棚卸を開始した担当者でログインして承認してください"}
+                      </p>
+                    ) : null}
+                  </>
                 ) : null}
               </div>
               <section
@@ -1055,61 +1074,6 @@ function discrepancyKindLabel(kind: StocktakeResponse["discrepancies"][number]["
     duplicate: "重複読取",
     unreadable: "読取不能",
   }[kind];
-}
-
-function stocktakeAuditEntries(stocktake: StocktakeResponse): Array<{
-  key: string;
-  occurredAt: string;
-  label: string;
-  detail: string;
-}> {
-  const entries = [
-    {
-      key: `started-${stocktake.stocktakeId}`,
-      occurredAt: stocktake.startedAt,
-      label: "棚卸開始",
-      detail: `${stocktake.locationCode} / ${
-        stocktake.confirmationMode === "solo_reversible" ? "単独・復元可能" : "2名確認"
-      }`,
-    },
-    ...stocktake.observations.map((observation) => ({
-      key: `observation-${observation.ordinal}`,
-      occurredAt: observation.observedAt,
-      label: `読取 #${observation.ordinal}`,
-      detail: `${observation.observedCode ?? "コードなし"} / ${observation.result}${
-        observation.failureReason ? ` / ${observation.failureReason}` : ""
-      }`,
-    })),
-    ...stocktake.discrepancies.flatMap((discrepancy) => [
-      ...(discrepancy.confirmedAt
-        ? [
-            {
-              key: `confirmed-${discrepancy.discrepancyId}`,
-              occurredAt: discrepancy.confirmedAt,
-              label: "不足候補を確認",
-              detail: `${discrepancy.inventoryNumber ?? "在庫番号不明"} / ${
-                discrepancy.reasonCode ?? "理由未記録"
-              }`,
-            },
-          ]
-        : []),
-      ...(discrepancy.restoredAt
-        ? [
-            {
-              key: `restored-${discrepancy.discrepancyId}`,
-              occurredAt: discrepancy.restoredAt,
-              label: "販売可能へ復元",
-              detail: `${discrepancy.inventoryNumber ?? "在庫番号不明"} / 現在地 ${
-                discrepancy.currentLocationCode ?? "未記録"
-              }`,
-            },
-          ]
-        : []),
-    ]),
-  ];
-  return entries
-    .sort((left, right) => Date.parse(right.occurredAt) - Date.parse(left.occurredAt))
-    .slice(0, 12);
 }
 
 function formatAuditTime(value: string): string {

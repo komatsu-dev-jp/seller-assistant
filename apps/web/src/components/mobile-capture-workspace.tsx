@@ -1,7 +1,7 @@
 "use client";
 
 import type { CaptureTaskResponse, MeasurementResponse } from "@resale/contracts";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   clearCaptureBusinessData,
   clearCaptureUploads,
@@ -13,6 +13,7 @@ import {
   saveCaptureDraft,
   type CaptureRole,
 } from "../lib/capture-outbox";
+import { measurementDefinitionsFor } from "../lib/measurement-profile";
 
 const roles: ReadonlyArray<{ id: CaptureRole; label: string }> = [
   { id: "front", label: "正面" },
@@ -20,24 +21,11 @@ const roles: ReadonlyArray<{ id: CaptureRole; label: string }> = [
   { id: "brand_tag", label: "ブランドタグ" },
   { id: "care_label", label: "品質表示" },
 ];
-const definitions = {
-  shoulder_width: "肩幅",
-  chest_width: "身幅",
-  sleeve_length: "袖丈",
-  body_length: "着丈",
-} as const;
-type DefinitionId = keyof typeof definitions;
-
 export function MobileCaptureWorkspace({ workspaceId }: { workspaceId: string }) {
   const [tasks, setTasks] = useState<CaptureTaskResponse[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [files, setFiles] = useState<Partial<Record<CaptureRole, File>>>({});
-  const [values, setValues] = useState<Record<DefinitionId, string>>({
-    shoulder_width: "",
-    chest_width: "",
-    sleeve_length: "",
-    body_length: "",
-  });
+  const [values, setValues] = useState<Record<string, string>>({});
   const [reviewReasonCode, setReviewReasonCode] = useState("");
   const [tagText, setTagText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -45,6 +33,17 @@ export function MobileCaptureWorkspace({ workspaceId }: { workspaceId: string })
   const [error, setError] = useState("");
   const [draftReadyFor, setDraftReadyFor] = useState("");
   const task = tasks.find((entry) => entry.skuId === selectedId) ?? tasks[0] ?? null;
+  const definitions = measurementDefinitionsFor(task?.measurementProfile ?? null);
+  const draftTemplate = useMemo(
+    () =>
+      task?.measurementProfile
+        ? {
+            id: task.measurementProfile.measurementTemplateId,
+            version: task.measurementProfile.measurementTemplateVersion,
+          }
+        : null,
+    [task?.measurementProfile],
+  );
 
   const refresh = useCallback(async () => {
     const loaded = await requestJson<CaptureTaskResponse[]>(
@@ -80,15 +79,17 @@ export function MobileCaptureWorkspace({ workspaceId }: { workspaceId: string })
   useEffect(() => {
     if (!task) return;
     setDraftReadyFor("");
-    const restored = { shoulder_width: "", chest_width: "", sleeve_length: "", body_length: "" };
+    const restored = Object.fromEntries(
+      definitions.map((definition) => [definition.definitionId, ""]),
+    ) as Record<string, string>;
     for (const measurement of task.measurements) {
       if (measurement.definitionId in restored) {
-        restored[measurement.definitionId as DefinitionId] = String(measurement.value);
+        restored[measurement.definitionId] = String(measurement.value);
       }
     }
     Promise.all([
       loadCaptureUploads(workspaceId, task.skuId),
-      loadCaptureDraft(workspaceId, task.skuId),
+      loadCaptureDraft(workspaceId, task.skuId, draftTemplate),
     ])
       .then(([records, draft]) => {
         const saved: Partial<Record<CaptureRole, File>> = {};
@@ -100,16 +101,18 @@ export function MobileCaptureWorkspace({ workspaceId }: { workspaceId: string })
         setDraftReadyFor(task.skuId);
       })
       .catch((reason: unknown) => setError(errorMessage(reason)));
-  }, [task?.skuId, workspaceId]);
+  }, [definitions, draftTemplate, task?.skuId, workspaceId]);
 
   useEffect(() => {
     if (!task || draftReadyFor !== task.skuId) return;
     void saveCaptureDraft(workspaceId, task.skuId, {
       measurements: values,
+      measurementTemplateId: draftTemplate?.id ?? null,
+      measurementTemplateVersion: draftTemplate?.version ?? null,
       reviewReasonCode,
       tagText,
     }).catch((reason: unknown) => setError(errorMessage(reason)));
-  }, [draftReadyFor, reviewReasonCode, tagText, task?.skuId, values, workspaceId]);
+  }, [draftReadyFor, draftTemplate, reviewReasonCode, tagText, task?.skuId, values, workspaceId]);
 
   async function save() {
     if (!task) return;
@@ -127,8 +130,8 @@ export function MobileCaptureWorkspace({ workspaceId }: { workspaceId: string })
         Awaited<ReturnType<typeof prepareCaptureUpload>>
       >();
       for (const { id: role } of roles) {
-        if (roleToAsset.has(role)) continue;
         const file = files[role];
+        if (!file && roleToAsset.has(role)) continue;
         if (!file) throw new Error("未保存の写真4種を選択してください。");
         const pending = await prepareCaptureUpload(workspaceId, task.skuId, role, file);
         stagedUploads.set(role, pending);
@@ -148,7 +151,8 @@ export function MobileCaptureWorkspace({ workspaceId }: { workspaceId: string })
       const evidenceAssetId = roleToAsset.get("front");
       if (!evidenceAssetId) throw new Error("正面写真を確認できません。");
       const saved: Array<{ requiresReview: boolean }> = [];
-      for (const definitionId of Object.keys(definitions) as DefinitionId[]) {
+      for (const definition of definitions) {
+        const definitionId = definition.definitionId;
         const value = Number(values[definitionId]);
         if (!(value > 0 && value <= 250)) throw new Error("採寸値を0.1〜250cmで入力してください。");
         const previous = task.measurements
@@ -165,11 +169,11 @@ export function MobileCaptureWorkspace({ workspaceId }: { workspaceId: string })
               method: "POST",
               body: JSON.stringify({
                 definitionId,
-                definitionVersion: 1,
+                definitionVersion: definition.definitionVersion,
                 value,
                 unit: "cm",
-                basis: "flat_width",
-                state: "natural",
+                basis: definition.basis,
+                state: definition.state,
                 measuredAt: new Date().toISOString(),
                 evidenceAssetId,
                 attempt: (previous?.attempt ?? 0) + 1,
@@ -262,22 +266,21 @@ export function MobileCaptureWorkspace({ workspaceId }: { workspaceId: string })
                 type="file"
                 accept="image/jpeg,image/png"
                 capture="environment"
-                disabled={saved}
                 onChange={(event) =>
                   setFiles((current) => ({ ...current, [id]: event.target.files?.[0] }))
                 }
               />
               <span aria-hidden="true">{saved || files[id] ? "✓" : "＋"}</span>
               <strong>{label}</strong>
-              <small>{saved ? "保存済み" : "JPEG/PNG"}</small>
+              <small>{saved ? "保存済み・選び直し可" : "JPEG/PNG"}</small>
             </label>
           );
         })}
       </div>
       <div className="measurementGrid">
-        {(Object.keys(definitions) as DefinitionId[]).map((id) => (
-          <label key={id}>
-            {definitions[id]}
+        {definitions.map((definition) => (
+          <label key={definition.definitionId}>
+            {definition.label}（{definition.basis}・{definition.state}）
             <span>
               <input
                 type="number"
@@ -285,9 +288,12 @@ export function MobileCaptureWorkspace({ workspaceId }: { workspaceId: string })
                 max="250"
                 step="0.1"
                 inputMode="decimal"
-                value={values[id]}
+                value={values[definition.definitionId] ?? ""}
                 onChange={(event) =>
-                  setValues((current) => ({ ...current, [id]: event.target.value }))
+                  setValues((current) => ({
+                    ...current,
+                    [definition.definitionId]: event.target.value,
+                  }))
                 }
               />
               cm
@@ -327,7 +333,12 @@ export function MobileCaptureWorkspace({ workspaceId }: { workspaceId: string })
           {message}
         </p>
       ) : null}
-      <button type="button" disabled={busy} onClick={() => void save()}>
+      <button
+        className="mobileCaptureSave"
+        type="button"
+        disabled={busy}
+        onClick={() => void save()}
+      >
         {busy ? "保存中…" : "人が確認して保存"}
       </button>
     </section>
