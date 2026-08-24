@@ -1,3 +1,4 @@
+import { readdirSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   appendCodeCheckDigit,
@@ -10,6 +11,8 @@ import {
   createTeamAssignmentRequestSchema,
   hasValidCodeCheckDigit,
   inventoryNumberSchema,
+  listingPrepPilotMigrationVersion,
+  pilotRunResponseSchema,
   recordPilotExceptionRequestSchema,
   replaceAccountMappingRuleRequestSchema,
   replaceAccountMappingRuleResponseSchema,
@@ -206,10 +209,15 @@ describe("safe discrepancy and accounting preview read models", () => {
 
 describe("ten-product pilot contract", () => {
   it("locks the protocol, commit, migration and 390x844 viewport", () => {
+    const latestMigrationVersion = readdirSync(new URL("../../db/migrations/", import.meta.url))
+      .filter((name) => /^\d{4}_.+\.sql$/u.test(name))
+      .sort()
+      .at(-1)
+      ?.slice(0, 4);
     const valid = {
       protocolVersion: "listing_prep_pilot_v1.0.0",
       commitSha: "a".repeat(40),
-      migrationVersion: "0028",
+      migrationVersion: listingPrepPilotMigrationVersion,
       platform: "Windows",
       browser: "Chrome 140",
       viewport: "390x844",
@@ -217,6 +225,14 @@ describe("ten-product pilot contract", () => {
       humanConfirmed: true,
     } as const;
     expect(startPilotRunRequestSchema.safeParse(valid).success).toBe(true);
+    expect(listingPrepPilotMigrationVersion).toBe("0032");
+    expect(listingPrepPilotMigrationVersion).toBe(latestMigrationVersion);
+    expect(
+      startPilotRunRequestSchema.safeParse({ ...valid, migrationVersion: "0028" }).success,
+    ).toBe(false);
+    expect(pilotRunResponseSchema.shape.migrationVersion.safeParse("0028").success).toBe(true);
+    expect(pilotRunResponseSchema.shape.migrationVersion.safeParse("0032").success).toBe(true);
+    expect(pilotRunResponseSchema.shape.migrationVersion.safeParse("0033").success).toBe(false);
     expect(startPilotRunRequestSchema.safeParse({ ...valid, viewport: "1440x1000" }).success).toBe(
       false,
     );

@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import postgres from "postgres";
-import { appendCodeCheckDigit } from "@resale/contracts";
+import { appendCodeCheckDigit, listingPrepPilotMigrationVersion } from "@resale/contracts";
 import { buildApp } from "./app.js";
 import { PostgresLoginService } from "./auth.js";
 import { bootstrapInitialOwner } from "./bootstrap-owner.js";
@@ -262,7 +262,7 @@ try {
     payload: {
       protocolVersion: "listing_prep_pilot_v1.0.0",
       commitSha: "a".repeat(40),
-      migrationVersion: "0028",
+      migrationVersion: listingPrepPilotMigrationVersion,
       platform: "Windows test fixture",
       browser: "Chromium fixture",
       viewport: "390x844",
@@ -271,7 +271,9 @@ try {
     },
   });
   assert.equal(pilotStarted.statusCode, 201, pilotStarted.body);
-  const pilotRunId = pilotStarted.json<{ runId: string }>().runId;
+  const pilotStartedBody = pilotStarted.json<{ runId: string; migrationVersion: string }>();
+  assert.equal(pilotStartedBody.migrationVersion, listingPrepPilotMigrationVersion);
+  const pilotRunId = pilotStartedBody.runId;
 
   const acquisitionKey = randomUUID();
   const acquisitionPayload = {

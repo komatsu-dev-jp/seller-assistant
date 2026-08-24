@@ -125,6 +125,10 @@ const restoreActorMovementSnapshotSql = readFileSync(
   restoreActorMovementSnapshotMigrationPath,
   "utf8",
 );
+const pilotMigrationVersionAlignmentPath = fileURLToPath(
+  new URL("../migrations/0032_pilot_migration_version_alignment.sql", import.meta.url),
+);
+const pilotMigrationVersionAlignmentSql = readFileSync(pilotMigrationVersionAlignmentPath, "utf8");
 
 describe("P0 PostgreSQL migration contract", () => {
   it("enables and forces workspace RLS for business tables", () => {
@@ -454,6 +458,18 @@ describe("P0 PostgreSQL migration contract", () => {
     );
     expect(restoreActorMovementSnapshotSql).toContain("trusted-server boundary");
     expect(restoreActorMovementSnapshotSql).not.toMatch(/grant\s+update\s+on\s+scan_session/iu);
+  });
+
+  it("records the current pilot schema without rewriting historical run evidence", () => {
+    expect(pilotMigrationVersionAlignmentSql).toContain(
+      "alter table pilot_run drop constraint pilot_run_migration_version_check",
+    );
+    expect(pilotMigrationVersionAlignmentSql).toContain(
+      "'0023', '0024', '0025', '0026', '0027', '0028', '0029', '0030', '0031', '0032'",
+    );
+    expect(pilotMigrationVersionAlignmentSql).not.toMatch(/update\s+pilot_run/iu);
+    expect(pilotMigrationVersionAlignmentSql).not.toMatch(/delete\s+from\s+pilot_run/iu);
+    expect(pilotMigrationVersionAlignmentSql).not.toContain("not valid");
   });
 
   it("reconciles queued safety exceptions without leaving a false pilot pass", () => {

@@ -16,8 +16,8 @@ const legacyMigrations = migrationNames.filter((name) => Number(name.slice(0, 4)
 const upgradeMigrations = migrationNames.filter((name) => Number(name.slice(0, 4)) > 14);
 assert.ok(legacyMigrations.length > 0, "Legacy migrations must be present");
 assert.deepEqual(
-  upgradeMigrations.slice(-11).map((name) => name.slice(0, 4)),
-  ["0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031"],
+  upgradeMigrations.slice(-12).map((name) => name.slice(0, 4)),
+  ["0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032"],
   "The upgrade fixture must include the revised-A migrations",
 );
 const modeAwareApprovalMigration = upgradeMigrations.find((name) => name.startsWith("0027_"));
@@ -27,11 +27,15 @@ const sameLocationRestoreMigration = upgradeMigrations.find((name) => name.start
 const restoreActorMovementSnapshotMigration = upgradeMigrations.find((name) =>
   name.startsWith("0031_"),
 );
+const pilotMigrationVersionAlignmentMigration = upgradeMigrations.find((name) =>
+  name.startsWith("0032_"),
+);
 assert.ok(modeAwareApprovalMigration, "Migration 0027 must be present");
 assert.ok(completeApprovalMigration, "Migration 0028 must be present");
 assert.ok(safeMappingReplacementMigration, "Migration 0029 must be present");
 assert.ok(sameLocationRestoreMigration, "Migration 0030 must be present");
 assert.ok(restoreActorMovementSnapshotMigration, "Migration 0031 must be present");
+assert.ok(pilotMigrationVersionAlignmentMigration, "Migration 0032 must be present");
 const upgradesBeforeApprovalRepair = upgradeMigrations.filter(
   (name) => Number(name.slice(0, 4)) < 27,
 );
@@ -73,6 +77,8 @@ try {
     exportBatch: "00000000-0000-4000-8000-000000000117",
     accountingAudit: "00000000-0000-4000-8000-000000000118",
     exportIdempotency: "00000000-0000-4000-8000-000000000119",
+    historicalPilotRun: "00000000-0000-4000-8000-000000000120",
+    currentPilotRun: "00000000-0000-4000-8000-000000000121",
   } as const;
 
   await sql.begin(async (transaction) => {
@@ -861,6 +867,91 @@ try {
     runtime_scan_update: false,
   });
 
+  await sql`
+    insert into pilot_run (
+      id, workspace_id, protocol_version, commit_sha, migration_version,
+      platform, browser, viewport, actor_id, warmup_completed_at,
+      state, completed_at
+    ) values (
+      ${ids.historicalPilotRun}, ${ids.workspace}, 'listing_prep_pilot_v1.0.0',
+      ${"d".repeat(40)}, '0028', 'Historical Windows fixture', 'Historical Chromium fixture',
+      '390x844', ${ids.owner}, statement_timestamp(), 'completed', statement_timestamp()
+    )
+  `;
+  const readPilotEnvironment = async (runId: string) => {
+    const [row] = await sql<
+      [
+        {
+          id: string;
+          protocol_version: string;
+          commit_sha: string;
+          migration_version: string;
+          platform: string;
+          browser: string;
+          viewport: string;
+          actor_id: string;
+          state: string;
+          warmup_completed_at: string;
+          started_at: string;
+          completed_at: string;
+        },
+      ]
+    >`
+      select id, protocol_version, commit_sha, migration_version, platform, browser, viewport,
+             actor_id, state, warmup_completed_at::text, started_at::text, completed_at::text
+      from pilot_run where workspace_id = ${ids.workspace} and id = ${runId}
+    `;
+    return row;
+  };
+  const historicalPilotBeforeAlignment = await readPilotEnvironment(ids.historicalPilotRun);
+
+  await applyMigration(pilotMigrationVersionAlignmentMigration);
+  assert.deepEqual(
+    await readPilotEnvironment(ids.historicalPilotRun),
+    historicalPilotBeforeAlignment,
+    "0032 must preserve every historical pilot environment field",
+  );
+  await sql`
+    insert into pilot_run (
+      id, workspace_id, protocol_version, commit_sha, migration_version,
+      platform, browser, viewport, actor_id, warmup_completed_at,
+      state, completed_at
+    ) values (
+      ${ids.currentPilotRun}, ${ids.workspace}, 'listing_prep_pilot_v1.0.0',
+      ${"e".repeat(40)}, '0032', 'Current Windows fixture', 'Current Chromium fixture',
+      '390x844', ${ids.owner}, statement_timestamp(), 'completed', statement_timestamp()
+    )
+  `;
+  assert.equal(
+    (await readPilotEnvironment(ids.currentPilotRun)).migration_version,
+    "0032",
+    "A new pilot run must record the installed migration version",
+  );
+  const [pilotMigrationConstraint] = await sql<[{ definition: string }]>`
+    select pg_get_constraintdef(constraint_row.oid) as definition
+    from pg_constraint constraint_row
+    where constraint_row.conrelid = 'pilot_run'::regclass
+      and constraint_row.contype = 'c'
+      and constraint_row.conname = 'pilot_run_migration_version_check'
+  `;
+  assert.match(pilotMigrationConstraint.definition, /'0028'/u);
+  assert.match(pilotMigrationConstraint.definition, /'0032'/u);
+  await assert.rejects(
+    () => sql`
+      insert into pilot_run (
+        id, workspace_id, protocol_version, commit_sha, migration_version,
+        platform, browser, viewport, actor_id, warmup_completed_at,
+        state, completed_at
+      ) values (
+        ${"00000000-0000-4000-8000-000000000122"}, ${ids.workspace},
+        'listing_prep_pilot_v1.0.0', ${"f".repeat(40)}, '0033',
+        'Future Windows fixture', 'Future Chromium fixture', '390x844', ${ids.owner},
+        statement_timestamp(), 'completed', statement_timestamp()
+      )
+    `,
+    /pilot_run_migration_version_check/u,
+  );
+
   const [inventory] = await sql<
     [{ inventory_number: string; status: string; location_id: string | null }]
   >`
@@ -1003,11 +1094,11 @@ try {
   assert.deepEqual(
     accountingCounts,
     { profiles: 1, mappings: 1, exports: 1 },
-    "The historical accounting fixture must remain present after 0031",
+    "The historical accounting fixture must remain present after 0032",
   );
 
   process.stdout.write(
-    `postgres-upgrade-integration: PASS (${legacyMigrations[0]} through ${upgradeMigrations.at(-1)}, historical two-actor approval preserved and mode-normalized, state/evidence/actors/timestamps/audit preserved, injected 0028, 0029, 0030 and 0031 failures fully rolled back after reconnect, actor-bound movement-snapshot restore function upgraded without direct scan UPDATE, historical mapping/candidate IDs and export hashes/bytes preserved, non-approved approval metadata remains null, return dispose mapped to disposal_pending)\n`,
+    `postgres-upgrade-integration: PASS (${legacyMigrations[0]} through ${upgradeMigrations.at(-1)}, historical two-actor approval preserved and mode-normalized, state/evidence/actors/timestamps/audit preserved, injected 0028, 0029, 0030 and 0031 failures fully rolled back after reconnect, actor-bound movement-snapshot restore function upgraded without direct scan UPDATE, historical mapping/candidate IDs and export hashes/bytes preserved, historical pilot environment preserved and current 0032 accepted, non-approved approval metadata remains null, return dispose mapped to disposal_pending)\n`,
   );
 } finally {
   await sql.end({ timeout: 5 });

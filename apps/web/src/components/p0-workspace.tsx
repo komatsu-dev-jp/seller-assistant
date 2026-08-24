@@ -6,7 +6,11 @@ import type {
   P0ItemResponse,
   PilotRunResponse,
 } from "@resale/contracts";
-import { listingPrepPilotFixtures, pilotFixtureCategories } from "@resale/contracts";
+import {
+  listingPrepPilotFixtures,
+  listingPrepPilotMigrationVersion,
+  pilotFixtureCategories,
+} from "@resale/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   clearCaptureUploads,
@@ -448,7 +452,7 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
           body: JSON.stringify({
             protocolVersion: "listing_prep_pilot_v1.0.0",
             commitSha: textField(form, "commitSha").toLowerCase(),
-            migrationVersion: "0028",
+            migrationVersion: listingPrepPilotMigrationVersion,
             platform: navigator.platform || "Windows",
             browser: navigator.userAgent.slice(0, 200),
             viewport,

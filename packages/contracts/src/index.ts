@@ -519,11 +519,13 @@ export const createP0ItemRequestSchema = z
     path: ["allocatedCostMinor"],
   });
 
+export const listingPrepPilotMigrationVersion = "0032" as const;
+
 export const startPilotRunRequestSchema = z
   .object({
     protocolVersion: z.literal("listing_prep_pilot_v1.0.0"),
     commitSha: z.string().regex(/^[a-f0-9]{40}$/u),
-    migrationVersion: z.literal("0028"),
+    migrationVersion: z.literal(listingPrepPilotMigrationVersion),
     platform: z.string().trim().min(1).max(120),
     browser: z.string().trim().min(1).max(200),
     viewport: z.literal("390x844"),
@@ -566,7 +568,18 @@ export const pilotRunResponseSchema = z.object({
   workspaceId: workspaceIdSchema,
   protocolVersion: z.literal("listing_prep_pilot_v1.0.0"),
   commitSha: z.string().regex(/^[a-f0-9]{40}$/u),
-  migrationVersion: z.enum(["0023", "0024", "0025", "0026", "0027", "0028"]),
+  migrationVersion: z.enum([
+    "0023",
+    "0024",
+    "0025",
+    "0026",
+    "0027",
+    "0028",
+    "0029",
+    "0030",
+    "0031",
+    "0032",
+  ]),
   platform: z.string(),
   browser: z.string(),
   viewport: z.literal("390x844"),

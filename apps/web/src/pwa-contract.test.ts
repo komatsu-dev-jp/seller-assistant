@@ -284,6 +284,9 @@ describe("zero-cost PWA contract", () => {
 
   it("persists pilot exceptions on the server and queues transport failures without passing totals", () => {
     const workflow = readFileSync(resolve("apps/web/src/components/p0-workspace.tsx"), "utf8");
+    expect(workflow).toContain("listingPrepPilotMigrationVersion");
+    expect(workflow).toContain("migrationVersion: listingPrepPilotMigrationVersion");
+    expect(workflow).not.toContain('migrationVersion: "0028"');
     expect(workflow).toContain("postPilotEventRequest");
     expect(workflow).toContain("flushPendingPilotEvents");
     expect(workflow).toContain('addEventListener("online"');
