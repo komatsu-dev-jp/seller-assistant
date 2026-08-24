@@ -63,3 +63,10 @@ Slack承認画像を参考資料ではなくUI受け入れ基準として扱う�
 - 現行commitのseeded browser指定操作（会計、capture、solo/dual棚卸、200%相当390×720、loopback request capture）と、最終独立P05 100/100は確認済み。未完了は実利用者pilot、実iPhone、実MF import、P08最終独立Solレビューである。
 
 上記の未確認項目を成功扱いにせず、最終独立SolレビューでCritical/High 0を確認するまでDraft PRを作成しない。
+
+## 2026-08-25 P06R現行検証
+
+- target application SHA `a976d614819a662cca3be36c23989aecd9ca968e`のroot full checkは31 files / 209 tests、coverage 84.66/80.56/100/90.68、fixture 44/hash、format/lint/typecheck/API/Web build PASS。
+- fresh PG 33 migrations/restricted LOGIN/49 RLS/rerun、upgrade 0001〜0033 rollback/preservation PASS。synthetic preflightはterminal failed案内/WARMUP、active run、readonly SKU/receipt、old summary 0、capture/listing disabled、未登録表示、category mismatch修正後TOP-01 201を確認。
+- console 0/warn 0、18 requestsは127.0.0.1のみ、390/768/1440 overflow 0。PNGは`output/playwright/p06r-preflight/final-a976-active-{390x844,768x1024,1440x1000}.png`。
+- 独立Terra GOはa976限定、Critical/High/Medium/Low 0、H-P06R-02 Closed。合成preflightであり、人P06・実iPhone・P08 Sol・Draft PRは未確認。

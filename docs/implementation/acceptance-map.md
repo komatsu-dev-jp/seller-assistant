@@ -62,6 +62,13 @@ P0の必須ACは AC-001、003〜008、013〜014、018〜023、025〜026、028〜
 - runtimeはloopbackのみ。外部通信、課金、deploy、mergeは0件。
 - 未確認: 人の`WARMUP-01`＋固定10商品pilot、実iPhone、実際のMoney Forward取込、P08最終独立Sol review、Draft PR ready。P05はPASSだがGoalは完了扱いにしない。
 
+## 2026-08-25 P06R安全preflight現行証拠
+
+- 対象SHA: `a976d614819a662cca3be36c23989aecd9ca968e`。root `npm.cmd run check`はfixture 44/hash、format/lint/typecheck、31 files / 209 tests、coverage statements 84.66%、branches 80.56%、functions 100%、lines 90.68%、API/Web buildまでPASSした。
+- 同SHAのfresh PostgreSQL 33 migrations、restricted LOGIN、49-table RLS、rerun tests、upgrade 0001〜0033 rollback/preservationはPASS。合成preflightのterminal failed案内/WARMUP、active run `917e2178-1c1c-4717-999b-0613f8b534a9`、一意readonly SKU/receipt、old summary 0、capture/listing disabled、未登録表示を確認した。
+- category `tops` mismatch初回409を修正後、同run TOP-01は201（`INV-910006-4`）。console error/warn 0、全18 requestsはloopbackのみ、390/768/1440 overflow 0。証拠PNGは`output/playwright/p06r-preflight/final-a976-active-390x844.png`、`final-a976-active-768x1024.png`、`final-a976-active-1440x1000.png`。
+- 独立Terra最終GOはa976限定、Critical/High/Medium/Low 0、H-P06R-02 preflight Closed。合成preflightは人P06の代替ではなく、人P06・実iPhoneは未確認。P08 Sol、Draft PRも未実施。
+
 > 以下のIteration 4〜24は各時点の履歴であり、現行P0の最終合格証拠ではない。現行判定は本節と、同一実装commitのUI/pilot証拠を使用する。
 
 ## Iteration 4の実証範囲

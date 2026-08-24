@@ -220,3 +220,8 @@
 - Sol max領域のfresh/upgrade PostgreSQLは0001〜0033、49-table RLS、immutable reason fields、rollback/preservationをPASS。会計の税未設定block、solo/dual承認競合、mapping世代不変も確認済み。使い捨てDBは削除済み。
 - Terra high/xhighのP05独立最終評価はtarget SHA `02c4641599eb6885bca3256f7792cf0a08c464bb`で100/100（Critical/High/Medium 0）。P08のSolレビューは未完了であり、P05をP08の代替にしない。
 - P06（実利用者WARMUP＋10商品）、実iPhone Safari/home/camera/offline/HEIC-WebP、実Money Forward import、Draft PR readyは未確認。runtime loopbackのみ、外部/paid/deploy/merge 0件。
+
+## 2026-08-25 P06R最新ゲート
+
+- P05.5/P06Rはtarget application SHA `a976d614819a662cca3be36c23989aecd9ca968e`限定で完了。独立Terra GO、Critical/High/Medium/Low 0、H-P06R-02 Closed、31 files / 209 tests、fresh/upgrade DB、synthetic preflight、loopback-only、390/768/1440pxで横方向overflow 0を確認した。
+- P06は次の人手gateとして保持する。人`WARMUP-01`＋固定10商品は未実施で、モデルや合成preflightで代用しない。実iPhone、P08 Sol、Draft PRも未確認。

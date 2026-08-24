@@ -353,3 +353,10 @@
 - 確認: 390/768/1440 overflow 0、CSS zoom 2 fallbackで390/390/390・selector overflow 0、主要操作44px以上、console 0、runtime requestは127.0.0.1のみ。dual初回担当のform非表示/承認disabled/日本語handoff/409なし、manager写真・二重読取・keyboard 3秒→hold→承認成功status、mobile online→offline→onlineの端末内保持/retry disabled、会計profile・7/7履歴・CSV停止・27列5行preview/downloadをPASS。
 - 自動回帰: full `npm.cmd run check` 29 files / 202 tests、coverage statements 84.66%、branches 80.56%、functions 100%、lines 90.68%、fixture hash `a44d25d...`。14 PNGは`docs/specs/ui-evaluation-rubric-v1.md`に列挙した。
 - 未完了: 人のWARMUP＋固定10商品pilot、実iPhone、実MF import、P08最終Sol、Draft PR。P05合格をGoal完了やDraft PR readyへ拡張しない。
+
+## Iteration 33 — 2026-08-25 P06R安全preflight GO
+
+- target application SHA `a976d614819a662cca3be36c23989aecd9ca968e`限定で独立Terra最終GO。Critical/High/Medium/Low 0、H-P06R-02 preflight Closed。
+- full checkは31 files / 209 tests、coverage 84.66/80.56/100/90.68、fixture 44/hash、format/lint/typecheck/API/Web build PASS。fresh PG 33 migrations/restricted LOGIN/49 RLS/rerun、upgrade 0001〜0033 rollback/preservation PASS。
+- synthetic preflightでterminal failed案内/WARMUP、active run `917e2178-1c1c-4717-999b-0613f8b534a9`、readonly SKU/receipt、old summary 0、capture/listing disabled、未登録表示、category `tops` mismatch修正後TOP-01 201（`INV-910006-4`）を確認。console 0/warn 0、18 requests loopbackのみ、390/768/1440 overflow 0。PNG 3点をdesign evidenceへ記録した。
+- 合成preflightは人P06の代替ではない。人`WARMUP-01`＋固定10商品、実iPhone、P08 Sol、Draft PRは未確認。a976を対象SHAとして人P06は開始可能。

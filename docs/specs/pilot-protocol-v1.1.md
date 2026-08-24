@@ -1,6 +1,6 @@
 # 10商品・出品準備時間pilot手順 v1.1
 
-- 状態: P05.5/P06Rの第4修正後、root full checkとfresh/upgrade PostgreSQLはPASS。修正版commit、同一SHAの実ブラウザ確認、独立再監査がPASSするまで実利用者pilotを開始しない
+- 状態: P06R最終GOはtarget application SHA `a976d614819a662cca3be36c23989aecd9ca968e`限定。root full check、fresh/upgrade PostgreSQL、独立Terra再監査PASS。人P06は開始可能だが未実施
 - 更新日: 2026-08-25（JST）
 - 計測版: `listing_prep_pilot_v1.1.0`
 - DB migration版: `0033`
@@ -11,7 +11,7 @@
 
 - 最新root `npm.cmd run check`はfixture 44 PNG/hash一致、format、lint、typecheck、31 files / 209 tests、coverage（statements 84.66%、branches 80.56%、functions 100%、lines 90.68%）、API/Web production buildまでPASSした。
 - migration `0033`のfresh PostgreSQL結合試験と既存データupgradeはPASSした。fresh試験には通常失敗後と外部事故無効化後の両方で、新しいrunのTOP-01を重複なく作成できる確認を含む。seeded browserでは会計7/7 human mappingと27列5行CSV、solo/dual棚卸の写真・二重読取・3秒確認・復元・承認、capture属性確認、200%相当390×720、loopback request captureまで確認済みである。P05独立Terra 100/100はPASS、実利用者warm-up＋10商品pilotは未実施である。
-- target SHA `02c4641599eb6885bca3256f7792cf0a08c464bb`のP05独立Terraは100/100（Critical/High/Medium 0）で合格した。その後にP06開始前監査で外部URL導線と訂正記録の欠損を検出したため、P05.5/P06R修正版の同一SHA再確認が終わるまで開始しない。過去commitの暫定96/100やmigration `0032`までの結果をv1.1全体の合格へ流用しない。
+- target SHA `02c4641599eb6885bca3256f7792cf0a08c464bb`のP05独立Terra 100/100は履歴として保持する。P06Rはa976限定で、外部URL導線、訂正記録、category契約drift、run/SKU guardの修正確認と独立GOを完了した。合成preflightは人P06の代替ではない。
 - `docs/specs/pilot-protocol-v1.md`は`listing_prep_pilot_v1.0.0`の履歴として保持する。新しいrunはこのv1.1だけを使う。
 
 ## 1. 固定fixture kit
@@ -112,6 +112,6 @@ template versionはすべて`1`、単位はcmとする。`basis`は測り方、`
 
 ## 8. 現時点の実施状態（2026-08-25）
 
-- fixture 44 PNG/hash、31 files / 209 tests、DB migration `0033`のfresh/upgrade、P05独立UI再評価100/100はPASSしているが、ここに記すprotocolの実利用者runはまだ開始していない。
-- 未実施: 人が行う`WARMUP-01`＋固定10商品、実iPhone Safari/home/camera/offline/HEIC-WebP。P05結果やモデルで10商品runを代用しない。P05.5/P06R修正版のroot検証と独立再確認が終わるまで本pilotを開始しない。
+- fixture 44 PNG/hash、31 files / 209 tests、DB migration `0033`のfresh/upgrade、P05独立UI再評価100/100、P06R a976限定GOはPASSしているが、ここに記す人P06 runはまだ開始していない。
+- 未実施: 人が行う`WARMUP-01`＋固定10商品、実iPhone Safari/home/camera/offline/HEIC-WebP。合成preflightやP05結果で人P06を代用しない。a976を対象SHAとして本pilotを開始可能である。
 - run開始前に、最新full check（31 files / 209 tests、coverage、lint/typecheck/API/Web build）とfixture hashを確認する。実施後は本protocolの開始・終了event、wall-clock、欠損、差戻し、manual correction、外部network 0件をrun単位で保存する。

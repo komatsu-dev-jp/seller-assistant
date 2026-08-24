@@ -2,7 +2,7 @@
 
 - Status: goal-v2-cost-optimized-evaluation-loop
 - Owner: Codex / ユーザー
-- Updated: 2026-08-24 JST
+- Updated: 2026-08-25 JST
 - Branch: `codex/opus-audit-integration`
 - Worktree: `C:\Users\softt\Documents\Codex\2026-08-13\iphone-notion-google-research-ios-pc\_worktrees\opus-audit-integration`
 - Base: `origin/main` / `f5fd9f3bda1ec2b82ba17e673f6d1715e7c1795a`
@@ -91,6 +91,7 @@ Claude Codeの `claude/opus-spec-audit-proposals` を現main、既存仕様、�
 - P04: fixture 44 PNG/hash、format/lint/typecheck、coverage、API/Web buildを含む最新full checkはPASS。targeted loopback 24 testsとWeb buildもPASS。
 - P05: target SHA `02c4641599eb6885bca3256f7792cf0a08c464bb`で独立Terra 100/100 PASS。実利用者pilot・実iPhone・実MF import・P08 Solは未実施。
 - P06: 実利用者の`WARMUP-01`＋固定10商品は未実施。モデルで代行しない。
+- P05.5/P06R: target application SHA `a976d614819a662cca3be36c23989aecd9ca968e`限定で独立Terra GO、Critical/High/Medium/Low 0、H-P06R-02 Closed。合成preflightは人P06の代替ではない。
 - 書込み: 共有worktreeのため常に1担当。並列化は読み取り専用レビューだけ。
 - 人手gate: 実10商品pilotは人が実施し、モデルで代行・補完しない。
 - 最終review: 実装・設計審査をしていない別Sol maxが凍結差分をレビューする。
@@ -112,6 +113,12 @@ Claude Codeの `claude/opus-spec-audit-proposals` を現main、既存仕様、�
 - 会計responsiveは1440/768/390/720（200%相当）overflow 0、主要button 44px以上、console 0/warn 0、loopbackのみ。solo/dual棚卸、capture TOPS、workflow 390pxの具体的確認結果は`acceptance-map.md`と`design-fidelity-evidence.md`の追補を正本とする。
 - full checkは29 files / 202 tests、coverage statements 84.66%、branches 80.56%、functions 100%、lines 90.68%、lint/typecheck/API/Web build PASS。fresh/upgrade PG 0001〜0033、49-table RLS/immutable reason fields、rollback/preservation PASS。使い捨てDB削除済み、外部/paid/deploy/merge 0。
 - 未確認は実利用者WARMUP＋10商品、実iPhone Safari/home/camera/offline/HEIC-WebP、実MF import、P08最終Sol review、Draft PR ready。P05 PASSでもGoal完了扱いにしない。
+
+## 2026-08-25 P06R安全preflight GO
+
+- 更新日: 2026-08-25 JST。root full check 31 files / 209 tests、fresh/upgrade PostgreSQL、synthetic preflight、独立Terra GOを確認した。
+- P05旧SHA `02c464...`は履歴であり、P06Rの対象SHAはa976だけ。a976限定で人P06は開始可能。
+- 人`WARMUP-01`＋固定10商品、実iPhone、P08 Sol、Draft PRは未確認。合成preflightで人手結果を補完しない。
 
 ## 2026-08-24 P05最終PASS追補
 
