@@ -114,6 +114,29 @@
 - 検証: 実ブラウザ、screenshot、操作記録、console/network error。
 - 停止・昇格条件: taskが仕様どおり完了できない場合は0点を隠さずSolへ改善パケットを返す。
 
+### P05.5 / P06R pilot開始前の安全性・記録完全性修正
+
+- 状態: 第4修正Loop。2026-08-25、Sol maxが再run識別子、次商品stage、失敗案内、例外集計を修正した。root実ブラウザで新run開始直後の旧商品操作と、pilot category送信値の不一致409を追加検出し、旧概要非表示、仕入以外disabled、未登録表示、全10 fixtureの基本カテゴリ送信へ限定修正した。root full check 31 files / 209 tests、fresh/upgrade PostgreSQLはPASSした。修正版commit、同一SHAの3 viewport・loopback実ブラウザ確認、独立Terra再監査が終わるまで人のpilotは開始しない。
+- 目的と参照: `docs/specs/pilot-protocol-v1.1.md`の外部network 0、手動訂正の欠損なし、外部事故によるrun無効化を、初心者が画面どおり操作して守れる状態にする。
+- リスク: 重大。外部通信の安全境界、pilot合否証拠、重要状態遷移、監査記録を変更する。
+- 実装担当: `gpt-5.6-sol` / `max`。共有worktreeの唯一のsource書き込み担当とする。
+- 確認担当: 変更後のP05/P06開始前確認は実装者ではないTerra xhigh。P08はさらに別の`gpt-5.6-sol` / `max`が実施する。
+- 変更可能: `apps/web/src/components/p0-workspace.tsx`、`apps/web/src/components/product-research-panel.tsx`、必要最小限のcontracts/API/repository/proxy、対応test、pilot protocolの実装整合注記、acceptance/loop/handoff、candidate incident。
+- 変更禁止: 既存migrationの再編集、実pilot結果の作成・補完、外部サービス接続、P1、本番公開、課金、PR merge、承認済みUI全体の再設計。
+- 必須受け入れ条件:
+  1. active pilot中は外部URL・価格根拠の入力導線を使えず、「ローカル4写真・採寸・属性だけを使い外部ページを開かない」と画面に明示する。
+  2. 初回入力と訂正を区別し、成功した写真・採寸・属性・文章の訂正を`manual_correction`へ決定的かつ重複なく記録する。現行画面で訂正不能な項目を、実装済みと偽らない。
+  3. 停電・OS強制update等を理由付きで`externally_invalidated`へ移す管理者操作を用意し、権限、冪等性、監査、完了run保護をtestする。
+  4. ブラウザ外の通信をアプリだけで観測できない限界を明記し、run固有の外部network 0を虚偽の自動計測として保存しない。専用ブラウザのrequest記録と人の確認をどう証拠化するかをprotocol/UIで一致させる。
+  5. WARMUPと固定順を開始前に理解でき、次商品へ迷わず進める。手動訂正数とnetwork retry数をrun集計で確認できる。
+- 第2Loop追加条件:
+  1. pilotのSKUコードと証憑参照番号をrun UUID込みの一意な固定値にし、UIをread-only、v1.1 serverを完全一致検証とする。通常失敗後と外部事故後の両方で、新runのTOP-01を作成できる実PostgreSQL testを追加する。
+  2. active pilotで次fixtureを開始できる間は、完了済み商品の状態による自動stage遷移でpurchase画面を上書きしない。TOP-01完了後にpurchaseとTOP-02固定値を保つ決定的testを追加する。
+  3. failed runへ「不合格・履歴保持・WARMUP後に新run」の日本語案内を表示し、必須画像欠損とラベル・場所不一致を含む全例外集計を隠さない。
+  4. 修正差分をcommitした後、その40文字SHAへfull check、fresh/upgrade PostgreSQL、3 viewport、loopback request証拠を結び直す。未commit差分の旧SHAをP06へ入力しない。
+- 検証: contracts/API/Web targeted test、`npm run check`、API変更時はfresh/upgrade PostgreSQL、390/768/1440実ブラウザ、console 0、loopback以外のrequest 0、WARMUP開始直前までの初心者導線。実利用者の時間をモデルが代行しない。
+- 停止・昇格条件: 訂正の定義、外部通信証拠、状態遷移が仕様と一意に整合しない場合はsourceを広げずルートへ戻す。製品契約変更が必要ならユーザー確認まで停止する。
+
 ### P06 実10商品pilot
 
 - 目的と参照: `docs/specs/pilot-protocol-v1.1.md`に従い、実際の人が`WARMUP-01`と固定10商品を操作する。

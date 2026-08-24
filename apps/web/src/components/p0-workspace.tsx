@@ -10,8 +10,10 @@ import {
   listingPrepPilotFixtureManifestSha256,
   listingPrepPilotFixtureProfiles,
   listingPrepPilotFixtures,
+  listingPrepPilotItemIdentifiers,
   listingPrepPilotMigrationVersion,
   listingPrepPilotProtocolVersion,
+  listingPrepPilotWarmupFixture,
 } from "@resale/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -27,10 +29,16 @@ import {
   templateForCategory,
 } from "../lib/measurement-profile";
 import { recoverablePilotCorrection } from "../lib/pilot-correction";
+import { pilotDisplayCategory } from "../lib/pilot-category";
+import {
+  canStartNextPilotFixture,
+  stageAfterItemRefresh,
+  type WorkflowStage,
+} from "../lib/pilot-stage";
 import { AccountingWorkspace } from "./accounting-workspace";
 import { ProductResearchPanel } from "./product-research-panel";
 
-type Stage = "purchase" | "capture" | "listing" | "order" | "accounting";
+type Stage = WorkflowStage;
 type PhotoRole = "front" | "back" | "brand_tag" | "care_label";
 
 const stages: ReadonlyArray<{ id: Stage; label: string }> = [
@@ -53,8 +61,7 @@ type PilotEventType =
   | "measurement_rework"
   | "label_location_mismatch"
   | "misputaway"
-  | "network_retry"
-  | "manual_correction";
+  | "network_retry";
 
 type PendingPilotEvent = {
   workspaceId: string;
@@ -90,6 +97,7 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
   const [assignmentMessage, setAssignmentMessage] = useState("");
   const [pilotRun, setPilotRun] = useState<PilotRunResponse | null>(null);
   const [pendingPilotEventCount, setPendingPilotEventCount] = useState(0);
+  const [pilotResumeDecisionRequired, setPilotResumeDecisionRequired] = useState(false);
   const pageInstanceId = useRef(crypto.randomUUID()).current;
   const initialPilotResumeChecked = useRef(false);
 
@@ -150,38 +158,27 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
     if (!pilotRun || initialPilotResumeChecked.current) return;
     initialPilotResumeChecked.current = true;
     const incomplete = pilotRun.items.find((candidate) => candidate.completedAt === null);
-    if (pilotRun.state !== "active" || !incomplete) return;
+    if (pilotRun.state !== "active") return;
+    if (pilotRun.items.length === 0) return;
     const marker = readPilotActiveMarker(workspaceId);
     if (
+      incomplete &&
       marker?.pilotRunId === pilotRun.runId &&
       marker.skuId === incomplete.skuId &&
       marker.pageInstanceId === pageInstanceId
     ) {
       return;
     }
-    const event: PendingPilotEvent = {
-      workspaceId,
-      runId: pilotRun.runId,
-      eventType: "invalid_attempt",
-      detailCode: "browser_reload_or_reopen",
-      idempotencyKey: crypto.randomUUID(),
-    };
-    void postPilotEventRequest(event)
-      .then((updated) => {
-        setPilotRun(updated);
-        sessionStorage.removeItem(pilotActiveMarkerKey(workspaceId));
-        setError("途中の再読み込みを検知したため、このパイロット試行は失敗として保存しました。");
-      })
-      .catch(() => {
-        enqueuePilotEvent(event);
-        setPendingPilotEventCount(countPendingPilotEvents(workspaceId, pilotRun.runId));
-      });
+    setPilotResumeDecisionRequired(true);
+    setError(
+      "途中の再読み込みまたは再起動を検知しました。通常の中断か、停電などの外部事故かを選ぶまで計測操作を停止します。",
+    );
   }, [pageInstanceId, pilotRun, workspaceId]);
 
   useEffect(() => {
     if (loading || !item) return;
-    setStage((current) => (current === "purchase" ? nextStageForItem(item) : current));
-  }, [item, loading]);
+    setStage((current) => stageAfterItemRefresh(current, item, pilotRun));
+  }, [item, loading, pilotRun]);
 
   useEffect(() => {
     if (!item) return;
@@ -232,12 +229,11 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
     pilotRun?.state === "active" && item
       ? (pilotRun.items.find((candidate) => candidate.skuId === item.skuId) ?? null)
       : null;
-  const lastPilotItem = pilotRun?.items.at(-1) ?? null;
-  const canStartNextPilotItem =
-    pilotRun?.state === "active" && (!lastPilotItem || lastPilotItem.completedAt !== null);
-  const nextPilotFixture = canStartNextPilotItem
-    ? (listingPrepPilotFixtures[pilotRun.items.length] ?? null)
-    : null;
+  const awaitingNextPilotItem = canStartNextPilotFixture(pilotRun);
+  const nextPilotFixture =
+    awaitingNextPilotItem && pilotRun
+      ? (listingPrepPilotFixtures[pilotRun.items.length] ?? null)
+      : null;
   const nextPilotProfile = nextPilotFixture
     ? (listingPrepPilotFixtureProfiles.find((profile) => profile.fixtureId === nextPilotFixture) ??
       null)
@@ -259,7 +255,6 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
             )
           : null;
       const visibleReason = correction ? new ExpectedPilotReworkError(correction.message) : reason;
-      if (correction) await recordPilotEvent("manual_correction", correction.detailCode);
       if (activePilotItem && activePilotItem.completedAt === null) {
         if (
           !(visibleReason instanceof ExpectedPilotReworkError) &&
@@ -279,6 +274,11 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
 
   async function ensurePilotEventsSynced(): Promise<void> {
     if (!pilotRun || pilotRun.state !== "active") return;
+    if (pilotResumeDecisionRequired) {
+      throw new PilotEventSyncPendingError(
+        "再読み込みの理由を選択してから、パイロット操作を再開してください。",
+      );
+    }
     try {
       const updated = await syncPendingPilotEvents(pilotRun.runId);
       if (countPendingPilotEvents(workspaceId, pilotRun.runId) > 0) {
@@ -427,6 +427,7 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
       item.listingCandidate.referenceIds.length === 0
     )
       return;
+    const completingPilotItem = Boolean(activePilotItem?.completedAt === null);
     await run(async () => {
       if (activePilotItem) await ensurePilotEventsSynced();
       await advanceWorkflow(
@@ -439,7 +440,7 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
       await navigator.clipboard?.writeText(description).catch(() => undefined);
       await refreshItems();
       await refreshPilotRun();
-      setStage("order");
+      setStage(completingPilotItem ? "purchase" : "order");
     });
   }
 
@@ -477,6 +478,11 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
       }
       const warmupCompleted = form.get("warmupCompleted") === "on";
       if (!warmupCompleted) throw new Error("計測外の練習1点を確認してください。");
+      if (form.get("networkCaptureReady") !== "on") {
+        throw new Error(
+          "専用ブラウザのrequest capture（通信記録）を開始してから計測してください。",
+        );
+      }
       const viewport = `${window.innerWidth}x${window.innerHeight}`;
       const created = await requestJson<PilotRunResponse>(
         `/v1/workspaces/${workspaceId}/pilot-runs`,
@@ -495,13 +501,18 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
           }),
         },
       );
+      initialPilotResumeChecked.current = true;
       setPilotRun(created);
+      setPilotResumeDecisionRequired(false);
       setStage("purchase");
     });
   }
 
-  async function recordPilotEvent(eventType: PilotEventType, detailCode: string): Promise<void> {
-    if (!pilotRun || pilotRun.state !== "active") return;
+  async function recordPilotEvent(
+    eventType: PilotEventType,
+    detailCode: string,
+  ): Promise<"saved" | "queued" | "ignored"> {
+    if (!pilotRun || pilotRun.state !== "active") return "ignored";
     const pending: PendingPilotEvent = {
       workspaceId,
       runId: pilotRun.runId,
@@ -515,9 +526,81 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
       if (updated.state !== "active") {
         sessionStorage.removeItem(pilotActiveMarkerKey(workspaceId));
       }
+      return "saved";
     } catch {
       enqueuePilotEvent(pending);
       setPendingPilotEventCount(countPendingPilotEvents(workspaceId, pilotRun.runId));
+      return "queued";
+    }
+  }
+
+  async function markReloadAsInvalidAttempt(): Promise<void> {
+    setBusy(true);
+    setError("");
+    try {
+      const result = await recordPilotEvent("invalid_attempt", "browser_reload_or_reopen");
+      setPilotResumeDecisionRequired(false);
+      setError(
+        result === "queued"
+          ? "通常の中断を同期待ちへ保存しました。再送が終わるまで合格扱いにしません。"
+          : "通常の中断として記録し、このrunを不合格にしました。",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function invalidatePilotRun(form: FormData): Promise<void> {
+    if (!pilotRun || pilotRun.state !== "active") return;
+    setBusy(true);
+    setError("");
+    try {
+      const synced = await syncPendingPilotEvents(pilotRun.runId);
+      if (countPendingPilotEvents(workspaceId, pilotRun.runId) > 0) {
+        throw new PilotEventSyncPendingError(
+          "同期待ちの例外記録を保存してから、外部事故を記録してください。",
+        );
+      }
+      if (synced && synced.state !== "active") {
+        throw new PilotEventSyncPendingError(
+          "先に保存された例外でrunが終了したため、外部事故へ変更できません。",
+        );
+      }
+      const updated = await requestJson<PilotRunResponse>(
+        `/v1/workspaces/${workspaceId}/pilot-runs/${pilotRun.runId}/external-invalidation`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            reasonCode: textField(form, "reasonCode"),
+            idempotencyKey: crypto.randomUUID(),
+            humanConfirmed: form.get("externalIncidentConfirmed") === "on",
+          }),
+        },
+      );
+      setPilotRun(updated);
+      setPilotResumeDecisionRequired(false);
+      sessionStorage.removeItem(pilotActiveMarkerKey(workspaceId));
+      setStage("purchase");
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function failPilotForUncorrectableContent(): Promise<void> {
+    if (!window.confirm("このrunを不合格として記録し、最初からやり直しますか？")) return;
+    setBusy(true);
+    setError("");
+    try {
+      const result = await recordPilotEvent("invalid_attempt", "uncorrectable_pilot_content");
+      setError(
+        result === "queued"
+          ? "訂正不能を同期待ちへ保存しました。再送が終わるまで合格扱いにしません。"
+          : "訂正不能として記録し、このrunを不合格にしました。",
+      );
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -654,9 +737,12 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
         busy={busy}
         pilotRun={pilotRun}
         pendingEventCount={pendingPilotEventCount}
+        resumeDecisionRequired={pilotResumeDecisionRequired}
         nextFixture={nextPilotFixture}
         nextProfile={nextPilotProfile}
         onStart={startPilot}
+        onInvalidate={invalidatePilotRun}
+        onMarkReloadInvalid={() => void markReloadAsInvalidAttempt()}
         onRetryPending={() => {
           void run(async () => {
             try {
@@ -675,6 +761,8 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
             className={stage === entry.id ? "active" : completed[entry.id] ? "done" : ""}
             disabled={
               busy ||
+              pilotResumeDecisionRequired ||
+              (awaitingNextPilotItem && entry.id !== "purchase") ||
               (entry.id !== "purchase" && !item) ||
               (!stages.slice(0, index).every((previous) => completed[previous.id]) &&
                 entry.id !== "capture")
@@ -689,7 +777,7 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
         ))}
       </nav>
 
-      {items.length > 0 ? (
+      {items.length > 0 && !awaitingNextPilotItem ? (
         <section className="workflowItemSummary panel">
           <label>
             対象商品
@@ -724,11 +812,14 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
           key={nextPilotFixture ?? "standard-purchase"}
           busy={busy}
           onSubmit={createPurchase}
-          item={item}
+          item={awaitingNextPilotItem ? null : item}
           pilotRunId={pilotRun?.state === "active" ? pilotRun.runId : null}
           pilotFixture={nextPilotFixture}
           pilotProfile={nextPilotProfile}
-          pilotBlocked={pilotRun?.state === "active" && nextPilotFixture === null}
+          pilotBlocked={
+            pilotResumeDecisionRequired ||
+            (pilotRun?.state === "active" && nextPilotFixture === null)
+          }
         />
       ) : null}
 
@@ -804,6 +895,7 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
               type="button"
               disabled={
                 busy ||
+                pilotResumeDecisionRequired ||
                 completed.capture ||
                 !measurementComplete ||
                 photoRoles.some(({ id }) => !photos[id])
@@ -837,6 +929,22 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
             <p>公式画面への貼り付けと公開は本人が行います。外部費用は0円です。</p>
           </div>
           <textarea aria-label="商品説明候補" readOnly rows={7} value={description} />
+          {activePilotItem ? (
+            <div className="candidateNotice" role="note">
+              <strong>訂正できる範囲を確認してください</strong>
+              <p>
+                属性の再保存は訂正履歴として数えます。写真・採寸は撮影工程の確定後、文章は直接編集できません。事実を直しても文章が正しくならない場合は、このrunを不合格にして最初からやり直します。
+              </p>
+              <button
+                className="secondaryButton"
+                type="button"
+                disabled={busy || pilotResumeDecisionRequired}
+                onClick={() => void failPilotForUncorrectableContent()}
+              >
+                訂正不能を記録してrunをやり直す
+              </button>
+            </div>
+          ) : null}
           <p className="candidateReferences">
             参照: 写真 {item.capture.photoAssetIds.length}件・採寸
             {item.capture.measurements.length}件
@@ -853,7 +961,12 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
                 ? [{ assetId, role }]
                 : [];
             })}
-            onChanged={refreshItems}
+            pilotActive={pilotRun?.state === "active"}
+            pilotBlocked={pilotResumeDecisionRequired}
+            onChanged={async () => {
+              await refreshItems();
+              await refreshPilotRun();
+            }}
           />
           <div className="humanGate">
             <div>
@@ -868,6 +981,7 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
               type="button"
               disabled={
                 busy ||
+                pilotResumeDecisionRequired ||
                 completed.listing ||
                 item.listingCandidate.unconfirmedFields.length > 0 ||
                 item.listingCandidate.referenceIds.length === 0 ||
@@ -880,8 +994,8 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
           </div>
           <WorkflowNext
             enabled={completed.listing}
-            label="注文・発送へ"
-            onClick={() => setStage("order")}
+            label={activePilotItem ? "次の固定商品へ" : "注文・発送へ"}
+            onClick={() => setStage(activePilotItem ? "purchase" : "order")}
           />
         </section>
       ) : null}
@@ -923,17 +1037,23 @@ function PilotPanel({
   busy,
   pilotRun,
   pendingEventCount,
+  resumeDecisionRequired,
   nextFixture,
   nextProfile,
   onStart,
+  onInvalidate,
+  onMarkReloadInvalid,
   onRetryPending,
 }: {
   busy: boolean;
   pilotRun: PilotRunResponse | null;
   pendingEventCount: number;
+  resumeDecisionRequired: boolean;
   nextFixture: (typeof listingPrepPilotFixtures)[number] | null;
   nextProfile: (typeof listingPrepPilotFixtureProfiles)[number] | null;
   onStart: (form: FormData) => Promise<void>;
+  onInvalidate: (form: FormData) => Promise<void>;
+  onMarkReloadInvalid: () => void;
   onRetryPending: () => void;
 }) {
   const summary = pilotRun?.summary;
@@ -952,6 +1072,25 @@ function PilotPanel({
       <p className="accountingDisclaimer">
         Windowsの390×844表示・ローカルDB・架空商品だけで測ります。外部AI、販売サイト、Notion、Slack、会計サービスへ接続しません。
       </p>
+      <div className="candidateNotice" role="note">
+        <strong>外部通信0件はアプリが自動判定しません</strong>
+        <p>
+          専用ブラウザのrequest capture（通信記録）をrun開始前から終了後まで保存し、run ID
+          {pilotRun ? ` ${pilotRun.runId}` : ""}
+          と結び付けて実施者が127.0.0.1以外0件を確認します。サーバーのcompletedだけでは最終合格にしません。
+        </p>
+      </div>
+      {resumeDecisionRequired ? (
+        <div className="candidateNotice" role="alert">
+          <strong>再読み込みの理由を選ぶまで計測停止</strong>
+          <p>
+            通常の再読み込み・利用者中断は不合格です。停電・OS強制更新・端末故障だけは、下の理由付き操作で外部事故として無効化できます。
+          </p>
+          <button type="button" disabled={busy} onClick={onMarkReloadInvalid}>
+            通常の中断としてrunを不合格にする
+          </button>
+        </div>
+      ) : null}
       {pendingEventCount > 0 ? (
         <div className="candidateNotice" role="alert">
           <strong>例外記録 {pendingEventCount}件が同期待ちです</strong>
@@ -974,12 +1113,40 @@ function PilotPanel({
             無効試行 <strong>{summary?.invalidAttemptCount ?? 0}</strong>
           </span>
           <span>
+            必須画像不足 <strong>{summary?.missingRequiredImageCount ?? 0}</strong>
+          </span>
+          <span>
             再測定 <strong>{summary?.measurementReworkCount ?? 0}</strong>
+          </span>
+          <span>
+            ラベル・場所不一致 <strong>{summary?.labelLocationMismatchCount ?? 0}</strong>
           </span>
           <span>
             誤格納 <strong>{summary?.misputawayCount ?? 0}</strong>
           </span>
+          <span>
+            手動訂正 <strong>{summary?.manualCorrectionCount ?? 0}</strong>
+          </span>
+          <span>
+            通信再送 <strong>{summary?.networkRetryCount ?? 0}</strong>
+          </span>
         </div>
+      ) : null}
+      {pilotRun?.state === "failed" ? (
+        <div className="candidateNotice" role="status">
+          <strong>このrunは不合格です。履歴は削除せず保持します</strong>
+          <p>
+            主な理由件数: 無効試行 {summary?.invalidAttemptCount ?? 0}件／必須画像不足{" "}
+            {summary?.missingRequiredImageCount ?? 0}件／ラベル・場所不一致{" "}
+            {summary?.labelLocationMismatchCount ?? 0}件／誤格納 {summary?.misputawayCount ?? 0}件
+          </p>
+          <p>下のWARMUP-01を計測外で再確認してから、新しいrun IDでTOP-01からやり直してください。</p>
+        </div>
+      ) : null}
+      {pilotRun?.state === "externally_invalidated" ? (
+        <p className="accountingDisclaimer" role="status">
+          外部事故で無効化: {externalInvalidationReasonLabel(pilotRun.externalInvalidationReason)}
+        </p>
       ) : null}
       {pilotRun?.state === "active" ? (
         <div className="candidateNotice">
@@ -1021,6 +1188,34 @@ function PilotPanel({
       ) : null}
       {!pilotRun || finished ? (
         <form className="compactForm" action={onStart}>
+          <div className="candidateNotice">
+            <strong>最初にWARMUP-01を計測外で練習</strong>
+            <p>
+              {listingPrepPilotWarmupFixture.title}／{listingPrepPilotWarmupFixture.categoryLabel}／
+              {listingPrepPilotWarmupFixture.templateId} v
+              {listingPrepPilotWarmupFixture.templateVersion}
+            </p>
+            <ul>
+              {listingPrepPilotWarmupFixture.images.map((image) => (
+                <li key={image.role}>
+                  {image.role}: {image.relativePath}
+                </li>
+              ))}
+            </ul>
+            <p>
+              属性: {listingPrepPilotWarmupFixture.attributes.brand}／
+              {listingPrepPilotWarmupFixture.attributes.sizeLabel}／
+              {listingPrepPilotWarmupFixture.attributes.color}
+            </p>
+            <ul>
+              {listingPrepPilotWarmupFixture.measurements.map((measurement) => (
+                <li key={measurement.definitionId}>
+                  {measurement.label}: {measurement.value}
+                  {measurement.unit}
+                </li>
+              ))}
+            </ul>
+          </div>
           <label>
             計測対象commit SHA（40文字）
             <input
@@ -1037,7 +1232,34 @@ function PilotPanel({
             <input name="warmupCompleted" type="checkbox" required />
             計測外の練習1点と、架空データだけを使うことを確認しました
           </label>
+          <label className="checkLine">
+            <input name="networkCaptureReady" type="checkbox" required />
+            専用ブラウザのrequest captureを開始し、終了後に外部通信0件を人が確認します
+          </label>
           <button disabled={busy || pendingEventCount > 0}>390×844で新しい10商品計測を開始</button>
+        </form>
+      ) : null}
+      {pilotRun?.state === "active" ? (
+        <form className="compactForm" action={onInvalidate}>
+          <h3>外部事故だけでrunを無効化</h3>
+          <label>
+            外部事故の理由
+            <select name="reasonCode" required defaultValue="">
+              <option value="" disabled>
+                理由を選択
+              </option>
+              <option value="power_outage">停電</option>
+              <option value="os_forced_update">OSの強制更新</option>
+              <option value="device_hardware_failure">端末の故障</option>
+            </select>
+          </label>
+          <label className="checkLine">
+            <input name="externalIncidentConfirmed" type="checkbox" required />
+            利用者都合の中断ではなく、選択した外部事故であることを確認しました
+          </label>
+          <button className="secondaryButton" disabled={busy || pendingEventCount > 0}>
+            理由を記録してrunを無効化
+          </button>
         </form>
       ) : null}
     </section>
@@ -1063,6 +1285,8 @@ function PurchasePanel({
 }) {
   const [category, setCategory] = useState<string>(pilotProfile?.category ?? "tops");
   const measurementTemplateId = pilotProfile?.templateId ?? templateForCategory(category);
+  const pilotIdentifiers =
+    pilotRunId && pilotFixture ? listingPrepPilotItemIdentifiers(pilotRunId, pilotFixture) : null;
   return (
     <section className="workflowPanel panel" aria-labelledby="purchase-heading">
       <div className="workflowPanelHead">
@@ -1085,7 +1309,8 @@ function PurchasePanel({
             <input
               name="skuCode"
               required
-              defaultValue={pilotFixture ? `PILOT-${pilotFixture}` : ""}
+              defaultValue={pilotIdentifiers?.skuCode ?? ""}
+              readOnly={pilotIdentifiers !== null}
               placeholder="例: SKU-2026-0001"
             />
           </label>
@@ -1115,7 +1340,11 @@ function PurchasePanel({
               ))}
             </select>
             {pilotProfile ? (
-              <input name="category" type="hidden" value={pilotProfile.category} />
+              <input
+                name="category"
+                type="hidden"
+                value={pilotDisplayCategory(pilotProfile.category)}
+              />
             ) : null}
             <input name="measurementTemplateId" type="hidden" value={measurementTemplateId ?? ""} />
           </label>
@@ -1133,7 +1362,8 @@ function PurchasePanel({
             <input
               name="receiptReference"
               required
-              defaultValue={pilotFixture ? `PILOT-REC-${pilotFixture}` : ""}
+              defaultValue={pilotIdentifiers?.receiptReference ?? ""}
+              readOnly={pilotIdentifiers !== null}
               placeholder="レシート・領収書の参照番号"
             />
           </label>
@@ -1477,6 +1707,12 @@ function numberField(form: FormData, name: string): number {
 function errorMessage(reason: unknown): string {
   return reason instanceof Error ? reason.message : "操作を確認できませんでした。";
 }
+function externalInvalidationReasonLabel(reason: string | null): string {
+  if (reason === "power_outage") return "停電";
+  if (reason === "os_forced_update") return "OSの強制更新";
+  if (reason === "device_hardware_failure") return "端末の故障";
+  return "理由未確認";
+}
 function localDateTimeValue(): string {
   const now = new Date(Date.now() - new Date().getTimezoneOffset() * 60_000);
   return now.toISOString().slice(0, 16);
@@ -1509,17 +1745,4 @@ function inventoryStatusLabel(status: P0ItemResponse["inventoryStatus"]): string
     lost: "紛失確認",
     disposed: "廃棄確認",
   }[status];
-}
-
-function nextStageForItem(item: P0ItemResponse): Stage {
-  if (item.workflowState === "journal_approved" || item.orderState === "shipped")
-    return "accounting";
-  if (
-    ["listing_confirmed", "order_confirmed", "picked", "packed", "shipped"].includes(
-      item.workflowState,
-    )
-  )
-    return "order";
-  if (item.workflowState === "capture_confirmed") return "listing";
-  return "capture";
 }

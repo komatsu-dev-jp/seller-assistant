@@ -143,6 +143,15 @@ function isAllowedPath(method: "GET" | "POST", segments: string[]): boolean {
     return true;
   }
   if (
+    method === "POST" &&
+    segments.length === 3 &&
+    segments[0] === "pilot-runs" &&
+    uuid.test(segments[1] ?? "") &&
+    segments[2] === "external-invalidation"
+  ) {
+    return true;
+  }
+  if (
     method === "GET" &&
     segments.length === 2 &&
     segments[0] === "pilot-runs" &&

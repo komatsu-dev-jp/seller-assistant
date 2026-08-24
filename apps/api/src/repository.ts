@@ -35,6 +35,8 @@ import {
   type P0WorkflowState,
 } from "@resale/domain";
 
+import { recordActivePilotManualCorrection } from "./pilot-manual-correction.js";
+
 export type WorkspaceRole =
   "owner" | "inventory_manager" | "field_worker" | "shipping" | "accounting";
 
@@ -2027,6 +2029,13 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
           throw new RepositoryError("conflict", "The asset ID has different immutable metadata");
         }
         if (registration.kind === "replay" && existing) return toMediaAssetResponse(existing);
+        const previousRoleAssets = await transaction<Array<{ id: string }>>`
+          select id from media_asset
+          where workspace_id = ${workspaceId} and sku_id = ${skuId}
+            and role = ${input.role} and id <> ${input.assetId}
+          order by created_at desc, id desc
+          limit 1
+        `;
         const rows = await transaction<MediaAssetRow[]>`
           insert into media_asset (
             id, workspace_id, sku_id, role, original_sha256, original_storage_key,
@@ -2062,6 +2071,21 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
                   array[${skuId}::uuid],
                   'server_verified_original_bytes', ${actor.identityId})
         `;
+        if (previousRoleAssets[0]) {
+          const correction = await recordActivePilotManualCorrection(transaction, {
+            workspaceId,
+            skuId,
+            actorId: actor.identityId,
+            correctionReferenceId: row.id,
+            detailCode: "photo_role_replaced",
+          });
+          if (correction === "actor_mismatch" || correction === "idempotency_conflict") {
+            throw new RepositoryError(
+              "conflict",
+              "The active pilot correction actor or evidence conflicts with the run",
+            );
+          }
+        }
         return toMediaAssetResponse(row);
       });
     } catch (error) {
@@ -2135,7 +2159,16 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
           previousRows[0] ? toDomainMeasurement(toMeasurementResponse(previousRows[0])) : undefined,
           2,
         );
-        const reviewReasonCode = review.requiresReview ? (input.reviewReasonCode ?? null) : null;
+        if (previousRows[0]?.requires_review && !input.reviewReasonCode) {
+          throw new RepositoryError(
+            "conflict",
+            "A measurement review reason is required before accepting the corrected attempt",
+          );
+        }
+        const reviewReasonCode =
+          review.requiresReview || previousRows[0]?.requires_review
+            ? (input.reviewReasonCode ?? null)
+            : null;
         const requiresReview = review.requiresReview && reviewReasonCode === null;
         const storedViolations = requiresReview ? review.violations : [];
         const rows = await transaction<MeasurementRow[]>`
@@ -2172,6 +2205,31 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
             ${reviewReasonCode ?? "measurement_human_confirmed"}, ${actor.identityId}
           )
         `;
+        if (previousRows[0] && !requiresReview) {
+          const previous = previousRows[0];
+          const changed =
+            previous.requires_review ||
+            Number(previous.value) !== Number(row.value) ||
+            previous.evidence_asset_id !== row.evidence_asset_id ||
+            previous.definition_version !== row.definition_version ||
+            previous.basis !== row.basis ||
+            previous.state !== row.state;
+          if (changed) {
+            const correction = await recordActivePilotManualCorrection(transaction, {
+              workspaceId,
+              skuId,
+              actorId: actor.identityId,
+              correctionReferenceId: row.id,
+              detailCode: "measurement_attempt_replaced",
+            });
+            if (correction === "actor_mismatch" || correction === "idempotency_conflict") {
+              throw new RepositoryError(
+                "conflict",
+                "The active pilot correction actor or evidence conflicts with the run",
+              );
+            }
+          }
+        }
         return toMeasurementResponse(row);
       });
     } catch (error) {

@@ -62,6 +62,7 @@ import {
   quarantineReturnRequestSchema,
   reissuedInventoryLabelResponseSchema,
   reissueInventoryLabelRequestSchema,
+  invalidatePilotRunRequestSchema,
   recordPilotExceptionRequestSchema,
   recordMeasurementRequestSchema,
   reviewLocationPhotoRequestSchema,
@@ -1346,6 +1347,41 @@ export function buildApp(options: BuildAppOptions = {}) {
       return reply.code(mapped.status).send(mapped.payload);
     }
   });
+
+  app.post<{
+    Params: { workspaceId: string; runId: string };
+    Body: unknown;
+    Reply: PilotRunResponse | ApiError;
+  }>(
+    "/v1/workspaces/:workspaceId/pilot-runs/:runId/external-invalidation",
+    async (request, reply) => {
+      const workspace = workspaceIdSchema.safeParse(request.params.workspaceId);
+      const runId = workspaceIdSchema.safeParse(request.params.runId);
+      const input = invalidatePilotRunRequestSchema.safeParse(request.body);
+      const actor = await authenticate(request.headers);
+      if (!actor) return reply.code(401).send(authenticationError(request.id));
+      if (!workspace.success || !runId.success || !input.success) {
+        return reply.code(400).send(invalidP0ItemInput(request.id));
+      }
+      const actorWorkspace = actorWorkspaceError(actor, workspace.data, request.id);
+      if (actorWorkspace) return reply.code(403).send(actorWorkspace);
+      if (!options.p0ItemRepository) {
+        return reply.code(503).send(p0ItemServiceUnavailable(request.id));
+      }
+      try {
+        const run = await options.p0ItemRepository.invalidatePilotRun(
+          workspace.data,
+          runId.data,
+          actor,
+          input.data,
+        );
+        return reply.send(pilotRunResponseSchema.parse(run));
+      } catch (error) {
+        const mapped = mapRepositoryError(error, request.id);
+        return reply.code(mapped.status).send(mapped.payload);
+      }
+    },
+  );
 
   app.get<{
     Params: { workspaceId: string };

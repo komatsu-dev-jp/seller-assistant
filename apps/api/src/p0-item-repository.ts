@@ -4,6 +4,7 @@ import {
   listingPrepPilotFixtureManifestSha256,
   listingPrepPilotFixtureProfiles,
   listingPrepPilotFixtures,
+  listingPrepPilotItemIdentifiers,
   listingPrepPilotMeasurementTemplates,
   listingPrepPilotProtocolVersion,
   pilotFixtureCategories,
@@ -15,6 +16,7 @@ import {
   type CreateMarketplaceReferenceRequest,
   type CreateP0ItemRequest,
   type IdentityCandidateResponse,
+  type InvalidatePilotRunRequest,
   type LocationNodeResponse,
   type MarketplaceReferenceResponse,
   type MeasurementProfileResponse,
@@ -29,6 +31,7 @@ import {
 import { summarizeListingPrepPilot } from "@resale/domain";
 import postgres from "postgres";
 
+import { recordActivePilotManualCorrection } from "./pilot-manual-correction.js";
 import { RepositoryError, type RequestActor } from "./repository.js";
 
 export interface P0ItemRepository {
@@ -49,6 +52,12 @@ export interface P0ItemRepository {
     runId: string,
     actor: RequestActor,
     input: RecordPilotExceptionRequest,
+  ): Promise<PilotRunResponse>;
+  invalidatePilotRun(
+    workspaceId: string,
+    runId: string,
+    actor: RequestActor,
+    input: InvalidatePilotRunRequest,
   ): Promise<PilotRunResponse>;
   createLocation(
     workspaceId: string,
@@ -324,6 +333,19 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
           }
           if (run.protocol_version === listingPrepPilotProtocolVersion) {
             const profile = requirePilotFixtureProfile(input.pilot.productFixtureId);
+            const expectedIdentifiers = listingPrepPilotItemIdentifiers(
+              input.pilot.runId,
+              input.pilot.productFixtureId,
+            );
+            if (
+              input.skuCode !== expectedIdentifiers.skuCode ||
+              input.receiptReference !== expectedIdentifiers.receiptReference
+            ) {
+              throw new RepositoryError(
+                "conflict",
+                "The v1.1 pilot SKU and receipt reference must exactly match the run and fixture",
+              );
+            }
             if (
               run.fixture_manifest_sha256 !== listingPrepPilotFixtureManifestSha256 ||
               profile.category !== category ||
@@ -697,6 +719,94 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
             )
           `;
         }
+        return requirePilotRun(transaction, workspaceId, runId);
+      });
+    } catch (error) {
+      throw normalizeP0ItemError(error);
+    }
+  }
+
+  async invalidatePilotRun(
+    workspaceId: string,
+    runId: string,
+    actor: RequestActor,
+    input: InvalidatePilotRunRequest,
+  ): Promise<PilotRunResponse> {
+    const payloadHash = createHash("sha256")
+      .update(JSON.stringify({ runId, reasonCode: input.reasonCode }), "utf8")
+      .digest("hex");
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId);
+        await requireManagementRole(transaction, workspaceId, actor.identityId);
+        await transaction`
+          select pg_advisory_xact_lock(hashtext(${`pilot-invalidate:${workspaceId}:${runId}`}))
+        `;
+        const replay = await transaction<
+          Array<{ result_reference_id: string; payload_hash: string }>
+        >`
+          select result_reference_id, payload_hash from idempotency_record
+          where workspace_id = ${workspaceId}
+            and operation = 'invalidate_pilot_run_external'
+            and idempotency_key = ${input.idempotencyKey}
+        `;
+        if (replay[0]) {
+          if (replay[0].payload_hash !== payloadHash || replay[0].result_reference_id !== runId) {
+            throw new RepositoryError(
+              "conflict",
+              "The pilot invalidation idempotency key has another payload",
+            );
+          }
+          return requirePilotRun(transaction, workspaceId, runId);
+        }
+
+        const runs = await transaction<Array<{ state: PilotRunResponse["state"] }>>`
+          select state from pilot_run
+          where workspace_id = ${workspaceId} and id = ${runId}
+          for update
+        `;
+        if (!runs[0]) throw new RepositoryError("forbidden", "The pilot run is unavailable");
+        if (runs[0].state !== "active") {
+          throw new RepositoryError(
+            "conflict",
+            "Only an active pilot run can be externally invalidated",
+          );
+        }
+
+        await transaction`
+          update pilot_run
+          set state = 'externally_invalidated', externally_invalidated = true,
+              external_invalidation_reason = ${input.reasonCode},
+              completed_at = statement_timestamp()
+          where workspace_id = ${workspaceId} and id = ${runId} and state = 'active'
+        `;
+        await transaction`
+          insert into idempotency_record (
+            workspace_id, operation, idempotency_key, payload_hash, result_reference_id
+          ) values (
+            ${workspaceId}, 'invalidate_pilot_run_external', ${input.idempotencyKey},
+            ${payloadHash}, ${runId}
+          )
+        `;
+        await transaction`
+          insert into audit_event (
+            workspace_id, actor_id, action, target_type, target_id, field_names,
+            redacted_changes, reference_ids, reason_code, approved_by
+          ) values (
+            ${workspaceId}, ${actor.identityId}, 'pilot_run.externally_invalidated',
+            'pilot_run', ${runId},
+            ${["state", "externally_invalidated", "external_invalidation_reason"]},
+            ${transaction.json({
+              before: { state: "active", externally_invalidated: false },
+              after: {
+                state: "externally_invalidated",
+                externally_invalidated: true,
+                reason_code: input.reasonCode,
+              },
+            })},
+            ${[runId]}, ${input.reasonCode}, ${actor.identityId}
+          )
+        `;
         return requirePilotRun(transaction, workspaceId, runId);
       });
     } catch (error) {
@@ -1101,6 +1211,19 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
             "Product attributes changed; reload the latest confirmation before saving",
           );
         }
+        if (
+          current &&
+          current.brand === input.brand &&
+          current.size_label === input.sizeLabel &&
+          current.color === input.color &&
+          current.evidence_asset_id === input.evidenceAssetId &&
+          current.source_candidate_id === (input.sourceCandidateId ?? null)
+        ) {
+          throw new RepositoryError(
+            "conflict",
+            "Product attributes are unchanged; no correction was saved",
+          );
+        }
         const id = randomUUID();
         const rows = await transaction<AttributeConfirmationRow[]>`
           insert into product_attribute_confirmation (
@@ -1129,6 +1252,21 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
           { revision: row.revision, fields: ["brand", "size_label", "color"] },
           "product_attributes_human_confirmed",
         );
+        if (current) {
+          const correction = await recordActivePilotManualCorrection(transaction, {
+            workspaceId,
+            skuId,
+            actorId: actor.identityId,
+            correctionReferenceId: row.id,
+            detailCode: "product_attributes_revised",
+          });
+          if (correction === "actor_mismatch" || correction === "idempotency_conflict") {
+            throw new RepositoryError(
+              "conflict",
+              "The active pilot correction actor or evidence conflicts with the run",
+            );
+          }
+        }
         return toAttributeConfirmation(row);
       });
     } catch (error) {
@@ -1147,6 +1285,18 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
         await setWorkspace(transaction, workspaceId);
         await requireManagementRole(transaction, workspaceId, actor.identityId);
         await requireResearchEditable(transaction, workspaceId, skuId, true);
+        const activePilotRuns = await transaction<Array<{ id: string }>>`
+          select run.id from pilot_run run
+          where run.workspace_id = ${workspaceId} and run.state = 'active'
+            and run.protocol_version = 'listing_prep_pilot_v1.1.0'
+          limit 1
+        `;
+        if (activePilotRuns[0]) {
+          throw new RepositoryError(
+            "conflict",
+            "Marketplace references are disabled during the local-only pilot",
+          );
+        }
         const id = randomUUID();
         const rows = await transaction<ReferenceRow[]>`
           insert into marketplace_reference (

@@ -13,7 +13,9 @@ import {
   financialSummaryResponseSchema,
   hasValidCodeCheckDigit,
   inventoryNumberSchema,
+  invalidatePilotRunRequestSchema,
   listingPrepPilotFixtureManifestSha256,
+  listingPrepPilotItemIdentifiers,
   listingPrepPilotMigrationVersion,
   listingPrepPilotMeasurementTemplates,
   listingPrepPilotProtocolVersion,
@@ -238,6 +240,19 @@ describe("safe discrepancy and accounting preview read models", () => {
 });
 
 describe("ten-product pilot contract", () => {
+  it("derives restart-safe v1.1 SKU and receipt identifiers from the complete run UUID", () => {
+    const runId = "a0000000-b111-4c22-8d33-e44444444444";
+    expect(listingPrepPilotItemIdentifiers(runId, "TOP-01")).toEqual({
+      skuCode: "PILOT-TOP-01-A0000000-B111-4C22-8D33-E44444444444",
+      receiptReference: "PILOT-REC-TOP-01-A0000000-B111-4C22-8D33-E44444444444",
+    });
+    expect(listingPrepPilotItemIdentifiers(runId, "TOP-01").skuCode.length).toBeLessThanOrEqual(64);
+    expect(
+      listingPrepPilotItemIdentifiers(runId, "TOP-01").receiptReference.length,
+    ).toBeLessThanOrEqual(120);
+    expect(() => listingPrepPilotItemIdentifiers("not-a-run-id", "TOP-01")).toThrow();
+  });
+
   it("locks new starts to the generated v1.1 manifest, latest migration and 390x844 viewport", () => {
     const latestMigrationVersion = readdirSync(new URL("../../db/migrations/", import.meta.url))
       .filter((name) => /^\d{4}_.+\.sql$/u.test(name))
@@ -403,6 +418,32 @@ describe("ten-product pilot contract", () => {
         humanConfirmed: true,
       }).success,
     ).toBe(true);
+    expect(
+      recordPilotExceptionRequestSchema.safeParse({
+        eventType: "manual_correction",
+        detailCode: "client_claimed_correction",
+        idempotencyKey: "10000000-0000-4000-8000-000000000005",
+        humanConfirmed: true,
+      }).success,
+    ).toBe(false);
+    const invalidation = {
+      reasonCode: "power_outage",
+      idempotencyKey: "10000000-0000-4000-8000-000000000004",
+      humanConfirmed: true,
+    } as const;
+    expect(invalidatePilotRunRequestSchema.safeParse(invalidation).success).toBe(true);
+    expect(
+      invalidatePilotRunRequestSchema.safeParse({
+        ...invalidation,
+        reasonCode: "user_break",
+      }).success,
+    ).toBe(false);
+    expect(
+      invalidatePilotRunRequestSchema.safeParse({
+        ...invalidation,
+        manualCorrectionCount: 0,
+      }).success,
+    ).toBe(false);
   });
 });
 

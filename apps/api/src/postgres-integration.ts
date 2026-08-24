@@ -8,6 +8,7 @@ import {
   appendCodeCheckDigit,
   listingPrepPilotFixtureManifestSha256,
   listingPrepPilotFixtureProfiles,
+  listingPrepPilotItemIdentifiers,
   listingPrepPilotMigrationVersion,
   listingPrepPilotProtocolVersion,
   type StocktakeResponse,
@@ -294,15 +295,16 @@ try {
   const pilotStartedBody = pilotStarted.json<{ runId: string; migrationVersion: string }>();
   assert.equal(pilotStartedBody.migrationVersion, listingPrepPilotMigrationVersion);
   const pilotRunId = pilotStartedBody.runId;
+  const top01PilotIdentifiers = listingPrepPilotItemIdentifiers(pilotRunId, "TOP-01");
 
   const acquisitionKey = randomUUID();
   const acquisitionPayload = {
-    skuCode: "SKU-P0-ACQUIRED",
+    skuCode: top01PilotIdentifiers.skuCode,
     title: top01PilotFixture.title,
     category: "トップス",
     measurementTemplateId: top01PilotFixture.templateId,
     supplierName: "架空テスト仕入先",
-    receiptReference: "RECEIPT-P0-0001",
+    receiptReference: top01PilotIdentifiers.receiptReference,
     purchasedAt: new Date().toISOString(),
     receiptAmountMinor: 1500,
     allocatedCostMinor: 1500,
@@ -442,7 +444,12 @@ try {
   const firstPilotMeasurement = top01PilotFixture.measurements[0];
   const pilotMeasurementInput = (
     measurement: (typeof top01PilotFixture.measurements)[number],
-    input: { evidenceAssetId: string; attempt: number; value?: number },
+    input: {
+      evidenceAssetId: string;
+      attempt: number;
+      value?: number;
+      reviewReasonCode?: "previous_entry_error";
+    },
   ) => ({
     definitionId: measurement.definitionId,
     definitionVersion: measurement.definitionVersion,
@@ -453,6 +460,7 @@ try {
     measuredAt: new Date().toISOString(),
     evidenceAssetId: input.evidenceAssetId,
     attempt: input.attempt,
+    ...(input.reviewReasonCode ? { reviewReasonCode: input.reviewReasonCode } : {}),
     humanConfirmed: true as const,
   });
   for (const invalidMeasurement of [
@@ -494,7 +502,7 @@ try {
       url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/measurements`,
       headers: { cookie },
       payload: pilotMeasurementInput(expectedMeasurement, {
-        value: index === 0 ? expectedMeasurement.value + 1 : expectedMeasurement.value,
+        value: index === 0 ? expectedMeasurement.value + 3 : expectedMeasurement.value,
         evidenceAssetId: acquisitionAssetByRole.get("front") ?? "",
         attempt: 1,
       }),
@@ -560,6 +568,33 @@ try {
     }),
   });
   assert.equal(correctedMeasurement.statusCode, 201, correctedMeasurement.body);
+  assert.equal(correctedMeasurement.json<{ requiresReview: boolean }>().requiresReview, true);
+  const missingMeasurementReviewReason = await app.inject({
+    method: "POST",
+    url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/measurements`,
+    headers: { cookie },
+    payload: pilotMeasurementInput(firstPilotMeasurement, {
+      evidenceAssetId: correctedFrontAssetId,
+      attempt: 3,
+    }),
+  });
+  assert.equal(missingMeasurementReviewReason.statusCode, 409, missingMeasurementReviewReason.body);
+  assert.match(missingMeasurementReviewReason.body, /review reason is required/iu);
+  const acceptedCorrectedMeasurement = await app.inject({
+    method: "POST",
+    url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/measurements`,
+    headers: { cookie },
+    payload: pilotMeasurementInput(firstPilotMeasurement, {
+      evidenceAssetId: correctedFrontAssetId,
+      attempt: 3,
+      reviewReasonCode: "previous_entry_error",
+    }),
+  });
+  assert.equal(acceptedCorrectedMeasurement.statusCode, 201, acceptedCorrectedMeasurement.body);
+  assert.equal(
+    acceptedCorrectedMeasurement.json<{ requiresReview: boolean }>().requiresReview,
+    false,
+  );
 
   const captureAdvanced = await app.inject({
     method: "POST",
@@ -600,29 +635,31 @@ try {
     headers: { cookie },
     payload: pilotMeasurementInput(firstPilotMeasurement, {
       evidenceAssetId: correctedFrontAssetId,
-      attempt: 3,
+      attempt: 4,
     }),
   });
   assert.equal(postCaptureMeasurement.statusCode, 409, postCaptureMeasurement.body);
-  for (const [index, price] of [3200, 3500, 4100].entries()) {
-    const reference = await app.inject({
-      method: "POST",
-      url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/market-references`,
-      headers: { cookie },
-      payload: {
-        sourceUrl: `https://example.test/manual-reference-${index + 1}`,
-        displayedPriceMinor: price,
-        soldState: true,
-        itemCondition: "目立った傷なし",
-        shippingBasis: "included",
-        included: true,
-        exclusionReason: null,
-        checkedAt: new Date(Date.now() + index).toISOString(),
-        humanConfirmed: true,
-      },
-    });
-    assert.equal(reference.statusCode, 201, reference.body);
-  }
+  const blockedPilotReference = await app.inject({
+    method: "POST",
+    url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/market-references`,
+    headers: { cookie },
+    payload: {
+      sourceUrl: "https://example.test/blocked-during-pilot",
+      displayedPriceMinor: 3500,
+      soldState: true,
+      itemCondition: "目立った傷なし",
+      shippingBasis: "included",
+      included: true,
+      exclusionReason: null,
+      checkedAt: new Date().toISOString(),
+      humanConfirmed: true,
+    },
+  });
+  assert.equal(blockedPilotReference.statusCode, 409, blockedPilotReference.body);
+  assert.match(
+    blockedPilotReference.json<{ message: string }>().message,
+    /disabled during the local-only pilot/,
+  );
   const research = await app.inject({
     method: "GET",
     url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/research`,
@@ -630,8 +667,8 @@ try {
   });
   assert.equal(research.statusCode, 200, research.body);
   assert.equal(
-    research.json<{ displayedPriceMedianMinor: number }>().displayedPriceMedianMinor,
-    3500,
+    research.json<{ displayedPriceMedianMinor: number | null }>().displayedPriceMedianMinor,
+    null,
   );
   const capturedReadModel = await app.inject({
     method: "GET",
@@ -732,6 +769,17 @@ try {
   assert.match(staleAttributeConfirmation.body, /Product attributes changed/iu);
   const correctedConfirmationId = correctedAttributeConfirmation.json<{ confirmationId: string }>()
     .confirmationId;
+  const unchangedAttributeConfirmation = await app.inject({
+    method: "POST",
+    url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/product-attributes`,
+    headers: { cookie },
+    payload: {
+      ...correctedAttributePayload,
+      supersedesConfirmationId: correctedConfirmationId,
+    },
+  });
+  assert.equal(unchangedAttributeConfirmation.statusCode, 409, unchangedAttributeConfirmation.body);
+  assert.match(unchangedAttributeConfirmation.body, /attributes are unchanged/iu);
   const correctedReadModel = await app.inject({
     method: "GET",
     url: `/v1/workspaces/${owner.workspaceId}/p0-items`,
@@ -793,6 +841,7 @@ try {
       itemCount: number;
       completedItemCount: number;
       measurementReworkCount: number;
+      manualCorrectionCount: number;
       passed: boolean | null;
     };
     items: Array<{ productFixtureId: string; copyReadyWorkflowVersion: number }>;
@@ -801,9 +850,40 @@ try {
   assert.equal(pilotResult.summary.itemCount, 1);
   assert.equal(pilotResult.summary.completedItemCount, 1);
   assert.equal(pilotResult.summary.measurementReworkCount, 1);
+  assert.equal(pilotResult.summary.manualCorrectionCount, 3);
   assert.equal(pilotResult.summary.passed, null);
   assert.equal(pilotResult.items[0]?.productFixtureId, "TOP-01");
   assert.equal(pilotResult.items[0]?.copyReadyWorkflowVersion, 4);
+  const correctionAudit = postgres(adminUrl, { max: 1 });
+  try {
+    const correctionEvents = await correctionAudit<
+      Array<{ detail_code: string; event_count: number }>
+    >`
+      select detail_code, count(*)::integer as event_count
+      from pilot_exception_event
+      where workspace_id = ${owner.workspaceId} and pilot_run_id = ${pilotRunId}
+        and event_type = 'manual_correction'
+      group by detail_code
+      order by detail_code
+    `;
+    assert.deepEqual(
+      [...correctionEvents],
+      [
+        { detail_code: "measurement_attempt_replaced", event_count: 1 },
+        { detail_code: "photo_role_replaced", event_count: 1 },
+        { detail_code: "product_attributes_revised", event_count: 1 },
+      ],
+    );
+    const manualCorrectionAudits = await correctionAudit<Array<{ event_count: number }>>`
+      select count(*)::integer as event_count from audit_event
+      where workspace_id = ${owner.workspaceId}
+        and action = 'pilot_manual_correction.recorded'
+        and target_type = 'pilot_exception_event'
+    `;
+    assert.equal(manualCorrectionAudits[0]?.event_count, 3);
+  } finally {
+    await correctionAudit.end({ timeout: 5 });
+  }
   const manualOrderWorkflowBypass = await app.inject({
     method: "POST",
     url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/p0-actions`,
@@ -5087,17 +5167,18 @@ try {
     await inventory.end({ timeout: 5 });
   }
 
+  const top02PilotIdentifiers = listingPrepPilotItemIdentifiers(pilotRunId, "TOP-02");
   const interruptedPilotItem = await app.inject({
     method: "POST",
     url: `/v1/workspaces/${owner.workspaceId}/p0-items`,
     headers: { cookie },
     payload: {
-      skuCode: "SKU-PILOT-INTERRUPTED",
+      skuCode: top02PilotIdentifiers.skuCode,
       title: top02PilotFixture.title,
       category: "トップス",
       measurementTemplateId: top02PilotFixture.templateId,
       supplierName: "架空テスト仕入先",
-      receiptReference: "RECEIPT-PILOT-INTERRUPTED",
+      receiptReference: top02PilotIdentifiers.receiptReference,
       purchasedAt: new Date().toISOString(),
       receiptAmountMinor: 1200,
       allocatedCostMinor: 1200,
@@ -5136,6 +5217,219 @@ try {
   assert.equal(failedPilot.summary.itemCount, 2);
   assert.equal(failedPilot.summary.invalidAttemptCount, 1);
   assert.equal(failedPilot.summary.passed, false);
+
+  const externalPilotStarted = await app.inject({
+    method: "POST",
+    url: `/v1/workspaces/${owner.workspaceId}/pilot-runs`,
+    headers: { cookie },
+    payload: {
+      protocolVersion: listingPrepPilotProtocolVersion,
+      fixtureManifestSha256: listingPrepPilotFixtureManifestSha256,
+      commitSha: "d".repeat(40),
+      migrationVersion: listingPrepPilotMigrationVersion,
+      platform: "Windows external-incident fixture",
+      browser: "Chromium external-incident fixture",
+      viewport: "390x844",
+      warmupCompleted: true,
+      humanConfirmed: true,
+    },
+  });
+  assert.equal(externalPilotStarted.statusCode, 201, externalPilotStarted.body);
+  const externalPilotRunId = externalPilotStarted.json<{ runId: string }>().runId;
+  const externalRestartIdentifiers = listingPrepPilotItemIdentifiers(externalPilotRunId, "TOP-01");
+  const externalRestartPayload = {
+    skuCode: externalRestartIdentifiers.skuCode,
+    title: top01PilotFixture.title,
+    category: "トップス",
+    measurementTemplateId: top01PilotFixture.templateId,
+    supplierName: "架空テスト仕入先",
+    receiptReference: externalRestartIdentifiers.receiptReference,
+    purchasedAt: new Date().toISOString(),
+    receiptAmountMinor: 1300,
+    allocatedCostMinor: 1300,
+    idempotencyKey: randomUUID(),
+    humanConfirmed: true,
+    pilot: { runId: externalPilotRunId, productFixtureId: "TOP-01" },
+  } as const;
+  const mismatchedExternalRestart = await app.inject({
+    method: "POST",
+    url: `/v1/workspaces/${owner.workspaceId}/p0-items`,
+    headers: { cookie },
+    payload: {
+      ...externalRestartPayload,
+      skuCode: "PILOT-TOP-01",
+      receiptReference: "PILOT-REC-TOP-01",
+      idempotencyKey: randomUUID(),
+    },
+  });
+  assert.equal(mismatchedExternalRestart.statusCode, 409, mismatchedExternalRestart.body);
+  assert.match(mismatchedExternalRestart.body, /must exactly match the run and fixture/iu);
+  const externalRestartItem = await app.inject({
+    method: "POST",
+    url: `/v1/workspaces/${owner.workspaceId}/p0-items`,
+    headers: { cookie },
+    payload: externalRestartPayload,
+  });
+  assert.equal(externalRestartItem.statusCode, 201, externalRestartItem.body);
+  const externalRestartItemBody = externalRestartItem.json<{
+    skuCode: string;
+    receiptReference: string;
+  }>();
+  assert.equal(externalRestartItemBody.skuCode, externalRestartIdentifiers.skuCode);
+  assert.equal(
+    externalRestartItemBody.receiptReference,
+    externalRestartIdentifiers.receiptReference,
+  );
+  const externalInvalidationKey = randomUUID();
+  const externalInvalidationPayload = {
+    reasonCode: "power_outage",
+    idempotencyKey: externalInvalidationKey,
+    humanConfirmed: true,
+  } as const;
+  const workerExternalInvalidation = await app.inject({
+    method: "POST",
+    url: `/v1/workspaces/${owner.workspaceId}/pilot-runs/${externalPilotRunId}/external-invalidation`,
+    headers: { cookie: workerCookie },
+    payload: externalInvalidationPayload,
+  });
+  assert.equal(workerExternalInvalidation.statusCode, 403, workerExternalInvalidation.body);
+  const externalInvalidation = await app.inject({
+    method: "POST",
+    url: `/v1/workspaces/${owner.workspaceId}/pilot-runs/${externalPilotRunId}/external-invalidation`,
+    headers: { cookie },
+    payload: externalInvalidationPayload,
+  });
+  assert.equal(externalInvalidation.statusCode, 200, externalInvalidation.body);
+  const externalInvalidationBody = externalInvalidation.json<{
+    state: string;
+    externallyInvalidated: boolean;
+    externalInvalidationReason: string | null;
+  }>();
+  assert.equal(externalInvalidationBody.state, "externally_invalidated");
+  assert.equal(externalInvalidationBody.externallyInvalidated, true);
+  assert.equal(externalInvalidationBody.externalInvalidationReason, "power_outage");
+  const externalInvalidationReplay = await app.inject({
+    method: "POST",
+    url: `/v1/workspaces/${owner.workspaceId}/pilot-runs/${externalPilotRunId}/external-invalidation`,
+    headers: { cookie },
+    payload: externalInvalidationPayload,
+  });
+  assert.equal(externalInvalidationReplay.statusCode, 200, externalInvalidationReplay.body);
+  assert.deepEqual(externalInvalidationReplay.json(), externalInvalidation.json());
+  const externalInvalidationPayloadConflict = await app.inject({
+    method: "POST",
+    url: `/v1/workspaces/${owner.workspaceId}/pilot-runs/${externalPilotRunId}/external-invalidation`,
+    headers: { cookie },
+    payload: { ...externalInvalidationPayload, reasonCode: "os_forced_update" },
+  });
+  assert.equal(
+    externalInvalidationPayloadConflict.statusCode,
+    409,
+    externalInvalidationPayloadConflict.body,
+  );
+  const externalInvalidationTerminalConflict = await app.inject({
+    method: "POST",
+    url: `/v1/workspaces/${owner.workspaceId}/pilot-runs/${externalPilotRunId}/external-invalidation`,
+    headers: { cookie },
+    payload: { ...externalInvalidationPayload, idempotencyKey: randomUUID() },
+  });
+  assert.equal(
+    externalInvalidationTerminalConflict.statusCode,
+    409,
+    externalInvalidationTerminalConflict.body,
+  );
+  const externalInvalidationAudit = postgres(adminUrl, { max: 1 });
+  try {
+    const records = await externalInvalidationAudit<
+      Array<{ action: string; reason_code: string; event_count: number }>
+    >`
+      select action, reason_code, count(*)::integer as event_count
+      from audit_event
+      where workspace_id = ${owner.workspaceId} and target_id = ${externalPilotRunId}
+        and action = 'pilot_run.externally_invalidated'
+      group by action, reason_code
+    `;
+    assert.deepEqual(
+      [...records],
+      [
+        {
+          action: "pilot_run.externally_invalidated",
+          reason_code: "power_outage",
+          event_count: 1,
+        },
+      ],
+    );
+  } finally {
+    await externalInvalidationAudit.end({ timeout: 5 });
+  }
+
+  const postExternalPilotStarted = await app.inject({
+    method: "POST",
+    url: `/v1/workspaces/${owner.workspaceId}/pilot-runs`,
+    headers: { cookie },
+    payload: {
+      protocolVersion: listingPrepPilotProtocolVersion,
+      fixtureManifestSha256: listingPrepPilotFixtureManifestSha256,
+      commitSha: "e".repeat(40),
+      migrationVersion: listingPrepPilotMigrationVersion,
+      platform: "Windows post-external restart fixture",
+      browser: "Chromium post-external restart fixture",
+      viewport: "390x844",
+      warmupCompleted: true,
+      humanConfirmed: true,
+    },
+  });
+  assert.equal(postExternalPilotStarted.statusCode, 201, postExternalPilotStarted.body);
+  const postExternalPilotRunId = postExternalPilotStarted.json<{ runId: string }>().runId;
+  const postExternalIdentifiers = listingPrepPilotItemIdentifiers(postExternalPilotRunId, "TOP-01");
+  assert.notEqual(postExternalIdentifiers.skuCode, top01PilotIdentifiers.skuCode);
+  assert.notEqual(postExternalIdentifiers.skuCode, externalRestartIdentifiers.skuCode);
+  assert.notEqual(
+    postExternalIdentifiers.receiptReference,
+    externalRestartIdentifiers.receiptReference,
+  );
+  const postExternalRestartItem = await app.inject({
+    method: "POST",
+    url: `/v1/workspaces/${owner.workspaceId}/p0-items`,
+    headers: { cookie },
+    payload: {
+      skuCode: postExternalIdentifiers.skuCode,
+      title: top01PilotFixture.title,
+      category: "トップス",
+      measurementTemplateId: top01PilotFixture.templateId,
+      supplierName: "架空テスト仕入先",
+      receiptReference: postExternalIdentifiers.receiptReference,
+      purchasedAt: new Date().toISOString(),
+      receiptAmountMinor: 1400,
+      allocatedCostMinor: 1400,
+      idempotencyKey: randomUUID(),
+      humanConfirmed: true,
+      pilot: { runId: postExternalPilotRunId, productFixtureId: "TOP-01" },
+    },
+  });
+  assert.equal(postExternalRestartItem.statusCode, 201, postExternalRestartItem.body);
+  const postExternalRestartItemBody = postExternalRestartItem.json<{
+    skuCode: string;
+    receiptReference: string;
+  }>();
+  assert.equal(postExternalRestartItemBody.skuCode, postExternalIdentifiers.skuCode);
+  assert.equal(
+    postExternalRestartItemBody.receiptReference,
+    postExternalIdentifiers.receiptReference,
+  );
+  const postExternalRestartCleanup = await app.inject({
+    method: "POST",
+    url: `/v1/workspaces/${owner.workspaceId}/pilot-runs/${postExternalPilotRunId}/events`,
+    headers: { cookie },
+    payload: {
+      eventType: "invalid_attempt",
+      detailCode: "integration_restart_proof_complete",
+      idempotencyKey: randomUUID(),
+      humanConfirmed: true,
+    },
+  });
+  assert.equal(postExternalRestartCleanup.statusCode, 201, postExternalRestartCleanup.body);
+  assert.equal(postExternalRestartCleanup.json<{ state: string }>().state, "failed");
 
   const lateRunId = randomUUID();
   const lateAdmin = postgres(adminUrl, { max: 1 });

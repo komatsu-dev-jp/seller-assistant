@@ -319,6 +319,19 @@ export const p0WorkflowActionSchema = z.enum([
 export const listingPrepPilotFixtures = listingPrepPilotFixtureIds;
 
 export const pilotFixtureIdSchema = z.enum(listingPrepPilotFixtures);
+
+export function listingPrepPilotItemIdentifiers(
+  runId: string,
+  productFixtureId: z.infer<typeof pilotFixtureIdSchema>,
+): { skuCode: string; receiptReference: string } {
+  const canonicalRunId = workspaceIdSchema.parse(runId).toUpperCase();
+  const canonicalFixtureId = pilotFixtureIdSchema.parse(productFixtureId);
+  return {
+    skuCode: `PILOT-${canonicalFixtureId}-${canonicalRunId}`,
+    receiptReference: `PILOT-REC-${canonicalFixtureId}-${canonicalRunId}`,
+  };
+}
+
 export const pilotCategorySchema = z.enum(["tops", "outer", "pants", "knit"]);
 export const pilotFixtureCategories = Object.fromEntries(
   listingPrepPilotFixtureProfiles.map((profile) => [profile.fixtureId, profile.category]),
@@ -394,7 +407,6 @@ export const pilotEventTypeSchema = z.enum([
   "label_location_mismatch",
   "misputaway",
   "network_retry",
-  "manual_correction",
 ]);
 
 export const recordPilotExceptionRequestSchema = z
@@ -406,6 +418,20 @@ export const recordPilotExceptionRequestSchema = z
       .min(1)
       .max(80)
       .regex(/^[a-z0-9_]+$/u),
+    idempotencyKey: z.string().uuid(),
+    humanConfirmed: z.literal(true),
+  })
+  .strict();
+
+export const pilotExternalInvalidationReasonSchema = z.enum([
+  "power_outage",
+  "os_forced_update",
+  "device_hardware_failure",
+]);
+
+export const invalidatePilotRunRequestSchema = z
+  .object({
+    reasonCode: pilotExternalInvalidationReasonSchema,
     idempotencyKey: z.string().uuid(),
     humanConfirmed: z.literal(true),
   })
@@ -1710,6 +1736,7 @@ export type CreateP0ItemRequest = z.infer<typeof createP0ItemRequestSchema>;
 export type P0ItemResponse = z.infer<typeof p0ItemResponseSchema>;
 export type StartPilotRunRequest = z.infer<typeof startPilotRunRequestSchema>;
 export type RecordPilotExceptionRequest = z.infer<typeof recordPilotExceptionRequestSchema>;
+export type InvalidatePilotRunRequest = z.infer<typeof invalidatePilotRunRequestSchema>;
 export type PilotExceptionMetrics = z.infer<typeof pilotExceptionMetricsSchema>;
 export type PilotItemMeasurement = z.infer<typeof pilotItemMeasurementSchema>;
 export type PilotRunResponse = z.infer<typeof pilotRunResponseSchema>;

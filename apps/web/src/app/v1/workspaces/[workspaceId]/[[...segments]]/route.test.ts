@@ -114,3 +114,53 @@ describe("workspace product attribute proxy allowlist", () => {
     expect(upstream).not.toHaveBeenCalled();
   });
 });
+
+describe("workspace pilot external invalidation proxy allowlist", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  it("forwards only the exact POST external-invalidation route", async () => {
+    vi.stubEnv("API_INTERNAL_ORIGIN", "http://api.invalid");
+    vi.stubEnv("APP_ORIGIN", appOrigin);
+    const upstream = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const segments = ["pilot-runs", skuId, "external-invalidation"];
+    const response = await POST(
+      new NextRequest(`http://127.0.0.1:3000/v1/workspaces/${workspaceId}/${segments.join("/")}`, {
+        method: "POST",
+        headers: { origin: appOrigin },
+      }),
+      { params: Promise.resolve({ workspaceId, segments }) },
+    );
+    expect(response.status).toBe(200);
+    expect(upstream).toHaveBeenCalledOnce();
+  });
+
+  it("rejects a near-match and GET without widening the pilot routes", async () => {
+    vi.stubEnv("API_INTERNAL_ORIGIN", "http://api.invalid");
+    vi.stubEnv("APP_ORIGIN", appOrigin);
+    const upstream = vi.spyOn(globalThis, "fetch");
+    const nearMatch = ["pilot-runs", skuId, "external-invalidation-extra"];
+    const rejectedPost = await POST(
+      new NextRequest(`http://127.0.0.1:3000/v1/workspaces/${workspaceId}/${nearMatch.join("/")}`, {
+        method: "POST",
+        headers: { origin: appOrigin },
+      }),
+      { params: Promise.resolve({ workspaceId, segments: nearMatch }) },
+    );
+    const exact = ["pilot-runs", skuId, "external-invalidation"];
+    const rejectedGet = await GET(
+      new NextRequest(`http://127.0.0.1:3000/v1/workspaces/${workspaceId}/${exact.join("/")}`),
+      { params: Promise.resolve({ workspaceId, segments: exact }) },
+    );
+    expect(rejectedPost.status).toBe(404);
+    expect(rejectedGet.status).toBe(404);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+});

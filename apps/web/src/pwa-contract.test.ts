@@ -39,6 +39,7 @@ describe("zero-cost PWA contract", () => {
     expect(proxy).toContain('segments[0] === "pilot-runs"');
     expect(proxy).toContain('segments[1] === "latest"');
     expect(proxy).toContain('segments[2] === "events"');
+    expect(proxy).toContain('segments[2] === "external-invalidation"');
     expect(proxy).toContain('segments[0] === "owner-pulse"');
     expect(proxy).toContain('segments[3] === "preview"');
     expect(proxy).toContain('segments[6] === "content"');
@@ -337,6 +338,15 @@ describe("zero-cost PWA contract", () => {
 
   it("persists pilot exceptions on the server and queues transport failures without passing totals", () => {
     const workflow = readFileSync(resolve("apps/web/src/components/p0-workspace.tsx"), "utf8");
+    const research = readFileSync(
+      resolve("apps/web/src/components/product-research-panel.tsx"),
+      "utf8",
+    );
+    const correctionRepository = readFileSync(
+      resolve("apps/api/src/pilot-manual-correction.ts"),
+      "utf8",
+    );
+    const p0Repository = readFileSync(resolve("apps/api/src/p0-item-repository.ts"), "utf8");
     expect(workflow).toContain("listingPrepPilotMigrationVersion");
     expect(workflow).toContain("migrationVersion: listingPrepPilotMigrationVersion");
     expect(workflow).not.toContain('migrationVersion: "0028"');
@@ -348,6 +358,29 @@ describe("zero-cost PWA contract", () => {
     expect(workflow).toContain("resale-ops:pilot-pending-events:v1");
     expect(workflow).toContain('"browser_reload_or_reopen"');
     expect(workflow).toContain('"measurement_rework"');
+    expect(workflow).toContain("専用ブラウザのrequest capture");
+    expect(workflow).toContain("手動訂正");
+    expect(workflow).toContain("通信再送");
+    expect(workflow).toContain("external-invalidation");
+    expect(workflow).toContain("listingPrepPilotWarmupFixture");
+    expect(workflow).toContain("listingPrepPilotItemIdentifiers");
+    expect(workflow).toContain("readOnly={pilotIdentifiers !== null}");
+    expect(workflow).toContain("次の固定商品へ");
+    expect(workflow).toContain("このrunは不合格です。履歴は削除せず保持します");
+    expect(workflow).toContain("新しいrun IDでTOP-01からやり直してください");
+    expect(workflow).toContain("必須画像不足");
+    expect(workflow).toContain("ラベル・場所不一致");
+    expect(workflow).not.toContain(
+      'if (correction) await recordPilotEvent("manual_correction", correction.detailCode)',
+    );
+    expect(research).toContain("P06計測中は外部ページを開きません");
+    expect(research).toContain("{!pilotActive ? (");
+    expect(p0Repository).toContain(
+      "Marketplace references are disabled during the local-only pilot",
+    );
+    expect(p0Repository).toContain("run.workspace_id = ${workspaceId} and run.state = 'active'");
+    expect(correctionRepository).toContain("successful_append_only_correction");
+    expect(correctionRepository).toContain("on conflict");
     expect(workflow).not.toContain("pilotMetrics:");
   });
 

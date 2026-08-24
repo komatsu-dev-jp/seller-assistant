@@ -7,11 +7,15 @@ export function ProductResearchPanel({
   workspaceId,
   skuId,
   attributeEvidence,
+  pilotActive,
+  pilotBlocked,
   onChanged,
 }: {
   workspaceId: string;
   skuId: string;
   attributeEvidence: readonly { assetId: string; role: "brand_tag" | "care_label" }[];
+  pilotActive: boolean;
+  pilotBlocked: boolean;
   onChanged: () => Promise<void>;
 }) {
   const [research, setResearch] = useState<ProductResearchResponse | null>(null);
@@ -115,13 +119,26 @@ export function ProductResearchPanel({
       <div className="panelHead">
         <div>
           <p className="eyebrow">HUMAN RESEARCH</p>
-          <h3 id="research-heading">商品候補と価格の根拠</h3>
+          <h3 id="research-heading">
+            {pilotActive ? "固定商品の属性確認" : "商品候補と価格の根拠"}
+          </h3>
         </div>
-        <span className="status">{research?.includedSoldCount ?? 0}件採用</span>
+        <span className="status">
+          {pilotActive ? "ローカル限定" : `${research?.includedSoldCount ?? 0}件採用`}
+        </span>
       </div>
-      <p className="accountingDisclaimer">
-        公式画面を人が確認してURLと表示価格を記録します。アプリが外部ページを巡回・取得することはありません。
-      </p>
+      {pilotActive ? (
+        <div className="candidateNotice" role="note">
+          <strong>P06計測中は外部ページを開きません</strong>
+          <p>
+            固定fixtureのローカル4写真・採寸・ブランド・サイズ・色だけを使います。URLと表示価格の入力欄は計測終了まで停止しています。
+          </p>
+        </div>
+      ) : (
+        <p className="accountingDisclaimer">
+          公式画面を人が確認してURLと表示価格を記録します。アプリが外部ページを巡回・取得することはありません。
+        </p>
+      )}
       {research?.candidates.map((candidate) => (
         <article className="candidateNotice" key={candidate.candidateId}>
           <strong>
@@ -135,7 +152,7 @@ export function ProductResearchPanel({
             <div className="inlineActions">
               <button
                 type="button"
-                disabled={busy}
+                disabled={busy || pilotBlocked}
                 onClick={() => void decide(candidate.candidateId, "human_confirmed")}
               >
                 実物を見て採用
@@ -143,7 +160,7 @@ export function ProductResearchPanel({
               <button
                 className="secondaryButton"
                 type="button"
-                disabled={busy}
+                disabled={busy || pilotBlocked}
                 onClick={() => void decide(candidate.candidateId, "rejected")}
               >
                 不採用
@@ -200,7 +217,9 @@ export function ProductResearchPanel({
               ))}
           </select>
         </label>
-        <button disabled={busy || attributeEvidence.length === 0}>人が確認して属性を保存</button>
+        <button disabled={busy || pilotBlocked || attributeEvidence.length === 0}>
+          {research?.confirmedAttributes ? "人が確認して属性訂正を保存" : "人が確認して属性を保存"}
+        </button>
       </form>
       {research?.confirmedAttributes ? (
         <p className="successMessage" role="status">
@@ -210,55 +229,59 @@ export function ProductResearchPanel({
           {research.confirmedAttributes.supersedesConfirmationId ?? "なし"}）
         </p>
       ) : null}
-      <form className="compactForm" action={(form) => void addReference(form)}>
-        <label>
-          確認した公式画面のURL
-          <input
-            name="sourceUrl"
-            type="url"
-            required
-            pattern="https://.*"
-            placeholder="https://..."
-          />
-        </label>
-        <label>
-          表示価格（円）
-          <input name="displayedPriceMinor" type="number" min="0" required />
-        </label>
-        <label>
-          状態
-          <input name="itemCondition" required placeholder="目立った傷なし" />
-        </label>
-        <label>
-          送料
-          <select name="shippingBasis">
-            <option value="included">送料込み</option>
-            <option value="separate">送料別</option>
-            <option value="unknown">不明</option>
-          </select>
-        </label>
-        <label className="checkLine">
-          <input name="soldState" type="checkbox" />
-          販売済みを人が確認
-        </label>
-        <label className="checkLine">
-          <input name="included" type="checkbox" />
-          比較根拠に採用
-        </label>
-        <label>
-          不採用理由
-          <input name="exclusionReason" placeholder="別型番など（不採用時は必須）" />
-        </label>
-        <button disabled={busy}>根拠を記録</button>
-      </form>
-      {research ? (
-        <p>
-          採用済み販売価格の中央値:{" "}
-          {research.displayedPriceMedianMinor === null
-            ? "根拠不足"
-            : `${research.displayedPriceMedianMinor.toLocaleString("ja-JP")}円`}
-          （3件未満は判断材料不足）
-        </p>
+      {!pilotActive ? (
+        <>
+          <form className="compactForm" action={(form) => void addReference(form)}>
+            <label>
+              確認した公式画面のURL
+              <input
+                name="sourceUrl"
+                type="url"
+                required
+                pattern="https://.*"
+                placeholder="https://..."
+              />
+            </label>
+            <label>
+              表示価格（円）
+              <input name="displayedPriceMinor" type="number" min="0" required />
+            </label>
+            <label>
+              状態
+              <input name="itemCondition" required placeholder="目立った傷なし" />
+            </label>
+            <label>
+              送料
+              <select name="shippingBasis">
+                <option value="included">送料込み</option>
+                <option value="separate">送料別</option>
+                <option value="unknown">不明</option>
+              </select>
+            </label>
+            <label className="checkLine">
+              <input name="soldState" type="checkbox" />
+              販売済みを人が確認
+            </label>
+            <label className="checkLine">
+              <input name="included" type="checkbox" />
+              比較根拠に採用
+            </label>
+            <label>
+              不採用理由
+              <input name="exclusionReason" placeholder="別型番など（不採用時は必須）" />
+            </label>
+            <button disabled={busy}>根拠を記録</button>
+          </form>
+          {research ? (
+            <p>
+              採用済み販売価格の中央値:{" "}
+              {research.displayedPriceMedianMinor === null
+                ? "根拠不足"
+                : `${research.displayedPriceMedianMinor.toLocaleString("ja-JP")}円`}
+              （3件未満は判断材料不足）
+            </p>
+          ) : null}
+        </>
       ) : null}
       {error ? (
         <p className="formError" role="alert">
