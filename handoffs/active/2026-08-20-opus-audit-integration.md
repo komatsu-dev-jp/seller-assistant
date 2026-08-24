@@ -118,6 +118,7 @@ Claude Codeの `claude/opus-spec-audit-proposals` を現main、既存仕様、�
 
 - 更新日: 2026-08-25 JST。root full check 31 files / 209 tests、fresh/upgrade PostgreSQL、synthetic preflight、独立Terra GOを確認した。
 - P05旧SHA `02c464...`は履歴であり、P06Rの対象SHAはa976だけ。a976限定で人P06は開始可能。
+- 初心者向けの人手操作とHAR機密保護は`docs/implementation/p06-human-run-guide.md`に固定した。HAR原本は`C:\tmp`だけに置き、Git、Slack、Notion、PRへ保存しない。
 - 人`WARMUP-01`＋固定10商品、実iPhone、P08 Sol、Draft PRは未確認。合成preflightで人手結果を補完しない。
 
 ## 2026-08-24 P05最終PASS追補

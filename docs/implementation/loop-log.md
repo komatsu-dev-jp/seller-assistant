@@ -360,3 +360,10 @@
 - full checkは31 files / 209 tests、coverage 84.66/80.56/100/90.68、fixture 44/hash、format/lint/typecheck/API/Web build PASS。fresh PG 33 migrations/restricted LOGIN/49 RLS/rerun、upgrade 0001〜0033 rollback/preservation PASS。
 - synthetic preflightでterminal failed案内/WARMUP、active run `917e2178-1c1c-4717-999b-0613f8b534a9`、readonly SKU/receipt、old summary 0、capture/listing disabled、未登録表示、category `tops` mismatch修正後TOP-01 201（`INV-910006-4`）を確認。console 0/warn 0、18 requests loopbackのみ、390/768/1440 overflow 0。PNG 3点をdesign evidenceへ記録した。
 - 合成preflightは人P06の代替ではない。人`WARMUP-01`＋固定10商品、実iPhone、P08 Sol、Draft PRは未確認。a976を対象SHAとして人P06は開始可能。
+
+## Iteration 34 — 2026-08-25 人P06の初心者向け操作固定
+
+- `docs/implementation/p06-human-run-guide.md`へ、WARMUPの架空入力値、390×844設定、固定10商品順、各商品の操作、即時停止条件、終了証拠を一枚に固定した。protocolと食い違う場合はprotocolを優先する。
+- HAR原本はCookie等を含み得るため`C:\tmp`だけに保存し、Git、Slack、Notion、PRへ添付しない。人P06完了後に、このPC内でURL一覧だけへ機密除去してから証拠化する。
+- target application SHAは引き続き`a976d614819a662cca3be36c23989aecd9ca968e`。a976から現HEADまで`apps`、`packages`、`scripts`、`fixtures`、`package.json`の差分0を確認し、操作票追加で監査済みアプリ本体を変更していない。
+- 人P06は未実施。WARMUPと固定10商品をモデルで代行せず、利用者結果が届くまでP08とDraft PRへ進めない。

@@ -6,6 +6,7 @@
 - DB migration版: `0033`
 - fixture manifest SHA-256: `a44d25d914d721c1a62aa4330688bf64264eae54c8ddb38c833cd20b6827fa18`
 - 目的: 同じ架空素材と条件で試作品内の出品準備時間を比較する。実際の事業成果や将来の処理時間を保証しない
+- 初心者向け操作票: `docs/implementation/p06-human-run-guide.md`（判断が食い違う場合は本protocolを優先）
 
 ## 0. 現行状態と開始禁止条件
 
