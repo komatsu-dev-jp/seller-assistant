@@ -2,7 +2,7 @@
 
 - Status: goal-v2-cost-optimized-evaluation-loop
 - Owner: Codex / ユーザー
-- Updated: 2026-08-21 JST
+- Updated: 2026-08-24 JST
 - Branch: `codex/opus-audit-integration`
 - Worktree: `C:\Users\softt\Documents\Codex\2026-08-13\iphone-notion-google-research-ios-pc\_worktrees\opus-audit-integration`
 - Base: `origin/main` / `f5fd9f3bda1ec2b82ba17e673f6d1715e7c1795a`
@@ -46,20 +46,25 @@ Claude Codeの `claude/opus-spec-audit-proposals` を現main、既存仕様、�
 - ローカルのMVP仕様、技術設計、財務数式正本、AC/TA、Goal再開契約、design index、review、decision、実装対応表を修正版Aへ更新した。旧Goal契約v1は履歴として残し、v2を現行契約にした。
 - 既存NotionのMVP/技術/Goal/実装計画へ修正版Aの追補を行い、再取得でAC-056〜061、TA-038〜043、外部送信0件、Iteration 25を確認した。初回の25列表現は、公式再確認後にA〜AA 27列へ訂正した。既存本文と子ページは削除していない。
 - 独立仕様review初回のCritical 1 / High 4 / Medium 4を受け、P0/P1範囲、紛失候補遷移、重複規則、数式、Money Forward A〜AA 27列/汎用19列schema・fixture/hash、3秒/keyboard確認、membership lock、pilot手順、UI採点表を修正した。Notionも訂正し再取得した。
-- 独立再reviewは最終PASS（Critical 0 / High 0 / Medium 0 / Low 0）。残る停止gateは、25列理解を公式A〜AA 27列へ訂正した点を含むGoal再開契約v2のユーザー確認だけである。
+- 独立再reviewは最終PASS（Critical 0 / High 0 / Medium 0 / Low 0）。当時の残る停止gateは、25列理解を公式A〜AA 27列へ訂正した点を含むGoal再開契約v2のユーザー確認だけだった。その後、2026-08-20にユーザー確認済み。
 - 2026-08-20、ユーザーは「この契約でGoalを再開してください」と回答し、Money Forward A〜AA 27列を含むGoal再開契約v2を最終確認した。P0実装と評価Loopを再開する。
 - NotionのGoalページと実装計画へ再開確認/Iteration 26を追記し、A〜AA 27列、AC-056〜061/TA-038〜043、P1/公開/merge禁止を再取得確認した。
 - migration 0021〜0024、可逆な棚卸差異、会計profile・承認済みmapping・27列/19列CSV、server-side pilot event、Home CのDB集計を実装した。
 - Slack承認画像との再照合で、M12の比較route混同とM13/M14の全工程縦積みを検出した。在庫現場は`/mobile`・`/mobile/scan`、棚卸と会計はスマホ工程切替へ修正し、PCワークベンチを維持した。
-- `npm.cmd run check`は22 files / 143 tests、line 90.47%、branch 80.56%、functions 100%、production buildまでPASSした。
-- fresh PostgreSQLは0001〜0024、49-table RLS matrix、既存データupgradeは0001〜0024をPASSした。実10商品pilotではなく、1商品完了＋1商品意図的中断の計測基盤確認である。
-- 本番相当ローカルブラウザで390×844、768×1024、1440×1000の横overflow 0px、対象6routeのconsole error 0件を確認した。証拠は`docs/implementation/design-fidelity-evidence.md`。
+- Iteration 27時点の`npm.cmd run check`は22 files / 143 tests、line 90.47%、branch 80.56%、functions 100%、production buildまでPASSした。
+- Iteration 27時点のfresh PostgreSQLは0001〜0024、49-table RLS matrix、既存データupgradeは0001〜0024をPASSした。実10商品pilotではなく、1商品完了＋1商品意図的中断の計測基盤確認である。
+- Iteration 27時点の本番相当ローカルブラウザで390×844、768×1024、1440×1000の横overflow 0px、対象6routeのconsole error 0件を確認した。証拠は`docs/implementation/design-fidelity-evidence.md`。
+- migration 0027〜0031でsolo/dual承認、完全な承認metadata、mapping世代交代、同一場所復元、actor/movement snapshot競合を補強した。`c63eb5b`の全checkは25 files / 180 tests、fresh/upgrade PostgreSQL、別Sol最終実装reviewをPASSした。
+- `c63eb5b`でUI 8 taskを独立実行し、暫定96/100、Critical 0、High 0、Medium 1。通常3 viewportのoverflow 0、console error 0、外部runtime通信0を確認した。
+- `6c68980`で棚卸差異の復元フォームだけを44px以上へ修正した。旧commitの暫定結果は現行実装の最終合格に流用しない。
+- pilot開始が旧migration`0028`を固定する不整合を検出し、`21fbff4`で新規`0032`、共通版定数、過去response互換、最新migration一致test、fresh/upgrade試験を追加した。
+- `21fbff4`の`npm.cmd run check`は25 files / 181 tests、coverage、API/Web production buildまでPASS。fresh PostgreSQL 0001〜0032と既存データupgrade 0001〜0032もPASSした。
 
 ## 未解決事項
 
 - 実iPhone Safariでのホーム画面追加、カメラ、圏外復帰。
 - `docs/specs/pilot-protocol-v1.md`に従う実際の10商品pilot。
-- `docs/specs/ui-evaluation-rubric-v1.md`の8 task独立完走と最終採点。
+- `21fbff4`の同一commitによる`docs/specs/ui-evaluation-rubric-v1.md`の8 task再実行と最終採点。復元フォーム44pxを実測する。
 - 上記が未完了のためDraft PRは未作成。P1、本番公開、PR mergeも未実行。
 - Goal管理機能には旧契約がpaused表示で残る。製品判断は承認済みの`docs/specs/goal-contract-revised-a-v2.md`を正本とし、旧Objectiveを実装根拠にしない。
 
@@ -69,18 +74,22 @@ Claude Codeの `claude/opus-spec-audit-proposals` を現main、既存仕様、�
 - 正本: `docs/implementation/model-routing-plan.md`。
 - Luna max: 承認済みUI/CSS、固定テスト、画面証拠、結果文書だけ。
 - Terra high/xhigh: Home内訳のような限定された複数層統合、UI 8 taskの検証専任。
-- Sol max: pilot/migration 0025、金額・会計、認証・RLS・重要状態、昇格判断、最終独立レビュー。
+- Sol max: pilot/migration 0032、金額・会計、認証・RLS・重要状態、昇格判断、最終独立レビュー。
 - 現在のゲート: モデル設計は別Sol maxがCritical 0 / High 0 / Medium 0でPASS。`MODEL_SWITCH_REQUIRED` なし。モデル別の適格な委譲先は利用可能。
-- P01: Sol maxが0021〜0025を変更せず0026を追加。targeted 37 tests、全typecheck、fresh PG 49-table RLS/P0結合、既存データ0001〜0026 upgradeをPASS。P01は完了。
+- P01: Sol maxが重大なpilot/DB/在庫差異を0032まで補強。現行181 tests、fresh PG 49-table RLS/P0結合、既存データ0001〜0032 upgradeをPASS。P01は完了。
+- P02: 承認済みUIへの修正は完了。44px修正を含む現行commitの実ブラウザ再確認だけをP05へ残す。
+- P04: `21fbff4`のformat/lint/typecheck/test/coverage/API-Web build、fresh PG、upgrade PGをPASS。
+- P05: `c63eb5b`で暫定96点。source変更後のため、`21fbff4`で8 task全件を再実行するまで未完了。
+- P06: 実利用者のwarm-up 1点＋固定10商品は未実施。モデルで代行しない。
 - 書込み: 共有worktreeのため常に1担当。並列化は読み取り専用レビューだけ。
 - 人手gate: 実10商品pilotは人が実施し、モデルで代行・補完しない。
 - 最終review: 実装・設計審査をしていない別Sol maxが凍結差分をレビューする。
 
 ## 次の一手
 
-1. P02の最新画面比較をLuna maxへ直列委譲する。
-2. P04の全自動検証、P05のUI 8 task、P06の実10商品pilotを順に行う。
-3. 証拠更新後に別Sol maxが凍結差分を独立レビューする。
+1. 明示許可後に一時Webサーバーだけを`21fbff4`で再起動し、P05の8 task、44px、keyboard、200%拡大、3 viewport、console/networkを同一commitで再評価する。
+2. UI合格後、実利用者が`docs/specs/pilot-protocol-v1.md`どおりwarm-up 1点＋固定10商品を操作する。
+3. 証拠を更新し、これまで実装・設計審査をしていない別Sol maxが凍結差分を独立レビューする。
 4. Critical/High 0、UI 90点以上、pilot合格後だけ、外部書込み権限を再確認してDraft PRを作成する。本番公開とmergeは行わない。
 
 ## memory候補

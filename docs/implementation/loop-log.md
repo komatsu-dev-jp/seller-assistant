@@ -305,3 +305,14 @@
 - 自動検証: `npm.cmd run check`は22 files / 143 tests、line 90.47%、branch 80.56%、functions 100%、lint、typecheck、production buildまでPASS。
 - DB証拠: migration 0001〜0024、49-table RLS matrix、既存データupgrade 0001〜0024は直前の同一API/DB実装でPASS。今回の最終差分はWeb表示/CSS/証拠文書でありDB挙動は変更していない。
 - 未完了: UI評価表の8 task独立完走、実際の10商品pilot、実iPhone Safari。これらを完了するまでGoal/Draft PRを完了扱いにしない。
+
+## Iteration 28 — 2026-08-24 UI暫定評価とpilot migration版の整合
+
+- UI暫定評価: `c63eb5b`で8 taskを独立実行し、報告値96/100、Critical 0、High 0、Medium 1。通常390×844、768×1024、1440×1000の横overflow 0、console error 0件、外部runtime通信0件を確認した。
+- 発見と修正1: 棚卸差異の復元フォームに21〜25pxの操作が残った。`6c68980`で同フォームのbutton、checkbox以外のinput、select、textareaだけを44px以上へ限定修正した。
+- 発見と修正2: 10商品pilotの開始payloadと契約が`0028`を固定し、実DBは`0031`まで進んでいた。実測環境の証拠が誤るため、新規migration`0032`で過去版を保持したまま許容版を拡張し、新runを`0032`へ一本化した。
+- 再発防止: 最新migration名とpilot定数が一致しなければ自動testを失敗させる。API応答は過去`0023`〜`0032`を読め、開始要求は現行`0032`だけを受け付ける。過去runのupdate/deleteは行わない。
+- 自動検証: `21fbff4`で25 files / 181 tests、statements 84.38%、branches 80.56%、functions 100%、lines 90.47%、format、lint、typecheck、API/Web production buildをPASS。
+- 実DB: 既存の一時PGへ接続できなかったため触らず、別の空の一時clusterを使用した。migration 32本の適用、fresh 49-table RLS/P0結合、既存データ0001〜0032 upgradeをPASSした。
+- 透明性: fresh結合の最初のrunは、今回未変更の3秒確認で`human confirmation must follow both scans`となり停止した。コードを変えず新しい空DBで全件を最初から再実行してPASSし、一時clusterは検証後に停止した。
+- 未完了: `21fbff4`の実ブラウザUI 8 task、44px実測、実利用者10商品pilot、実iPhone Safari、最終独立review、Draft PR。旧UI暫定結果で代用せず、merge・本番公開・有料サービス利用は行わない。

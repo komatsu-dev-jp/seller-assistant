@@ -1,7 +1,7 @@
 # P0 cost-optimized モデル割当計画
 
 - 状態: active
-- 更新日: 2026-08-21 JST
+- 更新日: 2026-08-24 JST
 - 対象Goal: `docs/specs/goal-contract-revised-a-v2.md`
 - 対象branch: `codex/opus-audit-integration`
 - 対象worktree: `C:\Users\softt\Documents\Codex\2026-08-13\iphone-notion-google-research-ios-pc\_worktrees\opus-audit-integration`
@@ -52,18 +52,18 @@
 - 検証: Markdown構造、参照パス、秘密情報0件、`git diff --check`。
 - 停止・昇格条件: 製品契約や既存承認を変更する必要が生じたらSolへ戻す。
 
-### P01 pilot・金額・DB安全修正の重大レビュー
+### P01 pilot・金額・DB安全修正の重大レビュー（2026-08-21時点の履歴）
 
-- 状態: PASS（2026-08-21）。Sol maxが新規0026を実装し、targeted 2 files / 37 tests、全workspace typecheck、fresh PostgreSQL P0結合、既存データ0001〜0026 upgradeを合格。無言終了した一時試行は新しい一意DBで再実行してPASSし、試験DBを削除した。
+- 状態: 当時PASS（2026-08-21）。Sol maxが新規0026を実装し、targeted 2 files / 37 tests、全workspace typecheck、fresh PostgreSQL P0結合、既存データ0001〜0026 upgradeを合格。無言終了した一時試行は新しい一意DBで再実行してPASSし、試験DBを削除した。後続0032までの現行結果は本書末尾の「現在の完了・未完了」を参照する。
 
 - 目的と参照: 直近レビューHighのpilot通信失敗、遅着例外、架空金額初期値を再照合する。AC-013、AC-026、AC-061、TA-023、TA-043。
 - リスク: 重大。DB migration、金額、pilotの合否状態、監査を含む。
 - 実装担当: Sol max。現在の修正はモード変更前にルートが実装済みなので、下位モデルは追加変更しない。
 - 確認担当: 別Sol maxによる最終レビュー。
-- 変更可能: `apps/api/src/p0-item-repository.ts`、`apps/api/src/postgres-integration.ts`、`apps/api/src/postgres-upgrade-integration.ts`、`packages/db/src/schema.test.ts`、必要最小限のcontracts/test、`apps/web/src/components/p0-workspace.tsx` のpilot同期と空の金額初期値だけ。DB変更がさらに必要ならSol maxが新規migration `0026`を追加する。
-- 変更禁止: 検証済みmigration `0021`〜`0025`の再編集、UI再設計、P1、外部連携、税務判断。
+- 変更可能: `apps/api/src/p0-item-repository.ts`、`apps/api/src/postgres-integration.ts`、`apps/api/src/postgres-upgrade-integration.ts`、`packages/db/src/schema.test.ts`、必要最小限のcontracts/test、`apps/web/src/components/p0-workspace.tsx` のpilot同期と空の金額初期値だけ。当時のDB変更はSol maxが新規migration `0026`として追加した。
+- 変更禁止: 検証済みmigration `0021`〜`0032`の再編集、UI再設計、P1、外部連携、税務判断。
 - 受け入れ条件: 未送信例外がある間はpilot操作・合格を停止する。遅着した無効イベントで完了済みrunが`failed`になる。通常注文の金額は全て空で開始する。既存データ移行を壊さない。
-- 検証: `npm run check`、fresh PostgreSQL P0結合、0001〜0025既存データupgrade、通信失敗fixture。
+- 検証: 当時は`npm run check`、fresh PostgreSQL P0結合、0001〜0025既存データupgrade、通信失敗fixture。現行0032までの結果は末尾へ記録する。
 - 停止・昇格条件: migration、状態遷移、金額計算、監査の期待が一つでも不明ならSol以外は触らない。
 
 ### P02 Slack承認済みUIへの一致
@@ -98,7 +98,7 @@
 - 確認担当: Sol highまたはxhigh。migration、金額、権限、重要状態に関係する結果はSol max。
 - 変更可能: テスト生成物と、合格後の証拠文書だけ。
 - 変更禁止: test失敗時の推測修正、外部CI、本番データ、費用発生。
-- 受け入れ条件: format、lint、typecheck、145件以上のtest、coverage閾値、API/Web production build、fresh PG、upgrade PGが全合格する。
+- 受け入れ条件: format、lint、typecheck、181件以上のtest、coverage閾値、API/Web production build、fresh PG、upgrade PGが全合格する。
 - 検証: `npm run check`、`npm run test:postgres`、`npm run test:postgres-upgrade`。
 - 停止・昇格条件: 原因不明の失敗は証拠を残し、Lunaがコードを広げずSolへ渡す。
 
@@ -134,7 +134,7 @@
 - 確認担当: Sol high。
 - 変更可能: `docs/implementation/acceptance-map.md`、`docs/implementation/design-fidelity-evidence.md`、`docs/implementation/loop-log.md`、active handoff。`docs/specs/pilot-protocol-v1.md`と`docs/specs/ui-evaluation-rubric-v1.md`は状態行、証拠リンク、実測結果欄だけ。
 - 変更禁止: Luna/Terraによるpilot手順、UI配点、合否閾値、仕様・AC/TA・承認内容の変更、未実施結果のPASS化。
-- 受け入れ条件: migration 0025、145 test、新しい画面証拠、未実施pilot、iPhone未確認、UI採点を相互に矛盾なく記録する。
+- 受け入れ条件: migration 0032、181 test、新しい画面証拠、未実施pilot、iPhone未確認、UI採点を相互に矛盾なく記録する。
 - 検証: 参照先存在、数値一致、秘密情報0件、`git diff --check`。
 - 停止・昇格条件: 正本間の矛盾は勝手に直さずSolへ返す。
 
@@ -181,9 +181,10 @@
 
 ## 現在の完了・未完了
 
-- 確認済み: `npm run check` は22 files / 145 tests、coverage line 90.47%・branch 80.56%・functions 100%、production buildまでPASS。
-- 確認済み: fresh PostgreSQLの49-table RLS/P0結合と、既存データ0001〜0026 upgradeがPASS。
-- 修正済み・P01 PASS: 現物ラベル空入力開始、pilot pending event同期停止、active/completed両runの遅着例外によるfailed化、通常金額空入力。
-- 修正済み・画面再確認待ち: W11/W12のPC再構成、44px、Home内訳分岐。
-- 未完了: 最新画面の再撮影、UI 8 task独立採点、実10商品pilot、最終独立Solレビュー。
+- 確認済み: `21fbff4`の`npm run check`は25 files / 181 tests、coverage statements 84.38%・branches 80.56%・functions 100%・lines 90.47%、production buildまでPASS。
+- 確認済み: fresh PostgreSQLのmigration 0001〜0032・49-table RLS/P0結合と、既存データ0001〜0032 upgradeがPASS。
+- 修正済み・P01 PASS: 現物ラベル空入力、pilot pending/遅着例外、通常金額空入力、solo/dual差異、復元競合、会計mapping世代交代、pilot migration版0032の整合。
+- P02 source修正済み: W11/W12のPC再構成、Home内訳分岐、棚卸差異復元フォーム44px。`c63eb5b`の暫定UI評価後にsourceが変わったため、現行commitの再評価待ち。
+- P05暫定: `c63eb5b`で8 task完走・報告値96/100・Critical/High 0。最終合格には使わず`21fbff4`で全件再実行する。
+- 未完了: 現行commitのUI 8 task独立採点、実10商品pilot、最終独立Solレビュー。
 - 未確認として記録可能: 実iPhone Safariのホーム追加、カメラ、圏外復帰。これだけではDraft PR単独停止にしないが、成功扱いもしない。

@@ -1,7 +1,7 @@
 # Slack承認済みデザイン反映証拠
 
-- 更新日: 2026-08-20（JST）
-- 状態: 実装・本番相当ローカルブラウザ確認済み、独立レビュー待ち
+- 更新日: 2026-08-24（JST）
+- 状態: `c63eb5b`の独立UI評価は暫定96/100。現行実装`21fbff4`の同一commit再評価待ち
 - UI正本: `docs/design/selected-direction.md`
 - 修正版A承認: `docs/design/revised-a-approval-v2.md`
 
@@ -37,22 +37,19 @@ Slack承認画像を参考資料ではなくUI受け入れ基準として扱う�
 - 税務項目と勘定科目は候補・本人入力として表示し、自動確定しない。
 - 承認画像内の端末外枠、時刻、説明用の画面番号は製品UIへ入れない。
 
-## 検証
+## 現行検証
 
-- `npm.cmd run check`: PASS。
-- Vitest: 22 files / 143 tests PASS。
-- coverage: lines 90.47%、branches 80.56%、functions 100%。
-- Next.js production build: 全route PASS。
-- fresh PostgreSQL: migration 0001〜0024、49-table RLS matrix、可逆棚卸、27列/19列CSV、server-side pilot event基盤をPASS。
-- existing-data upgrade: 0001〜0024 PASS。既存の解決済み差異を保持し、証拠を捏造せず、不可逆な廃棄を実行しない。
-- responsive: 390×844、768×1024、1440×1000のホーム・在庫・棚卸・会計で横overflow 0px。
-- browser console: `/`、`/inventory`、`/inventory/stocktake`、`/accounting`、`/mobile`、`/mobile/scan` の再読込でerror 0件。
-- 外部runtime通信・課金・デプロイ: 0件。検証先は `127.0.0.1` のWeb/API/PostgreSQLだけ。
+- `21fbff4`の`npm.cmd run check`: 25 files / 181 tests、statements 84.38%、branches 80.56%、functions 100%、lines 90.47%、format、lint、typecheck、API/Web production buildまでPASS。
+- fresh PostgreSQL: migration 0001〜0032、49-table RLS matrix、P0結合をPASS。新しいpilot runが`0032`を記録する。
+- existing-data upgrade: 0001〜0032 PASS。過去`0028`のpilot環境、差異のstate/evidence/actor/timestamp/audit、mapping・CSV履歴を保持し、将来の未対応`0033`を拒否する。
+- `c63eb5b`の独立UI 8 task: 暫定96/100、Critical 0、High 0、Medium 1。通常390×844、768×1024、1440×1000で横overflow 0px、対象画面のconsole error 0件、外部runtime通信0件。
+- `6c68980`で棚卸差異の復元フォームを44px以上へ修正し、`21fbff4`まで保持している。ただし`21fbff4`の実ブラウザ8 task、44px実測、console/network再確認は未実施。
+- 外部runtime通信・課金・デプロイ: 確認済みブラウザrunでは0件。実装と自動検証はPC内だけで、有料API・有料SaaSを追加していない。
 
 ## 未完了の合格条件
 
 - 実際の人が行う10商品pilotは未実施。結合試験は、1商品完了と1商品意図的中断の計測基盤確認であり、10商品完走ではない。
 - 実iPhone Safariのホーム画面追加、カメラ、圏外復帰は未確認。
-- UI評価表の8 task完走と独立採点は未完了。
+- `21fbff4`の同一commitによるUI評価表8 task再実行と独立採点は未完了。`c63eb5b`の暫定結果で代用しない。
 
-上記3点を成功扱いにせず、独立レビューでCritical/High 0を確認するまでDraft PRを作成しない。
+上記3点を成功扱いにせず、最終独立SolレビューでCritical/High 0を確認するまでDraft PRを作成しない。
