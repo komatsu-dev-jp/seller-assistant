@@ -2804,6 +2804,13 @@ a {
   gap: 1rem;
 }
 
+.discrepancyForm button,
+.discrepancyForm input:not([type="checkbox"]),
+.discrepancyForm select,
+.discrepancyForm textarea {
+  min-height: 44px;
+}
+
 .stocktakeModeBanner {
   padding: 0.9rem 1rem;
   border-radius: 14px;
