@@ -15,4 +15,4 @@ manifest SHA-256: `a44d25d914d721c1a62aa4330688bf64264eae54c8ddb38c833cd20b6827f
 
 SHA-256は素材の取り違えや変更を検出するための64文字の指紋です。manifestの値は、`manifestSha256`自身を除くpayloadをJavaScriptの安定した挿入順で`JSON.stringify`したUTF-8 bytesから計算します。
 
-このREADMEは素材準備だけを説明します。実10商品pilotはまだ実施済みではありません。現行commitのUI再評価が完了するまで開始しません。
+このREADMEは素材準備だけを説明します。P05独立TerraのUI再評価は100/100で完了していますが、実10商品pilotはまだ実施していません。人の準備が整い次第、`docs/specs/pilot-protocol-v1.1.md`に従って開始できます。

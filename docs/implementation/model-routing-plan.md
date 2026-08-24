@@ -12,7 +12,7 @@
 - chosen_by: ユーザーの2026-08-21依頼「実装難易度に合わせてサブエージェントを適切なモデルに振り分けるようにしてコストを削減」
 - parent_model: ルートCodexは統合と利用者窓口を担当する。親セッションのモデル名を推測して記録せず、委譲時に明示したモデルだけを実行証拠とする。
 - design_gate: PASS（2026-08-21、`gpt-5.6-sol` / `max` の独立担当、Critical 0 / High 0 / Medium 0）。
-- worker_delegation: 低リスクで閉じた画面・CSS・固定テスト・証拠文書だけを `gpt-5.6-luna` / `max`、複数層の限定統合と実ブラウザ8 task検証を `gpt-5.6-terra` / `high` または `xhigh` へ渡す。
+- worker_delegation: fixture生成・固定テスト・証拠文書を`gpt-5.6-luna` / `max`、Webの限定統合と実ブラウザ8 task検証を`gpt-5.6-terra` / `high`または`xhigh`、DB・migration・APIの重要状態を`gpt-5.6-sol` / `max`へ渡す。
 - independent_sol_review: 実装を凍結した後、実装者でも設計審査担当でもない別の `gpt-5.6-sol` / `max` が最終レビューする。
 - user_visible_pause: 承認済みMVP・デザイン・無料条件の変更、外部送信、公開、課金、データ損失、権限拡大、または必要能力を満たすモデルがない場合だけ停止する。
 - independent_sol_review_required: true
@@ -23,7 +23,7 @@
 
 - 製品・完了契約: `docs/specs/goal-contract-revised-a-v2.md`
 - UI基準: `docs/design/selected-direction.md`、`docs/design/revised-a-approval-v2.md` とそこから参照するSlack承認画像
-- 10商品試験: `docs/specs/pilot-protocol-v1.md`
+- 10商品試験: 新規runは`docs/specs/pilot-protocol-v1.1.md`。`docs/specs/pilot-protocol-v1.md`は履歴だけに使う。
 - UI採点: `docs/specs/ui-evaluation-rubric-v1.md`
 - 検証記録: `docs/implementation/acceptance-map.md`、`docs/implementation/design-fidelity-evidence.md`、`docs/implementation/loop-log.md`
 - 禁止: P1、本番公開、PR merge、有料サービス、外部runtime連携、自動出品・自動値下げ、スクレイピング、非公開API、税務自動確定。
@@ -61,7 +61,7 @@
 - 実装担当: Sol max。現在の修正はモード変更前にルートが実装済みなので、下位モデルは追加変更しない。
 - 確認担当: 別Sol maxによる最終レビュー。
 - 変更可能: `apps/api/src/p0-item-repository.ts`、`apps/api/src/postgres-integration.ts`、`apps/api/src/postgres-upgrade-integration.ts`、`packages/db/src/schema.test.ts`、必要最小限のcontracts/test、`apps/web/src/components/p0-workspace.tsx` のpilot同期と空の金額初期値だけ。当時のDB変更はSol maxが新規migration `0026`として追加した。
-- 変更禁止: 検証済みmigration `0021`〜`0032`の再編集、UI再設計、P1、外部連携、税務判断。
+- 変更禁止: 既存migration `0021`〜`0033`の再編集、UI再設計、P1、外部連携、税務判断。
 - 受け入れ条件: 未送信例外がある間はpilot操作・合格を停止する。遅着した無効イベントで完了済みrunが`failed`になる。通常注文の金額は全て空で開始する。既存データ移行を壊さない。
 - 検証: 当時は`npm run check`、fresh PostgreSQL P0結合、0001〜0025既存データupgrade、通信失敗fixture。現行0032までの結果は末尾へ記録する。
 - 停止・昇格条件: migration、状態遷移、金額計算、監査の期待が一つでも不明ならSol以外は触らない。
@@ -98,7 +98,7 @@
 - 確認担当: Sol highまたはxhigh。migration、金額、権限、重要状態に関係する結果はSol max。
 - 変更可能: テスト生成物と、合格後の証拠文書だけ。
 - 変更禁止: test失敗時の推測修正、外部CI、本番データ、費用発生。
-- 受け入れ条件: format、lint、typecheck、181件以上のtest、coverage閾値、API/Web production build、fresh PG、upgrade PGが全合格する。
+- 受け入れ条件: fixture check、format、lint、typecheck、192件以上のtest、coverage閾値、API/Web production build、fresh PG、upgrade PGが全合格する。
 - 検証: `npm run check`、`npm run test:postgres`、`npm run test:postgres-upgrade`。
 - 停止・昇格条件: 原因不明の失敗は証拠を残し、Lunaがコードを広げずSolへ渡す。
 
@@ -116,7 +116,7 @@
 
 ### P06 実10商品pilot
 
-- 目的と参照: `docs/specs/pilot-protocol-v1.md` に従い、実際の人が10点を操作する。
+- 目的と参照: `docs/specs/pilot-protocol-v1.1.md`に従い、実際の人が`WARMUP-01`と固定10商品を操作する。
 - リスク: 人手必須。モデルが代行すると時間指標と使いやすさを偽装する。
 - 実装担当: ユーザーまたは指定された人間の試験者。
 - 確認担当: Sol maxはserver記録の集計と欠損だけを確認する。
@@ -134,7 +134,7 @@
 - 確認担当: Sol high。
 - 変更可能: `docs/implementation/acceptance-map.md`、`docs/implementation/design-fidelity-evidence.md`、`docs/implementation/loop-log.md`、active handoff。`docs/specs/pilot-protocol-v1.md`と`docs/specs/ui-evaluation-rubric-v1.md`は状態行、証拠リンク、実測結果欄だけ。
 - 変更禁止: Luna/Terraによるpilot手順、UI配点、合否閾値、仕様・AC/TA・承認内容の変更、未実施結果のPASS化。
-- 受け入れ条件: migration 0032、181 test、新しい画面証拠、未実施pilot、iPhone未確認、UI採点を相互に矛盾なく記録する。
+- 受け入れ条件: migration `0033`の実走状態、最新29 files / 202 testsのfull check、fixture manifest SHA、P05独立100/100証拠、未実施pilot、iPhone未確認、P08待ちを相互に矛盾なく記録する。
 - 検証: 参照先存在、数値一致、秘密情報0件、`git diff --check`。
 - 停止・昇格条件: 正本間の矛盾は勝手に直さずSolへ返す。
 
@@ -181,10 +181,19 @@
 
 ## 現在の完了・未完了
 
-- 確認済み: `21fbff4`の`npm run check`は25 files / 181 tests、coverage statements 84.38%・branches 80.56%・functions 100%・lines 90.47%、production buildまでPASS。
-- 確認済み: fresh PostgreSQLのmigration 0001〜0032・49-table RLS/P0結合と、既存データ0001〜0032 upgradeがPASS。
-- 修正済み・P01 PASS: 現物ラベル空入力、pilot pending/遅着例外、通常金額空入力、solo/dual差異、復元競合、会計mapping世代交代、pilot migration版0032の整合。
-- P02 source修正済み: W11/W12のPC再構成、Home内訳分岐、棚卸差異復元フォーム44px。`c63eb5b`の暫定UI評価後にsourceが変わったため、現行commitの再評価待ち。
-- P05暫定: `c63eb5b`で8 task完走・報告値96/100・Critical/High 0。最終合格には使わず`21fbff4`で全件再実行する。
-- 未完了: 現行commitのUI 8 task独立採点、実10商品pilot、最終独立Solレビュー。
+- Luna担当完了: v1.1 fixture kit、manifest SHA `a44d25d914d721c1a62aa4330688bf64264eae54c8ddb38c833cd20b6827fa18`、44 PNG、生成・整合確認をroot検証へ組み込んだ。
+- 静的・DB確認済み: fresh/upgrade PostgreSQLはmigration `0033`までPASS。最新root `npm.cmd run check`はfixture 44 PNG/hash一致、format、lint、typecheck、29 files / 202 tests、coverage、API/Web production buildまでPASSした。
+- UI確認済み: seeded captureはTOP/OUTER 4、PANTS 5、KNIT `unstretched` 4、候補自動確定なし文言、3 viewport overflow 0、console error/warn 0。solo/dual棚卸は写真、二重読取、3秒確認、復元、承認までPASSし、会計は7/7 mappingとCSV出力、200%相当390×720、loopback request captureまで確認した。
+- Terra担当完了: target SHA `02c4641599eb6885bca3256f7792cf0a08c464bb`でP05独立100/100（Critical/High/Medium 0）。未完了は実利用者pilot、実iPhone、実MF import、P08最終Sol review。
+- 44px修正確認: 初回FAIL後、390pxでheader back 44x44、save 327x48、measurement input 303x44、bottom nav各122x49、overflow 0を再測定した。
+- loopback確認: broad bind incident後の修正版runtime netstatは`127.0.0.1:4173`だけ、targeted 24 testsとWeb buildはPASS。外部request、課金、merge、公開は0件。
+- 人手・未完了: `WARMUP-01`＋固定10商品pilotと実iPhone Safari。
+- Sol担当・未完了: 実装と設計審査を担当していない別Sol maxによる凍結差分の最終独立レビュー。下位モデルの自己確認を代用しない。
 - 未確認として記録可能: 実iPhone Safariのホーム追加、カメラ、圏外復帰。これだけではDraft PR単独停止にしないが、成功扱いもしない。
+
+## 2026-08-24 最新ゲート状態
+
+- Luna max相当の証拠文書更新とfixture/UI定型確認は完了。full `npm.cmd run check`は29 files / 202 tests、coverage、lint/typecheck/API/Web buildまでPASSした。
+- Sol max領域のfresh/upgrade PostgreSQLは0001〜0033、49-table RLS、immutable reason fields、rollback/preservationをPASS。会計の税未設定block、solo/dual承認競合、mapping世代不変も確認済み。使い捨てDBは削除済み。
+- Terra high/xhighのP05独立最終評価はtarget SHA `02c4641599eb6885bca3256f7792cf0a08c464bb`で100/100（Critical/High/Medium 0）。P08のSolレビューは未完了であり、P05をP08の代替にしない。
+- P06（実利用者WARMUP＋10商品）、実iPhone Safari/home/camera/offline/HEIC-WebP、実Money Forward import、Draft PR readyは未確認。runtime loopbackのみ、外部/paid/deploy/merge 0件。

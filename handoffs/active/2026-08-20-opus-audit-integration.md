@@ -59,39 +59,62 @@ Claude Codeの `claude/opus-spec-audit-proposals` を現main、既存仕様、�
 - `6c68980`で棚卸差異の復元フォームだけを44px以上へ修正した。旧commitの暫定結果は現行実装の最終合格に流用しない。
 - pilot開始が旧migration`0028`を固定する不整合を検出し、`21fbff4`で新規`0032`、共通版定数、過去response互換、最新migration一致test、fresh/upgrade試験を追加した。
 - `21fbff4`の`npm.cmd run check`は25 files / 181 tests、coverage、API/Web production buildまでPASS。fresh PostgreSQL 0001〜0032と既存データupgrade 0001〜0032もPASSした。
+- 固定10商品pilotをv1.1へ更新し、`WARMUP-01`＋10商品×4 PNG、架空属性、カテゴリ別採寸template、CHECKLIST、生成・整合確認を追加した。manifest SHAは`a44d25d914d721c1a62aa4330688bf64264eae54c8ddb38c833cd20b6827fa18`。
+- 新しいrunを`listing_prep_pilot_v1.1.0`、migration `0033`、manifest SHAへ固定し、v1.0の履歴を保持した。写真の最新role、採寸の最新attempt、属性のappend-only revision、manual correction記録をコードへ追加した。
+- fresh/upgrade PostgreSQLはmigration `0033`までPASSした。最新root `npm.cmd run check`はfixture 44 PNG/hash一致、format、lint、typecheck、29 files / 202 tests、coverage、API/Web production buildまでPASSした。
+- UI評価seedはsolo棚卸、dual棚卸、会計、captureの4つの独立workspaceを作成し、同じDB/media rootへの再実行を安全に拒否する。captureはTOP/OUTER 4、PANTS 5、KNIT `unstretched` 4、候補自動確定なし文言、390/768/1440 overflow 0、console error/warn 0を確認した。
+- solo/dual棚卸は写真、二重読取、3秒確認、復元、承認までUI PASS。dualは元担当者承認409と別managerの`approved dual_actor`を確認した。会計seeded UIは7/7 human mappingとCSV出力まで確認した。
+- 初回のmobile主要操作44px未満はFAIL。CSS/JSX修正後は390pxで主要操作44px以上、overflow 0、200%相当390×720でもoverflow 0、console 0/warn 0、request loopbackのみを確認した。
+- Web broad bind incident後、package scriptsと契約testへ`127.0.0.1`固定を追加し、修正版runtime netstatは`127.0.0.1:4173`だけ、targeted 24 testsとWeb buildはPASSした。外部request、課金、merge、公開は0件。
 
 ## 未解決事項
 
 - 実iPhone Safariでのホーム画面追加、カメラ、圏外復帰。
-- `docs/specs/pilot-protocol-v1.md`に従う実際の10商品pilot。
-- `21fbff4`の同一commitによる`docs/specs/ui-evaluation-rubric-v1.md`の8 task再実行と最終採点。復元フォーム44pxを実測する。
-- 上記が未完了のためDraft PRは未作成。P1、本番公開、PR mergeも未実行。
+- seeded browser指定操作とP05独立最終評価100/100（Critical/High/Medium 0）は確認済み。P08 Solレビューは未完了。
+- 実利用者pilot、実iPhone Safariのhome/camera/offline/HEIC-WebP、実Money Forward import。
+- `docs/specs/pilot-protocol-v1.1.md`に従う実利用者の`WARMUP-01`＋固定10商品pilot。
+- `docs/specs/ui-evaluation-rubric-v1.md`のP05独立最終採点は100/100 PASS済み。14 PNGとtarget SHAを同文書へ記録した。
+- 実装・設計審査を担当していない別Sol maxによる凍結差分の最終独立レビュー。
+- 実利用者pilot、実iPhone、実MF import、P08 Solレビューが未完了のためDraft PRは未作成。P1、本番公開、PR mergeも未実行。
 - Goal管理機能には旧契約がpaused表示で残る。製品判断は承認済みの`docs/specs/goal-contract-revised-a-v2.md`を正本とし、旧Objectiveを実装根拠にしない。
 
 ## モデル割当と切替ゲート
 
 - 実装運転モード: `cost-optimized`。ユーザーが2026-08-21にコスト削減を明示指定した。
 - 正本: `docs/implementation/model-routing-plan.md`。
-- Luna max: 承認済みUI/CSS、固定テスト、画面証拠、結果文書だけ。
-- Terra high/xhigh: Home内訳のような限定された複数層統合、UI 8 taskの検証専任。
-- Sol max: pilot/migration 0032、金額・会計、認証・RLS・重要状態、昇格判断、最終独立レビュー。
+- Luna max: fixture生成、固定テスト、画面証拠、結果文書。
+- Terra high/xhigh: Webの限定統合、UI 8 taskの検証・レビュー。
+- Sol max: DB/API、migration `0033`、金額・会計、認証・RLS・重要状態、昇格判断、最終独立レビュー。
 - 現在のゲート: モデル設計は別Sol maxがCritical 0 / High 0 / Medium 0でPASS。`MODEL_SWITCH_REQUIRED` なし。モデル別の適格な委譲先は利用可能。
-- P01: Sol maxが重大なpilot/DB/在庫差異を0032まで補強。現行181 tests、fresh PG 49-table RLS/P0結合、既存データ0001〜0032 upgradeをPASS。P01は完了。
-- P02: 承認済みUIへの修正は完了。44px修正を含む現行commitの実ブラウザ再確認だけをP05へ残す。
-- P04: `21fbff4`のformat/lint/typecheck/test/coverage/API-Web build、fresh PG、upgrade PGをPASS。
-- P05: `c63eb5b`で暫定96点。source変更後のため、`21fbff4`で8 task全件を再実行するまで未完了。
-- P06: 実利用者のwarm-up 1点＋固定10商品は未実施。モデルで代行しない。
+- P01: migration `0033`までのfresh/upgrade PostgreSQLと、最新root check 29 files / 202 testsはPASS。P05独立100/100も確認済み。
+- P02: 承認済みUIへの修正と、44px修正を含むseeded browser指定操作の再確認は完了。P05独立採点100/100を確認済み。
+- P04: fixture 44 PNG/hash、format/lint/typecheck、coverage、API/Web buildを含む最新full checkはPASS。targeted loopback 24 testsとWeb buildもPASS。
+- P05: target SHA `02c4641599eb6885bca3256f7792cf0a08c464bb`で独立Terra 100/100 PASS。実利用者pilot・実iPhone・実MF import・P08 Solは未実施。
+- P06: 実利用者の`WARMUP-01`＋固定10商品は未実施。モデルで代行しない。
 - 書込み: 共有worktreeのため常に1担当。並列化は読み取り専用レビューだけ。
 - 人手gate: 実10商品pilotは人が実施し、モデルで代行・補完しない。
 - 最終review: 実装・設計審査をしていない別Sol maxが凍結差分をレビューする。
 
 ## 次の一手
 
-1. 明示許可後に一時Webサーバーだけを`21fbff4`で再起動し、P05の8 task、44px、keyboard、200%拡大、3 viewport、console/networkを同一commitで再評価する。
-2. UI合格後、実利用者が`docs/specs/pilot-protocol-v1.md`どおりwarm-up 1点＋固定10商品を操作する。
-3. 証拠を更新し、これまで実装・設計審査をしていない別Sol maxが凍結差分を独立レビューする。
+1. P05独立UIスコアは100/100 PASS済み。実利用者pilotの準備・実施へ進む。
+2. 上記UI gate合格後、実利用者が`docs/specs/pilot-protocol-v1.1.md`どおり`WARMUP-01`＋固定10商品を操作する。
+3. 証拠を更新し、これまで実装・設計審査を担当していない別Sol maxが凍結差分を独立レビューする。
 4. Critical/High 0、UI 90点以上、pilot合格後だけ、外部書込み権限を再確認してDraft PRを作成する。本番公開とmergeは行わない。
 
 ## memory候補
 
-なし。監査ブランチが古い基点だった事実は今回固有で、現時点では再利用可能なlessonへ昇格しない。
+`INC-20260824-002-local-web-broad-bind` はcandidateとして保持する。loopback固定・targeted test・runtime netstatは確認済みだが、独立review前のためactive lessonへ昇格しない。
+
+## 2026-08-24 最終証拠追補
+
+- 会計seeded UIは7/7 human mapping、Money Forward 27列5行CSV（1649 bytes、SHA-256 `e833a060cc7fef30fa90140fd4330e5523579d34e871d2fc061aeed349dc1e01`）をローカルdownloadで確認。税未設定はUI/API停止、旧CSV不変、実MF import未実施。
+- 会計responsiveは1440/768/390/720（200%相当）overflow 0、主要button 44px以上、console 0/warn 0、loopbackのみ。solo/dual棚卸、capture TOPS、workflow 390pxの具体的確認結果は`acceptance-map.md`と`design-fidelity-evidence.md`の追補を正本とする。
+- full checkは29 files / 202 tests、coverage statements 84.66%、branches 80.56%、functions 100%、lines 90.68%、lint/typecheck/API/Web build PASS。fresh/upgrade PG 0001〜0033、49-table RLS/immutable reason fields、rollback/preservation PASS。使い捨てDB削除済み、外部/paid/deploy/merge 0。
+- 未確認は実利用者WARMUP＋10商品、実iPhone Safari/home/camera/offline/HEIC-WebP、実MF import、P08最終Sol review、Draft PR ready。P05 PASSでもGoal完了扱いにしない。
+
+## 2026-08-24 P05最終PASS追補
+
+- 14 PNG、full check 29 files / 202 tests、coverage、fixture hash、target SHAは`docs/specs/ui-evaluation-rubric-v1.md`を正本とする。
+- INC-005はfresh P05で解消確認後もcandidateを維持する。INC-006は初回担当者の差異確認form送信でEnglish 409となった追加発見を統合し、API hard block、最終form非表示、manager未解決承認disabledをP05で確認済み。candidateは維持する。
+- INC-007はoffline eventで接続状態文言が変わらなかった件としてcandidate記録する。P05で修正・検証済みだが、memory INDEXには載せない。

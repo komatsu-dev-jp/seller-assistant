@@ -1,7 +1,7 @@
 # Slack承認済みデザイン反映証拠
 
 - 更新日: 2026-08-24（JST）
-- 状態: `c63eb5b`の独立UI評価は暫定96/100。現行実装`21fbff4`の同一commit再評価待ち
+- 状態: target SHA `02c4641599eb6885bca3256f7792cf0a08c464bb`でP05独立Terra 100/100 PASS。実利用者・実機・実MF importは未確認
 - UI正本: `docs/design/selected-direction.md`
 - 修正版A承認: `docs/design/revised-a-approval-v2.md`
 
@@ -39,17 +39,27 @@ Slack承認画像を参考資料ではなくUI受け入れ基準として扱う�
 
 ## 現行検証
 
-- `21fbff4`の`npm.cmd run check`: 25 files / 181 tests、statements 84.38%、branches 80.56%、functions 100%、lines 90.47%、format、lint、typecheck、API/Web production buildまでPASS。
-- fresh PostgreSQL: migration 0001〜0032、49-table RLS matrix、P0結合をPASS。新しいpilot runが`0032`を記録する。
-- existing-data upgrade: 0001〜0032 PASS。過去`0028`のpilot環境、差異のstate/evidence/actor/timestamp/audit、mapping・CSV履歴を保持し、将来の未対応`0033`を拒否する。
+- v1.1の最新root `npm.cmd run check`: fixture 44 PNG/hash一致、format、lint、typecheck、29 files / 202 tests、coverage（statements 84.66%、branches 80.56%、functions 100%、lines 90.68%）、API/Web production buildまでPASS。fixture manifest SHAは`a44d25d914d721c1a62aa4330688bf64264eae54c8ddb38c833cd20b6827fa18`。target SHAは`02c4641599eb6885bca3256f7792cf0a08c464bb`。
+- fresh PostgreSQL / existing-data upgrade: migration `0033`までPASS。過去の`0032`までの結果とは別に、v1.1対象のfresh/upgrade実走を確認済み。
 - `c63eb5b`の独立UI 8 task: 暫定96/100、Critical 0、High 0、Medium 1。通常390×844、768×1024、1440×1000で横overflow 0px、対象画面のconsole error 0件、外部runtime通信0件。
-- `6c68980`で棚卸差異の復元フォームを44px以上へ修正し、`21fbff4`まで保持している。ただし`21fbff4`の実ブラウザ8 task、44px実測、console/network再確認は未実施。
-- 外部runtime通信・課金・デプロイ: 確認済みブラウザrunでは0件。実装と自動検証はPC内だけで、有料API・有料SaaSを追加していない。
+- seeded captureブラウザではTOP/OUTER 4項目、PANTS 5項目、KNIT `unstretched` 4項目、候補を自動確定しない文言、390/768/1440のoverflow 0、console error/warn 0を確認した。solo/dual棚卸は写真、二重読取、3秒確認、復元、承認まで確認し、会計は7/7 human mappingとCSV出力を確認した。
+- 初回はmobile主要操作が44px未満でFAIL。CSS/JSX修正後のroot再測定では390pxで主要操作44px以上、overflow 0を確認し、200%相当390×720でもoverflow 0、console 0/warn 0、request loopbackのみを確認した。
+- P05独立Terraは100/100（Critical/High/Medium 0）。capture属性、solo/dual承認、会計responsive、mobile online/offline/online、14 PNG証拠を確認済み。実利用者pilot、実iPhone、実MF import、P08最終Sol reviewは未確認である。
+- Web broad bind incident後、`apps/web/package.json`のdev/startと契約testへ`127.0.0.1`固定を追加した。修正版runtime netstatは`127.0.0.1:4173`だけ、targeted 24 testsとWeb buildはPASS。外部request・課金・merge・公開は0件。
+
+## 2026-08-24 seeded UI再評価追補
+
+- 会計正常経路は7/7件で人がmapping確認。Money Forward 27列5行CSVは1649 bytes、SHA-256 `e833a060cc7fef30fa90140fd4330e5523579d34e871d2fc061aeed349dc1e01`でローカル保存した。税項目未設定はUI/APIとも停止し、旧CSVはmapping差し替え後も不変。実MF importは未確認。
+- 会計は1440/768/390/720（200%相当）でoverflow 0、主要button 44px以上、console 0/warn 0、requestはloopbackのみ。
+- solo棚卸は800×800・12KBの架空写真、二重読取、3秒keyboard確認、欠損候補のDB停止、同一場所復元、`not_seen_during_count`/`found_in_place`の不可変理由、最終承認を確認。dualのAPI hard blockは元担当者を409で拒否し、最終P05の画面は元担当者の確認formを非表示、承認buttonをdisabled、日本語handoff表示として409送信を防いだ。別managerの写真・二重読取・3秒確認後に`approved dual_actor`を確認した。
+- capture TOPSは4写真/4採寸、OCR自動確定なし、不一致候補拒否、`TEST BRAND` matching候補のhuman_confirmed、brand/size/colorとbrand-tag根拠保存、人のcopy確認を確認。requestは127.0.0.1 2xx/201、console 0。
+- workflow 390pxはsummary children 334/111/111/111、select/next link 44px、overflow 0、「格納待ち」を確認。
+- これはP05最終PASSの証拠である。ただし実利用者pilot、実iPhone、実MF import、P08最終独立Sol review、Draft PR readyは未確認。
 
 ## 未完了の合格条件
 
-- 実際の人が行う10商品pilotは未実施。結合試験は、1商品完了と1商品意図的中断の計測基盤確認であり、10商品完走ではない。
+- 実際の人が`docs/specs/pilot-protocol-v1.1.md`で行う`WARMUP-01`＋固定10商品pilotは未実施。fixtureと静的testの合格は10商品完走ではない。
 - 実iPhone Safariのホーム画面追加、カメラ、圏外復帰は未確認。
-- `21fbff4`の同一commitによるUI評価表8 task再実行と独立採点は未完了。`c63eb5b`の暫定結果で代用しない。
+- 現行commitのseeded browser指定操作（会計、capture、solo/dual棚卸、200%相当390×720、loopback request capture）と、最終独立P05 100/100は確認済み。未完了は実利用者pilot、実iPhone、実MF import、P08最終独立Solレビューである。
 
-上記3点を成功扱いにせず、最終独立SolレビューでCritical/High 0を確認するまでDraft PRを作成しない。
+上記の未確認項目を成功扱いにせず、最終独立SolレビューでCritical/High 0を確認するまでDraft PRを作成しない。

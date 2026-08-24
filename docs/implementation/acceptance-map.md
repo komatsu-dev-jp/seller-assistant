@@ -1,6 +1,6 @@
 # 受け入れ条件・実装対応表
 
-- 状態: P0実装・自動/DB検証PASS、現行commitのUI 8 task再評価待ち、実10商品pilot待ち
+- 状態: target SHA `02c4641599eb6885bca3256f7792cf0a08c464bb`でP05独立Terra 100/100 PASS。実10商品pilot待ち
 - 更新日: 2026-08-24（JST）
 - 正本: `docs/specs/mvp-product-spec-v1.md`、`docs/specs/technical-architecture-v1.md`
 
@@ -8,21 +8,21 @@
 
 P0の必須ACは AC-001、003〜008、013〜014、018〜023、025〜026、028〜034、039、042〜061。各行へ実装、テスト、実画面証拠を追加し、すべて合格するまでP1へ進まない。2026-08-20以前の「P0合格」は修正版A追加前の履歴であり、現行P0の合格証拠にはしない。
 
-| 範囲        | 実装先                                                     | 自動検証                      | 手動・画面証拠       | 状態                           |
-| ----------- | ---------------------------------------------------------- | ----------------------------- | -------------------- | ------------------------------ |
-| AC-001〜009 | domain/contracts、API、Web/PWA                             | unit/API                      | P0仕入・撮影・採寸   | P0対象合格、P1 AIは無効        |
-| AC-010〜017 | media/listing/price adapters                               | unit/contract                 | 原本比較・本人引渡し | AC-013/014合格、P1は無効       |
-| AC-018〜020 | inventory/order/shipping                                   | concurrency/API               | 二重読取・発送・返品 | 合格                           |
-| AC-021〜024 | finance/accounting/Notion                                  | fixture/schema                | 収益・CSV・同期確認  | AC-021〜023合格、P1は無効      |
-| AC-025〜028 | UI/監査/品質                                               | a11y/security/all suites      | PC/PWA実画面         | 自動検証合格、現行UI再評価待ち |
-| AC-029〜041 | 財務・冪等・機密・CSV・旧資産                              | fixture/contract/security     | 出力内容確認         | P0対象合格、P1は無効           |
-| AC-042〜055 | inventory/location/count                                   | DB/domain/concurrency         | M12/W10導線          | 合格                           |
-| AC-056〜057 | solo/team discrepancy                                      | DB/domain/API/concurrency     | M13/W11導線          | 実装・DB合格、現行UI再評価待ち |
-| AC-058〜060 | accounting/formulas/export                                 | fixture/contract/API          | M14/W12導線          | 実装・DB合格、現行UI再評価待ち |
-| AC-061      | pilot/irreversible guards                                  | E2E/DB/API/UI                 | 10商品実測           | 計測基盤合格、10商品実測待ち   |
-| P0必須TA    | 001〜004、007〜009、011〜017、019〜023、025〜027、029〜043 | type/lint/test/build/contract | platform checklist   | 実装・自動再検証合格           |
-| P1固有TA    | 005〜006、010、018、024、028                               | flag-off/禁止経路             | P1画面を公開しない   | P0では実装完了を要求しない     |
-| TA-038〜043 | revised A architecture                                     | DB/domain/API/a11y/fixture    | M13/W11/M14/W12      | 実装・DB合格、現行UI再評価待ち |
+| 範囲        | 実装先                                                     | 自動検証                      | 手動・画面証拠       | 状態                                                     |
+| ----------- | ---------------------------------------------------------- | ----------------------------- | -------------------- | -------------------------------------------------------- |
+| AC-001〜009 | domain/contracts、API、Web/PWA                             | unit/API                      | P0仕入・撮影・採寸   | P0対象合格、P1 AIは無効                                  |
+| AC-010〜017 | media/listing/price adapters                               | unit/contract                 | 原本比較・本人引渡し | AC-013/014合格、P1は無効                                 |
+| AC-018〜020 | inventory/order/shipping                                   | concurrency/API               | 二重読取・発送・返品 | 合格                                                     |
+| AC-021〜024 | finance/accounting/Notion                                  | fixture/schema                | 収益・CSV・同期確認  | AC-021〜023合格、P1は無効                                |
+| AC-025〜028 | UI/監査/品質                                               | a11y/security/all suites      | PC/PWA実画面         | P05独立100/100、Critical/High/Medium 0                   |
+| AC-029〜041 | 財務・冪等・機密・CSV・旧資産                              | fixture/contract/security     | 出力内容確認         | P0対象合格、P1は無効                                     |
+| AC-042〜055 | inventory/location/count                                   | DB/domain/concurrency         | M12/W10導線          | 合格                                                     |
+| AC-056〜057 | solo/team discrepancy                                      | DB/domain/API/concurrency     | M13/W11導線          | 実装・DB・solo/dual・P05安全確認合格                     |
+| AC-058〜060 | accounting/formulas/export                                 | fixture/contract/API          | M14/W12導線          | 実装・DB・会計7/7 UI/CSV・P05確認合格、実MF import未確認 |
+| AC-061      | pilot/irreversible guards                                  | E2E/DB/API/UI                 | 10商品実測           | 計測基盤合格、10商品実測待ち                             |
+| P0必須TA    | 001〜004、007〜009、011〜017、019〜023、025〜027、029〜043 | type/lint/test/build/contract | platform checklist   | 実装・自動再検証合格                                     |
+| P1固有TA    | 005〜006、010、018、024、028                               | flag-off/禁止経路             | P1画面を公開しない   | P0では実装完了を要求しない                               |
+| TA-038〜043 | revised A architecture                                     | DB/domain/API/a11y/fixture    | M13/W11/M14/W12      | 実装・DB・P05独立100/100合格                             |
 
 ## 合格条件
 
@@ -37,17 +37,30 @@ P0の必須ACは AC-001、003〜008、013〜014、018〜023、025〜026、028〜
 - Core回帰: P0必須AC `001、003〜008、013〜014、018〜023、025〜026、028〜034、039、042〜055` とP0必須TA `001〜004、007〜009、011〜017、019〜023、025〜027、029〜037` の既存証拠を現行branchで再実行し、修正版migrationによる退行0件を確認する。P1固有条件はflag OFFと禁止経路を確認する。
 - 差異: AC-056/057、TA-038、TA-042を実装し、1人可逆、2人別担当、復元、引当停止、offline停止、不可逆経路0件を確認する。
 - 会計: AC-058〜060、TA-039〜041/043を実装し、未設定block、承認済みmapping、Money Forward 27列、汎用19列、schema/fixture hash、財務fixture、`?`のaccessibilityを確認する。
-- Pilot: AC-061は `docs/specs/pilot-protocol-v1.md` の対象、環境、開始/終了、中断、wall-clock規則で10点を測り、中央値、欠損、差戻し、誤格納を記録する。実機がない項目は未確認として分離する。
+- Pilot: AC-061の新規runは`docs/specs/pilot-protocol-v1.1.md`の固定manifest、対象、環境、開始/終了、中断、wall-clock規則で10点を測り、中央値、欠損、差戻し、manual correction、誤格納を記録する。v1.0は履歴だけに使い、実機がない項目は未確認として分離する。
 - 上記が全合格するまで、P1機能flag、Draft PRのready化、本番/mergeへ進まない。
 
-## 2026-08-24 現行再検証
+## 2026-08-24 v1.1現行状態
 
-- `21fbff4`で`npm.cmd run check`を合格。25 files / 181 tests、statements 84.38%、branches 80.56%、functions 100%、lines 90.47%、format、lint、typecheck、API/Web production buildを含む。
-- fresh PostgreSQLはmigration 0001〜0032、49-table RLS matrix、P0結合を合格。最初の別runは既存3秒確認の境界で一度停止したが、コードを変更せず新しい空DBで全件再実行してPASSした。
-- existing-data upgradeは0001〜0032を合格。過去`0028`のpilot環境を一切書き換えず、新しいrunは`0032`を記録し、未対応`0033`を拒否する。
-- `c63eb5b`のUI 8 task独立評価は暫定96/100、Critical 0、High 0、Medium 1。通常390×844、768×1024、1440×1000はoverflow 0、console error 0件、外部通信0件。
-- Mediumの44px不足は`6c68980`で修正し`21fbff4`へ含むが、現行commitの実ブラウザ8 taskは未実施。旧commitの暫定評価を最終合格にしない。
-- 実利用者10商品pilot、実iPhone Safariは未実施。Draft PR、merge、本番公開も未実行。
+- fixture kitは`listing_prep_pilot_v1.1.0`、migration `0033`、manifest SHA `a44d25d914d721c1a62aa4330688bf64264eae54c8ddb38c833cd20b6827fa18`へ固定し、`WARMUP-01`＋10商品×4 PNGの生成・整合確認を実装した。
+- UI評価seedは4つの独立workspaceを作成し、同じDB/media rootへの再実行を空状態ゲートで安全に拒否する。captureではTOP/OUTER 4項目、PANTS 5項目、KNIT `unstretched` 4項目、候補自動確定なしの文言、390/768/1440のoverflow 0、console error/warn 0を確認した。
+- solo/dual棚卸は写真、二重読取、3秒keyboard確認、欠損候補DB停止、同一場所復元、不可変理由、最終承認まで確認した。dualのAPI hard blockは元担当者を409で拒否し、最終P05の画面は元担当者の確認formを非表示、承認buttonをdisabled、日本語handoff表示として409送信を防いだ。別manager経路は`approved dual_actor`まで完走した。会計seeded UIは7/7 human mappingとCSV出力確認まで完了した。
+- CSS/JSX修正後は390pxでheader back 44x44、save 327x48、measurement input 303x44、bottom nav各122x49、overflow 0を確認し、200%相当の390×720でもoverflow 0、主要button 44px以上、console 0/warn 0、request loopbackのみを確認した。
+- 最新のfull `npm.cmd run check`はfixture 44 PNG/hash一致、format、lint、typecheck、29 files / 202 tests、coverage（statements 84.66%、branches 80.56%、functions 100%、lines 90.68%）、API/Web production buildまでPASSした。fresh/upgrade PostgreSQLもmigration `0033`までPASSした。
+- target SHA `02c4641599eb6885bca3256f7792cf0a08c464bb`のP05独立Terra最終評価は100/100（Critical/High/Medium 0）。`c63eb5b`の96/100は履歴であり、現行結果は14 PNGの最終報告を正本とする。
+- Web broad bind incident後、`apps/web/package.json`のdev/startと契約testへ`127.0.0.1`固定を追加した。修正版runtime netstatは`127.0.0.1:4173`だけ、targeted 24 testsとWeb buildはPASS。外部request、課金、merge、公開は0件。
+- 実利用者の`WARMUP-01`＋固定10商品pilot、実iPhone Safari、最終独立Solレビューは未実施。Draft PR、merge、本番公開も未実行。
+
+## 2026-08-24 v1.1最終証拠追補
+
+- 会計seeded UIは正常経路を7/7件で人がmapping確認した。Money Forward 27列・5行CSVはローカルdownload済みで、1649 bytes、SHA-256 `e833a060cc7fef30fa90140fd4330e5523579d34e871d2fc061aeed349dc1e01`。未設定税項目はUI/APIともblockし、mapping差し替え前の旧CSVは不変。実際のMoney Forward取込は未実施。
+- 会計responsiveは1440/768/390/720（200%相当）でoverflow 0、主要button 44px以上、console error/warn 0、通信はloopbackのみ。
+- solo棚卸は架空800×800・12KB写真、二重読取、3秒keyboard確認、候補欠損時のDB停止、同一場所復元を確認した。UI/API修正後の不可変な理由は`not_seen_during_count`と`found_in_place`を区別し、最終承認までPASS。dualはAPIで元担当者を409拒否しつつ、最終画面では元担当者の確認・承認操作を事前に無効化した。別managerの写真・二重読取・3秒確認・承認を経て`approved dual_actor`となった。
+- capture TOPSは4写真・4採寸、OCR候補の自動確定なし、候補不一致を拒否。matching UIの`TEST BRAND`候補を人が`human_confirmed`し、brand/size/colorとbrand-tag根拠を保存した。出品文は未確認のまま出さず、人のcopy確認を要求した。全requestは`127.0.0.1`の2xx/201、console 0。
+- workflow 390pxのresponsive不具合を修正し、summary childrenは334/111/111/111px、selectとnext linkは44px、overflow 0、表示文言は「格納待ち」とした。
+- 最新full `npm.cmd run check`はPASS。fixture 44 PNG/hash `a44d25d...`、29 files / 202 tests、coverage statements 84.66%、branches 80.56%、functions 100%、lines 90.68%、lint/typecheck/API/Web buildを確認した。fresh PGは0033まで、49-table RLS等とimmutable reason fieldsを含む結合確認がPASS。upgrade integrationも0001〜0033 rollback/preservationがPASSした。使い捨てDBは削除済み。
+- runtimeはloopbackのみ。外部通信、課金、deploy、mergeは0件。
+- 未確認: 人の`WARMUP-01`＋固定10商品pilot、実iPhone、実際のMoney Forward取込、P08最終独立Sol review、Draft PR ready。P05はPASSだがGoalは完了扱いにしない。
 
 > 以下のIteration 4〜24は各時点の履歴であり、現行P0の最終合格証拠ではない。現行判定は本節と、同一実装commitのUI/pilot証拠を使用する。
 

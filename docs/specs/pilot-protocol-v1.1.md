@@ -1,6 +1,6 @@
 # 10商品・出品準備時間pilot手順 v1.1
 
-- 状態: fresh/upgrade PostgreSQLはmigration `0033`までPASS、root full check PASS。seeded browser UIの指定操作は確認済み、最終独立P05スコア・実利用者pilot待ち
+- 状態: fresh/upgrade PostgreSQLはmigration `0033`までPASS、root full check PASS。P05独立Terraは100/100 PASS、実利用者pilot待ち（開始可能）
 - 更新日: 2026-08-24（JST）
 - 計測版: `listing_prep_pilot_v1.1.0`
 - DB migration版: `0033`
@@ -9,9 +9,9 @@
 
 ## 0. 現行状態と開始禁止条件
 
-- 最新root `npm.cmd run check`はfixture 44 PNG/hash一致、format、lint、typecheck、29 files / 201 tests、coverage（statements 84.66%、branches 80.56%、functions 100%、lines 90.68%）、API/Web production buildまでPASSした。
-- migration `0033`のfresh PostgreSQL結合試験と既存データupgradeはPASSした。seeded browserでは会計7/7 human mappingと27列5行CSV、solo/dual棚卸の写真・二重読取・3秒確認・復元・承認、capture属性確認、200%相当390×720、loopback request captureまで確認済みである。最終独立P05スコア、実利用者warm-up＋10商品pilotは未確認または未実施である。
-- 同じ検証対象commitの最終独立P05スコアが合格するまで、本pilotを開始しない。合格後に実利用者が本手順のwarm-up＋10商品を実施する。過去commitの暫定96/100やmigration `0032`までの結果をv1.1全体の合格へ流用しない。
+- 最新root `npm.cmd run check`はfixture 44 PNG/hash一致、format、lint、typecheck、29 files / 202 tests、coverage（statements 84.66%、branches 80.56%、functions 100%、lines 90.68%）、API/Web production buildまでPASSした。
+- migration `0033`のfresh PostgreSQL結合試験と既存データupgradeはPASSした。seeded browserでは会計7/7 human mappingと27列5行CSV、solo/dual棚卸の写真・二重読取・3秒確認・復元・承認、capture属性確認、200%相当390×720、loopback request captureまで確認済みである。P05独立Terra 100/100はPASS、実利用者warm-up＋10商品pilotは未実施である。
+- target SHA `02c4641599eb6885bca3256f7792cf0a08c464bb`のP05独立Terraは100/100（Critical/High/Medium 0）で合格した。本pilotは人の準備が整い次第開始可能である。過去commitの暫定96/100やmigration `0032`までの結果をv1.1全体の合格へ流用しない。
 - `docs/specs/pilot-protocol-v1.md`は`listing_prep_pilot_v1.0.0`の履歴として保持する。新しいrunはこのv1.1だけを使う。
 
 ## 1. 固定fixture kit
@@ -107,6 +107,6 @@ template versionはすべて`1`、単位はcmとする。`basis`は測り方、`
 
 ## 8. 現時点の実施状態（2026-08-24）
 
-- fixture 44 PNG/hash、DB migration `0033`、seeded UIの準備確認はPASSしているが、ここに記すprotocolの実利用者runはまだ開始していない。
-- 未実施: 人が行う`WARMUP-01`＋固定10商品、実iPhone Safari/home/camera/offline/HEIC-WebP。モデルやseeded browserの結果で10商品runを代用しない。
-- run開始前に、最新full check（29 files / 201 tests、coverage、lint/typecheck/API/Web build）、fresh/upgrade PostgreSQL 0033、現行UIの最終独立reviewを再確認する。実施後は本protocolの開始・終了event、wall-clock、欠損、差戻し、manual correction、外部network 0件をrun単位で保存する。
+- fixture 44 PNG/hash、DB migration `0033`、P05独立UI再評価100/100はPASSしているが、ここに記すprotocolの実利用者runはまだ開始していない。
+- 未実施: 人が行う`WARMUP-01`＋固定10商品、実iPhone Safari/home/camera/offline/HEIC-WebP。P05結果やモデルで10商品runを代用しない。本pilotは開始可能である。
+- run開始前に、最新full check（29 files / 202 tests、coverage、lint/typecheck/API/Web build）とfixture hashを確認する。実施後は本protocolの開始・終了event、wall-clock、欠損、差戻し、manual correction、外部network 0件をrun単位で保存する。

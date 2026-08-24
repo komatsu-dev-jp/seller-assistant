@@ -316,3 +316,40 @@
 - 実DB: 既存の一時PGへ接続できなかったため触らず、別の空の一時clusterを使用した。migration 32本の適用、fresh 49-table RLS/P0結合、既存データ0001〜0032 upgradeをPASSした。
 - 透明性: fresh結合の最初のrunは、今回未変更の3秒確認で`human confirmation must follow both scans`となり停止した。コードを変えず新しい空DBで全件を最初から再実行してPASSし、一時clusterは検証後に停止した。
 - 未完了: `21fbff4`の実ブラウザUI 8 task、44px実測、実利用者10商品pilot、実iPhone Safari、最終独立review、Draft PR。旧UI暫定結果で代用せず、merge・本番公開・有料サービス利用は行わない。
+
+## Iteration 31 — 2026-08-24 最終seeded証拠・DB回帰追補
+
+- 会計: 正常経路7/7件のhuman mapping、Money Forward 27列5行CSV（1649 bytes、SHA-256 `e833a060cc7fef30fa90140fd4330e5523579d34e871d2fc061aeed349dc1e01`）をローカルdownloadで確認。税未設定はUI/APIで停止し、旧CSV不変。実MF importは未実施。
+- 会計UI: 1440/768/390/720（200%相当）overflow 0、主要button 44px以上、console 0/warn 0、loopback requestのみ。
+- 棚卸: soloは800×800・12KB架空写真、二重読取、3秒keyboard確認、欠損候補DB停止、同一場所復元、不可変理由`not_seen_during_count`/`found_in_place`、最終承認をPASS。dualは元担当者承認409、別manager経路で`approved dual_actor`をPASS。
+- capture/workflow: TOPS 4写真4採寸、OCR自動確定なし、不一致候補拒否、`TEST BRAND` human_confirmedとtag根拠保存、copyは人確認必須。390px summary 334/111/111/111、select/next link 44px、overflow 0、「格納待ち」。通信は127.0.0.1 2xx/201、console 0。
+- 回帰: full `npm.cmd run check` PASS（44 PNG/hash `a44d25d...`、29 files / 201 tests、coverage statements 84.66%、branches 80.56%、functions 100%、lines 90.68%、lint/typecheck/API/Web build）。fresh PG 0001〜0033、49-table RLS/immutable reason fields、upgrade rollback/preservation 0001〜0033 PASS。使い捨てDBは削除済み、外部/paid/deploy/merge 0。
+- 未完了: 実利用者pilot、実iPhone Safari/home/camera/offline/HEIC-WebP、実MF import、最終Sol/UI review、Draft PR ready。Goal完了扱いにしない。
+
+## Iteration 29 — 2026-08-24 固定fixture付きpilot v1.1
+
+- 発見: v1.0は10個のfixture IDとカテゴリを固定していたが、各商品の画像、架空属性、カテゴリ別採寸値、warm-up素材を再現するkitがなく、実利用者が同じ入力で10商品を測れなかった。
+- fixture: `WARMUP-01`と固定10商品へ各4枚の800×800ローカルPNG、架空brand/size/color、tag text、採寸template/値、CHECKLISTを追加した。manifest SHAは`a44d25d914d721c1a62aa4330688bf64264eae54c8ddb38c833cd20b6827fa18`である。
+- protocol: 新しいrunを`listing_prep_pilot_v1.1.0`、migration `0033`、上記manifest SHAへ固定した。v1.0は履歴として保持し、写真は最新role、採寸は最新attempt、属性はappend-only revisionで訂正し、手動訂正を`manual_correction`へ数える。
+- 自動検証: root checkはfixture整合、format、lint、typecheck、26 files / 192 tests、API/Web buildまでPASS。
+- 外部境界: 架空データとPC内ファイルだけを使用し、外部network、外部AI、有料service、実データ、公開、mergeは0件。
+- 未完了: migration `0033`のfresh/upgrade PostgreSQL、現行commitの実ブラウザUI 8 task、実利用者の`WARMUP-01`＋10商品pilot、実iPhone Safari、最終独立Solレビュー、Draft PR。静的testだけで本pilotを開始しない。
+
+## Iteration 30 — 2026-08-24 v1.1 DB・seed・部分UI評価とloopback固定
+
+- DB: fresh PostgreSQLと既存データupgradeをmigration `0033`までPASSした。`0032`までの過去証拠で代用せず、v1.1対象として実走した。
+- UI評価seed: `ui-evaluation-v1`はsolo棚卸、dual棚卸、会計、captureの4つの独立workspaceを作成する。同じDB/media rootでの再実行は空状態ゲートにより安全に拒否する。
+- capture seeded browser: TOP/OUTERは4項目、PANTSは5項目、KNITは`unstretched` 4項目をPASS。候補自動確定なしの文言、390/768/1440のoverflow 0、console error/warn 0を確認した。
+- stocktake seeded browser: solo/dualそれぞれの1人/2人mode選択と不足候補生成までPASS。ただしChrome拡張のlocal file upload権限不足で架空証拠写真を選べず、3秒確定・復元・最終承認は未確認。会計seeded UIはブラウザ接続切断で未確認。
+- 44px再測定: 初回のmobile主要操作44px未満はFAIL。CSS/JSX修正後、390pxでheader back 44x44、save 327x48、measurement input 303x44、bottom nav各122x49、overflow 0を確認した。200% zoom、capture全属性採否、全network捕捉は未確認で、現行UI全体のPASS・最終点数ではない。
+- root検証: 最新`npm.cmd run check`はfixture 44 PNG/hash一致、format、lint、typecheck、27 files / 196 tests、statements 84.66%、branches 80.56%、functions 100%、lines 90.68%、API/Web production buildまでPASSした。
+- loopback: broad bind incident後、Webのdev/startと契約testへ`127.0.0.1`固定を追加。修正版runtime netstatは`127.0.0.1:4173`だけ、targeted 24 testsとWeb buildはPASSした。外部request、課金、merge、公開は0件。
+- 未完了: seeded browserの未確認操作と8 task最終採点、200% zoom、capture全属性採否、全network捕捉、実利用者の`WARMUP-01`＋固定10商品pilot、実iPhone Safari、最終独立Solレビュー、Draft PR。部分PASSを最終PASSへ繰り上げず、本pilotを開始しない。
+
+## Iteration 32 — 2026-08-24 P05独立最終PASS
+
+- 対象: target SHA `02c4641599eb6885bca3256f7792cf0a08c464bb`、fresh production、独立Terra。
+- 結果: P05 100/100 PASS。Critical/High/Medium 0、8 task 40/40、安全25/25、responsive15/15、a11y15/15、初心者5/5。
+- 確認: 390/768/1440 overflow 0、CSS zoom 2 fallbackで390/390/390・selector overflow 0、主要操作44px以上、console 0、runtime requestは127.0.0.1のみ。dual初回担当のform非表示/承認disabled/日本語handoff/409なし、manager写真・二重読取・keyboard 3秒→hold→承認成功status、mobile online→offline→onlineの端末内保持/retry disabled、会計profile・7/7履歴・CSV停止・27列5行preview/downloadをPASS。
+- 自動回帰: full `npm.cmd run check` 29 files / 202 tests、coverage statements 84.66%、branches 80.56%、functions 100%、lines 90.68%、fixture hash `a44d25d...`。14 PNGは`docs/specs/ui-evaluation-rubric-v1.md`に列挙した。
+- 未完了: 人のWARMUP＋固定10商品pilot、実iPhone、実MF import、P08最終Sol、Draft PR。P05合格をGoal完了やDraft PR readyへ拡張しない。

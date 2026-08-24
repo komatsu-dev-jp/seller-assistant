@@ -1,6 +1,6 @@
 # P0 UI評価表 v1
 
-- 状態: `c63eb5b`で暫定評価済み、現行実装`21fbff4`の同一commit再評価待ち
+- 状態: target SHA `02c4641599eb6885bca3256f7792cf0a08c464bb`でP05独立Terra最終PASS（100/100）
 - 更新日: 2026-08-24（JST）
 - 合格: 90/100以上、かつ重大項目に0点なし
 
@@ -8,11 +8,19 @@
 
 ## 現行評価状況
 
-- `c63eb5b`では8 taskを画面から完走し、独立確認者の暫定報告は96/100、Critical 0、High 0、Medium 1だった。通常の390×844、768×1024、1440×1000は横overflow 0、対象画面のconsole error 0件、外部runtime通信0件だった。
+- target SHA `02c4641599eb6885bca3256f7792cf0a08c464bb`のfresh productionで、P05独立Terraは100/100（Critical/High/Medium 0）だった。8 task 40/40、安全25/25、responsive15/15、a11y15/15、初心者5/5を確認した。
 - この独立確認者はP05のUI実行担当であり、P08の最終独立Solレビューとは別である。
 - Medium 1は、棚卸差異の復元フォームに21〜25pxの入力欄・ボタンが残っていたこと。`6c68980`で同フォームを44px以上へ修正し、`21fbff4`まで保持している。
 - 暫定報告は44px不足をresponsiveの減点へ含めているが、下表のresponsive規則は切断・横overflow・overlay・入力不能を採点対象とする。最終確認者は現行規則で点数を再計算し、減点根拠を項目ごとに残す。
-- `21fbff4`では`npm.cmd run check`、fresh PostgreSQL、既存データupgradeまで合格したが、修正後の実ブラウザ8 taskは未実施。この暫定結果を現行commitの最終合格として扱わない。
+- 390/768/1440のoverflow 0、CSS zoom 2 fallbackで390/390/390、selector overflow 0、主要操作44px以上、console 0、runtime requestは`127.0.0.1`のみを確認した。dual初回担当の確認form非表示・承認disabled・日本語handoff・409なし、managerの写真・二重読取・keyboard 3秒→hold→承認成功status、mobile online→offline→onlineの端末内保持/retry disabled、会計profile・7/7履歴・CSV停止・27列5行preview/downloadを確認した。
+- 最新full checkは29 files / 202 tests、coverage statements 84.66%、branches 80.56%、functions 100%、lines 90.68%、fixture hash `a44d25d...`でPASSした。P05は合格済みだが、P08の最終Solレビューとは別である。
+
+## P05最終結果（2026-08-24）
+
+- 採点者: 独立Terra、target SHA: `02c4641599eb6885bca3256f7792cf0a08c464bb`、fresh production。
+- 結果: **100/100 PASS**。Critical 0、High 0、Medium 0。8 task 40/40、安全25/25、responsive15/15、a11y15/15、初心者5/5。
+- 証拠PNG（14点）: `output/playwright/v11-p05-independent/fresh-dual-initial-owner-disabled-390x844.png`、`fresh-dual-manager-keyboard-focus-390x844.png`、`fresh-dual-manager-candidate-390x844.png`、`fresh-dual-manager-approved-status-390x844.png`、`fresh-solo-audit-csszoom200-390x844.png`、`fresh-solo-restored-390x844.png`、`fresh-solo-restored-768x1024.png`、`fresh-solo-restored-1440x1000.png`、`final-mobile-online-390x844.png`、`final-mobile-offline-390x844.png`、`final-accounting-profile-390x844.png`、`final-accounting-mapping-390x844.png`、`final-accounting-csv-blocker-390x844.png`、`final-accounting-csv-downloaded-390x844.png`。
+- 未実施: 人の`WARMUP-01`＋固定10商品pilot、実iPhone、実Money Forward import、P08最終Solレビュー、Draft PR。
 
 | 区分                 | 確認項目                                                                                                  | 点数規則                                                                                                                                                                       | 満点 |
 | -------------------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---: |
