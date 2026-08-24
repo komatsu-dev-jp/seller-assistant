@@ -200,9 +200,23 @@ describe("zero-cost PWA contract", () => {
     expect(stocktake).toContain('active?.state !== "approved"');
     expect(stocktake).toContain("active.initialCounterId === currentIdentityId");
     expect(stocktake).toContain("active.initialCounterId !== currentIdentityId");
+    expect(stocktake).toContain('difference.state === "reconfirmation_required"');
+    expect(stocktake).toContain("handoffRequired={");
+    expect(stocktake).toContain("別担当者でログインし、証拠写真・商品・場所を再確認してください。");
+    expect(stocktake).toContain('difference.state === "resolved"');
+    expect(stocktake).toContain('difference.state === "candidate_confirmed"');
+    expect(stocktake).toContain('difference.state === "restored"');
+    expect(stocktake).toContain(
+      "const canApprove = isApprovalActorEligible && hasOnlyApprovalReadyDiscrepancies;",
+    );
+    expect(stocktake).toContain(
+      'const action = discrepancy.state === "candidate_confirmed" ? "restore" : "confirm";',
+    );
     expect(stocktake).toContain("disabled={busy || pendingChallenge !== null || !canApprove}");
     expect(stocktake).toContain("最初の担当者とは別の担当者でログインして承認してください");
     expect(stocktake).toContain("棚卸を開始した担当者でログインして承認してください");
+    expect(stocktake).toContain("isApprovalActorEligible && !hasOnlyApprovalReadyDiscrepancies");
+    expect(stocktake).toContain("差異の再確認を完了してから棚卸を承認してください。");
     expect(stocktake).toContain("successMessage?: string");
     expect(stocktake).toContain("if (successMessage) setMessage(successMessage);");
     expect(stocktake).toContain('"棚卸を承認しました。"');

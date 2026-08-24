@@ -56,11 +56,20 @@ export function StocktakeWorkspace({
     initialFocus === "approval-pending"
       ? selectFocusedStocktake(stocktakes, selectedStocktakeId)
       : (stocktakes.find((stocktake) => stocktake.state !== "approved") ?? null);
-  const canApprove =
+  const isApprovalActorEligible =
     active !== null &&
     (active.confirmationMode === "solo_reversible"
       ? active.initialCounterId === currentIdentityId
       : active.initialCounterId !== currentIdentityId);
+  const hasOnlyApprovalReadyDiscrepancies =
+    active !== null &&
+    active.discrepancies.every(
+      (difference) =>
+        difference.state === "resolved" ||
+        difference.state === "candidate_confirmed" ||
+        difference.state === "restored",
+    );
+  const canApprove = isApprovalActorEligible && hasOnlyApprovalReadyDiscrepancies;
   const selectedDiscrepancy =
     active?.discrepancies.find(
       (difference) => difference.discrepancyId === selectedDiscrepancyId,
@@ -506,6 +515,11 @@ export function StocktakeWorkspace({
                           discrepancy={difference}
                           item={item ?? null}
                           evidence={selectedEvidence}
+                          handoffRequired={
+                            active.confirmationMode === "dual_actor" &&
+                            active.initialCounterId === currentIdentityId &&
+                            difference.state === "reconfirmation_required"
+                          }
                           pending={
                             pendingChallenge?.discrepancyId === difference.discrepancyId
                               ? pendingChallenge
@@ -565,11 +579,16 @@ export function StocktakeWorkspace({
                         ? "別担当として棚卸承認"
                         : "復元可能な差異を確認して棚卸承認"}
                     </button>
-                    {!canApprove ? (
+                    {!isApprovalActorEligible ? (
                       <p className="stocktakeBlockNotice" role="status">
                         {active.confirmationMode === "dual_actor"
                           ? "最初の担当者とは別の担当者でログインして承認してください"
                           : "棚卸を開始した担当者でログインして承認してください"}
+                      </p>
+                    ) : null}
+                    {isApprovalActorEligible && !hasOnlyApprovalReadyDiscrepancies ? (
+                      <p className="stocktakeBlockNotice" role="status">
+                        差異の再確認を完了してから棚卸を承認してください。
                       </p>
                     ) : null}
                   </>
@@ -732,6 +751,7 @@ function MissingCandidateCard({
   discrepancy,
   item,
   evidence,
+  handoffRequired,
   pending,
   busy,
   onPrepare,
@@ -742,6 +762,7 @@ function MissingCandidateCard({
   discrepancy: StocktakeResponse["discrepancies"][number];
   item: P0ItemResponse | null;
   evidence: DiscrepancyEvidenceListItem[];
+  handoffRequired: boolean;
   pending: PendingChallenge | null;
   busy: boolean;
   onPrepare: (
@@ -812,6 +833,10 @@ function MissingCandidateCard({
       ) : null}
       {finished ? (
         <p className="safeNotice">現物を現在場所へ復元済みです。履歴は削除されません。</p>
+      ) : handoffRequired ? (
+        <p className="stocktakeBlockNotice" role="status">
+          別担当者でログインし、証拠写真・商品・場所を再確認してください。
+        </p>
       ) : pending ? (
         <div className="challengePanel">
           <strong>{pending.action === "confirm" ? "不足候補を確定" : "発見した在庫を復元"}</strong>
