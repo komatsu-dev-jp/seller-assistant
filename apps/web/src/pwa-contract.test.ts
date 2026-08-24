@@ -377,7 +377,22 @@ describe("zero-cost PWA contract", () => {
     expect(outbox).toContain("discarded += 1");
     expect(outbox).toContain("throw new Error(body?.message");
     expect(outbox).not.toMatch(/address|receiptText|purchasePrice|taxDocument/u);
+    expect(status).toContain("useState<boolean | null>(null)");
+    expect(status).toContain("if (navigator.onLine)");
+    expect(status).toContain("showOfflineStatus();");
     expect(status).toContain('addEventListener("online"');
+    expect(status).toContain('addEventListener("offline"');
+    expect(status).toContain('removeEventListener("online", synchronizeWhenOnline)');
+    expect(status).toContain('removeEventListener("offline", showOfflineStatus)');
+    expect(status).toContain(
+      'isOnline === null ? "接続確認中" : isOnline ? "オンライン" : "オフライン"',
+    );
+    expect(status).toContain(
+      "同期待ちは端末内に保持し、接続が戻った後に現在地を再確認して同期します。",
+    );
+    expect(status).toContain(
+      'disabled={isOnline !== true || state === "syncing" || pending === 0}',
+    );
     expect(status).toContain("自動上書きせず、再読取してください");
     expect(status).toContain("担当解除・変更のため端末から消去しました");
     expect(status).toContain("再ログイン後に同期待ちを再送します。端末内に保持しています");
