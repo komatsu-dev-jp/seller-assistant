@@ -36,6 +36,22 @@ APIは `DATABASE_URL`（PostgreSQLの接続先）、32バイト以上の `SESSIO
 
 WebからAPIへ同一URLで安全に中継するときだけ `API_INTERNAL_ORIGIN`（Webサーバーから見たAPI接続先）を設定します。`APP_ORIGIN`（利用者が開くWebアプリの正確なURL）も必須で、変更操作はブラウザの `Origin` と完全一致する場合だけ許可します。未設定・欠落・別サイトからの要求は停止し、sessionと端末データを変更しません。
 
+## 同じWi-Fi内のiPhone表示
+
+認証Cookieの`Secure`設定を弱めず、`scripts/start-lan-preview.mjs`のローカルHTTPS中継を使います。PC用WebとAPIは`127.0.0.1`のままにし、許可したiPhoneのIPv4アドレス1件だけを通します。証明書や秘密鍵はGitへ保存しません。詳しい準備、iPhone操作、停止・削除は`docs/implementation/secure-lan-preview-guide.md`を参照してください。
+
+```powershell
+npm.cmd run lan:preview
+```
+
+必要な環境変数が1件でもない場合、loopback以外の上流、`0.0.0.0`待受、接続元IP未指定の場合は起動を停止します。これは本番公開機能ではなく、信頼済みの同一Wi-Fiで実機確認する間だけ使う開発用機能です。
+
+## GitHub Pages公開レビュー版
+
+GitHub Pages（GitHubの静的Web公開機能）には、`.github/pages`のレビュー専用PWAを手動で公開します。画面・文言・導線をスマホで確認するためのページで、架空データだけを使い、ログイン、API、PostgreSQL、写真保存、出品、価格変更、会計CSV出力はありません。操作も保存されません。
+
+公開先は公開リポジトリのPages URL（予定: `https://komatsu-dev-jp.github.io/seller-assistant/`）です。iPhoneのSafariで開き、「共有」→「ホーム画面に追加」を選ぶとアプリ風に起動できます。実運用版はPC内のloopback環境を使い、GitHub Pagesへ実データを入力しないでください。
+
 ## 構成
 
 - `apps/web`: PC画面とiPhone向けPWA

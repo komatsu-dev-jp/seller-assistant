@@ -2,23 +2,939 @@
 <html lang="ja">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>フリマ物販業務アプリ - 検証ページ</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#13213a" />
+    <meta name="description" content="フリマ物販業務アプリの公開レビュー用PWA" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Resale Ops" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./icon.svg" />
+    <title>Resale Ops — 公開レビュー版</title>
     <style>
-      :root { color-scheme: light; font-family: system-ui, sans-serif; }
-      body { margin: 0; background: #f4f7fb; color: #1f2937; }
-      main { max-width: 720px; margin: 12vh auto; padding: 32px; background: white; border: 1px solid #dbe4f0; border-radius: 20px; box-shadow: 0 12px 32px #1f29371a; }
-      h1 { margin-top: 0; color: #123b69; }
-      .note { padding: 16px; background: #eef6ff; border-left: 4px solid #2074c8; border-radius: 8px; }
-      small { color: #64748b; }
+      :root {
+        color-scheme: light;
+        --navy: #13213a;
+        --ink: #182337;
+        --muted: #68758a;
+        --line: #dce3ee;
+        --paper: #f5f7fa;
+        --panel: #ffffff;
+        --blue: #1769d1;
+        --blue-soft: #eaf2ff;
+        --amber: #a45b00;
+        --amber-soft: #fff4df;
+        --green: #087443;
+        --green-soft: #e7f7ef;
+        --shadow: 0 12px 30px rgb(19 33 58 / 9%);
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", Meiryo, system-ui,
+          sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        background: var(--paper);
+      }
+      body {
+        margin: 0;
+        min-width: 320px;
+        background: var(--paper);
+        color: var(--ink);
+      }
+      button {
+        font: inherit;
+      }
+      button:focus-visible,
+      a:focus-visible {
+        outline: 3px solid #7bb4ff;
+        outline-offset: 2px;
+      }
+      .shell {
+        min-height: 100svh;
+      }
+      .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        background: rgb(19 33 58 / 96%);
+        color: white;
+      }
+      .topbar-inner {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 14px 20px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 190px;
+      }
+      .brand-mark {
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+        background: #4c9aff;
+        display: grid;
+        place-items: center;
+        color: white;
+        font-weight: 800;
+      }
+      .brand-title {
+        font-weight: 800;
+        letter-spacing: 0.02em;
+      }
+      .brand-subtitle {
+        display: block;
+        margin-top: 2px;
+        color: #b9c9e4;
+        font-size: 11px;
+        font-weight: 500;
+      }
+      .topbar-note {
+        margin-left: auto;
+        color: #d7e5ff;
+        font-size: 12px;
+        text-align: right;
+      }
+      .main {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 24px 20px 112px;
+      }
+      .notice {
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+        padding: 14px 16px;
+        border: 1px solid #bcd5fb;
+        border-radius: 14px;
+        background: var(--blue-soft);
+        color: #143d75;
+      }
+      .notice strong {
+        display: block;
+        margin-bottom: 3px;
+      }
+      .notice p {
+        margin: 0;
+        font-size: 13px;
+        line-height: 1.6;
+      }
+      .review-id {
+        margin-left: auto;
+        white-space: nowrap;
+        color: #49688e;
+        font-size: 11px;
+      }
+      .page-heading {
+        margin: 24px 0 18px;
+        display: flex;
+        justify-content: space-between;
+        align-items: end;
+        gap: 16px;
+      }
+      h1,
+      h2,
+      h3,
+      p {
+        margin-top: 0;
+      }
+      h1 {
+        margin-bottom: 7px;
+        font-size: clamp(25px, 4vw, 38px);
+        letter-spacing: -0.02em;
+      }
+      .lede {
+        margin-bottom: 0;
+        color: var(--muted);
+        line-height: 1.65;
+      }
+      .last-sync {
+        color: var(--muted);
+        font-size: 12px;
+        white-space: nowrap;
+      }
+      .screen {
+        display: none;
+      }
+      .screen.active {
+        display: block;
+        animation: appear 0.18s ease-out;
+      }
+      @keyframes appear {
+        from {
+          opacity: 0.55;
+          transform: translateY(4px);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        gap: 16px;
+      }
+      .card {
+        grid-column: span 4;
+        padding: 18px;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: var(--panel);
+        box-shadow: var(--shadow);
+      }
+      .card.wide {
+        grid-column: span 8;
+      }
+      .card.full {
+        grid-column: 1 / -1;
+      }
+      .card h2 {
+        margin-bottom: 8px;
+        font-size: 18px;
+      }
+      .card h3 {
+        margin-bottom: 11px;
+        font-size: 15px;
+      }
+      .eyebrow {
+        color: var(--blue);
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+      }
+      .metric {
+        display: flex;
+        align-items: baseline;
+        gap: 7px;
+        margin: 10px 0 2px;
+      }
+      .metric strong {
+        font-size: 30px;
+        line-height: 1;
+      }
+      .metric span {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .muted {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.6;
+      }
+      .status {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 9px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 700;
+      }
+      .status.ok {
+        color: var(--green);
+        background: var(--green-soft);
+      }
+      .status.warn {
+        color: var(--amber);
+        background: var(--amber-soft);
+      }
+      .status.info {
+        color: #175ca7;
+        background: var(--blue-soft);
+      }
+      .list {
+        display: grid;
+        gap: 9px;
+        padding: 0;
+        margin: 0;
+        list-style: none;
+      }
+      .list li {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 10px 0;
+        border-bottom: 1px solid #edf0f5;
+        font-size: 13px;
+      }
+      .list li:last-child {
+        border-bottom: 0;
+      }
+      .list b {
+        font-weight: 750;
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      .stack {
+        display: grid;
+        gap: 10px;
+      }
+      .progress {
+        height: 9px;
+        overflow: hidden;
+        border-radius: 99px;
+        background: #edf1f7;
+      }
+      .progress span {
+        display: block;
+        height: 100%;
+        border-radius: inherit;
+        background: var(--blue);
+      }
+      .action {
+        min-height: 44px;
+        border: 0;
+        border-radius: 10px;
+        padding: 10px 14px;
+        background: var(--blue);
+        color: white;
+        font-weight: 750;
+        cursor: pointer;
+      }
+      .action.secondary {
+        border: 1px solid #a9c7ee;
+        background: white;
+        color: #145aa9;
+      }
+      .action.ghost {
+        border: 1px solid var(--line);
+        background: #fff;
+        color: var(--ink);
+      }
+      .action:active {
+        transform: translateY(1px);
+      }
+      .button-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 9px;
+        margin-top: 14px;
+      }
+      .mobile-step {
+        display: grid;
+        grid-template-columns: 34px 1fr;
+        gap: 11px;
+        align-items: start;
+      }
+      .step-number {
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background: var(--navy);
+        color: white;
+        font-weight: 800;
+      }
+      .step-number.done {
+        background: var(--green);
+      }
+      .step-copy strong {
+        display: block;
+        margin-bottom: 4px;
+      }
+      .step-copy small {
+        color: var(--muted);
+        line-height: 1.5;
+      }
+      .table-wrap {
+        overflow-x: auto;
+      }
+      table {
+        width: 100%;
+        min-width: 600px;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+      th,
+      td {
+        padding: 12px 10px;
+        border-bottom: 1px solid #edf0f5;
+        text-align: left;
+        vertical-align: middle;
+      }
+      th {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 800;
+      }
+      .sample-label {
+        display: inline-block;
+        margin-bottom: 8px;
+        padding: 4px 8px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .help {
+        padding: 13px;
+        border-radius: 11px;
+        background: #f8fafc;
+        color: #43526b;
+        font-size: 12px;
+        line-height: 1.65;
+      }
+      .bottom-nav {
+        position: fixed;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        z-index: 4;
+        padding: 8px max(12px, env(safe-area-inset-left)) max(8px, env(safe-area-inset-bottom));
+        border-top: 1px solid var(--line);
+        background: rgb(255 255 255 / 96%);
+        backdrop-filter: blur(14px);
+      }
+      .bottom-nav-inner {
+        max-width: 620px;
+        margin: 0 auto;
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 5px;
+      }
+      .nav-button {
+        min-height: 48px;
+        border: 0;
+        border-radius: 10px;
+        background: transparent;
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .nav-button span {
+        display: block;
+        margin-bottom: 3px;
+        font-size: 19px;
+        line-height: 1;
+      }
+      .nav-button.active {
+        background: var(--blue-soft);
+        color: var(--blue);
+      }
+      dialog {
+        width: min(560px, calc(100% - 28px));
+        border: 0;
+        border-radius: 16px;
+        padding: 0;
+        box-shadow: 0 24px 70px rgb(19 33 58 / 28%);
+        color: var(--ink);
+      }
+      dialog::backdrop {
+        background: rgb(19 33 58 / 48%);
+      }
+      .dialog-body {
+        padding: 22px;
+      }
+      .dialog-body h2 {
+        margin-bottom: 9px;
+      }
+      .template {
+        padding: 14px;
+        border-radius: 10px;
+        background: #f5f7fa;
+        white-space: pre-wrap;
+        font-size: 13px;
+        line-height: 1.65;
+      }
+      .footer-note {
+        margin-top: 20px;
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.7;
+      }
+      @media (max-width: 760px) {
+        .topbar-inner {
+          padding: 11px 15px;
+        }
+        .brand {
+          min-width: 0;
+        }
+        .topbar-note {
+          display: none;
+        }
+        .main {
+          padding: 16px 14px 108px;
+        }
+        .notice {
+          display: block;
+        }
+        .review-id {
+          display: block;
+          margin: 8px 0 0;
+        }
+        .page-heading {
+          display: block;
+          margin-top: 18px;
+        }
+        .last-sync {
+          display: block;
+          margin-top: 10px;
+        }
+        .card,
+        .card.wide {
+          grid-column: 1 / -1;
+        }
+        .card {
+          padding: 16px;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .screen.active {
+          animation: none;
+        }
+      }
     </style>
   </head>
   <body>
-    <main>
-      <h1>フリマ物販業務アプリ</h1>
-      <p class="note">これはGitHub Pagesのデプロイ確認用静的ページです。実際のPWA/APIは、利用者が管理するローカル環境で起動します。</p>
-      <p>商品・現物・保管場所・棚卸・配送・会計候補を、人の確認と監査ログ付きで管理する無料MVPです。</p>
-      <small>秘密情報・住所・実商品データはこのページへ掲載しません。</small>
-    </main>
+    <div class="shell">
+      <header class="topbar">
+        <div class="topbar-inner">
+          <div class="brand" aria-label="Resale Ops 公開レビュー版">
+            <div class="brand-mark" aria-hidden="true">R</div>
+            <div>
+              <div class="brand-title">Resale Ops</div>
+              <span class="brand-subtitle">公開レビュー版</span>
+            </div>
+          </div>
+          <div class="topbar-note">実運用データなし<br />無料の静的プレビュー</div>
+        </div>
+      </header>
+
+      <main class="main">
+        <section class="notice" aria-label="公開レビュー版の注意">
+          <div aria-hidden="true">🔒</div>
+          <div>
+            <strong>公開レビュー版 — 架空データのみ</strong>
+            <p>
+              この画面は見た目・文言・導線を確認するためのものです。ログイン、API、データベース、写真保存、出品、価格変更、会計CSV出力はありません。操作は保存されません。
+            </p>
+            <span class="review-id">レビュー対象: P0 UI / 修正版A</span>
+          </div>
+        </section>
+
+        <div class="page-heading">
+          <div>
+            <h1 id="page-title">今日の確認</h1>
+            <p class="lede" id="page-lede">
+              オーナーが朝1分で、要確認の根拠へ移動するためのホームです。
+            </p>
+          </div>
+          <span class="last-sync">静的サンプル · <span id="commit-id">確認中</span></span>
+        </div>
+
+        <section class="screen active" data-screen="home" aria-labelledby="home-title">
+          <div class="grid">
+            <article class="card wide">
+              <div class="eyebrow">OWNER PULSE</div>
+              <h2 id="home-title">今日の確認</h2>
+              <p class="muted">
+                収益・在庫・承認の数字は架空です。実際の会計上の利益・所得・税額を示しません。
+              </p>
+              <div class="grid" style="margin-top: 16px">
+                <div class="card" style="box-shadow: none; background: #f8fafc">
+                  <span class="muted">掲載準備</span>
+                  <div class="metric"><strong>12</strong><span>件</span></div>
+                  <span class="status ok">● 4件 完了</span>
+                </div>
+                <div class="card" style="box-shadow: none; background: #f8fafc">
+                  <span class="muted">要確認</span>
+                  <div class="metric"><strong>3</strong><span>件</span></div>
+                  <span class="status warn">● 根拠を確認</span>
+                </div>
+                <div class="card" style="box-shadow: none; background: #f8fafc">
+                  <span class="muted">90日超在庫</span>
+                  <div class="metric"><strong>2</strong><span>点</span></div>
+                  <span class="status info">● 候補表示</span>
+                </div>
+              </div>
+            </article>
+            <article class="card">
+              <h2>次の確認</h2>
+              <ul class="list">
+                <li><b>原価未配賦</b><span class="status warn">1件</span></li>
+                <li><b>送料未確定</b><span class="status warn">1件</span></li>
+                <li><b>承認待ち</b><span class="status info">1件</span></li>
+              </ul>
+              <div class="button-row">
+                <button class="action" data-go="inventory">在庫を確認</button>
+              </div>
+            </article>
+            <article class="card">
+              <h2>安全境界</h2>
+              <div class="help">
+                AIは候補と根拠を提示します。最終確認は人が行います。個人版への自動出品・自動値下げは行いません。
+              </div>
+              <div class="button-row">
+                <button class="action secondary" data-open-help>修正依頼の書き方</button>
+              </div>
+            </article>
+            <article class="card wide">
+              <h2>今月の進み具合</h2>
+              <div class="stack">
+                <div class="row"><span class="muted">撮影・採寸</span><b>8 / 12</b></div>
+                <div class="progress"><span style="width: 67%"></span></div>
+                <div class="row"><span class="muted">承認済み</span><b>5 / 12</b></div>
+                <div class="progress"><span style="width: 42%; background: #2f9b69"></span></div>
+              </div>
+            </article>
+            <article class="card">
+              <h2>担当者向け表示</h2>
+              <p class="muted">外注者には担当作業に必要な情報だけを表示します。</p>
+              <span class="status info">担当: 撮影・採寸</span>
+            </article>
+          </div>
+        </section>
+
+        <section class="screen" data-screen="inventory" aria-labelledby="inventory-title">
+          <div class="grid">
+            <article class="card wide">
+              <div class="eyebrow">M12 · FIELD WORK</div>
+              <h2 id="inventory-title">在庫現場 — 商品と場所を確認</h2>
+              <p class="muted">
+                PCの表を縮小せず、商品ラベル → 場所ラベル → 人の確認の順で1画面ずつ進めます。
+              </p>
+              <div class="stack" style="margin-top: 18px">
+                <div class="mobile-step">
+                  <div class="step-number done">1</div>
+                  <div class="step-copy">
+                    <strong>商品ラベルを読み取り</strong
+                    ><small>在庫管理番号: INV-910006-4 · TEST BRAND カットソー</small>
+                  </div>
+                </div>
+                <div class="mobile-step">
+                  <div class="step-number">2</div>
+                  <div class="step-copy">
+                    <strong>場所ラベルを読み取り</strong
+                    ><small>本店 → 2F → 撮影室 → A棚 → 3段</small>
+                  </div>
+                </div>
+                <div class="mobile-step">
+                  <div class="step-number">3</div>
+                  <div class="step-copy">
+                    <strong>写真と内容を確認して確定</strong
+                    ><small
+                      >場所写真は架空のプレビューです。確定操作はこの公開版では動きません。</small
+                    >
+                  </div>
+                </div>
+              </div>
+            </article>
+            <article class="card">
+              <h2>格納待ち</h2>
+              <span class="status warn">● 1点</span>
+              <ul class="list" style="margin-top: 10px">
+                <li><b>INV-910006-4</b><span>TOPS</span></li>
+                <li><b>場所</b><span>A棚 3段</span></li>
+              </ul>
+              <button class="action secondary" style="width: 100%; margin-top: 10px" data-open-help>
+                実装への修正依頼
+              </button>
+            </article>
+            <article class="card">
+              <h2>場所の手がかり</h2>
+              <div class="sample-label">架空の場所写真</div>
+              <div
+                style="
+                  height: 120px;
+                  border-radius: 12px;
+                  background: linear-gradient(135deg, #d9e5f2, #879bb3);
+                  display: grid;
+                  place-items: center;
+                  color: white;
+                  font-size: 28px;
+                "
+                role="img"
+                aria-label="架空の棚写真"
+              >
+                ▦
+              </div>
+              <p class="muted" style="margin-top: 10px">
+                部屋・棚・段・箱を場所ツリーで管理します。
+              </p>
+            </article>
+            <article class="card full">
+              <div class="row">
+                <h2 style="margin: 0">現物一覧（架空）</h2>
+                <span class="status ok">人の確認が必要</span>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>在庫管理番号</th>
+                      <th>商品</th>
+                      <th>場所</th>
+                      <th>状態</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>INV-910006-4</td>
+                      <td>TEST BRAND カットソー</td>
+                      <td>本店 / 2F / A棚 / 3段</td>
+                      <td><span class="status warn">格納待ち</span></td>
+                    </tr>
+                    <tr>
+                      <td>INV-910006-5</td>
+                      <td>DEMO LABEL シャツ</td>
+                      <td>本店 / 2F / B棚 / 1段</td>
+                      <td><span class="status ok">格納済み</span></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="screen" data-screen="stocktake" aria-labelledby="stocktake-title">
+          <div class="grid">
+            <article class="card wide">
+              <div class="eyebrow">M13 v2 / W11 v4</div>
+              <h2 id="stocktake-title">棚卸差異 — その場で可逆確認</h2>
+              <p class="muted">
+                1人運用では、商品・場所の再読取、証拠写真、理由、最終確認がそろった場合だけ、削除せず紛失候補へ進みます。
+              </p>
+              <div class="stack" style="margin-top: 18px">
+                <div class="row">
+                  <span><b>INV-910006-4</b> · 未発見候補</span
+                  ><span class="status warn">確認可能</span>
+                </div>
+                <div class="help">
+                  理由: 棚卸で見つからなかった（架空）。在庫数や現在地は自動変更しません。
+                </div>
+                <div class="button-row">
+                  <button class="action">3秒長押しで最終確認</button
+                  ><button class="action secondary">場所へ戻す</button>
+                </div>
+              </div>
+            </article>
+            <article class="card">
+              <h2>確認条件</h2>
+              <ul class="list">
+                <li><b>商品ラベル</b><span class="status ok">完了</span></li>
+                <li><b>場所ラベル</b><span class="status ok">完了</span></li>
+                <li><b>証拠写真</b><span class="status ok">1枚</span></li>
+                <li><b>理由</b><span class="status ok">入力済み</span></li>
+              </ul>
+            </article>
+            <article class="card">
+              <h2>監査表示</h2>
+              <p class="muted">実際の確定者・時刻・理由・復元履歴を残します。</p>
+              <span class="status info">同一session · 架空</span>
+              <div class="footer-note">不可逆な廃棄や紛失確定はP0では実行しません。</div>
+            </article>
+            <article class="card full">
+              <h2>差異キュー（架空）</h2>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>現物</th>
+                      <th>差異</th>
+                      <th>予定場所</th>
+                      <th>証拠</th>
+                      <th>状態</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>INV-910006-4</td>
+                      <td>未発見</td>
+                      <td>A棚 3段</td>
+                      <td>1枚</td>
+                      <td><span class="status warn">確認可能</span></td>
+                    </tr>
+                    <tr>
+                      <td>INV-910006-5</td>
+                      <td>誤棚候補</td>
+                      <td>B棚 1段</td>
+                      <td>0枚</td>
+                      <td><span class="status info">写真待ち</span></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="screen" data-screen="accounting" aria-labelledby="accounting-title">
+          <div class="grid">
+            <article class="card wide">
+              <div class="eyebrow">M14 v2 / W12 v2</div>
+              <h2 id="accounting-title">会計候補 — 出力前の人確認</h2>
+              <p class="muted">
+                会計設定と承認済みmappingを確認し、候補・停止理由・履歴を分けて表示します。外部ソフトへは自動送信しません。
+              </p>
+              <div class="stack" style="margin-top: 18px">
+                <div class="row">
+                  <b>出力形式</b><span class="status info">Money Forward向け</span>
+                </div>
+                <div class="row">
+                  <b>会計profile</b><span class="status warn">1項目未設定</span>
+                </div>
+                <div class="row">
+                  <b>勘定科目候補</b><span class="status ok">7 / 7 人が確認</span>
+                </div>
+                <div class="help">
+                  出力停止: 税区分が未設定です。専門家または本人が確認するまでCSVは作成しません。
+                </div>
+                <div class="button-row">
+                  <button class="action" data-open-help>停止理由を確認</button
+                  ><button class="action secondary">用語「mapping」?</button>
+                </div>
+              </div>
+            </article>
+            <article class="card">
+              <h2>候補mapping</h2>
+              <ul class="list">
+                <li><b>仕入</b><span>仕入高</span></li>
+                <li><b>送料</b><span>荷造運賃</span></li>
+                <li><b>販売手数料</b><span>支払手数料</span></li>
+              </ul>
+            </article>
+            <article class="card">
+              <h2>出力履歴</h2>
+              <span class="status warn">出力停止</span>
+              <p class="muted" style="margin-top: 10px">
+                税設定未完了のため、架空CSVも生成していません。
+              </p>
+              <div class="footer-note">公式画面への取込と結果確認は人が行います。</div>
+            </article>
+            <article class="card full">
+              <h2>確認の約束</h2>
+              <div class="grid">
+                <div class="card" style="box-shadow: none; background: #f8fafc">
+                  <span class="eyebrow">01</span>
+                  <h3>候補</h3>
+                  <p class="muted">AIやルールは候補と根拠を示すだけです。</p>
+                </div>
+                <div class="card" style="box-shadow: none; background: #f8fafc">
+                  <span class="eyebrow">02</span>
+                  <h3>人が確認</h3>
+                  <p class="muted">採用・変更・停止判断は本人または税理士が行います。</p>
+                </div>
+                <div class="card" style="box-shadow: none; background: #f8fafc">
+                  <span class="eyebrow">03</span>
+                  <h3>公式経路</h3>
+                  <p class="muted">外部サービスへの送信や自動取込はありません。</p>
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <p class="footer-note">
+          公開レビュー版です。実データ・住所・原価・売上・口座・写真は入力しないでください。修正を依頼する場合は、画面名
+          / 場所 / 現状 / 希望する変更 / 優先度を伝えてください。
+        </p>
+      </main>
+
+      <nav class="bottom-nav" aria-label="レビュー画面切り替え">
+        <div class="bottom-nav-inner">
+          <button class="nav-button active" data-go="home">
+            <span aria-hidden="true">⌂</span>今日の確認
+          </button>
+          <button class="nav-button" data-go="inventory">
+            <span aria-hidden="true">▦</span>在庫現場
+          </button>
+          <button class="nav-button" data-go="stocktake">
+            <span aria-hidden="true">◌</span>棚卸差異
+          </button>
+          <button class="nav-button" data-go="accounting">
+            <span aria-hidden="true">¥</span>会計候補
+          </button>
+        </div>
+      </nav>
+    </div>
+
+    <dialog id="help-dialog">
+      <div class="dialog-body">
+        <h2>修正依頼の書き方</h2>
+        <p class="muted">
+          この公開ページは入力を保存しません。下の型をコピーしてSlackなどへ貼り付けてください。
+        </p>
+        <div class="template" id="template">
+          画面名: 場所（見出し・カード・ボタンなど）: 現状: 希望する変更: 優先度: 高 / 中 / 低
+        </div>
+        <div class="button-row">
+          <button class="action" id="copy-template">テンプレートをコピー</button
+          ><button class="action ghost" id="close-dialog">閉じる</button>
+        </div>
+        <p class="footer-note" id="copy-status" role="status"></p>
+      </div>
+    </dialog>
+
+    <script>
+      (() => {
+        const titles = {
+          home: ["今日の確認", "オーナーが朝1分で、要確認の根拠へ移動するためのホームです。"],
+          inventory: ["在庫現場", "商品ラベル → 場所ラベル → 人の確認で、現物を安全に見つけます。"],
+          stocktake: ["棚卸差異", "削除せず、証拠と理由を残して可逆に確認します。"],
+          accounting: ["会計候補", "候補と停止理由を人が確認してから、公式画面へ受け渡します。"],
+        };
+        const go = (name) => {
+          document
+            .querySelectorAll(".screen")
+            .forEach((screen) => screen.classList.toggle("active", screen.dataset.screen === name));
+          document
+            .querySelectorAll(".nav-button")
+            .forEach((button) => button.classList.toggle("active", button.dataset.go === name));
+          const [title, lede] = titles[name];
+          document.querySelector("#page-title").textContent = title;
+          document.querySelector("#page-lede").textContent = lede;
+          document.querySelector(".main").scrollTo({ top: 0, behavior: "smooth" });
+        };
+        document
+          .querySelectorAll("[data-go]")
+          .forEach((button) => button.addEventListener("click", () => go(button.dataset.go)));
+        const dialog = document.querySelector("#help-dialog");
+        document
+          .querySelectorAll("[data-open-help]")
+          .forEach((button) => button.addEventListener("click", () => dialog.showModal()));
+        document.querySelector("#close-dialog").addEventListener("click", () => dialog.close());
+        document.querySelector("#copy-template").addEventListener("click", async () => {
+          const status = document.querySelector("#copy-status");
+          try {
+            await navigator.clipboard.writeText(document.querySelector("#template").textContent);
+            status.textContent = "コピーしました。外部へ自動送信はしていません。";
+          } catch {
+            status.textContent = "コピーできませんでした。画面の文章を手動でコピーしてください。";
+          }
+        });
+        fetch("./commit.txt", { cache: "no-store" })
+          .then((response) => (response.ok ? response.text() : ""))
+          .then((sha) => {
+            if (sha.trim())
+              document.querySelector("#commit-id").textContent = sha.trim().slice(0, 7);
+          })
+          .catch(() => {
+            document.querySelector("#commit-id").textContent = "公開確認用";
+          });
+        if ("serviceWorker" in navigator)
+          window.addEventListener(
+            "load",
+            () => navigator.serviceWorker.register("./sw.js").catch(() => undefined),
+            { once: true },
+          );
+      })();
+    </script>
   </body>
 </html>

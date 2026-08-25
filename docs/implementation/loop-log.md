@@ -367,3 +367,18 @@
 - HAR原本はCookie等を含み得るため`C:\tmp`だけに保存し、Git、Slack、Notion、PRへ添付しない。人P06完了後に、このPC内でURL一覧だけへ機密除去してから証拠化する。
 - target application SHAは引き続き`a976d614819a662cca3be36c23989aecd9ca968e`。a976から現HEADまで`apps`、`packages`、`scripts`、`fixtures`、`package.json`の差分0を確認し、操作票追加で監査済みアプリ本体を変更していない。
 - 人P06は未実施。WARMUPと固定10商品をモデルで代行せず、利用者結果が届くまでP08とDraft PRへ進めない。
+
+## Iteration 35 — 2026-08-25 iPhone用IP限定HTTPS中継
+
+- 平文LAN公開やSecure Cookie解除を採用せず、PC用Web/APIをloopbackのまま保つ別HTTPS中継をNode標準機能だけで追加した。接続元iPhone IP、Host、Origin、Referer、method、転送header、upstream、redirect、CA取得pathをfail closedで固定した。
+- test 17/17、full check 32 files / 226 tests、coverage 84.66/80.56/100/90.68、fixture 44/hash、format/lint/typecheck/API/Web build PASS。
+- PC自身限定の実走はTLS署名、login 200、CA 200、private key 404、wrong Origin 403、Secure Cookie、session/workflow 200、logout 204、revoked session 401をPASSした。外部サービス・課金・Gitへの秘密情報保存0件。
+- Windowsに以前から存在するNode.js Public全ポート許可2件は変更しない。別コピーのNodeとiPhone IP限定Firewall規則を使う。実iPhone IPが未入力のため外部端末向け規則は未作成で、実Safari/PWA/camera/offline/HEIC-WebPも未確認。
+
+## Iteration 36 — 2026-08-25 GitHub Pages公開レビューPWA
+
+- 方針変更: ユーザーの画面確認入口として、実運用APIを公開せず、`.github/pages`に架空データのみの静的レビューPWAを追加した。GitHub Pagesの公開範囲は画面レビューに限定し、ログイン、DB、写真、出品、価格更新、会計CSV出力、外部送信はない。
+- 画面: 「今日の確認」「在庫現場」「棚卸差異」「会計候補」を下部ナビで切り替え、修正版Aの在庫番号、場所階層、可逆差異、会計候補・停止理由を確認できる。修正依頼テンプレートはコピーだけで、サーバー保存しない。
+- PWA: 相対パスの`manifest.webmanifest`、`sw.js`、SVGアイコン、Apple向けmetaを追加した。`pages.yml`は`.github/pages`全体をartifactへ含め、手動workflowのままにした。
+- 自動確認: manifest JSON parse、Service Worker `node --check`、`git diff --check`、外部URL/機密パターンscan、静的HTTPでindex/manifest/sw/iconの200、missingの404を確認した。実ブラウザでconsole error/warn 0、390×844の縦表示、4画面切替、修正依頼ダイアログを確認した。証拠PNGは`output/playwright/gh-pages-review-desktop.png`と`gh-pages-review-mobile.png`。
+- 未確認: GitHub Pagesの有効化、workflowの実行、公開URLのHTTPS表示、実iPhone Safariのホーム画面追加。公開後に人が確認し、P06/P08/Draft PRの代替にはしない。

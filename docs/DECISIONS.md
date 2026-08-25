@@ -207,3 +207,24 @@ APIキー、トークン、個人情報、生ログ、会話全文、一時的�
 - Why: seeded UIの確認済み範囲を正確に残し、部分PASSやfixture CSVを実サービス取込・実利用・最終審査の代替にしないため。
 - Verification: full check 29 files / 201 tests、coverage、API/Web build、fresh/upgrade 0001〜0033、49-table RLS/immutable reason fields、runtime loopbackのみ、外部/paid/deploy/merge 0。使い捨てDBは削除済み。
 - Follow-up: 実利用者WARMUP＋10商品、実機・実MF import、独立Sol/UI最終確認後までGoalを完了扱いせず、Draft PR readyへ進めない。
+
+### 2026-08-25 — iPhone実機確認はIP限定ローカルHTTPS中継を使う
+
+- Type: decision
+- Context: ユーザー依頼「スマホからもアクセスできるように表示してください」。現在の認証Cookieは`HttpOnly; Secure; SameSite=Strict`であり、LAN上の平文HTTPでは安全なログインを成立させられない。
+- Decision or rule: PC用Web `127.0.0.1:4273`とAPI `127.0.0.1:3200`を直接公開せず維持し、実機確認時だけ別ポートのローカルHTTPS中継を使う。待受はPCの明示IPv4、接続元はiPhoneの明示IPv4各1件へ限定し、Host/Origin/Referer、危険header、redirectを検証する。Secure Cookieを外さない。公開CA証明書以外の証明書・秘密鍵・ログは`C:\tmp`だけに置き、外部サービス、Git、Slack、Notion、PRへ送らない。
+- Why: 完全無料と同一Wi-Fi内だけの利用を維持しながら、認証Cookie、CSRF防止、API loopback、P06のloopback-only証拠を弱めずiPhone Safariで確認するため。
+- Applies to: `scripts/lan-preview-proxy.mjs`、`scripts/start-lan-preview.mjs`、実iPhone gate、PWA、ローカル運用手順、Firewall一時規則
+- Verification: unit 17件、root full check、TLS署名、公開CAだけの配布、別Origin拒否、Secure Cookie、login/session/workflow/logout/失効sessionをPC自己検証する。実iPhoneのIP限定接続、CA trust、Safari、home追加、camera、offline、HEIC/WebPは人が別証拠で確認する。
+- Follow-up: iPhone確認後に中継とFirewall規則を停止・削除し、iPhoneのCA profileとPCの一時証明書を削除する。P06 Windows計測へ混ぜず、実iPhone未確認を完了へ繰り上げない。
+
+### 2026-08-25 — スマホ確認用にGitHub Pagesの静的レビュー版を公開する
+
+- Type: decision
+- Context: ユーザーはGitHub上でWebアプリを確認し、iPhoneのホーム画面から開いて修正点を伝えたいと明示した。GitHub Pagesは静的ファイルの公開機能であり、現在のログイン・API・PostgreSQLを含む業務アプリ本体をそのまま無料公開する場所ではない。
+- Decision or rule: `.github/pages`に架空データだけのレビュー専用PWAを置き、GitHub Pagesの手動workflowで公開する。ページは4画面（今日の確認、在庫現場、棚卸差異、会計候補）を切り替え、ホーム画面追加、オフライン表示、修正依頼テンプレートを提供する。ログイン、API、DB、写真保存、出品、価格更新、会計CSV出力、外部送信は実装しない。実運用版はPC内のloopback環境に残す。
+- Why: 完全無料でスマホから承認済みUIを確認できる一方、公開インターネットへ実データや認証機能を出さず、GitHub Pagesの静的公開境界を守るため。
+- Applies to: `.github/pages`、`.github/workflows/pages.yml`、README、実iPhoneのUI確認、修正依頼フロー
+- Verification: 静的ファイルの構文/機密scan、390×844とデスクトップ実ブラウザ、タブ切替、ダイアログ、manifest、Service Worker、外部URL0件を確認する。Pages有効化とworkflow成功はGitHub上で別証拠として確認する。
+- Supersedes: スマホ確認を同一Wi-Fi内のローカルHTTPS中継だけに限定していた運用手順のうち、利用者が画面を確認する入口。ローカル中継は必要時の開発用予備経路として保持し、公開レビュー版へ実データを入力しない境界は維持する。
+- Follow-up: GitHub Pages公開後、ユーザーがiPhone Safariで表示とホーム画面追加を確認する。実iPhoneでの確認結果をP06やP08の代替にしない。

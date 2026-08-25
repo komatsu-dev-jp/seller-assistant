@@ -121,6 +121,20 @@ Claude Codeの `claude/opus-spec-audit-proposals` を現main、既存仕様、�
 - 初心者向けの人手操作とHAR機密保護は`docs/implementation/p06-human-run-guide.md`に固定した。HAR原本は`C:\tmp`だけに置き、Git、Slack、Notion、PRへ保存しない。
 - 人`WARMUP-01`＋固定10商品、実iPhone、P08 Sol、Draft PRは未確認。合成preflightで人手結果を補完しない。
 
+## 2026-08-25 iPhone用ローカルHTTPS中継
+
+- PC用Web `127.0.0.1:4273`とAPI `127.0.0.1:3200`は変更せず、iPhone実機確認用のIP限定HTTPS中継を追加した。安全境界と削除手順は`docs/implementation/secure-lan-preview-guide.md`を正本とする。
+- unit 17/17、full check 32 files / 226 tests、PC自己実走のTLS/login/CA/private-key denial/origin denial/Secure Cookie/session/workflow/logout/revocationはPASS。
+- 実iPhone IPが未入力のため専用Firewall規則は未作成。実Safari/PWA/camera/offline/HEIC-WebPは未確認で、人の結果を待つ。
+
+## 2026-08-25 GitHub Pages公開レビュー版
+
+- ユーザーはGitHub上でスマホから画面を確認し、後から修正点を伝える入口を希望した。実運用アプリを公開せず、`.github/pages`の架空データのみ静的PWAを追加した。
+- `index.html`は4画面（今日の確認、在庫現場、棚卸差異、会計候補）、下部ナビ、修正依頼テンプレート、公開レビュー境界を含む。`manifest.webmanifest`、`sw.js`、`icon.svg`、`commit.txt`を追加した。
+- `pages.yml`は`.github/pages`全体をPages artifactへコピーするよう更新し、`workflow_dispatch`（手動起動）のみ維持した。Pages siteはまだ未有効化、push・workflow実行・公開URL確認は未完了。
+- ローカル静的HTTPとPlaywrightで、manifest/sw/icon/index、4画面切替、dialog、390×844スクリーンショット、console error/warn 0を確認した。`output/playwright/gh-pages-review-desktop.png`、`gh-pages-review-mobile.png`はローカル証拠であり公開データではない。
+- 次担当: Pages公開用変更を確認後、`codex/opus-audit-integration`へpushし、`gh api -X POST repos/komatsu-dev-jp/seller-assistant/pages -f build_type=workflow -f source[branch]=codex/opus-audit-integration -f source[path]=/`でPagesを有効化する。続けて`gh workflow run pages.yml --repo komatsu-dev-jp/seller-assistant --ref codex/opus-audit-integration`を実行し、workflow成功とHTTPS URLを確認する。PRマージ・本番API公開は行わない。
+
 ## 2026-08-24 P05最終PASS追補
 
 - 14 PNG、full check 29 files / 202 tests、coverage、fixture hash、target SHAは`docs/specs/ui-evaluation-rubric-v1.md`を正本とする。

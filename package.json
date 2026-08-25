@@ -20,6 +20,7 @@
     "test:postgres-upgrade": "npm run test:postgres-upgrade --workspace @resale/api",
     "pilot:fixtures:generate": "node scripts/generate-pilot-fixtures.mjs",
     "pilot:fixtures:check": "node scripts/generate-pilot-fixtures.mjs --check",
+    "lan:preview": "node scripts/start-lan-preview.mjs",
     "build:packages": "npm run build --workspace @resale/domain && npm run build --workspace @resale/contracts",
     "lint": "npm run build:packages && eslint .",
     "format:check": "prettier --check \"apps/**/*.{js,ts,tsx,css,json,md}\" \"packages/**/*.{ts,tsx,json,md}\" \"scripts/**/*.mjs\" \"fixtures/listing-prep-pilot-v1.1/README.md\" \"fixtures/listing-prep-pilot-v1.1/manifest.json\" \"docs/implementation/**/*.md\" \"docs/specs/pilot-protocol-v1*.md\" \".github/**/*.yml\" package.json tsconfig.base.json vitest.config.ts eslint.config.mjs README.md",

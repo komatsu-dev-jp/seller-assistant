@@ -11,6 +11,7 @@ export default tseslint.config(
       "**/playwright-report/**",
       "eslint.config.mjs",
       "docs/**",
+      ".github/pages/**",
       "_worktrees/**",
     ],
   },
