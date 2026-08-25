@@ -381,4 +381,5 @@
 - 画面: 「今日の確認」「在庫現場」「棚卸差異」「会計候補」を下部ナビで切り替え、修正版Aの在庫番号、場所階層、可逆差異、会計候補・停止理由を確認できる。修正依頼テンプレートはコピーだけで、サーバー保存しない。
 - PWA: 相対パスの`manifest.webmanifest`、`sw.js`、SVGアイコン、Apple向けmetaを追加した。`pages.yml`は`.github/pages`全体をartifactへ含め、手動workflowのままにした。
 - 自動確認: manifest JSON parse、Service Worker `node --check`、`git diff --check`、外部URL/機密パターンscan、静的HTTPでindex/manifest/sw/iconの200、missingの404を確認した。実ブラウザでconsole error/warn 0、390×844の縦表示、4画面切替、修正依頼ダイアログを確認した。証拠PNGは`output/playwright/gh-pages-review-desktop.png`と`gh-pages-review-mobile.png`。
-- 未確認: GitHub Pagesの有効化、workflowの実行、公開URLのHTTPS表示、実iPhone Safariのホーム画面追加。公開後に人が確認し、P06/P08/Draft PRの代替にはしない。
+- GitHub Pages siteをworkflow方式で有効化し、`github-pages`環境のmain限定保護を弱めず、レビュー専用`github-pages-preview`環境へ切り替えた。workflow run `32802062930`（head `47ec40a`）はsuccess、公開URL `https://komatsu-dev-jp.github.io/seller-assistant/` をHTTPSで確認した。
+- 公開URLの実ブラウザ390×844でconsole error/warn 0、ホーム、在庫現場切替、manifest/sw/icon/commitの200、missingの404を確認した。実iPhone Safariのホーム画面追加は未確認で、人の確認をP06/P08/Draft PRの代替にはしない。

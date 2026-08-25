@@ -133,7 +133,7 @@ Claude Codeの `claude/opus-spec-audit-proposals` を現main、既存仕様、�
 - `index.html`は4画面（今日の確認、在庫現場、棚卸差異、会計候補）、下部ナビ、修正依頼テンプレート、公開レビュー境界を含む。`manifest.webmanifest`、`sw.js`、`icon.svg`、`commit.txt`を追加した。
 - `pages.yml`は`.github/pages`全体をPages artifactへコピーするよう更新し、`workflow_dispatch`（手動起動）のみ維持した。Pages siteはまだ未有効化、push・workflow実行・公開URL確認は未完了。
 - ローカル静的HTTPとPlaywrightで、manifest/sw/icon/index、4画面切替、dialog、390×844スクリーンショット、console error/warn 0を確認した。`output/playwright/gh-pages-review-desktop.png`、`gh-pages-review-mobile.png`はローカル証拠であり公開データではない。
-- 次担当: Pages公開用変更を確認後、`codex/opus-audit-integration`へpushし、`gh api -X POST repos/komatsu-dev-jp/seller-assistant/pages -f build_type=workflow -f source[branch]=codex/opus-audit-integration -f source[path]=/`でPagesを有効化する。続けて`gh workflow run pages.yml --repo komatsu-dev-jp/seller-assistant --ref codex/opus-audit-integration`を実行し、workflow成功とHTTPS URLを確認する。PRマージ・本番API公開は行わない。
+- Pages公開用変更は`codex/opus-audit-integration`へpush済み。Pagesはworkflow方式で有効化済み。既存`github-pages`環境がmain限定のため、保護を弱めず`github-pages-preview`環境へ切り替え、workflow run `32802062930`をsuccessにした。公開URLは`https://komatsu-dev-jp.github.io/seller-assistant/`で、実ブラウザ390×844の表示、manifest/sw/icon/commit、在庫画面切替を確認した。実iPhone Safariのホーム画面追加はユーザー確認待ち。PRマージ・本番API公開は行わない。
 
 ## 2026-08-24 P05最終PASS追補
 
