@@ -225,3 +225,11 @@
 
 - P05.5/P06Rはtarget application SHA `a976d614819a662cca3be36c23989aecd9ca968e`限定で完了。独立Terra GO、Critical/High/Medium/Low 0、H-P06R-02 Closed、31 files / 209 tests、fresh/upgrade DB、synthetic preflight、loopback-only、390/768/1440pxで横方向overflow 0を確認した。
 - P06は次の人手gateとして保持する。人`WARMUP-01`＋固定10商品は未実施で、モデルや合成preflightで代用しない。実iPhone、P08 Sol、Draft PRも未確認。
+
+## 2026-08-27 承認済みUI追補後の再開
+
+- PC03 v4までの最終承認とGoal継続指示を受け、`approved-ui-packets-v1.md`のP10〜P14をP04〜P09より前へ挿入する。
+- P10の読み取り専用差分監査はLuna max、P11のWeb設計レビューはTerra highで実施した。共有worktreeのsource書き込みはルートCodexだけが行う。
+- P11はDB/API/状態遷移を変更しない範囲でTerra high相当とする。field_worker検索やlabel版の変更が必要ならSol maxへ昇格する。
+- P12の気になる箇所、P13の発送前写真は写真・監査・金額・状態を横断するためSol max設計を必須とする。Web表示だけを分離できた後にTerraを使う。
+- P11〜P14後に、P04自動検証、P05 UI評価、P06実利用者pilot、P07証拠整合、P08独立Sol reviewを新しい同一SHAでやり直す。2026-08-25以前の合格を最終証拠として流用しない。

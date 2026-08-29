@@ -228,3 +228,152 @@ APIキー、トークン、個人情報、生ログ、会話全文、一時的�
 - Verification: 静的ファイルの構文/機密scan、390×844とデスクトップ実ブラウザ、タブ切替、ダイアログ、manifest、Service Worker、外部URL0件を確認する。Pages有効化とworkflow成功はGitHub上で別証拠として確認する。
 - Supersedes: スマホ確認を同一Wi-Fi内のローカルHTTPS中継だけに限定していた運用手順のうち、利用者が画面を確認する入口。ローカル中継は必要時の開発用予備経路として保持し、公開レビュー版へ実データを入力しない境界は維持する。
 - Follow-up: GitHub Pages公開後、ユーザーがiPhone Safariで表示とホーム画面追加を確認する。実iPhoneでの確認結果をP06やP08の代替にしない。
+
+### 2026-08-25 — スマホ版はB現場カードへCの気になる箇所チェックを統合する
+
+- Type: decision
+- Context: Slack `#メルカリ自動化` 親TS `1787631209.774569`、ユーザー本人の返信TS `1787633592.565739`
+- Decision or rule: スマホ版の再設計はB案「iOS現場カード」を採用し、C案の「商品写真の気になる箇所をタップしてマーカーを置く」機能を統合する。フッターは `ホーム / 作業 / 商品 / 在庫 / 会計` に固定し、P0導線は1画面1目的の49ページとして9枚の高精度ボードで確認する。商品種類に応じて検品部位、写真チェック項目、採寸項目を切り替え、AIや画像認識だけで状態を確定しない。
+- Why: 反復作業の残り件数と再開位置を分かりやすくしながら、シミ・傷などの位置と証拠を現物中心で残し、初心者にも検品から採寸までの流れを追えるようにするため。
+- Applies to: `docs/design/selected-direction.md`、`mobile-ios-redesign-screen-map-v1.md`、`mobile-ios-redesign-genre-capture-v1.md`、高精度モック、後続のスマホPWA実装
+- Evidence: https://p-evidence.slack.com/archives/C0BPZCB25T3/p1787631209774569
+- Privacy boundary: 利用者提供の公開出品例は代表商品の手動閲覧に限定し、実アカウント名、URL、商品ID、実画像をGitやモックへ保存しない。
+- Implementation gate: 現行写真roleと固定pilotを勝手に増やさず、`写真チェック項目 / 検品部位 / 気になる点 / 証拠写真` の関連と既存データ互換をSolが設計してから実装する。
+- Follow-up: 9枚の高精度モックをSlackへ送り、全49ページの修正点を再確認する。実装、公開、PR mergeはこの承認だけでは行わない。
+
+### 2026-08-26 — Slack画像本文のコメントだけを修正対象にする
+
+- Type: decision
+- Context: Slack `#メルカリ自動化` 親TS `1787631209.774569`の各ファイル本文へ追記された修正コメント、およびユーザー指示「修正コメントがあるところは修正していってください。ないところは問題ないところです。」
+- Decision or rule: Board 01、02、03、06、07、10を修正し、コメントがないBoard 04、05、08、09は承認済みとして維持する。卸仕入れは請求書中心、商品ラベル読取と梱包写真は工程設定で選択、タグ文字はOCR候補、非文字ロゴは画像候補または手入力、商品種類はスーツとセットアップを追加する。ロゴは3案の再選定後にBoard 01へ固定する。
+- Safety boundary: PhotoroomのローカルブラウザをCodex SkillやRPAで自動操作する方式は採用しない。P0は `加工用ZIP書出し → 利用者がPhotoroomで編集 → 加工済みZIP再取込 → SKU照合・原本比較 → 人が承認` を維持し、Photoroomなしでも完了可能にする。
+- Why: 画像本文への直接コメントを承認・修正の根拠として正確に反映しつつ、中古品と1人運用に不要な工程を減らし、外部サービスの無人操作、契約違反、誤編集を避けるため。
+- Applies to: `docs/design/mobile-ios-redesign-slack-revisions-v2.md`、修正版モック、スマホ画面構成、後続のPWA実装。
+- Verification: 元の10ファイル本文を全件再読し、コメント有無を判定する。修正版の画像寸法、hash、画面数、安全文言を確認し、同じSlackスレッドで変更箇所だけ再承認する。
+- Follow-up: ロゴ1案と修正版をSlackで再承認してから実装へ反映する。コード変更、公開、PR、mergeは別の明示依頼まで行わない。
+
+### 2026-08-26 — Slack再コメントを無料・手動境界付きのv3モックへ反映する
+
+- Type: decision
+- Context: Slack `#メルカリ自動化` 親TS `1787631209.774569`の再コメント。ロゴは `C`、Board 10は `問題なし`、Board 02・03・06・07と販売後運用に追加要望がある。
+- Decision or rule: ロゴCをBoard 01へ固定する。請求書はiPhone Files経由のファイル選択とし、Google Driveへの直接API接続・認証情報保存・自動同期は行わない。在庫番号は無料の手書きを標準、A4印刷を追加実装案とする。販売中の価格変更と返信文はコピー後に本人が公式画面で確定する。PhotoroomはZIPをPCで展開してフォルダを手動読込し、対象契約がない場合は編集を省略する。配送方法は販売先別に利用者が設定し、外部から自動取得しない。
+- Implementation truth: 現行コードにはチェック数字付き在庫番号の生成、番号の手入力、ラベル再発行履歴がある。バーコードまたはQRの描画、A4印刷レイアウト、ブラウザ印刷は未実装であり、モックを実装済み証拠として扱わない。
+- Why: 完全無料の標準導線を残し、メール・クラウド保存・画像編集・販売サイト操作を初心者にも理解できる手順へ分けつつ、外部サービスの無人操作や有料機能の誤認を防ぐため。
+- Applies to: `mobile-ios-redesign-slack-revisions-v3.md`、v3修正版モック、後続のPWA実装、在庫ラベル、請求書、販売中サポート、画像受け渡し、配送設定。
+- Verification: 6画像を1672×941で確認し、価格変更・返信・配送・Photoroomが人の操作を残すこと、API/RPA/自動実行を示さないこと、Board 10を再生成していないことを確認する。同じSlackスレッドで再承認を受ける。
+- Follow-up: v3の6画像をSlackへ送り、コメントが付いた画像だけを次の修正対象とする。承認前にコード実装へ固定せず、コミット、push、PR、merge、公開は行わない。
+
+### 2026-08-26 — 完全無料の写真標準からPhotoroom無料版とBatchを外す
+
+- Type: decision
+- Context: ユーザーの`絶対無料`条件、PhotoroomをPCで手動利用する案、Photoroom公式の2026-08-26時点のプラン・商用利用・Batch説明。
+- Decision or rule: P0の写真標準は白背景撮影と端末内テンプレートによる向き・余白・文字位置の調整とする。Photoroom無料アカウントは商用利用不可、Batchは有料対象のため、無料の業務導線へ含めない。商用利用可能な契約済みソフトがある場合だけ、本人が任意で開く外部作業として扱う。
+- Safety boundary: 外部画像編集サービスのAPI、認証情報保存、自動ログイン、RPA、自動クリック、無人Batch処理は行わない。背景除去を実装済みまたは無料と表示しない。
+- Why: 無料という費用条件だけでなく商用利用条件も守り、外部サービスの仕様・契約・有料機能にP0を依存させないため。
+- Evidence: `docs/research/mobile-ios-slack-followup-v4.md`、Photoroom公式Help Center、`mobile-ios-redesign-b-board-06-product-info-v4.png`。
+- Applies to: 写真テンプレート、画像編集設定、Board 06、後続PWA実装、運用説明。
+- Follow-up: v4画像の承認後、端末内テンプレートの保存形式、原本／派生画像の分離、文字位置、商品種類別の型を実装仕様へ落とす。
+
+### 2026-08-26 — 仕入箱・商品URL・注文送料のv4案を再承認へ送る
+
+- Type: design proposal
+- Context: Slack `#メルカリ自動化` 親TS `1787631209.774569`のv3画像コメントと、ユーザー依頼「再度モック画像などを再構築してSlackに送ってください」。
+- Proposal: 約50着の卸箱を保管箱と別の仕入バッチとして2段階検品し、箱別の見込み／実績を分ける。商品URLは販売先ごとに1回登録して本人操作で再利用する。注文はアプリ番号、販売先、取引ID、任意表示名へ分ける。送料は2026-08-26公式確認値と確認先を持つ手動更新カタログにする。
+- Safety boundary: 見込みを確定利益にしない。URL先をサーバーから取得しない。送料をスクレイピングや非公開APIで自動更新しない。個人名・住所を主識別子にしない。
+- Evidence: `mobile-ios-redesign-b-revision-index-v4.md`の4 hash、Slack file ID `F0BSR7TH89L`、`F0BSV41CF33`、`F0BSLUEBVJ7`、`F0BSR822U86`、送信後のスレッド再読。
+- Status: 4画像とも画像コメントで再承認待ち。モックは実装済み証拠ではない。
+- Follow-up: `問題なし`の画像だけを後続実装仕様へ固定し、`修正：...`が付いた画像だけを再修正する。承認待ちの間にコード、公開、commit、push、PR、mergeは行わない。
+
+### 2026-08-26 — v4画像コメントを点数・KPI・根拠つき提案・写真処理境界へ反映する
+
+- Type: design proposal
+- Context: Slack `#メルカリ自動化` 親TS `1787631209.774569`のv4画像本文へ追記されたコメント。D注文・配送は`こちらは問題なし`、A・B・Cに修正要望がある。
+- Proposal: 仕入箱は入数不明からカウントを開始し、短い商品番号と月別の30日販売率・売上・粗利見込みを表示する。価格見直しは自分の販売履歴、利益下限、公式公開の季節・行事情報を根拠に複数候補を比較する。写真はブランド・サイズ確認後に位置・余白・文字を端末内テンプレートで整え、人が明るさ・白さ・位置を微調整する。
+- Safety boundary: 見込みを確定利益・税額にしない。販売サイトの閲覧・いいね・価格を自動取得せず、値下げやセールを自動実行しない。背景切り抜き、Photoroom連携、ZIPを実装済みまたは無料標準として表示しない。
+- Evidence: `docs/research/mobile-ios-slack-followup-v5.md`、`docs/design/mobile-ios-redesign-slack-revisions-v5.md`、`docs/design/mobile-ios-redesign-b-revision-index-v5.md`の3 hash、Slack file ID `F0BSQJC640M`、`F0BTNUB43L0`、`F0BSUH0KXM0`、送信後のスレッド再読、メルカリ公式Help・公式ニュース。
+- Status: Dは承認済み。A・B・Cの修正版を同じSlackスレッドへ送信済みで、画像コメントによる再承認待ち。モックは実装済み証拠ではない。
+- Follow-up: コメントがある3画像だけを再作成・送信する。承認までコード、公開、commit、push、PR、mergeは行わない。
+
+### 2026-08-26 — 箱KPIを次画面へ分け、全写真の保存と編集受け渡しを明示する
+
+- Type: design proposal
+- Context: Slack `#メルカリ自動化` 親TS `1787631209.774569`のv5画像コメント。Aは05・06の復元とKPIの次画面化、Cは全写真の保存先と将来自作する画像編集への連携準備、当面の一括受け渡しを求めている。Bはコメントなし、Dは承認済み。
+- Proposal: Aの05`箱の見込み`と06`販売後の実績`をv1の内容へ戻し、07`月別KPI`を別画面にする。Cは全写真を商品別の写真一覧から見られるようにし、PC内非公開MediaStoreの不変原本、編集用コピー、加工後を分ける。役割別レシピとmanifestを共通契約にして、現在は手動編集用ZIP、将来は自作画像編集へ差し替える。
+- Implementation truth: 現行コードには商品写真の役割別アップロード、PC内`LOCAL_MEDIA_ROOT`への非公開原本保存、DB上のMediaAsset管理がある。専用の商品写真一覧、編集用ZIP、加工後再取込、自作画像編集は未実装であり、モックを実装済み証拠として扱わない。
+- Safety boundary: 原本を上書きしない。GitHub、Slack、Notion、公開URLへ写真を自動保存しない。Photoroomは商用利用可能な契約がある場合だけ本人が手動利用し、API、RPA、自動ログイン、自動クリック、無料版を商用標準にしない。
+- Evidence: `docs/research/mobile-ios-slack-followup-v6.md`、`docs/design/mobile-ios-redesign-slack-revisions-v6.md`、`docs/design/mobile-ios-redesign-b-revision-index-v6.md`の2 hash、`apps/api/src/local-media-store.ts`、`apps/api/src/server.ts`、`packages/db/README.md`、Slack file ID `F0BST62CL78`、`F0BSNSJMJKV`、完了返信TS `1787751943.189469`、送信後のスレッド再読。
+- Status: A・Cの修正版を同じSlackスレッドへ送信・再読済みで、画像コメントによる再承認待ち。B・Dは変更していない。モックは実装済み証拠ではない。
+- Follow-up: A・Cの各画像へ付く`問題なし`または`修正：...`を確認する。承認までコード、公開、commit、push、PR、mergeは行わない。
+
+### 2026-08-26 — モバイル版を最終承認し、PC版Webを全画面再確認する
+
+- Type: design approval / review scope
+- Context: SlackのA・C最終修正版へ依頼者本人がそれぞれ`問題なし`と追記し、「モバイル版は全て内容いい」「PCで見るウェブ版のモックも再度全て確認したい」と依頼した。
+- Decision or rule: モバイル版は全内容承認済みとする。PC版は旧ホーム＋W01〜W12の機能範囲を保ちつつ、モバイル最終承認で確定した易しい日本語、安全境界、仕入箱、全写真保存、編集用セット、価格支援、配送、在庫、会計を反映した13ボード・52画面相当として再確認する。
+- Safety boundary: PC版も外部サイトを自動取得・操作せず、API、RPA、自動出品、自動値下げ、自動返信、自動会計確定を示さない。原本写真はPC内の非公開保管、外部編集は任意の手動受け渡し、重要操作は人が確認する。
+- Evidence: モバイルSlack親TS `1787631209.774569`、A file ID `F0BST62CL78`、C file ID `F0BSNSJMJKV`、各画像本文の`問題なし`、PC版Slack親TS `1787754933.967639`、PC01〜PC13の13 file IDとhashを記録した`docs/design/pc-web-redesign-full-mock-index-v1.md`、送信後のスレッド再読。
+- Status: モバイル版承認完了。PC版13ボード・52画面相当をSlackへ送信・再読済みで、画像コメント待ち。
+- Follow-up: PC版の各画像へ付く`問題なし`または`修正：...`を確認し、コメントがある画像だけを修正する。承認まで実装、公開、commit、push、PR、mergeは行わない。
+
+### 2026-08-27 — PC版4画像を無料・手動境界付きのv2案へ修正する
+
+- Type: design proposal
+- Context: PC版Slack親TS `1787754933.967639`の画像本文へ、PC02、PC03、PC07、PC08の修正・質問が追記された。ほか9画像にはコメントがない。
+- Proposal: PCではカメラを起動せず、OSのファイル選択と同じ業務アプリ内のスマホ写真反映を使う。在庫ラベルはA4 24面へ一括印刷する。商品ページはギャラリーでも表示し、販売状況は確認が古い順に並べ、直接入力またはスクリーンショットからの数字候補を人が確認する。注文は仮番号を自動付番し、取引IDが不明でも取り出し・梱包を続け、発送確定前に不足を確認する。
+- Official evidence: 個人版メルカリの公式ヘルプは出品中の商品詳細で閲覧数・検索数を本人が確認する方法を案内する。メルカリShopsの公式APIは別サービスで、契約とアクセストークンを前提とする。個人版統計の無料・承認済み公開連携は今回確認できなかった。
+- Safety boundary: iCloudへアプリから直接接続せず、PCに表示されるフォルダーから本人が選ぶ。販売サイトを自動取得せず、スクレイピング、RPA、Cookie共有、自動ログイン、自動値下げ・返信を行わない。スクリーンショット読取は候補で、人が原画像と比較して確定する。
+- Evidence: `docs/design/pc-web-redesign-slack-revisions-v2.md`、`docs/design/pc-web-redesign-revision-index-v2.md`、Slack回答TS `1787757617.559609`、file ID `F0BSS2EV60M`、`F0BSPQKJGCB`、`F0BSW1N1QN6`、`F0BSS2J5H61`、完了返信TS `1787757680.513539`、送信後のスレッド再読。
+- Status: v2修正版4枚を同じSlackスレッドへ送信・再読済みで、画像コメント待ち。コメントのない9枚はv1を維持する。モックは実装済み証拠ではない。
+- Follow-up: v2画像にコメントがある場合だけ再修正する。4枚の承認がそろうまでコード実装、公開、commit、push、PR、mergeへ進まない。
+
+### 2026-08-27 — PC版3画像を検索支援・中古1番号・選択式発送前写真のv3案へ修正する
+
+- Type: design proposal
+- Context: PC版Slack親TS `1787754933.967639`のv2画像へ追加されたコメント。PC02は販売予想金額の簡単な検索・Codexへの調査依頼、PC03は中古1点ものの商品番号と在庫番号、PC08は1人運用の梱包写真に修正希望があり、PC07は`問題なし`である。
+- Proposal: PC02は商品情報から検索語とCodex用質問文を作り、本人が検索を開くかコピーする。PC03は中古の商品番号＝在庫番号を一つの短い番号にし、登録商品ごとに異なるラベルを1枚作ってA4 24面へ並べる。新品の複数在庫だけ別管理を選べる。PC08は発送前写真を高額商品だけ、すべて、使わないから選び、高額の目安も設定できるようにする。
+- Safety boundary: メルカリやCodexへアプリから自動送信せず、検索結果を自動取得しない。API、スクレイピング、RPA、自動ログイン、Cookie共有を使わない。予想価格と発送前写真の扱いは人が確認し、写真を外部へ自動送信しない。
+- Evidence: `docs/design/pc-web-redesign-slack-revisions-v3.md`、`docs/design/pc-web-redesign-revision-index-v3.md`の3 hash、Slack回答TS `1787809522.481109`、file ID `F0BSZJXD2DC`、`F0BT57MCYDS`、`F0BSXGH6SH3`、完了返信TS `1787809627.514159`、送信後のスレッド再読。
+- Status: PC02・PC03・PC08のv3修正版3枚を同じSlackスレッドへ送信・再読済みで、画像コメント待ち。PC07 v2とコメントのない9枚は変更していない。モックは実装済み証拠ではない。
+- Follow-up: v3の3画像へ付く`問題なし`または`修正：...`を確認する。承認まで今回の修正内容をコードへ実装せず、公開、commit、push、PR、mergeへ進まない。
+
+### 2026-08-27 — PC03へ商品別バーコードを戻し、承認済みUI追補でGoalを継続する
+
+- Type: design approval / implementation resume
+- Context: PC03 v3へ`一括印刷からバーコードが消えた`、`スマホで読んで商品を探したい`という最後のコメントがあり、ユーザーから`修正箇所は少ないので修正後goalを実行してください`と指示された。
+- Decision or rule: PC03 v4は中古1点ものの各ラベルへ異なる短い番号と個別Code 128を表示し、スマホ読取で商品と現在の保管場所を開く。読取は検索だけで、格納・移動・出庫を確定しない。PC02 v3、PC08 v3はコメントなし、PC07 v2は`問題なし`、ほか9枚はコメントなしとしてPC版を固定する。
+- Implementation truth: 既存Webはチェック値付き在庫番号、手入力、二重確認を実装済みだが、バーコード描画、A4 24面、画像からのコード解析、検索専用スマホ画面は未実装である。52画面の画像だけを実装済み証拠にしない。
+- Safety boundary: 読取ライブラリはPWAへ同梱し、カメラ画像、番号、商品情報を外部APIやCDNへ送らない。手入力を残し、状態変更には従来どおり人の確認を要求する。本番公開、PR merge、課金は行わない。
+- Evidence: `docs/design/pc-web-redesign-board-03-putaway-v4.png`、SHA-256 `c364acdde34a7f70b1a81177758afefbdfa919f033693697ab48210c7bc12af9`、Slack file ID `F0BSM3XPRQF`、TS `1787818024.476329`、送信後のスレッド再読。
+- Applies to: `docs/specs/approved-ui-integration-addendum-v1.md`、AC-062〜068、TA-044〜048、`docs/implementation/approved-ui-packets-v1.md`、P11〜P14。
+- Follow-up: P11バーコードから順に実装し、P12/P13はSol設計後に進める。全P0差分後に自動検証、UI評価、実利用者pilot、独立Sol reviewをやり直し、P1はP0合格までOFFにする。
+
+### 2026-08-27 — 承認モック全101画面を忠実再現してから機能追加を再開する
+
+- Type: implementation fidelity gate
+- Context: 実装中の在庫ラベル画面が承認済みPC03 v4と大きく異なり、ユーザーからモバイル版とPC版の全ページを承認モックどおりに再現するよう明示された。
+- Decision or rule: モバイル49画面とPC 52画面を画面単位で再現し、承認画像との比較を通過した画面だけ完了とする。共通部品を使う場合も、承認画像の配置、文言、色、余白を変える抽象化は行わない。
+- Implementation truth: 現行WebにはP0の主要機能と一部の新しいバーコード機能があるが、承認済み全101画面のデザイン再現は未完了である。機能が動くことをデザイン一致の代わりにしない。
+- Safety boundary: 画面画像を貼るだけの偽実装にせず、HTMLの操作可能な画面にする。外部API、外部CDN、有料サービス、自動出品、自動値下げ、自動返信、自動会計確定を追加しない。公開レビューは架空データだけにする。
+- Evidence: `docs/implementation/approved-ui-fidelity-gate-v1.md`、モバイル最終承認TS `1787631209.774569`、PC最終承認TS `1787754933.967639`、ユーザーの本セッション内指示。
+- Applies to: `apps/web`、`.github/pages`、UI比較、P11〜P14、Goalの再開判定。
+- Follow-up: 全101画面の同寸法スクリーンショットを撮り、差がある画面を未完了へ戻す。デザイン比較後に実データと安全な状態変更を再接続する。
+
+### 2026-08-27 — 追加フロー26画面を含む全127画面へ忠実再現範囲を拡張する
+
+- Status: accepted
+- Context: 「モバイル版も、PC版も全ページ忠実に再現」という依頼と、承認正本一覧に基本49画面とは別キーで残している写真、仕入箱、販売支援、スーツ撮影ガイドの26画面。
+- Decision or rule: 直前の101画面ゲートを上書きせず拡張し、モバイル75画面とPC 52画面の合計127画面を比較対象にする。番号が重なる承認画像も削除せず、追加画面キーで実装する。
+- Implementation truth: 基本導線49画面だけでは「全ページ」にならない。追加26画面もWeb実装とGitHub Pages確認版の両方へ含め、各正本画像と照合する。
+- Applies to: `docs/design/approved-ui-source-manifest-v1.md`、`docs/implementation/approved-ui-fidelity-gate-v1.md`、モバイル確認画面、PC確認画面、公開レビューPWA。
+- Evidence: 本セッション内のユーザー指示と、最終承認画像 `mobile-ios-redesign-b-board-06-product-info-v6.png`、`mobile-ios-redesign-wholesale-box-inspection-v3.png`、`mobile-ios-redesign-sales-support-v3.png`、`mobile-ios-redesign-b-board-10-genre-guide-v2.png`。
+- Rejected alternatives: 基本49画面だけを再現して追加画像を参考資料扱いにする案は、承認済み内容を欠落させるため不採用。
+- Follow-up: 全127画面を実ブラウザで比較し、差異が残る画面は完了扱いにしない。
+
+### 2026-08-29 — 承認済みUI全127画面の忠実再現ゲートを合格とする
+
+- Status: accepted
+- Context: モバイル75画面とPC52画面を最終正本へ合わせ、390×844と1440×960で再撮影し、25比較シートで全画面を再監査した。
+- Decision or rule: `root-all-fidelity-final-fix23-20260829` を今回の最終画面証拠とし、独立監査のP0 0件・P1 0件をもって承認済みUI忠実再現ゲートを合格とする。端末ステータスバーとブラウザ描画差だけをP2として許容する。
+- Verification: 127/127 route、127/127 viewport、比較画像127/127、外部runtimeリソース0件、静的レビュー版766ファイル、通信遮断時の代表モバイル・PC画面cache-storage表示を確認した。
+- Safety boundary: 画面画像の貼り付けではなく操作可能なHTMLを維持する。有料サービス、外部API、公開、本番反映、PRマージは行わない。実iPhone、実利用者pilot、実Money Forward取込は別gateのまま残す。
+- Applies to: `apps/web`、`apps/review`、`.github/pages`、全127画面のUI比較、Draft PRのデザイン受け入れ判定。

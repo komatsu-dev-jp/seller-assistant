@@ -5001,3 +5001,528 @@ body {
 .ownerPulseDashboard .ownerConfirmPanel {
   grid-area: auto;
 }
+
+/* Slack-approved PC03 v4: one unique, locally generated barcode per inventory item. */
+.inventoryLabelContent {
+  min-width: 0;
+}
+
+.inventoryLabelControls {
+  margin-bottom: 14px;
+  padding: 18px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px 20px;
+  align-items: end;
+}
+
+.inventoryLabelControls h2,
+.inventoryLabelControls p {
+  margin: 3px 0 0;
+}
+
+.inventoryLabelControls > div:first-child p:last-child {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.inventoryLabelSummary {
+  min-width: 150px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: baseline;
+  justify-content: end;
+  text-align: right;
+}
+
+.inventoryLabelSummary strong {
+  color: var(--blue);
+  font-size: 32px;
+}
+
+.inventoryLabelSummary span {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.inventoryLabelSummary small {
+  grid-column: 1 / -1;
+  color: var(--green);
+  font-weight: 800;
+}
+
+.inventoryLabelSearch {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.inventoryLabelSearch input {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid #b9c5d6;
+  border-radius: 9px;
+  font-size: 14px;
+}
+
+.inventoryLabelButtons {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.inventoryLabelButtons button {
+  min-height: 44px;
+  padding: 0 14px;
+  color: white;
+  background: var(--blue);
+  border: 1px solid var(--blue);
+  border-radius: 9px;
+  font-weight: 900;
+}
+
+.inventoryLabelButtons button:disabled {
+  color: var(--muted);
+  background: #edf1f7;
+  border-color: #d6dce5;
+}
+
+.inventoryLabelControls .safeNotice {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.inventoryLabelLayout {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.36fr) minmax(580px, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.inventoryLabelPicker {
+  max-height: calc(100dvh - 270px);
+  padding: 8px;
+  display: grid;
+  gap: 6px;
+  overflow-y: auto;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.inventoryLabelPicker > label {
+  min-width: 0;
+  padding: 9px;
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  gap: 3px 8px;
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.inventoryLabelPicker > label:hover,
+.inventoryLabelPicker > label.isSelected {
+  background: var(--blue-soft);
+  border-color: #b5cdff;
+}
+
+.inventoryLabelPicker input {
+  width: 18px;
+  height: 18px;
+}
+
+.inventoryLabelPicker strong {
+  color: var(--blue);
+  font-size: 16px;
+}
+
+.inventoryLabelPicker span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+.inventoryLabelPicker small {
+  grid-column: 2 / -1;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.inventoryLabelSheet {
+  width: min(100%, 794px);
+  aspect-ratio: 210 / 297;
+  padding: 18px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(8, minmax(0, 1fr));
+  align-content: start;
+  background: white;
+  border: 1px solid #cfd6e1;
+  box-shadow: 0 10px 30px rgb(22 35 59 / 10%);
+}
+
+.inventoryPrintLabel {
+  min-width: 0;
+  min-height: 0;
+  padding: 5px 7px;
+  display: grid;
+  grid-template-rows: auto minmax(23px, 1fr) auto;
+  gap: 3px;
+  overflow: hidden;
+  background: white;
+  border: 1px dashed #aeb8c6;
+}
+
+.inventoryPrintLabel > div {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 5px;
+  align-items: baseline;
+}
+
+.inventoryPrintLabel strong {
+  color: #101828;
+  font-size: clamp(12px, 1.5vw, 20px);
+  line-height: 1;
+}
+
+.inventoryPrintLabel span {
+  min-width: 0;
+  overflow: hidden;
+  color: #344054;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 8px;
+  font-weight: 800;
+}
+
+.inventoryPrintLabel small {
+  overflow: hidden;
+  color: #475467;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.code128Barcode {
+  width: 100%;
+  height: 100%;
+  min-height: 23px;
+  display: block;
+  background: white;
+}
+
+.inventoryLabelEmpty {
+  grid-column: 1 / -1;
+  align-self: center;
+  color: var(--muted);
+  text-align: center;
+}
+
+/* iPhone-like local barcode scanner. Decoding stays inside the installed web app. */
+.mobileFindIntro {
+  margin: 20px 0 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.mobileFindScanner {
+  padding: 14px;
+}
+
+.localBarcodeScanner {
+  display: grid;
+  gap: 10px;
+}
+
+.localScannerPreview {
+  position: relative;
+  min-height: 214px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  color: white;
+  background: linear-gradient(145deg, #172842, #5b6c83);
+  border-radius: 16px;
+  box-shadow: inset 0 0 0 2px rgb(255 255 255 / 70%);
+}
+
+.localScannerPreview::after {
+  content: "";
+  position: absolute;
+  inset: 48px 26px;
+  pointer-events: none;
+  border: 2px solid #75a4ff;
+  border-radius: 12px;
+  box-shadow: 0 0 0 999px rgb(9 19 34 / 16%);
+}
+
+.localScannerPreview video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: none;
+  object-fit: cover;
+}
+
+.localScannerPreview.isActive video {
+  display: block;
+}
+
+.localScannerPreview > div {
+  z-index: 1;
+  padding: 26px;
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  text-align: center;
+}
+
+.localScannerPreview > div > span {
+  font-size: 38px;
+}
+
+.localScannerPreview small {
+  color: #d8e1ef;
+  font-size: 10px;
+}
+
+.localScannerActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.localScannerActions button,
+.localScannerFile {
+  min-height: 46px;
+  padding: 0 10px;
+  display: grid;
+  place-items: center;
+  color: white;
+  background: var(--blue);
+  border: 1px solid var(--blue);
+  border-radius: 11px;
+  font-size: 12px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.localScannerFile {
+  color: var(--blue);
+  background: var(--blue-soft);
+  border-color: #b5cdff;
+}
+
+.localScannerFile input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.mobileFindScanner > form {
+  margin-top: 14px;
+  display: grid;
+  gap: 9px;
+}
+
+.mobileFindScanner > form label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.mobileFindScanner > form input {
+  min-height: 48px;
+  padding: 0 12px;
+  border: 1px solid #b9c5d6;
+  border-radius: 11px;
+  font-size: 16px;
+}
+
+.mobileFindScanner > form button {
+  min-height: 48px;
+  color: white;
+  background: var(--blue);
+  border: 0;
+  border-radius: 11px;
+  font-weight: 900;
+}
+
+.mobileFindResult {
+  margin-top: 14px;
+  padding: 16px;
+}
+
+.mobileFindSuccess {
+  display: flex;
+  gap: 11px;
+  align-items: center;
+}
+
+.mobileFindSuccess > span {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  color: white;
+  background: var(--green);
+  border-radius: 50%;
+  font-weight: 900;
+}
+
+.mobileFindSuccess > div {
+  display: grid;
+}
+
+.mobileFindSuccess small {
+  color: var(--green);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.mobileFindSuccess strong {
+  color: var(--ink);
+  font-size: 28px;
+}
+
+.mobileFindResult h2 {
+  margin: 15px 0 10px;
+  font-size: 18px;
+}
+
+.mobileFindResult dl {
+  margin: 0;
+  display: grid;
+  gap: 7px;
+}
+
+.mobileFindResult dl > div {
+  padding: 10px;
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr);
+  gap: 8px;
+  background: var(--wash);
+  border-radius: 9px;
+}
+
+.mobileFindResult dt {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.mobileFindResult dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.mobileFindResult > button {
+  width: 100%;
+  min-height: 46px;
+}
+
+@media (max-width: 900px) {
+  .inventoryLabelLayout {
+    grid-template-columns: 1fr;
+  }
+
+  .inventoryLabelPicker {
+    max-height: 320px;
+  }
+}
+
+@media screen and (max-width: 560px) {
+  .inventoryLabelControls {
+    grid-template-columns: 1fr;
+  }
+
+  .inventoryLabelSummary {
+    justify-self: start;
+    text-align: left;
+  }
+
+  .inventoryLabelButtons {
+    display: grid;
+  }
+
+  .inventoryLabelSheet {
+    min-width: 620px;
+  }
+
+  .inventoryLabelLayout {
+    overflow-x: auto;
+  }
+}
+
+@page {
+  size: A4 portrait;
+  margin: 8mm;
+}
+
+@media print {
+  :root {
+    color-scheme: light;
+  }
+
+  body {
+    margin: 0;
+    background: white !important;
+  }
+
+  .noPrint,
+  .inventoryLabelPage > .sidebar {
+    display: none !important;
+  }
+
+  .inventoryLabelPage,
+  .inventoryLabelContent,
+  .inventoryLabelLayout {
+    width: auto !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    display: block !important;
+    background: white !important;
+  }
+
+  .inventoryLabelSheet {
+    width: 194mm;
+    height: 281mm;
+    padding: 0;
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(8, 1fr);
+    border: 0;
+    box-shadow: none;
+  }
+
+  .inventoryPrintLabel {
+    break-inside: avoid;
+    padding: 1.5mm 2mm;
+    border: 0.2mm dashed #9ca3af;
+  }
+
+  .inventoryPrintLabel strong {
+    font-size: 14pt;
+  }
+
+  .inventoryPrintLabel span {
+    font-size: 6.5pt;
+  }
+
+  .inventoryPrintLabel small {
+    font-size: 5pt;
+  }
+}

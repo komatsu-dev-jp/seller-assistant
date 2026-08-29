@@ -2,7 +2,7 @@
 
 - Status: goal-v2-cost-optimized-evaluation-loop
 - Owner: Codex / ユーザー
-- Updated: 2026-08-25 JST
+- Updated: 2026-08-29 JST
 - Branch: `codex/opus-audit-integration`
 - Worktree: `C:\Users\softt\Documents\Codex\2026-08-13\iphone-notion-google-research-ios-pc\_worktrees\opus-audit-integration`
 - Base: `origin/main` / `f5fd9f3bda1ec2b82ba17e673f6d1715e7c1795a`
@@ -106,6 +106,16 @@ Claude Codeの `claude/opus-spec-audit-proposals` を現main、既存仕様、�
 ## memory候補
 
 `INC-20260824-002-local-web-broad-bind` はcandidateとして保持する。loopback固定・targeted test・runtime netstatは確認済みだが、独立review前のためactive lessonへ昇格しない。
+
+## 2026-08-29 承認済みUI忠実再現の最終結果
+
+- モバイル基本49画面、追加26画面、PC52画面の合計127画面を実装し、最終正本と比較した。
+- 最終撮影 `output/playwright/root-all-fidelity-final-fix23-20260829` はviewport 127/127合格、外部runtimeリソース0件。
+- 最終比較 `output/playwright/approved-ui-comparison/root-all-fidelity-final-fix23-20260829` は127/127取得、欠落0件、25比較シート。
+- 別Solによる全画面の独立目視再監査はP0 0件、P1 0件で合格。P2は端末上部表示とブラウザ文字描画の軽微差だけ。
+- 静的レビュー版はモバイル75＋PC52 routeを含む766ファイルをprecacheし、Chromeの通信を完全遮断した状態でモバイル49とPC52をcache-storageから表示。`review-offline-fix23-20260829/offline-report.json` は `passed: true`。
+- デザイン忠実再現gateは完了。実iPhone Safari、実利用者pilot、実Money Forward取込は人手の別gateとして未確認のまま維持する。
+- 有料サービス、外部API、外部CDN、公開、本番反映、PRマージは実施していない。
 
 ## 2026-08-24 最終証拠追補
 

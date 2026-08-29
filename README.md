@@ -50,7 +50,7 @@ npm.cmd run lan:preview
 
 GitHub Pages（GitHubの静的Web公開機能）には、`.github/pages`のレビュー専用PWAを手動で公開します。画面・文言・導線をスマホで確認するためのページで、架空データだけを使い、ログイン、API、PostgreSQL、写真保存、出品、価格変更、会計CSV出力はありません。操作も保存されません。
 
-公開先は公開リポジトリのPages URL `https://komatsu-dev-jp.github.io/seller-assistant/` です。iPhoneのSafariで開き、「共有」→「ホーム画面に追加」を選ぶとアプリ風に起動できます。実運用版はPC内のloopback環境を使い、GitHub Pagesへ実データを入力しないでください。
+公開先は公開リポジトリのPages URL `https://komatsu-dev-jp.github.io/resale-ops-app/` です。iPhoneのSafariで開き、「共有」→「ホーム画面に追加」を選ぶとアプリ風に起動できます。実運用版はPC内のloopback環境を使い、GitHub Pagesへ実データを入力しないでください。
 
 ## 構成
 

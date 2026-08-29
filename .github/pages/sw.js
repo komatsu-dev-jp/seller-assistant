@@ -1,4 +1,4 @@
-const CACHE_NAME = "resale-ops-public-review-v1";
+const CACHE_NAME = "resale-ops-public-review-v4";
 
 self.addEventListener("install", (event) => {
   const shell = new URL("./", self.registration.scope).href;
@@ -8,6 +8,9 @@ self.addEventListener("install", (event) => {
       .then((cache) =>
         cache.addAll([
           shell,
+          new URL("./index.html", self.registration.scope).href,
+          new URL("./approved-ui.css", self.registration.scope).href,
+          new URL("./approved-ui.js", self.registration.scope).href,
           new URL("./manifest.webmanifest", self.registration.scope).href,
           new URL("./icon.svg", self.registration.scope).href,
         ]),

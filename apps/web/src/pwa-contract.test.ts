@@ -431,6 +431,40 @@ describe("zero-cost PWA contract", () => {
     expect(status).toContain("再ログイン後に同期待ちを再送します。端末内に保持しています");
   });
 
+  it("creates and reads unique inventory barcodes locally without an external API", () => {
+    const packageManifest = JSON.parse(readFileSync(resolve("apps/web/package.json"), "utf8")) as {
+      dependencies?: Record<string, string>;
+    };
+    const labels = readFileSync(
+      resolve("apps/web/src/components/inventory-label-workspace.tsx"),
+      "utf8",
+    );
+    const scanner = readFileSync(
+      resolve("apps/web/src/components/local-barcode-scanner.tsx"),
+      "utf8",
+    );
+    const find = readFileSync(resolve("apps/web/src/components/mobile-inventory-find.tsx"), "utf8");
+    const labelPage = readFileSync(resolve("apps/web/src/app/inventory/labels/page.tsx"), "utf8");
+    const findPage = readFileSync(resolve("apps/web/src/app/mobile/find/page.tsx"), "utf8");
+
+    expect(packageManifest.dependencies?.jsbarcode).toBe("3.12.3");
+    expect(packageManifest.dependencies?.["@zxing/browser"]).toBe("0.2.1");
+    expect(packageManifest.dependencies?.["@zxing/library"]).toBe("0.23.0");
+    expect(labels).toContain("const labelsPerSheet = 24");
+    expect(labels).toContain("buildInventoryBarcodePayload");
+    expect(labels).toContain("window.print()");
+    expect(labels).toContain("住所・原価・購入者情報は入れません");
+    expect(scanner).toContain("BrowserMultiFormatOneDReader");
+    expect(scanner).toContain("BarcodeFormat.CODE_128");
+    expect(scanner).toContain('facingMode: { ideal: "environment" }');
+    expect(scanner).not.toMatch(/fetch\(|https?:\/\//u);
+    expect(find).toContain("読取は検索だけです");
+    expect(find).toContain("古い商品ラベルです");
+    expect(find).not.toMatch(/method: ["'](?:POST|PUT|PATCH|DELETE)["']/u);
+    expect(labelPage).toContain('requirePageSession(["owner", "inventory_manager"])');
+    expect(findPage).toContain('requirePageSession(["owner", "inventory_manager"])');
+  });
+
   it("stages every capture file before network upload and clears revoked assignments", () => {
     const capture = readFileSync(
       resolve("apps/web/src/components/mobile-capture-workspace.tsx"),

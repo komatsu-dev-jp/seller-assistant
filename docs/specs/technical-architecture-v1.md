@@ -385,6 +385,11 @@ validate(job, result) -> checks
 - TA-041: すべての財務計算が同じ`financial_formula_version`付きdomain関数を使い、二重値引、チャネルcoupon、全額/一部返金、手数料返還、返品在庫復帰、欠損の固定fixtureと一致する。
 - TA-042: P0で`lost/disposed/quantity_adjusted`へ進むUI/API/DB経路を100%拒否し、返品の廃棄選択は`disposal_pending`で停止する。旧routeやgeneric transition経路からも回避できない。
 - TA-043: `?`ヘルプはbutton semantics、キーボード、focus return、accessible nameを満たす。`pilot-protocol-v1.md`の対象、端末/viewport、入力asset、開始/終了、中断、待ち時間、warm-up、失敗数を計測定義version付きで保存し、10商品中央値を再現計算できる。UIは`ui-evaluation-rubric-v1.md`で90点以上かつ重大項目0点なしとする。
+- TA-044: Code 128の生成と読取は版固定したオープンソース実装をPWA bundleへ同梱し、CDNや外部runtime APIを使わない。ラベルpayloadは完全在庫番号と版だけを含み、住所、原価、氏名、認証秘密0件とする。読取結果は既存sessionとroleで再検査し、検索だけではInventoryMovement、引当、棚卸状態を作成しない。
+- TA-045: A4 24面の選択集合はInventoryUnit IDで重複排除し、同じ商品を複数面へ出さない。印刷用CSSと通常画面を分離し、短い番号を完全番号へ一意に対応づける。390×844、768×1024、1440×1000で横overflow 0、主要操作44px以上を検証する。
+- TA-046: 気になる箇所はworkspace、SKU、検品項目、座標、場所/種類/程度、private MediaAsset、メモ、確認状態、作成者/確認者/時刻を結ぶ版管理済みcontractを持つ。割当外取得、本人だけの自動確定、原本更新をAPI/RLS/DBで拒否し、pilotの固定入力を変更する場合は新protocol版にする。
+- TA-047: 発送前写真policy、金額目安、注文ごとの人のoverride、private MediaAsset、確認者、発送状態を分離する。金額欠損を0円へ変換せず、policy判断だけでpack/shipを自動遷移せず、割当外取得と外部送信を拒否する。
+- TA-048: 検索語、Codex用質問文、公式画面URL、任意取引IDはallowlist済みの手動支援contractとして扱う。runtimeから外部hostへのfetch 0件、資格情報保存0件とし、取引ID欠損をpick/packの停止条件にしない。外部画面から戻った後の反映状態は人が記録する。
 
 ## 15. 未確認とGoal開始条件
 

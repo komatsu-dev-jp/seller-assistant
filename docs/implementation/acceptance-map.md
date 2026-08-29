@@ -1,12 +1,12 @@
 # 受け入れ条件・実装対応表
 
-- 状態: target SHA `02c4641599eb6885bca3256f7792cf0a08c464bb`でP05独立Terra 100/100 PASS。実10商品pilot待ち
-- 更新日: 2026-08-24（JST）
-- 正本: `docs/specs/mvp-product-spec-v1.md`、`docs/specs/technical-architecture-v1.md`
+- 状態: 承認済みUI追補を統合し、P11バーコード実装中。旧P05 100/100は履歴として保持し、新差分後に再評価する
+- 更新日: 2026-08-27（JST）
+- 正本: `docs/specs/mvp-product-spec-v1.md`、`docs/specs/technical-architecture-v1.md`、`docs/specs/approved-ui-integration-addendum-v1.md`
 
 ## P0ゲート
 
-P0の必須ACは AC-001、003〜008、013〜014、018〜023、025〜026、028〜034、039、042〜061。各行へ実装、テスト、実画面証拠を追加し、すべて合格するまでP1へ進まない。2026-08-20以前の「P0合格」は修正版A追加前の履歴であり、現行P0の合格証拠にはしない。
+P0の必須ACは AC-001、003〜008、013〜014、018〜023、025〜026、028〜034、039、042〜068。各行へ実装、テスト、実画面証拠を追加し、すべて合格するまでP1へ進まない。2026-08-27以前のP05/P06証拠は承認済みUI追補前の履歴であり、新しいP0の最終合格証拠にはしない。
 
 | 範囲        | 実装先                                                     | 自動検証                      | 手動・画面証拠       | 状態                                                     |
 | ----------- | ---------------------------------------------------------- | ----------------------------- | -------------------- | -------------------------------------------------------- |
@@ -20,9 +20,16 @@ P0の必須ACは AC-001、003〜008、013〜014、018〜023、025〜026、028〜
 | AC-056〜057 | solo/team discrepancy                                      | DB/domain/API/concurrency     | M13/W11導線          | 実装・DB・solo/dual・P05安全確認合格                     |
 | AC-058〜060 | accounting/formulas/export                                 | fixture/contract/API          | M14/W12導線          | 実装・DB・会計7/7 UI/CSV・P05確認合格、実MF import未確認 |
 | AC-061      | pilot/irreversible guards                                  | E2E/DB/API/UI                 | 10商品実測           | 計測基盤合格、10商品実測待ち                             |
-| P0必須TA    | 001〜004、007〜009、011〜017、019〜023、025〜027、029〜043 | type/lint/test/build/contract | platform checklist   | 実装・自動再検証合格                                     |
+| AC-062      | 承認済みモバイル/PCの用語・導線                            | route/UI contract             | 49/52画面対応表      | 追補統合済み、実画面再評価待ち                           |
+| AC-063〜064 | 商品別Code 128/A4印刷/スマホ商品検索                       | Web unit/contract             | PC印刷/iPhone幅      | P11実装中                                                |
+| AC-065      | 気になる箇所・全写真                                       | contracts/API/DB/Web          | 検品・写真導線       | P12 Sol設計待ち                                          |
+| AC-066      | 選択式の発送前写真                                         | contracts/API/DB/Storage/Web  | 注文・発送導線       | P13 Sol設計待ち                                          |
+| AC-067〜068 | 本人操作の調査/任意取引ID                                  | contract/Web/network          | PC/スマホ導線        | P14待ち                                                  |
+| P0必須TA    | 001〜004、007〜009、011〜017、019〜023、025〜027、029〜048 | type/lint/test/build/contract | platform checklist   | TA-044〜048追加分の実装・再検証待ち                      |
 | P1固有TA    | 005〜006、010、018、024、028                               | flag-off/禁止経路             | P1画面を公開しない   | P0では実装完了を要求しない                               |
 | TA-038〜043 | revised A architecture                                     | DB/domain/API/a11y/fixture    | M13/W11/M14/W12      | 実装・DB・P05独立100/100合格                             |
+| TA-044〜045 | local Code 128/印刷/読取UI                                 | Web unit/contract/network     | PC03 v4              | P11実装中                                                |
+| TA-046〜048 | 写真・発送・本人操作追補                                   | DB/API/Storage/Web            | 承認済み最新画面     | P12〜P14待ち                                             |
 
 ## 合格条件
 

@@ -20,6 +20,7 @@
     "test:postgres-upgrade": "npm run test:postgres-upgrade --workspace @resale/api",
     "pilot:fixtures:generate": "node scripts/generate-pilot-fixtures.mjs",
     "pilot:fixtures:check": "node scripts/generate-pilot-fixtures.mjs --check",
+    "capture:approved-ui": "node scripts/capture-approved-ui.mjs",
     "lan:preview": "node scripts/start-lan-preview.mjs",
     "build:packages": "npm run build --workspace @resale/domain && npm run build --workspace @resale/contracts",
     "lint": "npm run build:packages && eslint .",

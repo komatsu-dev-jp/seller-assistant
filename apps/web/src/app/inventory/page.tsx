@@ -25,6 +25,9 @@ export default async function InventoryPage({
             <p>部屋・棚・箱・位置写真と在庫管理番号を、実データで結びます。</p>
           </div>
           <div className="actionGroup">
+            <a className="secondaryButton" href="/inventory/labels">
+              商品ラベルを印刷
+            </a>
             <a className="secondaryButton" href="/inventory/stocktake">
               棚卸・差異を確認
             </a>

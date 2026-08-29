@@ -1,0 +1,282 @@
+[
+  {
+    "output": "product/putaway-shirt-confirm.png",
+    "source": "mobile-ios-redesign-b-board-03-putaway-v2.png",
+    "x": 386,
+    "y": 452,
+    "width": 241,
+    "height": 143
+  },
+  {
+    "output": "product/shirt-front.png",
+    "source": "mobile-ios-redesign-b-board-05-photo-measure-v1.png",
+    "x": 330,
+    "y": 299,
+    "width": 90,
+    "height": 91
+  },
+  {
+    "output": "product/shirt-back.png",
+    "source": "mobile-ios-redesign-b-board-05-photo-measure-v1.png",
+    "x": 432,
+    "y": 299,
+    "width": 90,
+    "height": 91
+  },
+  {
+    "output": "product/brand-tag.png",
+    "source": "mobile-ios-redesign-b-board-05-photo-measure-v1.png",
+    "x": 330,
+    "y": 411,
+    "width": 91,
+    "height": 77
+  },
+  {
+    "output": "product/quality-label.png",
+    "source": "mobile-ios-redesign-b-board-05-photo-measure-v1.png",
+    "x": 432,
+    "y": 411,
+    "width": 91,
+    "height": 77
+  },
+  {
+    "output": "product/button-detail.png",
+    "source": "mobile-ios-redesign-b-board-05-photo-measure-v1.png",
+    "x": 330,
+    "y": 523,
+    "width": 91,
+    "height": 77
+  },
+  {
+    "output": "product/defect-detail.png",
+    "source": "mobile-ios-redesign-b-board-05-photo-measure-v1.png",
+    "x": 432,
+    "y": 523,
+    "width": 91,
+    "height": 77
+  },
+  {
+    "output": "product/shirt-flat-lay.png",
+    "source": "mobile-ios-redesign-b-board-05-photo-measure-v1.png",
+    "x": 594,
+    "y": 246,
+    "width": 225,
+    "height": 177
+  },
+  {
+    "output": "product/cuff-large.png",
+    "source": "mobile-ios-redesign-b-board-05-photo-measure-v1.png",
+    "x": 58,
+    "y": 348,
+    "width": 132,
+    "height": 88
+  },
+  {
+    "output": "product/suit-jacket.png",
+    "source": "mobile-ios-redesign-b-board-10-genre-guide-v2.png",
+    "x": 51,
+    "y": 221,
+    "width": 85,
+    "height": 104
+  },
+  {
+    "output": "product/suit-pants.png",
+    "source": "mobile-ios-redesign-b-board-10-genre-guide-v2.png",
+    "x": 51,
+    "y": 374,
+    "width": 84,
+    "height": 121
+  },
+  {
+    "output": "product/setup-top.png",
+    "source": "mobile-ios-redesign-b-board-10-genre-guide-v2.png",
+    "x": 875,
+    "y": 222,
+    "width": 74,
+    "height": 96
+  },
+  {
+    "output": "product/setup-bottom.png",
+    "source": "mobile-ios-redesign-b-board-10-genre-guide-v2.png",
+    "x": 875,
+    "y": 374,
+    "width": 74,
+    "height": 110
+  },
+  {
+    "output": "product/box-item-shirt.png",
+    "source": "mobile-ios-redesign-wholesale-box-inspection-v3.png",
+    "x": 530,
+    "y": 354,
+    "width": 176,
+    "height": 157
+  },
+  {
+    "output": "measurement/shoulder-ruler.png",
+    "source": "mobile-ios-redesign-b-board-05-photo-measure-v1.png",
+    "x": 1131,
+    "y": 281,
+    "width": 226,
+    "height": 278
+  },
+  {
+    "output": "measurement/bag-measurement.png",
+    "source": "pc-web-redesign-board-05-photo-measure-v1.png",
+    "x": 918,
+    "y": 649,
+    "width": 150,
+    "height": 243
+  },
+  {
+    "output": "storage/shelf-location-mobile.png",
+    "source": "mobile-ios-redesign-b-board-03-putaway-v2.png",
+    "x": 716,
+    "y": 315,
+    "width": 241,
+    "height": 180
+  },
+  {
+    "output": "storage/room-wide.png",
+    "source": "pc-web-redesign-board-03-putaway-v4.png",
+    "x": 294,
+    "y": 614,
+    "width": 135,
+    "height": 111
+  },
+  {
+    "output": "storage/shelf-front.png",
+    "source": "pc-web-redesign-board-03-putaway-v4.png",
+    "x": 449,
+    "y": 614,
+    "width": 130,
+    "height": 111
+  },
+  {
+    "output": "storage/position-label.png",
+    "source": "pc-web-redesign-board-03-putaway-v4.png",
+    "x": 594,
+    "y": 614,
+    "width": 137,
+    "height": 111
+  },
+  {
+    "output": "storage/product-on-shelf.png",
+    "source": "pc-web-redesign-board-03-putaway-v4.png",
+    "x": 916,
+    "y": 806,
+    "width": 335,
+    "height": 126
+  },
+  {
+    "output": "storage/inventory-shelf-01.png",
+    "source": "pc-web-redesign-board-09-inventory-v1.png",
+    "x": 299,
+    "y": 159,
+    "width": 96,
+    "height": 103
+  },
+  {
+    "output": "storage/inventory-shelf-02.png",
+    "source": "pc-web-redesign-board-09-inventory-v1.png",
+    "x": 405,
+    "y": 159,
+    "width": 96,
+    "height": 103
+  },
+  {
+    "output": "storage/inventory-shelf-03.png",
+    "source": "pc-web-redesign-board-09-inventory-v1.png",
+    "x": 511,
+    "y": 159,
+    "width": 101,
+    "height": 103
+  },
+  {
+    "output": "documents/invoice-preview.png",
+    "source": "mobile-ios-redesign-b-board-02-purchase-v3.png",
+    "x": 714,
+    "y": 365,
+    "width": 237,
+    "height": 314
+  },
+  {
+    "output": "documents/invoice-preview-pc.png",
+    "source": "pc-web-redesign-board-02-purchase-box-v3.png",
+    "x": 373,
+    "y": 132,
+    "width": 131,
+    "height": 260
+  },
+  {
+    "output": "shipping/packing-box.png",
+    "source": "pc-web-redesign-board-08-orders-shipping-v3.png",
+    "x": 347,
+    "y": 775,
+    "width": 174,
+    "height": 80
+  },
+  {
+    "output": "shipping/product-example.png",
+    "source": "pc-web-redesign-board-02-purchase-box-v3.png",
+    "x": 367,
+    "y": 663,
+    "width": 138,
+    "height": 69
+  },
+  {
+    "output": "shipping/shelf-order-photo.png",
+    "source": "pc-web-redesign-board-08-orders-shipping-v3.png",
+    "x": 1290,
+    "y": 171,
+    "width": 211,
+    "height": 143
+  },
+  {
+    "output": "shipping/mobile-pickup-shelf-approved.png",
+    "source": "mobile-ios-redesign-b-board-07-shipping-v4.png",
+    "x": 380,
+    "y": 438,
+    "width": 249,
+    "height": 141
+  },
+  {
+    "output": "product/brand-tag-pc.png",
+    "source": "pc-web-redesign-board-06-product-listing-v1.png",
+    "x": 160,
+    "y": 139,
+    "width": 146,
+    "height": 125
+  },
+  {
+    "output": "product/quality-label-pc.png",
+    "source": "pc-web-redesign-board-06-product-listing-v1.png",
+    "x": 314,
+    "y": 139,
+    "width": 143,
+    "height": 125
+  },
+  {
+    "output": "product/size-label-pc.png",
+    "source": "pc-web-redesign-board-06-product-listing-v1.png",
+    "x": 160,
+    "y": 273,
+    "width": 146,
+    "height": 117
+  },
+  {
+    "output": "product/text-label-pc.png",
+    "source": "pc-web-redesign-board-06-product-listing-v1.png",
+    "x": 314,
+    "y": 273,
+    "width": 143,
+    "height": 117
+  },
+  {
+    "output": "product/listing-shirt.png",
+    "source": "pc-web-redesign-board-06-product-listing-v1.png",
+    "x": 919,
+    "y": 68,
+    "width": 140,
+    "height": 112
+  }
+]

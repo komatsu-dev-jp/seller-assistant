@@ -3,7 +3,9 @@
 import { hasValidCodeCheckDigit, type PutawayCatalogResponse } from "@resale/contracts";
 import { useEffect, useMemo, useState } from "react";
 
+import { parseInventoryBarcodePayload } from "../lib/inventory-label";
 import { createPendingPutaway, savePutawayOnlineFirst } from "../lib/offline-outbox";
+import { LocalBarcodeScanner } from "./local-barcode-scanner";
 
 type Step = "inventory" | "location" | "confirm" | "saved";
 
@@ -43,12 +45,18 @@ export function MobileScanWorkflow({ workspaceId }: { workspaceId: string }) {
     return "同期待ちに保存";
   }, [step]);
 
-  function acceptValue() {
-    const normalized = value.trim().toUpperCase();
+  function acceptValue(candidate = value) {
+    let normalized = candidate.trim().toUpperCase();
     if (normalized.length > 256 || /address|token|secret/iu.test(normalized)) {
       setError("ラベルに保存できない情報が含まれています。");
       return;
     }
+    const inventoryPayload = step === "inventory" ? parseInventoryBarcodePayload(normalized) : null;
+    if (step === "inventory" && normalized.startsWith("RESALE|") && !inventoryPayload) {
+      setError("商品バーコードが古いか、正しい形式ではありません。");
+      return;
+    }
+    if (inventoryPayload) normalized = inventoryPayload.inventoryNumber;
     if (
       step === "inventory" &&
       (!inventoryPattern.test(normalized) || !hasValidCodeCheckDigit(normalized))
@@ -67,6 +75,10 @@ export function MobileScanWorkflow({ workspaceId }: { workspaceId: string }) {
       const match = catalog?.inventory.find((entry) => entry.inventoryNumber === normalized);
       if (!match) {
         setError("未格納かつ有効な商品ラベルを確認できません。画面を更新してください。");
+        return;
+      }
+      if (inventoryPayload && inventoryPayload.labelVersion !== match.labelVersion) {
+        setError("古い商品ラベルです。現在のラベルを印刷し直してください。");
         return;
       }
       setInventoryNumber(normalized);
@@ -140,15 +152,11 @@ export function MobileScanWorkflow({ workspaceId }: { workspaceId: string }) {
 
       {step !== "confirm" ? (
         <section className="scanInput panel">
-          <div className="cameraFrame">
-            <span aria-hidden="true">＋</span>
-            <strong>{step === "inventory" ? "商品ラベル" : "場所ラベル"}</strong>
-            <small>カメラ写真または手入力</small>
-          </div>
-          <label className="cameraInput">
-            カメラを開く
-            <input type="file" accept="image/*" capture="environment" />
-          </label>
+          <LocalBarcodeScanner
+            key={step}
+            label={step === "inventory" ? "商品バーコード" : "場所バーコード"}
+            onDetected={acceptValue}
+          />
           <label>
             管理番号を手入力
             <input
@@ -161,7 +169,7 @@ export function MobileScanWorkflow({ workspaceId }: { workspaceId: string }) {
             />
           </label>
           {error ? <p className="formError">{error}</p> : null}
-          <button type="button" onClick={acceptValue}>
+          <button type="button" onClick={() => acceptValue()}>
             この番号を確認
           </button>
           <p className="fieldHelp">

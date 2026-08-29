@@ -1,13 +1,13 @@
 {
-  "name": "Resale Ops 公開レビュー版",
+  "name": "Resale Ops 承認済みUIレビュー",
   "short_name": "Resale Ops",
-  "description": "フリマ物販業務アプリの架空データによる公開レビュー用PWA",
+  "description": "フリマ物販業務アプリの承認済みUIを架空データで確認するPWA",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "background_color": "#f5f7fa",
   "theme_color": "#13213a",
-  "orientation": "portrait-primary",
+  "orientation": "any",
   "lang": "ja",
   "categories": ["business", "productivity"],
   "icons": [
