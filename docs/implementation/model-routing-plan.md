@@ -1,7 +1,7 @@
 # P0 cost-optimized モデル割当計画
 
 - 状態: active
-- 更新日: 2026-08-24 JST
+- 更新日: 2026-08-29 JST
 - 対象Goal: `docs/specs/goal-contract-revised-a-v2.md`
 - 対象branch: `codex/opus-audit-integration`
 - 対象worktree: `C:\Users\softt\Documents\Codex\2026-08-13\iphone-notion-google-research-ios-pc\_worktrees\opus-audit-integration`
@@ -233,3 +233,20 @@
 - P11はDB/API/状態遷移を変更しない範囲でTerra high相当とする。field_worker検索やlabel版の変更が必要ならSol maxへ昇格する。
 - P12の気になる箇所、P13の発送前写真は写真・監査・金額・状態を横断するためSol max設計を必須とする。Web表示だけを分離できた後にTerraを使う。
 - P11〜P14後に、P04自動検証、P05 UI評価、P06実利用者pilot、P07証拠整合、P08独立Sol reviewを新しい同一SHAでやり直す。2026-08-25以前の合格を最終証拠として流用しない。
+
+## 2026-08-29 runtime接続再監査とP12-A開始gate
+
+- 別Sol maxの読み取り専用監査はCritical 0、High級ブロッカー8群。最新承認UIは視覚127/127に合格したが、静的demoから実API/DBへの接続がなく、Goal全体は未合格と判定した。
+- AC/TA対応表は範囲行だけで、AC-001〜055・TA-001〜037の1 IDごとのtestファイル・証拠pathを追跡できない。P07で1 ID 1行へ更新する。
+- P12〜P14は実機能として未完了。最初はP12-A contracts・migrationだけを`gpt-5.6-sol` / `max`へ割り当てる。P13/P14とWebは混ぜない。
+- P12-A開始前モデル切替gate: 重大領域のため最低能力はSol max。実行担当として明示的なSol max sub-agent、確認担当として別Sol max経路を確認済み。`MODEL_SWITCH_REQUIRED`なし。
+- P12-Aの変更可能範囲・不変条件・検証は`approved-ui-packets-v1.md`を正本とする。fresh/upgrade PostgreSQLを実行できない場合は合格にせず、証拠と再開条件をhandoffへ残す。
+- Draft PR #9はUI確認用Draftとして保持し、Goal合格・ready・merge可能とは表示しない。本番公開とPR mergeは行わない。
+
+## 2026-08-29 P12-A完了とP12-B商品gate
+
+- P12-A sourceは`gpt-5.6-sol` / `max`の唯一writerが実装し、別Sol maxが3回の敵対的reviewを行った。最新状態の陳腐化、任意workspace/identity/timeの権限probe、同時訂正の実証不足を順に修正し、最終Critical/High/Medium/Low 0でPASSした。
+- rootは公式PostgreSQL 18.6でfresh、upgrade、2独立接続の実Lock競合を実行し、最終`npm.cmd run check`までPASSした。P12-Aは合格、P12-B technical gateはGO。
+- Luna maxの読み取り専用棚卸しでは、6商品種類の件数はあるが、安定keyと必須／任意が未確定で、そのまま安全にseedできないと判定した。
+- Sol maxは承認済み件数を変えない推奨A／代替Bを`p12-product-template-proposal-v1.md`へ整理した。利用者確認までは提案であり、P12-B source書込みを開始しない。
+- 利用者が2点を確認後、0035・RLS・完了manifest・非公開mediaはSol max、固定fixtureと対応表はLuna max、API契約固定後のWeb接続はTerra high、最終権限・offline・media reviewは別Sol maxへ割り当てる。

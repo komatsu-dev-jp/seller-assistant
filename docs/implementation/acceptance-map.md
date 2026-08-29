@@ -1,35 +1,35 @@
 # 受け入れ条件・実装対応表
 
-- 状態: 承認済みUI追補を統合し、P11バーコード実装中。旧P05 100/100は履歴として保持し、新差分後に再評価する
-- 更新日: 2026-08-27（JST）
+- 状態: 承認済みUI全127画面の視覚gateとP12-Aの検品DB・契約gateは合格。実API・実運用画面はP12-B/Cとして未接続
+- 更新日: 2026-08-29（JST）
 - 正本: `docs/specs/mvp-product-spec-v1.md`、`docs/specs/technical-architecture-v1.md`、`docs/specs/approved-ui-integration-addendum-v1.md`
 
 ## P0ゲート
 
 P0の必須ACは AC-001、003〜008、013〜014、018〜023、025〜026、028〜034、039、042〜068。各行へ実装、テスト、実画面証拠を追加し、すべて合格するまでP1へ進まない。2026-08-27以前のP05/P06証拠は承認済みUI追補前の履歴であり、新しいP0の最終合格証拠にはしない。
 
-| 範囲        | 実装先                                                     | 自動検証                      | 手動・画面証拠       | 状態                                                     |
-| ----------- | ---------------------------------------------------------- | ----------------------------- | -------------------- | -------------------------------------------------------- |
-| AC-001〜009 | domain/contracts、API、Web/PWA                             | unit/API                      | P0仕入・撮影・採寸   | P0対象合格、P1 AIは無効                                  |
-| AC-010〜017 | media/listing/price adapters                               | unit/contract                 | 原本比較・本人引渡し | AC-013/014合格、P1は無効                                 |
-| AC-018〜020 | inventory/order/shipping                                   | concurrency/API               | 二重読取・発送・返品 | 合格                                                     |
-| AC-021〜024 | finance/accounting/Notion                                  | fixture/schema                | 収益・CSV・同期確認  | AC-021〜023合格、P1は無効                                |
-| AC-025〜028 | UI/監査/品質                                               | a11y/security/all suites      | PC/PWA実画面         | P05独立100/100、Critical/High/Medium 0                   |
-| AC-029〜041 | 財務・冪等・機密・CSV・旧資産                              | fixture/contract/security     | 出力内容確認         | P0対象合格、P1は無効                                     |
-| AC-042〜055 | inventory/location/count                                   | DB/domain/concurrency         | M12/W10導線          | 合格                                                     |
-| AC-056〜057 | solo/team discrepancy                                      | DB/domain/API/concurrency     | M13/W11導線          | 実装・DB・solo/dual・P05安全確認合格                     |
-| AC-058〜060 | accounting/formulas/export                                 | fixture/contract/API          | M14/W12導線          | 実装・DB・会計7/7 UI/CSV・P05確認合格、実MF import未確認 |
-| AC-061      | pilot/irreversible guards                                  | E2E/DB/API/UI                 | 10商品実測           | 計測基盤合格、10商品実測待ち                             |
-| AC-062      | 承認済みモバイル/PCの用語・導線                            | route/UI contract             | 49/52画面対応表      | 追補統合済み、実画面再評価待ち                           |
-| AC-063〜064 | 商品別Code 128/A4印刷/スマホ商品検索                       | Web unit/contract             | PC印刷/iPhone幅      | P11実装中                                                |
-| AC-065      | 気になる箇所・全写真                                       | contracts/API/DB/Web          | 検品・写真導線       | P12 Sol設計待ち                                          |
-| AC-066      | 選択式の発送前写真                                         | contracts/API/DB/Storage/Web  | 注文・発送導線       | P13 Sol設計待ち                                          |
-| AC-067〜068 | 本人操作の調査/任意取引ID                                  | contract/Web/network          | PC/スマホ導線        | P14待ち                                                  |
-| P0必須TA    | 001〜004、007〜009、011〜017、019〜023、025〜027、029〜048 | type/lint/test/build/contract | platform checklist   | TA-044〜048追加分の実装・再検証待ち                      |
-| P1固有TA    | 005〜006、010、018、024、028                               | flag-off/禁止経路             | P1画面を公開しない   | P0では実装完了を要求しない                               |
-| TA-038〜043 | revised A architecture                                     | DB/domain/API/a11y/fixture    | M13/W11/M14/W12      | 実装・DB・P05独立100/100合格                             |
-| TA-044〜045 | local Code 128/印刷/読取UI                                 | Web unit/contract/network     | PC03 v4              | P11実装中                                                |
-| TA-046〜048 | 写真・発送・本人操作追補                                   | DB/API/Storage/Web            | 承認済み最新画面     | P12〜P14待ち                                             |
+| 範囲        | 実装先                                                     | 自動検証                      | 手動・画面証拠       | 状態                                                       |
+| ----------- | ---------------------------------------------------------- | ----------------------------- | -------------------- | ---------------------------------------------------------- |
+| AC-001〜009 | domain/contracts、API、Web/PWA                             | unit/API                      | P0仕入・撮影・採寸   | P0対象合格、P1 AIは無効                                    |
+| AC-010〜017 | media/listing/price adapters                               | unit/contract                 | 原本比較・本人引渡し | AC-013/014合格、P1は無効                                   |
+| AC-018〜020 | inventory/order/shipping                                   | concurrency/API               | 二重読取・発送・返品 | 合格                                                       |
+| AC-021〜024 | finance/accounting/Notion                                  | fixture/schema                | 収益・CSV・同期確認  | AC-021〜023合格、P1は無効                                  |
+| AC-025〜028 | UI/監査/品質                                               | a11y/security/all suites      | PC/PWA実画面         | P05独立100/100、Critical/High/Medium 0                     |
+| AC-029〜041 | 財務・冪等・機密・CSV・旧資産                              | fixture/contract/security     | 出力内容確認         | P0対象合格、P1は無効                                       |
+| AC-042〜055 | inventory/location/count                                   | DB/domain/concurrency         | M12/W10導線          | 合格                                                       |
+| AC-056〜057 | solo/team discrepancy                                      | DB/domain/API/concurrency     | M13/W11導線          | 実装・DB・solo/dual・P05安全確認合格                       |
+| AC-058〜060 | accounting/formulas/export                                 | fixture/contract/API          | M14/W12導線          | 実装・DB・会計7/7 UI/CSV・P05確認合格、実MF import未確認   |
+| AC-061      | pilot/irreversible guards                                  | E2E/DB/API/UI                 | 10商品実測           | 計測基盤合格、10商品実測待ち                               |
+| AC-062      | 承認済みモバイル/PCの用語・導線                            | route/UI contract             | 75/52画面対応表      | 視覚127/127合格。承認画面から実APIへのruntime接続は未合格  |
+| AC-063〜064 | 商品別Code 128/A4印刷/スマホ商品検索                       | Web unit/contract             | PC印刷/iPhone幅      | P11コード・unit/full check合格。実iPhone読取は未確認       |
+| AC-065      | 気になる箇所・全写真                                       | contracts/API/DB/Web          | 検品・写真導線       | P12-A最終PASS。P12-B/C未実装、商品別項目案は利用者確認待ち |
+| AC-066      | 選択式の発送前写真                                         | contracts/API/DB/Storage/Web  | 注文・発送導線       | P13 Sol設計待ち                                            |
+| AC-067〜068 | 本人操作の調査/任意取引ID                                  | contract/Web/network          | PC/スマホ導線        | P14待ち                                                    |
+| P0必須TA    | 001〜004、007〜009、011〜017、019〜023、025〜027、029〜048 | type/lint/test/build/contract | platform checklist   | TA-044〜048追加分の実装・再検証待ち                        |
+| P1固有TA    | 005〜006、010、018、024、028                               | flag-off/禁止経路             | P1画面を公開しない   | P0では実装完了を要求しない                                 |
+| TA-038〜043 | revised A architecture                                     | DB/domain/API/a11y/fixture    | M13/W11/M14/W12      | 実装・DB・P05独立100/100合格                               |
+| TA-044〜045 | local Code 128/印刷/読取UI                                 | Web unit/contract/network     | PC03 v4              | P11自動検証合格。実iPhone camera/読取は未確認              |
+| TA-046〜048 | 写真・発送・本人操作追補                                   | DB/API/Storage/Web            | 承認済み最新画面     | TA-046のP12-A最終PASS。P12-B/C・TA-047〜048は未実装        |
 
 ## 合格条件
 
@@ -38,6 +38,25 @@ P0の必須ACは AC-001、003〜008、013〜014、018〜023、025〜026、028〜
 - `docs/specs/ui-evaluation-rubric-v1.md`のUI評価90点以上かつ重大項目0点なし。
 - Critical/High 0件。
 - 独立レビュー後に影響範囲を再検証。
+
+## 2026-08-29 runtime接続再監査
+
+- 独立Sol max監査はCritical 0、High級ブロッカー8群。Draft PR #9をGoal全体の合格とは判定しない。
+- `mobile/screens/[screen]`と`pc/[screen]`は承認UIの静的review routeであり、`ApprovedMobileDemo` / `ApprovedPcDemo`から`/v1` API・workspace・server actionへの接続は0件だった。
+- 127/127の視覚合格は維持するが、保存・権限・状態遷移の合格を意味しない。静的review画面と認証済み実運用画面を区別する。
+- 現HEAD `a42db0fdd67735857c130af1f58b73d883fcd460`と最新fresh/upgrade PostgreSQL証拠SHAが異なるため、P12〜P14後に同一SHAで全検証をやり直す。
+- 詳細と再発防止候補は`memory/incidents/INC-20260829-012-approved-ui-static-runtime-gap.md`を参照する。
+
+## 2026-08-29 P12-A最終結果
+
+- 新規`0034_inspection_concern_contract.sql`で、検品結果と気になる箇所を更新・削除しない追記履歴として追加した。見える不備は同一SKUの位置・全体写真を要求し、においは説明を必須にする。
+- 最終確認は別の直前記録者が行い、最新の気になる箇所を完全一致で参照する。後から内容を訂正した場合は、同じ処理内で検品結果も未確認へ戻さない限りDBが拒否する。
+- owner／inventory manager、または有効なcapture担当者だけを許可し、別workspace、別SKU、期限切れ・取消済み担当、shipping/accounting担当をDBのRLSでも拒否する。秘密の写真保存先は公開contractへ含めない。
+- 公式PostgreSQL 18.6の新規導入試験は34 migration、53-table RLS、権限攻撃、自己確認、最新状態、2接続の同時訂正をPASS。同時訂正は別PIDと実Lock待ちを確認し、成功1件・23505拒否1件、履歴の枝分かれ0件だった。
+- 既存データ更新試験は0001〜0034をPASSし、SKU、写真、pilot、財務、CSV bytes/hash、監査履歴が更新前後で不変だった。
+- 最終`npm.cmd run check`は34 files / 253 tests、coverage statements 84.66%、branches 80.56%、functions 100%、lines 90.68%、format/lint/typecheck、API/Web build 86 routesをPASSした。
+- 実装していない別Sol maxの最終判定はCritical 0 / High 0 / Medium 0 / Low 0。P12-AはPASS、P12-Bの技術gateはGO。
+- P12-Bの商品別初期データは、承認済み画面が件数だけを固定し項目名・必須範囲を固定していないため、`p12-product-template-proposal-v1.md`の2点を利用者が確認するまで書き込まない。
 
 ## 修正版Aの再開gate
 

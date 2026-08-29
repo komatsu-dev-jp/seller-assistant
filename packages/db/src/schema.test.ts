@@ -133,6 +133,10 @@ const listingPrepPilotV11MigrationPath = fileURLToPath(
   new URL("../migrations/0033_listing_prep_pilot_v1_1.sql", import.meta.url),
 );
 const listingPrepPilotV11Sql = readFileSync(listingPrepPilotV11MigrationPath, "utf8");
+const inspectionConcernMigrationPath = fileURLToPath(
+  new URL("../migrations/0034_inspection_concern_contract.sql", import.meta.url),
+);
+const inspectionConcernSql = readFileSync(inspectionConcernMigrationPath, "utf8");
 
 describe("P0 PostgreSQL migration contract", () => {
   it("enables and forces workspace RLS for business tables", () => {
@@ -684,6 +688,163 @@ describe("P0 PostgreSQL migration contract", () => {
     expect(safeAccountMappingReplacementSql).not.toMatch(/update\s+export_batch/iu);
     expect(safeAccountMappingReplacementSql).not.toMatch(/delete\s+from/iu);
     expect(safeAccountMappingReplacementSql).not.toMatch(/update\s+audit_event/iu);
+  });
+
+  it("adds append-only inspection check and concern revisions without rewriting history", () => {
+    expect(inspectionConcernSql).toContain("create table inspection_check_result");
+    expect(inspectionConcernSql).toContain("create table inspection_concern_revision");
+    expect(inspectionConcernSql).toContain("revision integer not null");
+    expect(inspectionConcernSql).toContain("supersedes_id uuid");
+    expect(inspectionConcernSql).toContain(
+      "concern_revision_ids uuid[] not null default '{}'::uuid[]",
+    );
+    expect(inspectionConcernSql).toContain("inspection_check_result_one_successor");
+    expect(inspectionConcernSql).toContain("inspection_concern_one_successor");
+    expect(inspectionConcernSql).toContain(
+      "inspection history is append-only; create a successor revision",
+    );
+    expect(inspectionConcernSql).toContain("before update or delete on inspection_check_result");
+    expect(inspectionConcernSql).toContain(
+      "before update or delete on inspection_concern_revision",
+    );
+    expect(inspectionConcernSql).toContain(
+      "revoke update, delete on inspection_check_result, inspection_concern_revision",
+    );
+    expect(inspectionConcernSql).not.toMatch(
+      /update\s+(?:media_asset|pilot_run|pilot_item_measurement)/iu,
+    );
+    expect(inspectionConcernSql).not.toMatch(/delete\s+from/iu);
+  });
+
+  it("stores normalized concern markers and requires same-SKU visual evidence", () => {
+    expect(inspectionConcernSql).toContain(
+      "marker_x numeric(7,6) check (marker_x between 0 and 1)",
+    );
+    expect(inspectionConcernSql).toContain(
+      "marker_y numeric(7,6) check (marker_y between 0 and 1)",
+    );
+    expect(inspectionConcernSql).toContain("references media_asset(workspace_id, sku_id, id)");
+    expect(inspectionConcernSql).toContain("concern_type = 'odor'");
+    expect(inspectionConcernSql).toContain(
+      "marker_source_asset_id is not null and context_evidence_asset_id is not null",
+    );
+    expect(inspectionConcernSql).toContain("concern_type = 'odor' and memo is not null");
+    expect(inspectionConcernSql).toContain("memo = btrim(memo)");
+    expect(inspectionConcernSql).toContain("check (concern_type <> 'odor' or memo is not null)");
+  });
+
+  it("requires a separate prior-revision reviewer and an actor-bound inspection assignment", () => {
+    expect(inspectionConcernSql).toContain(
+      "create or replace function can_actor_access_inspection_sku(\n  requested_sku_id uuid\n)",
+    );
+    expect(inspectionConcernSql).toContain("public.app_workspace_id() as workspace_id");
+    expect(inspectionConcernSql).toContain("public.app_identity_id() as identity_id");
+    expect(inspectionConcernSql).toContain("statement_timestamp() as checked_at");
+    expect(inspectionConcernSql).toContain("from public.product_sku sku");
+    expect(inspectionConcernSql).toContain("sku.workspace_id = context.workspace_id");
+    expect(inspectionConcernSql).toContain("membership.role in ('owner', 'inventory_manager')");
+    expect(inspectionConcernSql).toContain("membership.role = 'field_worker'");
+    expect(inspectionConcernSql).toContain("public.has_active_sku_work_assignment");
+    expect(inspectionConcernSql).toContain("new.confirmed_by is distinct from actor_id");
+    expect(inspectionConcernSql).toContain("actor_id = prior.recorded_by");
+    expect(inspectionConcernSql).toContain("new.reviewed_by is distinct from actor_id");
+    expect(inspectionConcernSql).toContain(
+      "a concern reviewer must differ from the prior revision recorder",
+    );
+    expect(inspectionConcernSql).toContain(
+      "a confirmed inspection check must directly supersede an unconfirmed revision",
+    );
+    expect(inspectionConcernSql).toContain(
+      "a concern review must directly supersede a pending-review revision",
+    );
+    expect(inspectionConcernSql).toContain(
+      "a concern review cannot change the submitted concern content",
+    );
+    expect(inspectionConcernSql).toContain(
+      "a human-dismissed concern chain is terminal and cannot be reopened",
+    );
+    for (const immutableField of [
+      "new.item_location is distinct from prior.item_location",
+      "new.concern_type is distinct from prior.concern_type",
+      "new.severity is distinct from prior.severity",
+      "new.marker_source_asset_id is distinct from prior.marker_source_asset_id",
+      "new.marker_x is distinct from prior.marker_x",
+      "new.marker_y is distinct from prior.marker_y",
+      "new.context_evidence_asset_id is distinct from prior.context_evidence_asset_id",
+      "new.detail_evidence_asset_id is distinct from prior.detail_evidence_asset_id",
+      "new.memo is distinct from prior.memo",
+    ]) {
+      expect(inspectionConcernSql).toContain(immutableField);
+    }
+    for (const chainField of [
+      "prior.concern_id is distinct from new.concern_id",
+      "prior.sku_id is distinct from new.sku_id",
+      "prior.inspection_item_key is distinct from new.inspection_item_key",
+      "prior.product_category is distinct from new.product_category",
+      "prior.definition_version is distinct from new.definition_version",
+    ]) {
+      expect(inspectionConcernSql).toContain(chainField);
+    }
+  });
+
+  it("binds concern-present checks to exact same-context confirmed concern revisions", () => {
+    expect(inspectionConcernSql).toContain("cardinality(concern_revision_ids) between 1 and 20");
+    expect(inspectionConcernSql).toContain("count(distinct concern_revision_id)");
+    expect(inspectionConcernSql).toContain("concern.review_state = 'human_confirmed'");
+    expect(inspectionConcernSql).toContain("concern.id = any(latest_check.concern_revision_ids)");
+    expect(inspectionConcernSql).toContain(
+      "concern.inspection_item_key = latest_check.inspection_item_key",
+    );
+    expect(inspectionConcernSql).toContain(
+      "concern-present checks must reference the exact complete set of latest human-confirmed concern revisions",
+    );
+    expect(inspectionConcernSql).toContain(
+      "no-issue confirmation requires every latest concern revision to be human-dismissed",
+    );
+    expect(inspectionConcernSql).toContain("where concern.review_state <> 'human_dismissed'");
+    expect(inspectionConcernSql).toContain("where concern.review_state = 'human_dismissed'");
+    expect(inspectionConcernSql).toContain(
+      "'draft', 'pending_review', 'human_confirmed', 'changes_requested', 'human_dismissed'",
+    );
+    expect(inspectionConcernSql).toContain(
+      "an active inspection concern requires a latest inspection check revision",
+    );
+    expect(inspectionConcernSql).toContain("if latest_check.status = 'unconfirmed' then");
+    expect(inspectionConcernSql.match(/create constraint trigger inspection_/g)).toHaveLength(2);
+    expect(
+      inspectionConcernSql.match(/deferrable initially deferred/g)?.length,
+    ).toBeGreaterThanOrEqual(4);
+    expect(inspectionConcernSql).toContain(
+      "for each row execute function validate_inspection_context_current_state()",
+    );
+    expect(inspectionConcernSql).toContain("for update");
+  });
+
+  it("forces RLS and grants no destructive inspection privileges", () => {
+    expect(inspectionConcernSql.match(/force row level security/g)).toHaveLength(2);
+    expect(inspectionConcernSql).toContain(
+      "create policy inspection_check_result_actor_access on inspection_check_result",
+    );
+    expect(inspectionConcernSql).toContain(
+      "create policy inspection_concern_actor_access on inspection_concern_revision",
+    );
+    expect(inspectionConcernSql).toContain("workspace_id = app_workspace_id()");
+    expect(inspectionConcernSql).toContain("can_actor_access_inspection_sku(sku_id)");
+    expect(inspectionConcernSql).toContain(
+      "grant execute on function can_actor_access_inspection_sku(uuid)",
+    );
+    expect(inspectionConcernSql).not.toMatch(
+      /can_actor_access_inspection_sku\(uuid,\s*uuid,\s*uuid,\s*timestamptz\)/iu,
+    );
+    expect(inspectionConcernSql).not.toContain(
+      "can_actor_access_inspection_sku(workspace_id, sku_id, app_identity_id())",
+    );
+    expect(inspectionConcernSql).toContain(
+      "grant select, insert on inspection_check_result, inspection_concern_revision",
+    );
+    expect(inspectionConcernSql).not.toMatch(
+      /grant\s+(?:all|update|delete|truncate).*inspection_/iu,
+    );
   });
 
   it("retains readable, duplicate, unknown and unreadable stocktake evidence", () => {

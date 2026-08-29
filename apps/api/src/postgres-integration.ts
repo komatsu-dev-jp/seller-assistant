@@ -78,6 +78,8 @@ const workspaceProtectedTables = [
   "inventory_movement",
   "inventory_unit",
   "inventory_unit_assignment",
+  "inspection_check_result",
+  "inspection_concern_revision",
   "journal_candidate",
   "location_node",
   "location_photo",
@@ -998,7 +1000,8 @@ try {
     },
   });
   assert.equal(managerMember.statusCode, 201, managerMember.body);
-  assert.ok(managerMember.json<{ identityId: string }>().identityId);
+  const managerId = managerMember.json<{ identityId: string }>().identityId;
+  assert.ok(managerId);
   const accountingMember = await app.inject({
     method: "POST",
     url: `/v1/workspaces/${owner.workspaceId}/team/members`,
@@ -1254,6 +1257,1428 @@ try {
     },
   });
   assert.equal(workerCaptureComplete.statusCode, 200, workerCaptureComplete.body);
+
+  const foreignInspectionAssetId = acquisitionAssetByRole.get("front");
+  assert.ok(foreignInspectionAssetId);
+  const inspectionCheckRevisionOneId = randomUUID();
+  const inspectionCheckRevisionTwoId = randomUUID();
+  const inspectionCheckRevisionThreeId = randomUUID();
+  const inspectionCheckRevisionFourId = randomUUID();
+  const inspectionConcernId = randomUUID();
+  const inspectionConcernRevisionOneId = randomUUID();
+  const inspectionConcernRevisionTwoId = randomUUID();
+  const inspectionConcernRevisionThreeId = randomUUID();
+  const inspectionConcernRevisionFourId = randomUUID();
+  const inspectionConcernRevisionFiveId = randomUUID();
+  const inspectionConcernRevisionSixId = randomUUID();
+  const inspectionConcernRevisionSevenId = randomUUID();
+  const inspectionConcernRevisionEightId = randomUUID();
+  const inspectionConcernRevisionNineId = randomUUID();
+  const secondInspectionConcernId = randomUUID();
+  const secondInspectionConcernRevisionOneId = randomUUID();
+  const secondInspectionConcernRevisionTwoId = randomUUID();
+  const secondInspectionConcernRevisionThreeId = randomUUID();
+  const secondInspectionConcernRevisionFourId = randomUUID();
+  const wrongContextCheckRevisionOneId = randomUUID();
+  const wrongContextConcernId = randomUUID();
+  const wrongContextConcernRevisionOneId = randomUUID();
+  const wrongContextConcernRevisionTwoId = randomUUID();
+  const parallelCheckPredecessorId = randomUUID();
+  const parallelCheckSuccessorAId = randomUUID();
+  const parallelCheckSuccessorBId = randomUUID();
+  const ownerOnlyInspectionRevisionId = randomUUID();
+  const crossWorkspaceOwnerId = randomUUID();
+  const crossWorkspaceSkuId = randomUUID();
+  const crossWorkspaceInspectionRevisionId = randomUUID();
+  const crossWorkspaceConcernRevisionId = randomUUID();
+  const expiredAssignmentSkuId = randomUUID();
+  const revokedAssignmentSkuId = randomUUID();
+  const expiredAssignmentInspectionRevisionId = randomUUID();
+  const revokedAssignmentInspectionRevisionId = randomUUID();
+  const expiredAssignmentConcernRevisionId = randomUUID();
+  const revokedAssignmentConcernRevisionId = randomUUID();
+  const inspectionDatabase = postgres(runtimeUrl, { max: 1 });
+  try {
+    const inspectionSeedAdmin = postgres(adminUrl, { max: 1 });
+    try {
+      await inspectionSeedAdmin.begin(async (transaction) => {
+        await transaction`
+          insert into app_identity (id, display_name)
+          values (${crossWorkspaceOwnerId}, '架空別事業所の検品責任者')
+        `;
+        await transaction`
+          insert into workspace_membership (workspace_id, identity_id, role, active)
+          values (${otherWorkspaceId}, ${crossWorkspaceOwnerId}, 'owner', true)
+        `;
+        await transaction`
+          insert into product_sku (id, workspace_id, sku_code, title, category) values
+            (${crossWorkspaceSkuId}, ${otherWorkspaceId}, 'SKU-CROSS-INSPECTION', '別事業所の架空商品', 'トップス'),
+            (${expiredAssignmentSkuId}, ${owner.workspaceId}, 'SKU-EXPIRED-INSPECTION', '期限切れ担当の架空商品', 'トップス'),
+            (${revokedAssignmentSkuId}, ${owner.workspaceId}, 'SKU-REVOKED-INSPECTION', '取消済み担当の架空商品', 'トップス')
+        `;
+        await transaction`
+          insert into sku_work_assignment (
+            workspace_id, identity_id, sku_id, operation, starts_at, expires_at,
+            revoked_at, created_by, created_at
+          ) values
+            (
+              ${owner.workspaceId}, ${workerId}, ${expiredAssignmentSkuId}, 'capture',
+              statement_timestamp() - interval '2 hours',
+              statement_timestamp() - interval '1 hour', null,
+              ${owner.identityId}, statement_timestamp() - interval '3 hours'
+            ),
+            (
+              ${owner.workspaceId}, ${workerId}, ${revokedAssignmentSkuId}, 'capture',
+              statement_timestamp() - interval '10 minutes',
+              statement_timestamp() + interval '1 hour',
+              statement_timestamp() - interval '1 minute',
+              ${owner.identityId}, statement_timestamp() - interval '20 minutes'
+            )
+        `;
+      });
+    } finally {
+      await inspectionSeedAdmin.end({ timeout: 5 });
+    }
+
+    await inspectionDatabase.begin(async (transaction) => {
+      await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+      await transaction`select set_config('app.identity_id', ${workerId}, true)`;
+      await transaction`
+        insert into inspection_check_result (
+          id, workspace_id, sku_id, inspection_item_key, product_category,
+          definition_version, status, revision, supersedes_id, created_by, recorded_by
+        ) values (
+          ${inspectionCheckRevisionOneId}, ${owner.workspaceId}, ${skuId}, 'front_body', 'tops',
+          1, 'unconfirmed', 1, null, ${workerId}, ${workerId}
+        )
+      `;
+      await transaction`
+        insert into inspection_check_result (
+          id, workspace_id, sku_id, inspection_item_key, product_category,
+          definition_version, status, revision, supersedes_id, created_by, recorded_by
+        ) values (
+          ${wrongContextCheckRevisionOneId}, ${owner.workspaceId}, ${skuId},
+          'left_sleeve', 'tops', 1, 'unconfirmed', 1, null, ${workerId}, ${workerId}
+        )
+      `;
+      await transaction`
+        insert into inspection_concern_revision (
+          id, concern_id, workspace_id, sku_id, inspection_item_key, product_category,
+          definition_version, revision, supersedes_id, item_location, concern_type,
+          severity, marker_source_asset_id, marker_x, marker_y,
+          context_evidence_asset_id, detail_evidence_asset_id, memo, review_state,
+          created_by, recorded_by
+        ) values (
+          ${inspectionConcernRevisionOneId}, ${inspectionConcernId}, ${owner.workspaceId},
+          ${skuId}, 'front_body', 'tops', 1, 1, null, '前身頃の右下', 'stain',
+          'noticeable', ${captureAssetId}, 0.25, 0.75, ${captureAssetId}, null,
+          '架空の薄いしみ', 'pending_review', ${workerId}, ${workerId}
+        )
+      `;
+      await transaction`
+        insert into inspection_concern_revision (
+          id, concern_id, workspace_id, sku_id, inspection_item_key, product_category,
+          definition_version, revision, supersedes_id, item_location, concern_type,
+          severity, marker_source_asset_id, marker_x, marker_y,
+          context_evidence_asset_id, detail_evidence_asset_id, memo, review_state,
+          created_by, recorded_by
+        ) values (
+          ${secondInspectionConcernRevisionOneId}, ${secondInspectionConcernId},
+          ${owner.workspaceId}, ${skuId}, 'front_body', 'tops', 1, 1, null,
+          '前身頃の左上', 'scratch', 'small', ${captureAssetId}, 0.65, 0.2,
+          ${captureAssetId}, null, '架空の小さな擦れ', 'pending_review',
+          ${workerId}, ${workerId}
+        )
+      `;
+      await transaction`
+        insert into inspection_concern_revision (
+          id, concern_id, workspace_id, sku_id, inspection_item_key, product_category,
+          definition_version, revision, supersedes_id, item_location, concern_type,
+          severity, marker_source_asset_id, marker_x, marker_y,
+          context_evidence_asset_id, detail_evidence_asset_id, memo, review_state,
+          created_by, recorded_by
+        ) values (
+          ${wrongContextConcernRevisionOneId}, ${wrongContextConcernId}, ${owner.workspaceId},
+          ${skuId}, 'left_sleeve', 'tops', 1, 1, null, '左袖', 'scratch',
+          'small', ${captureAssetId}, 0.4, 0.6, ${captureAssetId}, null,
+          '架空の小さな傷', 'pending_review', ${workerId}, ${workerId}
+        )
+      `;
+    });
+
+    await inspectionDatabase.begin(async (transaction) => {
+      await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+      await transaction`select set_config('app.identity_id', ${owner.identityId}, true)`;
+      await transaction`
+        insert into inspection_check_result (
+          id, workspace_id, sku_id, inspection_item_key, product_category,
+          definition_version, status, concern_revision_ids, revision, supersedes_id,
+          created_by, recorded_by
+        ) values
+          (
+            ${expiredAssignmentInspectionRevisionId}, ${owner.workspaceId},
+            ${expiredAssignmentSkuId}, 'front_body', 'tops', 1, 'unconfirmed',
+            '{}'::uuid[], 1, null, ${owner.identityId}, ${owner.identityId}
+          ),
+          (
+            ${revokedAssignmentInspectionRevisionId}, ${owner.workspaceId},
+            ${revokedAssignmentSkuId}, 'front_body', 'tops', 1, 'unconfirmed',
+            '{}'::uuid[], 1, null, ${owner.identityId}, ${owner.identityId}
+          )
+      `;
+      await transaction`
+        insert into inspection_concern_revision (
+          id, concern_id, workspace_id, sku_id, inspection_item_key, product_category,
+          definition_version, revision, supersedes_id, item_location, concern_type,
+          severity, memo, review_state, created_by, recorded_by
+        ) values
+          (
+            ${expiredAssignmentConcernRevisionId}, ${randomUUID()}, ${owner.workspaceId},
+            ${expiredAssignmentSkuId}, 'front_body', 'tops', 1, 1, null, '商品全体',
+            'odor', 'small', '期限切れ担当の読取拒否確認用', 'pending_review',
+            ${owner.identityId}, ${owner.identityId}
+          ),
+          (
+            ${revokedAssignmentConcernRevisionId}, ${randomUUID()}, ${owner.workspaceId},
+            ${revokedAssignmentSkuId}, 'front_body', 'tops', 1, 1, null, '商品全体',
+            'odor', 'small', '取消済み担当の読取拒否確認用', 'pending_review',
+            ${owner.identityId}, ${owner.identityId}
+          )
+      `;
+    });
+
+    await inspectionDatabase.begin(async (transaction) => {
+      await transaction`select set_config('app.workspace_id', ${otherWorkspaceId}, true)`;
+      await transaction`select set_config('app.identity_id', ${crossWorkspaceOwnerId}, true)`;
+      await transaction`
+        insert into inspection_check_result (
+          id, workspace_id, sku_id, inspection_item_key, product_category,
+          definition_version, status, concern_revision_ids, revision, supersedes_id,
+          created_by, recorded_by
+        ) values (
+          ${crossWorkspaceInspectionRevisionId}, ${otherWorkspaceId}, ${crossWorkspaceSkuId},
+          'front_body', 'tops', 1, 'unconfirmed', '{}'::uuid[], 1, null,
+          ${crossWorkspaceOwnerId}, ${crossWorkspaceOwnerId}
+        )
+      `;
+      await transaction`
+        insert into inspection_concern_revision (
+          id, concern_id, workspace_id, sku_id, inspection_item_key, product_category,
+          definition_version, revision, supersedes_id, item_location, concern_type,
+          severity, memo, review_state, created_by, recorded_by
+        ) values (
+          ${crossWorkspaceConcernRevisionId}, ${randomUUID()}, ${otherWorkspaceId},
+          ${crossWorkspaceSkuId}, 'front_body', 'tops', 1, 1, null, '商品全体', 'odor',
+          'small', '別事業所の読取拒否確認用', 'pending_review',
+          ${crossWorkspaceOwnerId}, ${crossWorkspaceOwnerId}
+        )
+      `;
+    });
+
+    const [inspectionAccessProbe] = await inspectionDatabase.begin(async (transaction) => {
+      await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+      await transaction`select set_config('app.identity_id', ${owner.identityId}, true)`;
+      return transaction<[{ own_sku: boolean; cross_workspace_sku: boolean }]>`
+        select
+          can_actor_access_inspection_sku(${skuId}::uuid) as own_sku,
+          can_actor_access_inspection_sku(${crossWorkspaceSkuId}::uuid) as cross_workspace_sku
+      `;
+    });
+    assert.deepEqual(inspectionAccessProbe, {
+      own_sku: true,
+      cross_workspace_sku: false,
+    });
+    await assert.rejects(
+      () =>
+        inspectionDatabase.begin(async (transaction) => {
+          await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+          await transaction`select set_config('app.identity_id', ${owner.identityId}, true)`;
+          await transaction`
+            select can_actor_access_inspection_sku(
+              ${otherWorkspaceId}::uuid,
+              ${crossWorkspaceSkuId}::uuid,
+              ${crossWorkspaceOwnerId}::uuid,
+              statement_timestamp() + interval '100 years'
+            )
+          `;
+        }),
+      hasDatabaseCode("42883"),
+      "The removed four-argument helper must not permit arbitrary workspace, identity, or time probes",
+    );
+
+    await inspectionDatabase.begin(async (transaction) => {
+      await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+      await transaction`select set_config('app.identity_id', ${owner.identityId}, true)`;
+      await transaction`
+        insert into inspection_check_result (
+          id, workspace_id, sku_id, inspection_item_key, product_category,
+          definition_version, status, concern_revision_ids, revision, supersedes_id,
+          created_by, recorded_by
+        ) values (
+          ${parallelCheckPredecessorId}, ${owner.workspaceId}, ${skuId},
+          'parallel_branch_probe', 'tops', 1, 'unconfirmed', '{}'::uuid[], 1, null,
+          ${owner.identityId}, ${owner.identityId}
+        )
+      `;
+    });
+
+    const parallelWriterA = postgres(runtimeUrl, { max: 1 });
+    const parallelWriterB = postgres(runtimeUrl, { max: 1 });
+    const parallelObserver = postgres(adminUrl, { max: 1 });
+    let releaseWriterAResolve: (() => void) | undefined;
+    let writerAReleased = false;
+    const writerAHold = new Promise<void>((resolve) => {
+      releaseWriterAResolve = resolve;
+    });
+    const releaseWriterA = (): void => {
+      if (!writerAReleased) {
+        writerAReleased = true;
+        releaseWriterAResolve?.();
+      }
+    };
+    const withParallelAttackTimeout = async <T>(
+      promise: Promise<T>,
+      label: string,
+      timeoutMilliseconds = 10_000,
+    ): Promise<T> => {
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      try {
+        return await Promise.race([
+          promise,
+          new Promise<never>((_resolve, reject) => {
+            timeout = setTimeout(
+              () => reject(new Error(`${label} timed out after ${timeoutMilliseconds}ms`)),
+              timeoutMilliseconds,
+            );
+          }),
+        ]);
+      } finally {
+        if (timeout) {
+          clearTimeout(timeout);
+        }
+      }
+    };
+    let writerAReadyResolve: ((backendPid: number) => void) | undefined;
+    let writerAReadyReject: ((reason: unknown) => void) | undefined;
+    let writerAReadySettled = false;
+    const writerAReady = new Promise<number>((resolve, reject) => {
+      writerAReadyResolve = resolve;
+      writerAReadyReject = reject;
+    });
+    let writerBStartedResolve: ((backendPid: number) => void) | undefined;
+    let writerBStartedReject: ((reason: unknown) => void) | undefined;
+    let writerBStartedSettled = false;
+    const writerBStarted = new Promise<number>((resolve, reject) => {
+      writerBStartedResolve = resolve;
+      writerBStartedReject = reject;
+    });
+    type ParallelAttackResult =
+      { status: "fulfilled"; successorId: string } | { status: "rejected"; reason: unknown };
+    let writerATracked: Promise<ParallelAttackResult> | undefined;
+    let writerBTracked: Promise<ParallelAttackResult> | undefined;
+    try {
+      const writerAOperation = parallelWriterA.begin(async (transaction) => {
+        try {
+          await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+          await transaction`select set_config('app.identity_id', ${owner.identityId}, true)`;
+          await transaction`select set_config('statement_timeout', '20s', true)`;
+          const [connection] = await transaction<[{ backend_pid: number }]>`
+            select pg_backend_pid()::integer as backend_pid
+          `;
+          assert.ok(connection);
+          await transaction`
+            insert into inspection_check_result (
+              id, workspace_id, sku_id, inspection_item_key, product_category,
+              definition_version, status, concern_revision_ids, revision, supersedes_id,
+              created_by, recorded_by
+            ) values (
+              ${parallelCheckSuccessorAId}, ${owner.workspaceId}, ${skuId},
+              'parallel_branch_probe', 'tops', 1, 'unconfirmed', '{}'::uuid[], 2,
+              ${parallelCheckPredecessorId}, ${owner.identityId}, ${owner.identityId}
+            )
+          `;
+          writerAReadySettled = true;
+          writerAReadyResolve?.(connection.backend_pid);
+          await writerAHold;
+          return parallelCheckSuccessorAId;
+        } catch (error) {
+          if (!writerAReadySettled) {
+            writerAReadySettled = true;
+            writerAReadyReject?.(error);
+          }
+          throw error;
+        }
+      });
+      writerATracked = writerAOperation.then<ParallelAttackResult, ParallelAttackResult>(
+        (successorId) => ({ status: "fulfilled", successorId }),
+        (reason: unknown) => ({ status: "rejected", reason }),
+      );
+      const writerABackendPid = await withParallelAttackTimeout(
+        writerAReady,
+        "parallel writer A readiness",
+      );
+
+      const writerBOperation = parallelWriterB.begin(async (transaction) => {
+        try {
+          await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+          await transaction`select set_config('app.identity_id', ${owner.identityId}, true)`;
+          await transaction`select set_config('statement_timeout', '20s', true)`;
+          const [connection] = await transaction<[{ backend_pid: number }]>`
+            select pg_backend_pid()::integer as backend_pid
+          `;
+          assert.ok(connection);
+          writerBStartedSettled = true;
+          writerBStartedResolve?.(connection.backend_pid);
+          await transaction`
+            insert into inspection_check_result (
+              id, workspace_id, sku_id, inspection_item_key, product_category,
+              definition_version, status, concern_revision_ids, revision, supersedes_id,
+              created_by, recorded_by
+            ) values (
+              ${parallelCheckSuccessorBId}, ${owner.workspaceId}, ${skuId},
+              'parallel_branch_probe', 'tops', 1, 'unconfirmed', '{}'::uuid[], 2,
+              ${parallelCheckPredecessorId}, ${owner.identityId}, ${owner.identityId}
+            )
+          `;
+          return parallelCheckSuccessorBId;
+        } catch (error) {
+          if (!writerBStartedSettled) {
+            writerBStartedSettled = true;
+            writerBStartedReject?.(error);
+          }
+          throw error;
+        }
+      });
+      writerBTracked = writerBOperation.then<ParallelAttackResult, ParallelAttackResult>(
+        (successorId) => ({ status: "fulfilled", successorId }),
+        (reason: unknown) => ({ status: "rejected", reason }),
+      );
+      const writerBBackendPid = await withParallelAttackTimeout(
+        writerBStarted,
+        "parallel writer B start",
+      );
+      assert.notEqual(
+        writerABackendPid,
+        writerBBackendPid,
+        "The parallel attack must use two distinct runtime database connections",
+      );
+
+      const lockObservationDeadline = Date.now() + 10_000;
+      let lockObservation:
+        | {
+            blocked_by_writer_a: boolean;
+            wait_event_type: string | null;
+            wait_event: string | null;
+          }
+        | undefined;
+      while (Date.now() < lockObservationDeadline) {
+        const [observed] = await parallelObserver<
+          Array<{
+            blocked_by_writer_a: boolean;
+            wait_event_type: string | null;
+            wait_event: string | null;
+          }>
+        >`
+          select
+            ${writerABackendPid}::integer = any(pg_blocking_pids(${writerBBackendPid}::integer))
+              as blocked_by_writer_a,
+            wait_event_type,
+            wait_event
+          from pg_stat_activity
+          where pid = ${writerBBackendPid}::integer
+        `;
+        if (observed?.blocked_by_writer_a && observed.wait_event_type === "Lock") {
+          lockObservation = observed;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      assert.ok(
+        lockObservation,
+        "Writer B must wait on writer A's SKU row lock before the successor index is checked",
+      );
+
+      releaseWriterA();
+      const attackResults = await withParallelAttackTimeout(
+        Promise.all([writerATracked, writerBTracked]),
+        "parallel successor attack completion",
+        20_000,
+      );
+      assert.equal(
+        attackResults.filter((result) => result.status === "fulfilled").length,
+        1,
+        "Exactly one parallel successor must commit",
+      );
+      assert.equal(
+        attackResults.filter((result) => result.status === "rejected").length,
+        1,
+        "Exactly one parallel successor must be rejected",
+      );
+      assert.deepEqual(attackResults[0], {
+        status: "fulfilled",
+        successorId: parallelCheckSuccessorAId,
+      });
+      assert.equal(attackResults[1]?.status, "rejected");
+      if (attackResults[1]?.status !== "rejected") {
+        throw new Error("Parallel writer B unexpectedly committed");
+      }
+      const rejectedBranch = attackResults[1].reason;
+      assert.equal(
+        typeof rejectedBranch === "object" && rejectedBranch !== null && "code" in rejectedBranch
+          ? String(rejectedBranch.code)
+          : undefined,
+        "23505",
+        "The losing branch must be rejected as a duplicate inspection-context revision",
+      );
+      assert.equal(
+        typeof rejectedBranch === "object" &&
+          rejectedBranch !== null &&
+          "constraint_name" in rejectedBranch
+          ? String(rejectedBranch.constraint_name)
+          : undefined,
+        "inspection_check_result_workspace_id_sku_id_inspection_item_key",
+        "The context-plus-revision uniqueness constraint must reject the losing branch",
+      );
+
+      const parallelBranchRows = await inspectionDatabase.begin(async (transaction) => {
+        await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+        await transaction`select set_config('app.identity_id', ${owner.identityId}, true)`;
+        return transaction<
+          Array<{
+            id: string;
+            status: string;
+            revision: number;
+            supersedes_id: string | null;
+            has_successor: boolean;
+          }>
+        >`
+          select
+            check_result.id,
+            check_result.status,
+            check_result.revision,
+            check_result.supersedes_id,
+            exists (
+              select 1
+              from inspection_check_result successor
+              where successor.workspace_id = check_result.workspace_id
+                and successor.supersedes_id = check_result.id
+            ) as has_successor
+          from inspection_check_result check_result
+          where check_result.workspace_id = ${owner.workspaceId}
+            and check_result.sku_id = ${skuId}
+            and check_result.inspection_item_key = 'parallel_branch_probe'
+            and check_result.product_category = 'tops'
+            and check_result.definition_version = 1
+          order by check_result.revision
+        `;
+      });
+      assert.deepEqual(Array.from(parallelBranchRows), [
+        {
+          id: parallelCheckPredecessorId,
+          status: "unconfirmed",
+          revision: 1,
+          supersedes_id: null,
+          has_successor: true,
+        },
+        {
+          id: parallelCheckSuccessorAId,
+          status: "unconfirmed",
+          revision: 2,
+          supersedes_id: parallelCheckPredecessorId,
+          has_successor: false,
+        },
+      ]);
+    } finally {
+      releaseWriterA();
+      const trackedOperations = [writerATracked, writerBTracked].filter(
+        (operation): operation is Promise<ParallelAttackResult> => operation !== undefined,
+      );
+      if (trackedOperations.length > 0) {
+        await withParallelAttackTimeout(
+          Promise.all(trackedOperations),
+          "parallel successor attack cleanup",
+          5_000,
+        ).catch(() => undefined);
+      }
+      await Promise.allSettled([
+        parallelWriterA.end({ timeout: 5 }),
+        parallelWriterB.end({ timeout: 5 }),
+        parallelObserver.end({ timeout: 5 }),
+      ]);
+    }
+
+    await assert.rejects(
+      () =>
+        inspectionDatabase.begin(async (transaction) => {
+          await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+          await transaction`select set_config('app.identity_id', ${owner.identityId}, true)`;
+          await transaction`
+            insert into inspection_concern_revision (
+              id, concern_id, workspace_id, sku_id, inspection_item_key, product_category,
+              definition_version, revision, supersedes_id, item_location, concern_type,
+              severity, memo, review_state, created_by, recorded_by
+            ) values (
+              ${randomUUID()}, ${randomUUID()}, ${owner.workspaceId}, ${acquiredItem.skuId},
+              'orphan_probe', 'tops', 1, 1, null, '商品全体', 'odor', 'small',
+              '最新checkがないactive concernの拒否確認', 'pending_review',
+              ${owner.identityId}, ${owner.identityId}
+            )
+          `;
+        }),
+      hasDatabaseCode("23514"),
+      "An active concern must not commit without a latest inspection check revision",
+    );
+
+    await assert.rejects(
+      () =>
+        inspectionDatabase.begin(async (transaction) => {
+          await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+          await transaction`select set_config('app.identity_id', ${workerId}, true)`;
+          await transaction`
+            insert into inspection_check_result (
+              id, workspace_id, sku_id, inspection_item_key, product_category,
+              definition_version, status, revision, supersedes_id, created_by,
+              recorded_by, confirmed_by
+            ) values (
+              ${randomUUID()}, ${owner.workspaceId}, ${skuId}, 'front_body', 'tops',
+              1, 'concern_present', 2, ${inspectionCheckRevisionOneId}, ${workerId},
+              ${workerId}, ${workerId}
+            )
+          `;
+        }),
+      hasDatabaseCode("42501"),
+      "The immediately prior check recorder must not confirm that submission",
+    );
+
+    await assert.rejects(
+      () =>
+        inspectionDatabase.begin(async (transaction) => {
+          await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+          await transaction`select set_config('app.identity_id', ${workerId}, true)`;
+          await transaction`
+            insert into inspection_concern_revision (
+              id, concern_id, workspace_id, sku_id, inspection_item_key, product_category,
+              definition_version, revision, supersedes_id, item_location, concern_type,
+              severity, marker_source_asset_id, marker_x, marker_y,
+              context_evidence_asset_id, memo, review_state, created_by, recorded_by, reviewed_by
+            ) values (
+              ${randomUUID()}, ${inspectionConcernId}, ${owner.workspaceId}, ${skuId},
+              'front_body', 'tops', 1, 2, ${inspectionConcernRevisionOneId},
+              '前身頃の右下', 'stain', 'noticeable', ${captureAssetId}, 0.25, 0.75,
+              ${captureAssetId}, '架空の薄いしみ', 'human_confirmed',
+              ${workerId}, ${workerId}, ${workerId}
+            )
+          `;
+        }),
+      hasDatabaseCode("42501"),
+      "The immediately prior concern recorder must not review that submission",
+    );
+
+    await assert.rejects(
+      () =>
+        inspectionDatabase.begin(async (transaction) => {
+          await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+          await transaction`select set_config('app.identity_id', ${managerId}, true)`;
+          await transaction`
+            insert into inspection_concern_revision (
+              id, concern_id, workspace_id, sku_id, inspection_item_key, product_category,
+              definition_version, revision, supersedes_id, item_location, concern_type,
+              severity, marker_source_asset_id, marker_x, marker_y,
+              context_evidence_asset_id, detail_evidence_asset_id, memo, review_state,
+              created_by, recorded_by, reviewed_by
+            ) values (
+              ${randomUUID()}, ${inspectionConcernId}, ${owner.workspaceId}, ${skuId},
+              'front_body', 'tops', 1, 2, ${inspectionConcernRevisionOneId},
+              '前身頃の右下', 'stain', 'noticeable', ${captureAssetId}, 0.25, 0.75,
+              ${captureAssetId}, null, '確認と同時に内容を書き換える試み', 'human_confirmed',
+              ${workerId}, ${managerId}, ${managerId}
+            )
+          `;
+        }),
+      hasDatabaseCode("23514"),
+      "A reviewer must not change concern content while confirming it",
+    );
+
+    await assert.rejects(
+      () =>
+        inspectionDatabase.begin(async (transaction) => {
+          await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+          await transaction`select set_config('app.identity_id', ${workerId}, true)`;
+          await transaction`
+            insert into inspection_concern_revision (
+              id, concern_id, workspace_id, sku_id, inspection_item_key, product_category,
+              definition_version, revision, supersedes_id, item_location, concern_type,
+              severity, marker_source_asset_id, marker_x, marker_y,
+              context_evidence_asset_id, detail_evidence_asset_id, memo, review_state,
+              created_by, recorded_by
+            ) values (
+              ${randomUUID()}, ${randomUUID()}, ${owner.workspaceId}, ${skuId},
+              'odor', 'tops', 1, 1, null, '商品全体', 'odor', 'small',
+              ${captureAssetId}, 0.5, 0.5, ${captureAssetId}, null, null,
+              'pending_review', ${workerId}, ${workerId}
+            )
+          `;
+        }),
+      hasDatabaseCode("23514"),
+      "An odor concern requires a trimmed memo even when photos are present",
+    );
+
+    await assert.rejects(
+      () =>
+        inspectionDatabase.begin(async (transaction) => {
+          await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+          await transaction`select set_config('app.identity_id', ${workerId}, true)`;
+          await transaction`
+            insert into inspection_concern_revision (
+              id, concern_id, workspace_id, sku_id, inspection_item_key, product_category,
+              definition_version, revision, supersedes_id, item_location, concern_type,
+              severity, marker_source_asset_id, marker_x, marker_y,
+              context_evidence_asset_id, memo, review_state, created_by, recorded_by
+            ) values (
+              ${randomUUID()}, ${randomUUID()}, ${owner.workspaceId}, ${skuId},
+              'front_body', 'tops', 1, 1, null, '前身頃', 'stain', 'small',
+              ${captureAssetId}, 1.001, 0.5, ${captureAssetId}, '範囲外座標',
+              'pending_review', ${workerId}, ${workerId}
+            )
+          `;
+        }),
+      hasDatabaseCode("23514"),
+      "Concern marker coordinates must stay in the normalized range",
+    );
+
+    await assert.rejects(
+      () =>
+        inspectionDatabase.begin(async (transaction) => {
+          await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+          await transaction`select set_config('app.identity_id', ${workerId}, true)`;
+          await transaction`
+            insert into inspection_concern_revision (
+              id, concern_id, workspace_id, sku_id, inspection_item_key, product_category,
+              definition_version, revision, supersedes_id, item_location, concern_type,
+              severity, marker_source_asset_id, marker_x, marker_y,
+              context_evidence_asset_id, memo, review_state, created_by, recorded_by
+            ) values (
+              ${randomUUID()}, ${randomUUID()}, ${owner.workspaceId}, ${skuId},
+              'front_body', 'tops', 1, 1, null, '前身頃', 'scratch', 'small',
+              ${foreignInspectionAssetId}, 0.5, 0.5, ${foreignInspectionAssetId},
+              '別SKU写真は拒否', 'pending_review', ${workerId}, ${workerId}
+            )
+          `;
+        }),
+      hasDatabaseCode("23503"),
+      "Concern evidence must belong to the same workspace and SKU",
+    );
+
+    await inspectionDatabase.begin(async (transaction) => {
+      await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+      await transaction`select set_config('app.identity_id', ${owner.identityId}, true)`;
+      await transaction`
+        insert into inspection_check_result (
+          id, workspace_id, sku_id, inspection_item_key, product_category,
+          definition_version, status, revision, supersedes_id, created_by, recorded_by
+        ) values (
+          ${ownerOnlyInspectionRevisionId}, ${owner.workspaceId}, ${acquiredItem.skuId},
+          'front_body', 'tops', 1, 'unconfirmed', 1, null,
+          ${owner.identityId}, ${owner.identityId}
+        )
+      `;
+    });
+
+    const assertInspectionAccessDenied = async (input: {
+      actorId: string;
+      sessionWorkspaceId: string;
+      targetWorkspaceId: string;
+      targetSkuId: string;
+      label: string;
+    }) => {
+      const hiddenRows = await inspectionDatabase.begin(async (transaction) => {
+        await transaction`select set_config('app.workspace_id', ${input.sessionWorkspaceId}, true)`;
+        await transaction`select set_config('app.identity_id', ${input.actorId}, true)`;
+        const checks = await transaction<Array<{ id: string }>>`
+          select id from inspection_check_result
+          where workspace_id = ${input.targetWorkspaceId} and sku_id = ${input.targetSkuId}
+        `;
+        const concerns = await transaction<Array<{ id: string }>>`
+          select id from inspection_concern_revision
+          where workspace_id = ${input.targetWorkspaceId} and sku_id = ${input.targetSkuId}
+        `;
+        return { checks, concerns };
+      });
+      assert.equal(hiddenRows.checks.length, 0, `${input.label} must not read inspection checks`);
+      assert.equal(hiddenRows.concerns.length, 0, `${input.label} must not read concerns`);
+      await assert.rejects(
+        () =>
+          inspectionDatabase.begin(async (transaction) => {
+            await transaction`select set_config('app.workspace_id', ${input.sessionWorkspaceId}, true)`;
+            await transaction`select set_config('app.identity_id', ${input.actorId}, true)`;
+            await transaction`
+              insert into inspection_check_result (
+                id, workspace_id, sku_id, inspection_item_key, product_category,
+                definition_version, status, concern_revision_ids, revision, supersedes_id,
+                created_by, recorded_by
+              ) values (
+                ${randomUUID()}, ${input.targetWorkspaceId}, ${input.targetSkuId},
+                'denied_probe', 'tops', 1, 'unconfirmed', '{}'::uuid[], 1, null,
+                ${input.actorId}, ${input.actorId}
+              )
+            `;
+          }),
+        hasDatabaseCode("42501"),
+        `${input.label} must not insert inspection rows`,
+      );
+      await assert.rejects(
+        () =>
+          inspectionDatabase.begin(async (transaction) => {
+            await transaction`select set_config('app.workspace_id', ${input.sessionWorkspaceId}, true)`;
+            await transaction`select set_config('app.identity_id', ${input.actorId}, true)`;
+            await transaction`
+              insert into inspection_concern_revision (
+                id, concern_id, workspace_id, sku_id, inspection_item_key, product_category,
+                definition_version, revision, supersedes_id, item_location, concern_type,
+                severity, memo, review_state, created_by, recorded_by
+              ) values (
+                ${randomUUID()}, ${randomUUID()}, ${input.targetWorkspaceId},
+                ${input.targetSkuId}, 'denied_probe', 'tops', 1, 1, null,
+                '商品全体', 'odor', 'small', '権限拒否の確認用', 'pending_review',
+                ${input.actorId}, ${input.actorId}
+              )
+            `;
+          }),
+        hasDatabaseCode("42501"),
+        `${input.label} must not insert concern rows`,
+      );
+    };
+
+    await assertInspectionAccessDenied({
+      actorId: owner.identityId,
+      sessionWorkspaceId: owner.workspaceId,
+      targetWorkspaceId: otherWorkspaceId,
+      targetSkuId: crossWorkspaceSkuId,
+      label: "A cross-workspace owner session",
+    });
+    await assertInspectionAccessDenied({
+      actorId: shippingId,
+      sessionWorkspaceId: owner.workspaceId,
+      targetWorkspaceId: owner.workspaceId,
+      targetSkuId: skuId,
+      label: "The shipping role",
+    });
+    await assertInspectionAccessDenied({
+      actorId: accountingId,
+      sessionWorkspaceId: owner.workspaceId,
+      targetWorkspaceId: owner.workspaceId,
+      targetSkuId: skuId,
+      label: "The accounting role",
+    });
+    await assertInspectionAccessDenied({
+      actorId: workerId,
+      sessionWorkspaceId: owner.workspaceId,
+      targetWorkspaceId: owner.workspaceId,
+      targetSkuId: expiredAssignmentSkuId,
+      label: "A field worker with only an expired assignment",
+    });
+    await assertInspectionAccessDenied({
+      actorId: workerId,
+      sessionWorkspaceId: owner.workspaceId,
+      targetWorkspaceId: owner.workspaceId,
+      targetSkuId: revokedAssignmentSkuId,
+      label: "A field worker with only a revoked assignment",
+    });
+
+    const unassignedRows = await inspectionDatabase.begin(async (transaction) => {
+      await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+      await transaction`select set_config('app.identity_id', ${workerId}, true)`;
+      return transaction<Array<{ id: string }>>`
+        select id from inspection_check_result
+        where workspace_id = ${owner.workspaceId} and sku_id = ${acquiredItem.skuId}
+      `;
+    });
+    assert.equal(
+      unassignedRows.length,
+      0,
+      "An unassigned field worker must not read inspection rows",
+    );
+    await assert.rejects(
+      () =>
+        inspectionDatabase.begin(async (transaction) => {
+          await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+          await transaction`select set_config('app.identity_id', ${workerId}, true)`;
+          await transaction`
+            insert into inspection_check_result (
+              id, workspace_id, sku_id, inspection_item_key, product_category,
+              definition_version, status, revision, supersedes_id, created_by, recorded_by
+            ) values (
+              ${randomUUID()}, ${owner.workspaceId}, ${acquiredItem.skuId}, 'odor', 'tops',
+              1, 'unconfirmed', 1, null, ${workerId}, ${workerId}
+            )
+          `;
+        }),
+      hasDatabaseCode("42501"),
+      "An unassigned field worker must not create inspection rows",
+    );
+
+    await inspectionDatabase.begin(async (transaction) => {
+      await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+      await transaction`select set_config('app.identity_id', ${managerId}, true)`;
+      await transaction`
+        insert into inspection_concern_revision (
+          id, concern_id, workspace_id, sku_id, inspection_item_key, product_category,
+          definition_version, revision, supersedes_id, item_location, concern_type,
+          severity, marker_source_asset_id, marker_x, marker_y,
+          context_evidence_asset_id, detail_evidence_asset_id, memo, review_state,
+          created_by, recorded_by, reviewed_by
+        ) values (
+          ${inspectionConcernRevisionTwoId}, ${inspectionConcernId}, ${owner.workspaceId},
+          ${skuId}, 'front_body', 'tops', 1, 2, ${inspectionConcernRevisionOneId},
+          '前身頃の右下', 'stain', 'noticeable', ${captureAssetId}, 0.25, 0.75,
+          ${captureAssetId}, null, '架空の薄いしみ', 'human_confirmed',
+          ${workerId}, ${managerId}, ${managerId}
+        )
+      `;
+      await transaction`
+        insert into inspection_concern_revision (
+          id, concern_id, workspace_id, sku_id, inspection_item_key, product_category,
+          definition_version, revision, supersedes_id, item_location, concern_type,
+          severity, marker_source_asset_id, marker_x, marker_y,
+          context_evidence_asset_id, detail_evidence_asset_id, memo, review_state,
+          created_by, recorded_by, reviewed_by
+        ) values (
+          ${wrongContextConcernRevisionTwoId}, ${wrongContextConcernId}, ${owner.workspaceId},
+          ${skuId}, 'left_sleeve', 'tops', 1, 2, ${wrongContextConcernRevisionOneId},
+          '左袖', 'scratch', 'small', ${captureAssetId}, 0.4, 0.6,
+          ${captureAssetId}, null, '架空の小さな傷', 'human_confirmed',
+          ${workerId}, ${managerId}, ${managerId}
+        )
+      `;
+      await transaction`
+        insert into inspection_concern_revision (
+          id, concern_id, workspace_id, sku_id, inspection_item_key, product_category,
+          definition_version, revision, supersedes_id, item_location, concern_type,
+          severity, marker_source_asset_id, marker_x, marker_y,
+          context_evidence_asset_id, detail_evidence_asset_id, memo, review_state,
+          created_by, recorded_by, reviewed_by
+        ) values (
+          ${secondInspectionConcernRevisionTwoId}, ${secondInspectionConcernId},
+          ${owner.workspaceId}, ${skuId}, 'front_body', 'tops', 1, 2,
+          ${secondInspectionConcernRevisionOneId}, '前身頃の左上', 'scratch', 'small',
+          ${captureAssetId}, 0.65, 0.2, ${captureAssetId}, null, '架空の小さな擦れ',
+          'human_confirmed', ${workerId}, ${managerId}, ${managerId}
+        )
+      `;
+    });
+
+    await inspectionDatabase.begin(async (transaction) => {
+      await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+      await transaction`select set_config('app.identity_id', ${workerId}, true)`;
+      await transaction`
+        insert into inspection_concern_revision (
+          id, concern_id, workspace_id, sku_id, inspection_item_key, product_category,
+          definition_version, revision, supersedes_id, item_location, concern_type,
+          severity, marker_source_asset_id, marker_x, marker_y,
+          context_evidence_asset_id, detail_evidence_asset_id, memo, review_state,
+          created_by, recorded_by
+        ) values (
+          ${inspectionConcernRevisionThreeId}, ${inspectionConcernId}, ${owner.workspaceId},
+          ${skuId}, 'front_body', 'tops', 1, 3, ${inspectionConcernRevisionTwoId},
+          '前身頃の右下', 'stain', 'noticeable', ${captureAssetId}, 0.25, 0.75,
+          ${captureAssetId}, null, '架空の薄いしみ', 'pending_review',
+          ${workerId}, ${workerId}
+        )
+      `;
+    });
+    await inspectionDatabase.begin(async (transaction) => {
+      await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+      await transaction`select set_config('app.identity_id', ${managerId}, true)`;
+      await transaction`
+        insert into inspection_concern_revision (
+          id, concern_id, workspace_id, sku_id, inspection_item_key, product_category,
+          definition_version, revision, supersedes_id, item_location, concern_type,
+          severity, marker_source_asset_id, marker_x, marker_y,
+          context_evidence_asset_id, detail_evidence_asset_id, memo, review_state,
+          created_by, recorded_by, reviewed_by
+        ) values (
+          ${inspectionConcernRevisionFourId}, ${inspectionConcernId}, ${owner.workspaceId},
+          ${skuId}, 'front_body', 'tops', 1, 4, ${inspectionConcernRevisionThreeId},
+          '前身頃の右下', 'stain', 'noticeable', ${captureAssetId}, 0.25, 0.75,
+          ${captureAssetId}, null, '架空の薄いしみ', 'human_confirmed',
+          ${workerId}, ${managerId}, ${managerId}
+        )
+      `;
+    });
+
+    const assertRejectedCheckConfirmation = async (
+      concernRevisionIdsSql: readonly string[],
+      expectedCode: string,
+      label: string,
+      status: "concern_present" | "no_issue_confirmed" = "concern_present",
+    ) => {
+      await assert.rejects(
+        () =>
+          inspectionDatabase.begin(async (transaction) => {
+            await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+            await transaction`select set_config('app.identity_id', ${managerId}, true)`;
+            await transaction`
+              insert into inspection_check_result (
+                id, workspace_id, sku_id, inspection_item_key, product_category,
+                definition_version, status, concern_revision_ids, revision, supersedes_id,
+                created_by, recorded_by, confirmed_by
+              ) values (
+                ${randomUUID()}, ${owner.workspaceId}, ${skuId}, 'front_body', 'tops',
+                1, ${status}, ${concernRevisionIdsSql}, 2, ${inspectionCheckRevisionOneId},
+                ${workerId}, ${managerId}, ${managerId}
+              )
+            `;
+          }),
+        hasDatabaseCode(expectedCode),
+        label,
+      );
+    };
+
+    await assertRejectedCheckConfirmation(
+      [],
+      "23514",
+      "A concern-present result requires at least one exact concern revision",
+    );
+    await assertRejectedCheckConfirmation(
+      [inspectionConcernRevisionOneId],
+      "23503",
+      "A concern-present result must not reference a pending concern revision",
+    );
+    await assertRejectedCheckConfirmation(
+      [wrongContextConcernRevisionTwoId],
+      "23503",
+      "A concern-present result must not reference a different inspection context",
+    );
+    await assertRejectedCheckConfirmation(
+      [inspectionConcernRevisionFourId, inspectionConcernRevisionFourId],
+      "23505",
+      "A concern-present result must reject duplicate exact concern revision IDs",
+    );
+    await assertRejectedCheckConfirmation(
+      [inspectionConcernRevisionFourId],
+      "23514",
+      "A concern-present result must reject a missing latest concern revision",
+    );
+    await assertRejectedCheckConfirmation(
+      [inspectionConcernRevisionTwoId, secondInspectionConcernRevisionTwoId],
+      "23514",
+      "A concern-present result must reject a stale previously-confirmed revision ID",
+    );
+    await assertRejectedCheckConfirmation(
+      [
+        inspectionConcernRevisionFourId,
+        secondInspectionConcernRevisionTwoId,
+        inspectionConcernRevisionTwoId,
+      ],
+      "23514",
+      "A concern-present result must reject an extra non-latest confirmed revision ID",
+    );
+    await assertRejectedCheckConfirmation(
+      [],
+      "23514",
+      "No-issue confirmation must reject any active latest concern",
+      "no_issue_confirmed",
+    );
+
+    await inspectionDatabase.begin(async (transaction) => {
+      await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+      await transaction`select set_config('app.identity_id', ${managerId}, true)`;
+      await transaction`
+        insert into inspection_check_result (
+          id, workspace_id, sku_id, inspection_item_key, product_category,
+          definition_version, status, concern_revision_ids, revision, supersedes_id,
+          created_by, recorded_by, confirmed_by
+        ) values (
+          ${inspectionCheckRevisionTwoId}, ${owner.workspaceId}, ${skuId}, 'front_body', 'tops',
+          1, 'concern_present',
+          array[${inspectionConcernRevisionFourId}, ${secondInspectionConcernRevisionTwoId}]::uuid[],
+          2, ${inspectionCheckRevisionOneId}, ${workerId}, ${managerId}, ${managerId}
+        )
+      `;
+    });
+
+    const [confirmedInspection] = await inspectionDatabase.begin(async (transaction) => {
+      await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+      await transaction`select set_config('app.identity_id', ${managerId}, true)`;
+      return transaction<
+        Array<{
+          created_by: string;
+          recorded_by: string;
+          confirmed_by: string;
+          concern_revision_ids: string[];
+          revision: number;
+          status: string;
+        }>
+      >`
+        select created_by, recorded_by, confirmed_by, concern_revision_ids, revision, status
+        from inspection_check_result
+        where workspace_id = ${owner.workspaceId} and id = ${inspectionCheckRevisionTwoId}
+      `;
+    });
+    assert.deepEqual(confirmedInspection, {
+      created_by: workerId,
+      recorded_by: managerId,
+      confirmed_by: managerId,
+      concern_revision_ids: [inspectionConcernRevisionFourId, secondInspectionConcernRevisionTwoId],
+      revision: 2,
+      status: "concern_present",
+    });
+
+    const [confirmedConcern] = await inspectionDatabase.begin(async (transaction) => {
+      await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+      await transaction`select set_config('app.identity_id', ${managerId}, true)`;
+      return transaction<
+        Array<{
+          created_by: string;
+          recorded_by: string;
+          reviewed_by: string;
+          revision: number;
+          review_state: string;
+        }>
+      >`
+        select created_by, recorded_by, reviewed_by, revision, review_state
+        from inspection_concern_revision
+        where workspace_id = ${owner.workspaceId} and id = ${inspectionConcernRevisionFourId}
+      `;
+    });
+    assert.deepEqual(confirmedConcern, {
+      created_by: workerId,
+      recorded_by: managerId,
+      reviewed_by: managerId,
+      revision: 4,
+      review_state: "human_confirmed",
+    });
+
+    await assert.rejects(
+      () =>
+        inspectionDatabase.begin(async (transaction) => {
+          await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+          await transaction`select set_config('app.identity_id', ${workerId}, true)`;
+          await transaction`
+            insert into inspection_concern_revision (
+              id, concern_id, workspace_id, sku_id, inspection_item_key, product_category,
+              definition_version, revision, supersedes_id, item_location, concern_type,
+              severity, marker_source_asset_id, marker_x, marker_y,
+              context_evidence_asset_id, detail_evidence_asset_id, memo, review_state,
+              created_by, recorded_by
+            ) values (
+              ${inspectionConcernRevisionFiveId}, ${inspectionConcernId}, ${owner.workspaceId},
+              ${skuId}, 'front_body', 'tops', 1, 5, ${inspectionConcernRevisionFourId},
+              '前身頃の右下', 'stain', 'noticeable', ${captureAssetId}, 0.25, 0.75,
+              ${captureAssetId}, null, '架空の薄いしみ', 'draft', ${workerId}, ${workerId}
+            )
+          `;
+        }),
+      hasDatabaseCode("23514"),
+      "A concern successor must not leave an older final check as the latest decision",
+    );
+
+    await inspectionDatabase.begin(async (transaction) => {
+      await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+      await transaction`select set_config('app.identity_id', ${workerId}, true)`;
+      await transaction`
+        insert into inspection_concern_revision (
+          id, concern_id, workspace_id, sku_id, inspection_item_key, product_category,
+          definition_version, revision, supersedes_id, item_location, concern_type,
+          severity, marker_source_asset_id, marker_x, marker_y,
+          context_evidence_asset_id, detail_evidence_asset_id, memo, review_state,
+          created_by, recorded_by
+        ) values (
+          ${inspectionConcernRevisionFiveId}, ${inspectionConcernId}, ${owner.workspaceId},
+          ${skuId}, 'front_body', 'tops', 1, 5, ${inspectionConcernRevisionFourId},
+          '前身頃の右下', 'stain', 'noticeable', ${captureAssetId}, 0.25, 0.75,
+          ${captureAssetId}, null, '架空の薄いしみ', 'draft', ${workerId}, ${workerId}
+        )
+      `;
+      await transaction`
+        insert into inspection_check_result (
+          id, workspace_id, sku_id, inspection_item_key, product_category,
+          definition_version, status, concern_revision_ids, revision, supersedes_id,
+          created_by, recorded_by
+        ) values (
+          ${inspectionCheckRevisionThreeId}, ${owner.workspaceId}, ${skuId},
+          'front_body', 'tops', 1, 'unconfirmed', '{}'::uuid[], 3,
+          ${inspectionCheckRevisionTwoId}, ${workerId}, ${workerId}
+        )
+      `;
+    });
+
+    const assertCurrentFinalRejected = async (
+      status: "concern_present" | "no_issue_confirmed",
+      concernRevisionIds: readonly string[],
+      label: string,
+    ) => {
+      await assert.rejects(
+        () =>
+          inspectionDatabase.begin(async (transaction) => {
+            await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+            await transaction`select set_config('app.identity_id', ${managerId}, true)`;
+            await transaction`
+              insert into inspection_check_result (
+                id, workspace_id, sku_id, inspection_item_key, product_category,
+                definition_version, status, concern_revision_ids, revision, supersedes_id,
+                created_by, recorded_by, confirmed_by
+              ) values (
+                ${randomUUID()}, ${owner.workspaceId}, ${skuId}, 'front_body', 'tops', 1,
+                ${status}, ${concernRevisionIds}, 4, ${inspectionCheckRevisionThreeId},
+                ${workerId}, ${managerId}, ${managerId}
+              )
+            `;
+          }),
+        hasDatabaseCode("23514"),
+        label,
+      );
+    };
+
+    await assertCurrentFinalRejected(
+      "concern_present",
+      [inspectionConcernRevisionFourId, secondInspectionConcernRevisionTwoId],
+      "A final concern-present check must reject a latest draft concern",
+    );
+
+    await inspectionDatabase.begin(async (transaction) => {
+      await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+      await transaction`select set_config('app.identity_id', ${workerId}, true)`;
+      await transaction`
+        insert into inspection_concern_revision (
+          id, concern_id, workspace_id, sku_id, inspection_item_key, product_category,
+          definition_version, revision, supersedes_id, item_location, concern_type,
+          severity, marker_source_asset_id, marker_x, marker_y,
+          context_evidence_asset_id, detail_evidence_asset_id, memo, review_state,
+          created_by, recorded_by
+        ) values (
+          ${inspectionConcernRevisionSixId}, ${inspectionConcernId}, ${owner.workspaceId},
+          ${skuId}, 'front_body', 'tops', 1, 6, ${inspectionConcernRevisionFiveId},
+          '前身頃の右下', 'stain', 'noticeable', ${captureAssetId}, 0.25, 0.75,
+          ${captureAssetId}, null, '架空の薄いしみ', 'pending_review',
+          ${workerId}, ${workerId}
+        )
+      `;
+    });
+    await assertCurrentFinalRejected(
+      "concern_present",
+      [inspectionConcernRevisionFourId, secondInspectionConcernRevisionTwoId],
+      "A final concern-present check must reject a latest pending concern",
+    );
+
+    await inspectionDatabase.begin(async (transaction) => {
+      await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+      await transaction`select set_config('app.identity_id', ${managerId}, true)`;
+      await transaction`
+        insert into inspection_concern_revision (
+          id, concern_id, workspace_id, sku_id, inspection_item_key, product_category,
+          definition_version, revision, supersedes_id, item_location, concern_type,
+          severity, marker_source_asset_id, marker_x, marker_y,
+          context_evidence_asset_id, detail_evidence_asset_id, memo, review_state,
+          created_by, recorded_by, reviewed_by
+        ) values (
+          ${inspectionConcernRevisionSevenId}, ${inspectionConcernId}, ${owner.workspaceId},
+          ${skuId}, 'front_body', 'tops', 1, 7, ${inspectionConcernRevisionSixId},
+          '前身頃の右下', 'stain', 'noticeable', ${captureAssetId}, 0.25, 0.75,
+          ${captureAssetId}, null, '架空の薄いしみ', 'changes_requested',
+          ${workerId}, ${managerId}, ${managerId}
+        )
+      `;
+    });
+    await assertCurrentFinalRejected(
+      "concern_present",
+      [inspectionConcernRevisionFourId, secondInspectionConcernRevisionTwoId],
+      "A final concern-present check must reject a latest changes-requested concern",
+    );
+
+    await inspectionDatabase.begin(async (transaction) => {
+      await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+      await transaction`select set_config('app.identity_id', ${workerId}, true)`;
+      await transaction`
+        insert into inspection_concern_revision (
+          id, concern_id, workspace_id, sku_id, inspection_item_key, product_category,
+          definition_version, revision, supersedes_id, item_location, concern_type,
+          severity, marker_source_asset_id, marker_x, marker_y,
+          context_evidence_asset_id, detail_evidence_asset_id, memo, review_state,
+          created_by, recorded_by
+        ) values (
+          ${inspectionConcernRevisionEightId}, ${inspectionConcernId}, ${owner.workspaceId},
+          ${skuId}, 'front_body', 'tops', 1, 8, ${inspectionConcernRevisionSevenId},
+          '前身頃の右下', 'stain', 'noticeable', ${captureAssetId}, 0.25, 0.75,
+          ${captureAssetId}, null, '架空の薄いしみ', 'pending_review',
+          ${workerId}, ${workerId}
+        )
+      `;
+    });
+    await inspectionDatabase.begin(async (transaction) => {
+      await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+      await transaction`select set_config('app.identity_id', ${managerId}, true)`;
+      await transaction`
+        insert into inspection_concern_revision (
+          id, concern_id, workspace_id, sku_id, inspection_item_key, product_category,
+          definition_version, revision, supersedes_id, item_location, concern_type,
+          severity, marker_source_asset_id, marker_x, marker_y,
+          context_evidence_asset_id, detail_evidence_asset_id, memo, review_state,
+          created_by, recorded_by, reviewed_by
+        ) values (
+          ${inspectionConcernRevisionNineId}, ${inspectionConcernId}, ${owner.workspaceId},
+          ${skuId}, 'front_body', 'tops', 1, 9, ${inspectionConcernRevisionEightId},
+          '前身頃の右下', 'stain', 'noticeable', ${captureAssetId}, 0.25, 0.75,
+          ${captureAssetId}, null, '架空の薄いしみ', 'human_dismissed',
+          ${workerId}, ${managerId}, ${managerId}
+        )
+      `;
+    });
+    await assertCurrentFinalRejected(
+      "no_issue_confirmed",
+      [],
+      "No-issue confirmation must reject a remaining latest human-confirmed concern",
+    );
+
+    await inspectionDatabase.begin(async (transaction) => {
+      await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+      await transaction`select set_config('app.identity_id', ${workerId}, true)`;
+      await transaction`
+        insert into inspection_concern_revision (
+          id, concern_id, workspace_id, sku_id, inspection_item_key, product_category,
+          definition_version, revision, supersedes_id, item_location, concern_type,
+          severity, marker_source_asset_id, marker_x, marker_y,
+          context_evidence_asset_id, detail_evidence_asset_id, memo, review_state,
+          created_by, recorded_by
+        ) values (
+          ${secondInspectionConcernRevisionThreeId}, ${secondInspectionConcernId},
+          ${owner.workspaceId}, ${skuId}, 'front_body', 'tops', 1, 3,
+          ${secondInspectionConcernRevisionTwoId}, '前身頃の左上', 'scratch', 'small',
+          ${captureAssetId}, 0.65, 0.2, ${captureAssetId}, null, '架空の小さな擦れ',
+          'pending_review', ${workerId}, ${workerId}
+        )
+      `;
+    });
+    await inspectionDatabase.begin(async (transaction) => {
+      await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+      await transaction`select set_config('app.identity_id', ${managerId}, true)`;
+      await transaction`
+        insert into inspection_concern_revision (
+          id, concern_id, workspace_id, sku_id, inspection_item_key, product_category,
+          definition_version, revision, supersedes_id, item_location, concern_type,
+          severity, marker_source_asset_id, marker_x, marker_y,
+          context_evidence_asset_id, detail_evidence_asset_id, memo, review_state,
+          created_by, recorded_by, reviewed_by
+        ) values (
+          ${secondInspectionConcernRevisionFourId}, ${secondInspectionConcernId},
+          ${owner.workspaceId}, ${skuId}, 'front_body', 'tops', 1, 4,
+          ${secondInspectionConcernRevisionThreeId}, '前身頃の左上', 'scratch', 'small',
+          ${captureAssetId}, 0.65, 0.2, ${captureAssetId}, null, '架空の小さな擦れ',
+          'human_dismissed', ${workerId}, ${managerId}, ${managerId}
+        )
+      `;
+    });
+
+    await inspectionDatabase.begin(async (transaction) => {
+      await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+      await transaction`select set_config('app.identity_id', ${managerId}, true)`;
+      await transaction`
+        insert into inspection_check_result (
+          id, workspace_id, sku_id, inspection_item_key, product_category,
+          definition_version, status, concern_revision_ids, revision, supersedes_id,
+          created_by, recorded_by, confirmed_by
+        ) values (
+          ${inspectionCheckRevisionFourId}, ${owner.workspaceId}, ${skuId},
+          'front_body', 'tops', 1, 'no_issue_confirmed', '{}'::uuid[], 4,
+          ${inspectionCheckRevisionThreeId}, ${workerId}, ${managerId}, ${managerId}
+        )
+      `;
+    });
+
+    const [resolvedInspectionState] = await inspectionDatabase.begin(async (transaction) => {
+      await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+      await transaction`select set_config('app.identity_id', ${managerId}, true)`;
+      return transaction<
+        Array<{
+          check_status: string;
+          concern_revision_ids: string[];
+          latest_concern_states: string[];
+        }>
+      >`
+        select
+          check_result.status as check_status,
+          check_result.concern_revision_ids,
+          array(
+            select concern.review_state
+            from inspection_concern_revision concern
+            where concern.workspace_id = check_result.workspace_id
+              and concern.sku_id = check_result.sku_id
+              and concern.inspection_item_key = check_result.inspection_item_key
+              and concern.product_category = check_result.product_category
+              and concern.definition_version = check_result.definition_version
+              and not exists (
+                select 1 from inspection_concern_revision successor
+                where successor.workspace_id = concern.workspace_id
+                  and successor.supersedes_id = concern.id
+              )
+            order by concern.concern_id
+          ) as latest_concern_states
+        from inspection_check_result check_result
+        where check_result.workspace_id = ${owner.workspaceId}
+          and check_result.id = ${inspectionCheckRevisionFourId}
+      `;
+    });
+    assert.deepEqual(resolvedInspectionState, {
+      check_status: "no_issue_confirmed",
+      concern_revision_ids: [],
+      latest_concern_states: ["human_dismissed", "human_dismissed"],
+    });
+    await assert.rejects(
+      () =>
+        inspectionDatabase.begin(async (transaction) => {
+          await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+          await transaction`select set_config('app.identity_id', ${workerId}, true)`;
+          await transaction`
+            insert into inspection_concern_revision (
+              id, concern_id, workspace_id, sku_id, inspection_item_key, product_category,
+              definition_version, revision, supersedes_id, item_location, concern_type,
+              severity, marker_source_asset_id, marker_x, marker_y,
+              context_evidence_asset_id, detail_evidence_asset_id, memo, review_state,
+              created_by, recorded_by
+            ) values (
+              ${randomUUID()}, ${inspectionConcernId}, ${owner.workspaceId}, ${skuId},
+              'front_body', 'tops', 1, 10, ${inspectionConcernRevisionNineId},
+              '前身頃の右下', 'stain', 'noticeable', ${captureAssetId}, 0.25, 0.75,
+              ${captureAssetId}, null, '架空の薄いしみ', 'draft', ${workerId}, ${workerId}
+            )
+          `;
+        }),
+      hasDatabaseCode("23514"),
+      "A terminal human-dismissed concern chain must not be reopened",
+    );
+
+    const inspectionAdmin = postgres(adminUrl, { max: 1 });
+    try {
+      await assert.rejects(
+        () =>
+          inspectionAdmin.begin(async (transaction) => {
+            await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+            await transaction`select set_config('app.identity_id', ${managerId}, true)`;
+            await transaction`
+              update inspection_check_result set status = 'unconfirmed'
+              where workspace_id = ${owner.workspaceId} and id = ${inspectionCheckRevisionTwoId}
+            `;
+          }),
+        /inspection history is append-only/u,
+      );
+      await assert.rejects(
+        () =>
+          inspectionAdmin.begin(async (transaction) => {
+            await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+            await transaction`select set_config('app.identity_id', ${managerId}, true)`;
+            await transaction`
+              delete from inspection_concern_revision
+              where workspace_id = ${owner.workspaceId} and id = ${inspectionConcernRevisionOneId}
+            `;
+          }),
+        /inspection history is append-only/u,
+      );
+    } finally {
+      await inspectionAdmin.end({ timeout: 5 });
+    }
+  } finally {
+    await inspectionDatabase.end({ timeout: 5 });
+  }
 
   const workerPurchaseApproval = await app.inject({
     method: "POST",
@@ -5685,7 +7110,7 @@ try {
 }
 
 process.stdout.write(
-  "postgres-integration: PASS (restricted role, 49-table RLS matrix, assigned external workers, append-only server-timed pilot exceptions, purchase-to-versioned-accounting order flow, encrypted 5-minute address lease, checked inventory/location codes, persisted capture/research/listing evidence, reviewed zero-GPS location photo, double scan, immutable stocktake snapshot, complete read evidence, post-start movement separation, audited stale-label rejection, DB-enforced mode-aware solo/dual stocktake approval, approved dual candidate restored by its original owner at the same or a moved location without direct scan UPDATE, exact 27-column accounting CSV, return quarantine, stocktake and label reissue, logout)\n",
+  "postgres-integration: PASS (restricted role, 53-table RLS matrix, assigned inspection concerns with deferred latest-state exact-set consistency, terminal human dismissal, separate prior-recorder review, non-probeable session-bound access and denied cross-workspace/role/expired assignment access, append-only server-timed pilot exceptions, purchase-to-versioned-accounting order flow, encrypted 5-minute address lease, checked inventory/location codes, persisted capture/research/listing evidence, reviewed zero-GPS location photo, double scan, immutable stocktake snapshot, complete read evidence, post-start movement separation, audited stale-label rejection, DB-enforced mode-aware solo/dual stocktake approval, approved dual candidate restored by its original owner at the same or a moved location without direct scan UPDATE, exact 27-column accounting CSV, return quarantine, stocktake and label reissue, logout)\n",
 );
 
 function jpegWithGpsMetadata(): Buffer {

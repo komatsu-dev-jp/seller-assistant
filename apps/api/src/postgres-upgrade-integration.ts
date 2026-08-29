@@ -20,7 +20,7 @@ const legacyMigrations = migrationNames.filter((name) => Number(name.slice(0, 4)
 const upgradeMigrations = migrationNames.filter((name) => Number(name.slice(0, 4)) > 14);
 assert.ok(legacyMigrations.length > 0, "Legacy migrations must be present");
 assert.deepEqual(
-  upgradeMigrations.slice(-13).map((name) => name.slice(0, 4)),
+  upgradeMigrations.slice(-14).map((name) => name.slice(0, 4)),
   [
     "0021",
     "0022",
@@ -35,6 +35,7 @@ assert.deepEqual(
     "0031",
     "0032",
     "0033",
+    "0034",
   ],
   "The upgrade fixture must include the revised-A migrations",
 );
@@ -49,6 +50,7 @@ const pilotMigrationVersionAlignmentMigration = upgradeMigrations.find((name) =>
   name.startsWith("0032_"),
 );
 const listingPrepPilotV11Migration = upgradeMigrations.find((name) => name.startsWith("0033_"));
+const inspectionConcernMigration = upgradeMigrations.find((name) => name.startsWith("0034_"));
 assert.ok(modeAwareApprovalMigration, "Migration 0027 must be present");
 assert.ok(completeApprovalMigration, "Migration 0028 must be present");
 assert.ok(safeMappingReplacementMigration, "Migration 0029 must be present");
@@ -56,6 +58,7 @@ assert.ok(sameLocationRestoreMigration, "Migration 0030 must be present");
 assert.ok(restoreActorMovementSnapshotMigration, "Migration 0031 must be present");
 assert.ok(pilotMigrationVersionAlignmentMigration, "Migration 0032 must be present");
 assert.ok(listingPrepPilotV11Migration, "Migration 0033 must be present");
+assert.ok(inspectionConcernMigration, "Migration 0034 must be present");
 const upgradesBeforeApprovalRepair = upgradeMigrations.filter(
   (name) => Number(name.slice(0, 4)) < 27,
 );
@@ -82,6 +85,7 @@ try {
     owner: "00000000-0000-4000-8000-000000000102",
     reviewer: "00000000-0000-4000-8000-000000000103",
     sku: "00000000-0000-4000-8000-000000000104",
+    media: "00000000-0000-4000-8000-000000000126",
     location: "00000000-0000-4000-8000-000000000105",
     inventory: "00000000-0000-4000-8000-000000000106",
     countSession: "00000000-0000-4000-8000-000000000107",
@@ -118,6 +122,16 @@ try {
     await transaction`
       insert into product_sku (id, workspace_id, sku_code, title, category)
       values (${ids.sku}, ${ids.workspace}, 'SKU-LEGACY-0001', 'Legacy jacket', 'outer')
+    `;
+    await transaction`
+      insert into media_asset (
+        id, workspace_id, sku_id, role, original_sha256, original_storage_key,
+        mime_type, size_bytes, width, height, created_by, created_at
+      ) values (
+        ${ids.media}, ${ids.workspace}, ${ids.sku}, 'front', ${"a".repeat(64)},
+        ${`workspaces/${ids.workspace}/originals/legacy-front.jpg`},
+        'image/jpeg', 123456, 1200, 1600, ${ids.owner}, '2026-01-02T03:00:00.000Z'
+      )
     `;
     await transaction`
       insert into location_node (
@@ -1053,6 +1067,162 @@ try {
     `,
     /pilot_run_protocol_fixture_check/u,
   );
+  const readInspectionUpgradeHistory = async () => {
+    const [snapshot] = await sql<
+      [
+        {
+          skus: unknown;
+          media: unknown;
+          pilots: unknown;
+          finance: unknown;
+          exports: unknown;
+          audits: unknown;
+        },
+      ]
+    >`
+      select
+        (
+          select coalesce(jsonb_agg(jsonb_build_object(
+            'id', sku.id,
+            'workspaceId', sku.workspace_id,
+            'skuCode', sku.sku_code,
+            'title', sku.title,
+            'category', sku.category,
+            'humanConfirmedAt', sku.human_confirmed_at,
+            'createdAt', sku.created_at
+          ) order by sku.workspace_id, sku.id), '[]'::jsonb)
+          from product_sku sku
+        ) as skus,
+        (
+          select coalesce(jsonb_agg(jsonb_build_object(
+            'id', media.id,
+            'workspaceId', media.workspace_id,
+            'skuId', media.sku_id,
+            'role', media.role,
+            'originalSha256', media.original_sha256,
+            'originalStorageKey', media.original_storage_key,
+            'mimeType', media.mime_type,
+            'sizeBytes', media.size_bytes,
+            'width', media.width,
+            'height', media.height,
+            'createdBy', media.created_by,
+            'createdAt', media.created_at
+          ) order by media.workspace_id, media.id), '[]'::jsonb)
+          from media_asset media
+        ) as media,
+        (
+          select coalesce(jsonb_agg(jsonb_build_object(
+            'id', run.id,
+            'workspaceId', run.workspace_id,
+            'protocolVersion', run.protocol_version,
+            'fixtureManifestSha256', run.fixture_manifest_sha256,
+            'commitSha', run.commit_sha,
+            'migrationVersion', run.migration_version,
+            'platform', run.platform,
+            'browser', run.browser,
+            'viewport', run.viewport,
+            'actorId', run.actor_id,
+            'warmupCompletedAt', run.warmup_completed_at,
+            'state', run.state,
+            'externallyInvalidated', run.externally_invalidated,
+            'externalInvalidationReason', run.external_invalidation_reason,
+            'startedAt', run.started_at,
+            'completedAt', run.completed_at
+          ) order by run.workspace_id, run.id), '[]'::jsonb)
+          from pilot_run run
+        ) as pilots,
+        (
+          select coalesce(jsonb_agg(jsonb_build_object(
+            'id', event.id,
+            'workspaceId', event.workspace_id,
+            'skuId', event.sku_id,
+            'orderId', event.order_id,
+            'eventType', event.event_type,
+            'amountMinor', event.amount_minor,
+            'currency', event.currency,
+            'taxBasis', event.tax_basis,
+            'bearer', event.bearer,
+            'source', event.source,
+            'sourceMeaning', event.source_meaning,
+            'roundingRuleVersion', event.rounding_rule_version,
+            'reversesEventId', event.reverses_event_id,
+            'sourceAlreadyNet', event.source_already_net,
+            'occurredAt', event.occurred_at
+          ) order by event.workspace_id, event.id), '[]'::jsonb)
+          from financial_event event
+        ) as finance,
+        (
+          select coalesce(jsonb_agg(jsonb_build_object(
+            'id', batch.id,
+            'workspaceId', batch.workspace_id,
+            'orderId', batch.order_id,
+            'format', batch.format,
+            'formatVersion', batch.format_version,
+            'filename', batch.filename,
+            'schemaSha256', batch.schema_sha256,
+            'fixtureSha256', batch.fixture_sha256,
+            'csvSha256', batch.csv_sha256,
+            'sourceSetSha256', batch.source_set_sha256,
+            'rowCount', batch.row_count,
+            'columnCount', batch.column_count,
+            'debitTotalJpy', batch.debit_total_jpy,
+            'creditTotalJpy', batch.credit_total_jpy,
+            'csvBytesHex', encode(convert_to(batch.csv_content, 'UTF8'), 'hex'),
+            'state', batch.state,
+            'idempotencyKey', batch.idempotency_key,
+            'payloadHash', batch.payload_hash,
+            'createdBy', batch.created_by,
+            'approvedBy', batch.approved_by,
+            'createdAt', batch.created_at,
+            'readyAt', batch.ready_at
+          ) order by batch.workspace_id, batch.id), '[]'::jsonb)
+          from export_batch batch
+        ) as exports,
+        (
+          select coalesce(jsonb_agg(jsonb_build_object(
+            'id', audit.id,
+            'workspaceId', audit.workspace_id,
+            'actorId', audit.actor_id,
+            'action', audit.action,
+            'targetType', audit.target_type,
+            'targetId', audit.target_id,
+            'occurredAt', audit.occurred_at,
+            'fieldNames', audit.field_names,
+            'redactedChanges', audit.redacted_changes,
+            'referenceIds', audit.reference_ids,
+            'reasonCode', audit.reason_code,
+            'approvedBy', audit.approved_by
+          ) order by audit.workspace_id, audit.id), '[]'::jsonb)
+          from audit_event audit
+        ) as audits
+    `;
+    assert.ok(snapshot, "Inspection upgrade history snapshot must be readable");
+    return snapshot;
+  };
+  const historyBeforeInspectionContract = await readInspectionUpgradeHistory();
+  await applyMigration(inspectionConcernMigration);
+  const historyAfterInspectionContract = await readInspectionUpgradeHistory();
+  assert.deepEqual(
+    historyAfterInspectionContract,
+    historyBeforeInspectionContract,
+    "The additive inspection migration must not rewrite existing SKU, media, pilot, finance, export bytes/hashes or audit history",
+  );
+  const [inspectionContractTables] = await sql<[{ table_count: number; row_count: number }]>`
+    select
+      (
+        select count(*)::integer from information_schema.tables
+        where table_schema = 'public'
+          and table_name in ('inspection_check_result', 'inspection_concern_revision')
+      ) as table_count,
+      (
+        (select count(*)::integer from inspection_check_result)
+        + (select count(*)::integer from inspection_concern_revision)
+      ) as row_count
+  `;
+  assert.deepEqual(inspectionContractTables, {
+    table_count: 2,
+    row_count: 0,
+  });
   const v11TableProtection = await sql<
     Array<{ table_name: string; row_security: boolean; force_row_security: boolean }>
   >`
@@ -1224,7 +1394,7 @@ try {
   );
 
   process.stdout.write(
-    `postgres-upgrade-integration: PASS (${legacyMigrations[0]} through ${upgradeMigrations.at(-1)}, historical two-actor approval preserved and mode-normalized, state/evidence/actors/timestamps/audit preserved, injected 0028, 0029, 0030 and 0031 failures fully rolled back after reconnect, actor-bound movement-snapshot restore function upgraded without direct scan UPDATE, historical mapping/candidate IDs and export hashes/bytes preserved, historical v1.0 pilot environment preserved with nullable v1.1 fields and current v1.1/0033 accepted, non-approved approval metadata remains null, return dispose mapped to disposal_pending)\n`,
+    `postgres-upgrade-integration: PASS (${legacyMigrations[0]} through ${upgradeMigrations.at(-1)}, additive inspection tables installed without rewriting SKU/media/pilot/finance/audit history, historical two-actor approval preserved and mode-normalized, state/evidence/actors/timestamps/audit preserved, injected 0028, 0029, 0030 and 0031 failures fully rolled back after reconnect, actor-bound movement-snapshot restore function upgraded without direct scan UPDATE, historical mapping/candidate IDs and export hashes/bytes preserved, historical v1.0 pilot environment preserved with nullable v1.1 fields and current v1.1/0033 accepted, non-approved approval metadata remains null, return dispose mapped to disposal_pending)\n`,
   );
 } finally {
   await sql.end({ timeout: 5 });

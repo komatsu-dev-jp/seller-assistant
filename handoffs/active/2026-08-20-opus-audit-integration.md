@@ -5,7 +5,7 @@
 - Updated: 2026-08-29 JST
 - Branch: `codex/opus-audit-integration`
 - Worktree: `C:\Users\softt\Documents\Codex\2026-08-13\iphone-notion-google-research-ios-pc\_worktrees\opus-audit-integration`
-- Base: `origin/main` / `f5fd9f3bda1ec2b82ba17e673f6d1715e7c1795a`
+- Base: `origin/main` / `9c4033f09f60971aca5e4876f1ca21c31cb80738`
 
 ## 目的
 
@@ -150,3 +150,25 @@ Claude Codeの `claude/opus-spec-audit-proposals` を現main、既存仕様、�
 - 14 PNG、full check 29 files / 202 tests、coverage、fixture hash、target SHAは`docs/specs/ui-evaluation-rubric-v1.md`を正本とする。
 - INC-005はfresh P05で解消確認後もcandidateを維持する。INC-006は初回担当者の差異確認form送信でEnglish 409となった追加発見を統合し、API hard block、最終form非表示、manager未解決承認disabledをP05で確認済み。candidateは維持する。
 - INC-007はoffline eventで接続状態文言が変わらなかった件としてcandidate記録する。P05で修正・検証済みだが、memory INDEXには載せない。
+
+## 2026-08-29 Goal全体の再監査とP12-A再開
+
+- 現HEAD/remote branchは`a42db0fdd67735857c130af1f58b73d883fcd460`。Draft PR #9 `https://github.com/komatsu-dev-jp/seller-assistant/pull/9` はOPEN/Draft/CLEANで、merge・本番公開は0件。
+- モバイル75＋PC52の視覚gateはP0/P1差異0件で維持する。ただし承認routeは静的`ApprovedMobileDemo` / `ApprovedPcDemo`であり、実API/DB接続0件。独立Sol監査はCritical 0、High級ブロッカー8群でGoal全体を不合格とした。
+- AC/TA対応表は欠番0だが、1 IDごとのtestファイル・証拠pathが不足する。P07で個別対応へ更新する。
+- AC-065〜068/TA-046〜048は実機能として未完了。Sol設計により、最初の実装をP12-A（検品・気になる箇所のcontractsと新規0034 migration）へ限定した。
+- P12-Aの実装担当は明示的な`gpt-5.6-sol` / `max`、確認は別Sol max。API/Web、発送、注文、価格調査は今回の書込み範囲外。
+- candidate incidentは`memory/incidents/INC-20260829-012-approved-ui-static-runtime-gap.md`。修正と独立再検証前のためlessonへ昇格しない。
+- 現環境にはPostgreSQL実行環境と必要なtest接続設定がない。contracts/static migration/root checkは実行できるが、fresh/upgrade PostgreSQLを再実行するまでP12-Aを合格扱いにしない。
+
+## 2026-08-29 P12-A最終PASS
+
+- `0034_inspection_concern_contract.sql`、公開contract、静的schema test、fresh/upgrade integrationを実装した。既存migration、API route/repository、Web、P13/P14は変更していない。
+- 最新check／concernは遅延制約で同一transactionの最終状態を検査する。`concern_present`は全latest human-confirmed IDの完全一致、`no_issue_confirmed`は全latest concernがhuman-dismissedの場合だけ許可する。dismiss済みchainは再開不可。
+- 権限helperはSKU IDだけを受け、workspace、identity、時刻をsessionから内部取得する。別workspace、別SKU、担当外、期限切れ・取消済み担当、自己確認を拒否する。
+- 公式PostgreSQL 18.6は`C:\tmp\seller-assistant-pg18-20260829`の短期・loopback限定・架空データclusterを使用した。ZIP SHA-256は`FBE23DA234EE31547BF8A36D29DFD81E82B849DF2D2B78D2EECB43D360252F8C`。試験後は停止済み。
+- freshは34 migration、53-table RLS、2独立接続の実Lock競合をPASS。競合は成功1／SQLSTATE 23505拒否1、最新chain 1本。upgradeは既存SKU/media/pilot/finance/export bytes/hash/auditの不変をPASS。
+- root checkは34 files / 253 tests、coverage 84.66 / 80.56 / 100 / 90.68、format/lint/typecheck、API/Web build 86 routesをPASS。
+- 実装していない別Sol maxの最終reviewはCritical 0 / High 0 / Medium 0 / Low 0。P12-A PASS、P12-B technical gate GO。
+- 次の停止条件: 6商品種類の具体的な必須／任意項目が承認資料で未確定。`docs/implementation/p12-product-template-proposal-v1.md`の推奨A／代替Bとパンツ／スカート分岐を利用者が確認するまで、0035、seed、API、Webを書かない。
+- Draft PR #9は引き続きOPEN/Draft。ready化、merge、本番公開、有料サービス、外部APIは行わない。

@@ -383,3 +383,11 @@
 - 自動確認: manifest JSON parse、Service Worker `node --check`、`git diff --check`、外部URL/機密パターンscan、静的HTTPでindex/manifest/sw/iconの200、missingの404を確認した。実ブラウザでconsole error/warn 0、390×844の縦表示、4画面切替、修正依頼ダイアログを確認した。証拠PNGは`output/playwright/gh-pages-review-desktop.png`と`gh-pages-review-mobile.png`。
 - GitHub Pages siteをworkflow方式で有効化し、`github-pages`環境のmain限定保護を弱めず、レビュー専用`github-pages-preview`環境へ切り替えた。workflow run `32802062930`（head `47ec40a`）はsuccess、公開URL `https://komatsu-dev-jp.github.io/seller-assistant/` をHTTPSで確認した。
 - 公開URLの実ブラウザ390×844でconsole error/warn 0、ホーム、在庫現場切替、manifest/sw/icon/commitの200、missingの404を確認した。実iPhone Safariのホーム画面追加は未確認で、人の確認をP06/P08/Draft PRの代替にはしない。
+
+## Iteration 37 — 2026-08-29 P12-A検品履歴・権限の最終PASS
+
+- 承認済み127画面の視覚合格と実機能合格を分離し、P12-Aとして検品結果・気になる箇所の公開contractと新規0034 migrationだけをSol maxへ限定した。
+- 初回独立reviewのHigh 4、再reviewのHigh 2を、別記録者確認、内容不変review、においmemo、最新concern完全一致、human dismissal、遅延制約、session固定権限helperで修正した。
+- 最終reviewのMedium 1に対し、2つの独立runtime接続、別PID、実Lock待ち、成功1／23505拒否1、枝分かれ0を確認するattack testを追加した。
+- 公式PostgreSQL 18.6のfreshとupgrade、root check 34 files / 253 tests、coverage 84.66 / 80.56 / 100 / 90.68、86 routes buildをPASS。独立Sol最終判定はCritical/High/Medium/Low 0。
+- P12-AはPASS、P12-B technical gateはGO。ただし6商品種類の具体的な必須／任意項目は未承認のため、`p12-product-template-proposal-v1.md`へ提案として分離し、seed/API/Web実装を停止した。

@@ -20,7 +20,11 @@ import {
   listingPrepPilotMeasurementTemplates,
   listingPrepPilotProtocolVersion,
   measurementProfileResponseSchema,
+  inspectionCheckResultRevisionResponseSchema,
+  inspectionConcernRevisionResponseSchema,
   pilotRunResponseSchema,
+  recordInspectionCheckResultRequestSchema,
+  recordInspectionConcernRevisionRequestSchema,
   recordPilotExceptionRequestSchema,
   replaceAccountMappingRuleRequestSchema,
   replaceAccountMappingRuleResponseSchema,
@@ -239,6 +243,414 @@ describe("safe discrepancy and accounting preview read models", () => {
   });
 });
 
+describe("P12 inspection and concern contracts", () => {
+  const revisionId = "10000000-0000-4000-8000-000000000201";
+  const predecessorId = "10000000-0000-4000-8000-000000000202";
+  const concernId = "10000000-0000-4000-8000-000000000203";
+  const markerAssetId = "10000000-0000-4000-8000-000000000204";
+  const contextAssetId = "10000000-0000-4000-8000-000000000205";
+  const creatorId = "10000000-0000-4000-8000-000000000206";
+  const reviewerId = "10000000-0000-4000-8000-000000000207";
+
+  it("requires a contiguous revision reference and rejects unknown check fields", () => {
+    const firstRevision = {
+      revisionId,
+      inspectionItemKey: "front_body",
+      productCategory: "tops",
+      definitionVersion: 1,
+      status: "unconfirmed",
+      concernRevisionIds: [],
+      revision: 1,
+      supersedesRevisionId: null,
+      humanConfirmed: false,
+    } as const;
+
+    expect(recordInspectionCheckResultRequestSchema.safeParse(firstRevision).success).toBe(true);
+    for (const forbiddenInput of [
+      { createdBy: creatorId },
+      { recordedBy: creatorId },
+      { confirmedBy: reviewerId },
+      { confirmedAt: "2026-08-29T00:01:00.000Z" },
+      { originalStorageKey: "workspaces/private/originals/secret.jpg" },
+    ]) {
+      expect(
+        recordInspectionCheckResultRequestSchema.safeParse({
+          ...firstRevision,
+          ...forbiddenInput,
+        }).success,
+      ).toBe(false);
+    }
+    expect(
+      recordInspectionCheckResultRequestSchema.safeParse({
+        ...firstRevision,
+        revision: 2,
+      }).success,
+    ).toBe(false);
+    expect(
+      recordInspectionCheckResultRequestSchema.safeParse({
+        ...firstRevision,
+        status: "no_issue_confirmed",
+        humanConfirmed: false,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("separates the reviewer from the immediately prior check recorder", () => {
+    const response = {
+      revisionId,
+      workspaceId: "10000000-0000-4000-8000-000000000208",
+      skuId: "10000000-0000-4000-8000-000000000209",
+      inspectionItemKey: "front_body",
+      productCategory: "tops",
+      definitionVersion: 1,
+      status: "no_issue_confirmed",
+      concernRevisionIds: [],
+      revision: 2,
+      supersedesRevisionId: predecessorId,
+      supersededRecordedBy: creatorId,
+      supersededStatus: "unconfirmed",
+      createdBy: creatorId,
+      createdAt: "2026-08-29T00:00:00.000Z",
+      recordedBy: reviewerId,
+      recordedAt: "2026-08-29T00:01:00.000Z",
+      confirmedBy: reviewerId,
+      confirmedAt: "2026-08-29T00:01:00.000Z",
+    } as const;
+
+    expect(inspectionCheckResultRevisionResponseSchema.safeParse(response).success).toBe(true);
+    expect(
+      inspectionCheckResultRevisionResponseSchema.safeParse({
+        ...response,
+        confirmedBy: creatorId,
+      }).success,
+    ).toBe(false);
+    expect(
+      inspectionCheckResultRevisionResponseSchema.safeParse({
+        ...response,
+        createdBy: reviewerId,
+        supersededRecordedBy: creatorId,
+      }).success,
+    ).toBe(true);
+    expect(
+      inspectionCheckResultRevisionResponseSchema.safeParse({
+        ...response,
+        supersededStatus: "concern_present",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("requires exact, unique concern revision IDs only for concern-present checks", () => {
+    const concernPresent = {
+      revisionId,
+      inspectionItemKey: "front_body",
+      productCategory: "tops",
+      definitionVersion: 1,
+      status: "concern_present",
+      concernRevisionIds: [concernId],
+      revision: 2,
+      supersedesRevisionId: predecessorId,
+      humanConfirmed: true,
+    } as const;
+
+    expect(recordInspectionCheckResultRequestSchema.safeParse(concernPresent).success).toBe(true);
+    expect(
+      recordInspectionCheckResultRequestSchema.safeParse({
+        ...concernPresent,
+        concernRevisionIds: [],
+      }).success,
+    ).toBe(false);
+    expect(
+      recordInspectionCheckResultRequestSchema.safeParse({
+        ...concernPresent,
+        concernRevisionIds: [concernId, concernId],
+      }).success,
+    ).toBe(false);
+    expect(
+      recordInspectionCheckResultRequestSchema.safeParse({
+        ...concernPresent,
+        status: "no_issue_confirmed",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("requires normalized markers and context photos for visible concerns", () => {
+    const visibleConcern = {
+      revisionId,
+      concernId,
+      inspectionItemKey: "front_body",
+      productCategory: "tops",
+      definitionVersion: 1,
+      revision: 1,
+      supersedesRevisionId: null,
+      itemLocation: "前身頃の右下",
+      concernType: "stain",
+      severity: "noticeable",
+      marker: { sourceAssetId: markerAssetId, x: 0.25, y: 0.75 },
+      contextEvidenceAssetId: contextAssetId,
+      detailEvidenceAssetId: null,
+      memo: "薄いしみがあります",
+      reviewState: "pending_review",
+      humanReviewed: false,
+    } as const;
+
+    expect(recordInspectionConcernRevisionRequestSchema.safeParse(visibleConcern).success).toBe(
+      true,
+    );
+    expect(
+      recordInspectionConcernRevisionRequestSchema.safeParse({
+        ...visibleConcern,
+        marker: { ...visibleConcern.marker, x: -0.001 },
+      }).success,
+    ).toBe(false);
+    expect(
+      recordInspectionConcernRevisionRequestSchema.safeParse({
+        ...visibleConcern,
+        marker: { ...visibleConcern.marker, y: 1.001 },
+      }).success,
+    ).toBe(false);
+    expect(
+      recordInspectionConcernRevisionRequestSchema.safeParse({
+        ...visibleConcern,
+        marker: null,
+      }).success,
+    ).toBe(false);
+    expect(
+      recordInspectionConcernRevisionRequestSchema.safeParse({
+        ...visibleConcern,
+        contextEvidenceAssetId: null,
+      }).success,
+    ).toBe(false);
+    expect(
+      recordInspectionConcernRevisionRequestSchema.safeParse({
+        ...visibleConcern,
+        marker: { ...visibleConcern.marker, displayX: 320 },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("allows only an explained non-visual odor concern to omit photos", () => {
+    const odorConcern = {
+      revisionId,
+      concernId,
+      inspectionItemKey: "odor",
+      productCategory: "tops",
+      definitionVersion: 1,
+      revision: 2,
+      supersedesRevisionId: predecessorId,
+      itemLocation: "商品全体",
+      concernType: "odor",
+      severity: "small",
+      marker: null,
+      contextEvidenceAssetId: null,
+      detailEvidenceAssetId: null,
+      memo: "保管時のにおいを確認しました",
+      reviewState: "human_confirmed",
+      humanReviewed: true,
+    } as const;
+
+    expect(recordInspectionConcernRevisionRequestSchema.safeParse(odorConcern).success).toBe(true);
+    expect(
+      recordInspectionConcernRevisionRequestSchema.safeParse({ ...odorConcern, memo: null })
+        .success,
+    ).toBe(false);
+    expect(
+      recordInspectionConcernRevisionRequestSchema.safeParse({
+        ...odorConcern,
+        concernType: "other",
+      }).success,
+    ).toBe(false);
+    expect(
+      recordInspectionConcernRevisionRequestSchema.safeParse({
+        ...odorConcern,
+        marker: { sourceAssetId: markerAssetId, x: 0.5, y: 0.5 },
+        contextEvidenceAssetId: contextAssetId,
+        memo: null,
+      }).success,
+    ).toBe(false);
+    const trimmed = recordInspectionConcernRevisionRequestSchema.parse({
+      ...odorConcern,
+      memo: "  保管時のにおいを確認しました  ",
+    });
+    expect(trimmed.memo).toBe("保管時のにおいを確認しました");
+  });
+
+  it("never publishes storage keys and rejects self-reviewed concern responses", () => {
+    const response = {
+      revisionId,
+      concernId,
+      workspaceId: "10000000-0000-4000-8000-000000000208",
+      skuId: "10000000-0000-4000-8000-000000000209",
+      inspectionItemKey: "front_body",
+      productCategory: "tops",
+      definitionVersion: 1,
+      revision: 2,
+      supersedesRevisionId: predecessorId,
+      itemLocation: "前身頃の右下",
+      concernType: "stain",
+      severity: "noticeable",
+      marker: { sourceAssetId: markerAssetId, x: 0.25, y: 0.75 },
+      contextEvidenceAssetId: contextAssetId,
+      detailEvidenceAssetId: null,
+      memo: "薄いしみがあります",
+      reviewState: "human_confirmed",
+      supersededRecordedBy: creatorId,
+      supersededReviewState: "pending_review",
+      createdBy: creatorId,
+      createdAt: "2026-08-29T00:00:00.000Z",
+      recordedBy: reviewerId,
+      recordedAt: "2026-08-29T00:01:00.000Z",
+      reviewedBy: reviewerId,
+      reviewedAt: "2026-08-29T00:01:00.000Z",
+    } as const;
+
+    expect(inspectionConcernRevisionResponseSchema.safeParse(response).success).toBe(true);
+    expect(
+      inspectionConcernRevisionResponseSchema.safeParse({
+        ...response,
+        originalStorageKey: "workspaces/private/originals/secret.jpg",
+      }).success,
+    ).toBe(false);
+    expect(
+      inspectionConcernRevisionResponseSchema.safeParse({
+        ...response,
+        reviewedBy: creatorId,
+      }).success,
+    ).toBe(false);
+    expect(
+      inspectionConcernRevisionResponseSchema.safeParse({
+        ...response,
+        createdBy: reviewerId,
+        supersededRecordedBy: creatorId,
+      }).success,
+    ).toBe(true);
+    expect(
+      inspectionConcernRevisionResponseSchema.safeParse({
+        ...response,
+        supersededReviewState: "draft",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("treats confirmation, changes-requested and dismissal as human review revisions", () => {
+    const reviewedConcern = {
+      revisionId,
+      concernId,
+      inspectionItemKey: "front_body",
+      productCategory: "tops",
+      definitionVersion: 1,
+      revision: 2,
+      supersedesRevisionId: predecessorId,
+      itemLocation: "前身頃の右下",
+      concernType: "stain",
+      severity: "noticeable",
+      marker: { sourceAssetId: markerAssetId, x: 0.25, y: 0.75 },
+      contextEvidenceAssetId: contextAssetId,
+      detailEvidenceAssetId: null,
+      memo: "薄いしみがあります",
+      reviewState: "changes_requested",
+      humanReviewed: true,
+    } as const;
+
+    expect(recordInspectionConcernRevisionRequestSchema.safeParse(reviewedConcern).success).toBe(
+      true,
+    );
+    expect(
+      recordInspectionConcernRevisionRequestSchema.safeParse({
+        ...reviewedConcern,
+        humanReviewed: false,
+      }).success,
+    ).toBe(false);
+    expect(
+      recordInspectionConcernRevisionRequestSchema.safeParse({
+        ...reviewedConcern,
+        revision: 1,
+        supersedesRevisionId: null,
+      }).success,
+    ).toBe(false);
+    expect(
+      recordInspectionConcernRevisionRequestSchema.safeParse({
+        ...reviewedConcern,
+        reviewState: "human_dismissed",
+      }).success,
+    ).toBe(true);
+  });
+
+  it("rejects actor, time and private storage fields from concern write input", () => {
+    const draft = {
+      revisionId,
+      concernId,
+      inspectionItemKey: "front_body",
+      productCategory: "tops",
+      definitionVersion: 1,
+      revision: 1,
+      supersedesRevisionId: null,
+      itemLocation: "前身頃の右下",
+      concernType: "stain",
+      severity: "small",
+      marker: { sourceAssetId: markerAssetId, x: 0.25, y: 0.75 },
+      contextEvidenceAssetId: contextAssetId,
+      detailEvidenceAssetId: null,
+      memo: "入力境界の確認用",
+      reviewState: "draft",
+      humanReviewed: false,
+    } as const;
+
+    expect(recordInspectionConcernRevisionRequestSchema.safeParse(draft).success).toBe(true);
+    for (const forbiddenInput of [
+      { createdBy: creatorId },
+      { recordedBy: creatorId },
+      { reviewedBy: reviewerId },
+      { reviewedAt: "2026-08-29T00:01:00.000Z" },
+      { originalStorageKey: "workspaces/private/originals/secret.jpg" },
+    ]) {
+      expect(
+        recordInspectionConcernRevisionRequestSchema.safeParse({
+          ...draft,
+          ...forbiddenInput,
+        }).success,
+      ).toBe(false);
+    }
+  });
+
+  it("publishes human-dismissed as a reviewed terminal response state", () => {
+    const dismissed = {
+      revisionId,
+      concernId,
+      workspaceId: "10000000-0000-4000-8000-000000000208",
+      skuId: "10000000-0000-4000-8000-000000000209",
+      inspectionItemKey: "front_body",
+      productCategory: "tops",
+      definitionVersion: 1,
+      revision: 2,
+      supersedesRevisionId: predecessorId,
+      itemLocation: "前身頃の右下",
+      concernType: "stain",
+      severity: "small",
+      marker: { sourceAssetId: markerAssetId, x: 0.25, y: 0.75 },
+      contextEvidenceAssetId: contextAssetId,
+      detailEvidenceAssetId: null,
+      memo: "人が問題なしと判断しました",
+      reviewState: "human_dismissed",
+      supersededRecordedBy: creatorId,
+      supersededReviewState: "pending_review",
+      createdBy: creatorId,
+      createdAt: "2026-08-29T00:00:00.000Z",
+      recordedBy: reviewerId,
+      recordedAt: "2026-08-29T00:01:00.000Z",
+      reviewedBy: reviewerId,
+      reviewedAt: "2026-08-29T00:01:00.000Z",
+    } as const;
+
+    expect(inspectionConcernRevisionResponseSchema.safeParse(dismissed).success).toBe(true);
+    expect(
+      inspectionConcernRevisionResponseSchema.safeParse({
+        ...dismissed,
+        reviewedBy: creatorId,
+      }).success,
+    ).toBe(false);
+  });
+});
+
 describe("ten-product pilot contract", () => {
   it("derives restart-safe v1.1 SKU and receipt identifiers from the complete run UUID", () => {
     const runId = "a0000000-b111-4c22-8d33-e44444444444";
@@ -253,7 +665,7 @@ describe("ten-product pilot contract", () => {
     expect(() => listingPrepPilotItemIdentifiers("not-a-run-id", "TOP-01")).toThrow();
   });
 
-  it("locks new starts to the generated v1.1 manifest, latest migration and 390x844 viewport", () => {
+  it("keeps v1.1 starts on their verified 0033 snapshot after additive P12 migrations", () => {
     const latestMigrationVersion = readdirSync(new URL("../../db/migrations/", import.meta.url))
       .filter((name) => /^\d{4}_.+\.sql$/u.test(name))
       .sort()
@@ -272,7 +684,7 @@ describe("ten-product pilot contract", () => {
     } as const;
     expect(startPilotRunRequestSchema.safeParse(valid).success).toBe(true);
     expect(listingPrepPilotMigrationVersion).toBe("0033");
-    expect(listingPrepPilotMigrationVersion).toBe(latestMigrationVersion);
+    expect(latestMigrationVersion).toBe("0034");
     expect(
       startPilotRunRequestSchema.safeParse({ ...valid, migrationVersion: "0028" }).success,
     ).toBe(false);

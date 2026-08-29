@@ -377,6 +377,7 @@ APIキー、トークン、個人情報、生ログ、会話全文、一時的�
 - Verification: 127/127 route、127/127 viewport、比較画像127/127、外部runtimeリソース0件、静的レビュー版766ファイル、通信遮断時の代表モバイル・PC画面cache-storage表示を確認した。
 - Safety boundary: 画面画像の貼り付けではなく操作可能なHTMLを維持する。有料サービス、外部API、公開、本番反映、PRマージは行わない。実iPhone、実利用者pilot、実Money Forward取込は別gateのまま残す。
 - Applies to: `apps/web`、`apps/review`、`.github/pages`、全127画面のUI比較、Draft PRのデザイン受け入れ判定。
+
 ### 2026-08-18 — Claude CodeへSlack MCPを接続し、既存チャンネルを承認先として使う
 
 - Type: decision
@@ -396,3 +397,24 @@ APIキー、トークン、個人情報、生ログ、会話全文、一時的�
 - Applies to: `komatsu-dev-jp/seller-assistant`、今後このProjectへ追加するアプリ、`.github/ISSUE_TEMPLATE/`、`.github/PULL_REQUEST_TEMPLATE.md`
 - Verification: Project #1に`Status`、`リスク`、`実装モデル`、`Sol ゲート`、`利用者承認`、`仕様・実装パケット`、`学び・失敗ログ`を設定し、一覧と進捗ボードを作成した。Issue/PRテンプレートと本運用書の参照先を確認する。
 - Follow-up: 各実装IssueでSolの仕様・実装パケットをリンクし、必要な作業だけをProjectへ追加する。
+
+### 2026-08-29 — 検品と気になる箇所を追記履歴・別担当者確認・最新状態完全一致で保存する
+
+- Type: decision
+- Context: 承認済みモバイル17〜24とPC13〜22を実APIへ接続する前に、写真だけでは表せない検品結果と気になる箇所の安全な保存契約が必要になった。
+- Decision or rule: `inspection_check_result`と`inspection_concern_revision`を追記専用revisionとして保存する。見える不備は同一SKUのmarker元写真と全体写真、においは説明を必須にする。提出内容を記録した本人とは別の担当者が直前revisionを確認し、review時に内容を変更しない。最新checkは全latest concernの状態と完全一致し、訂正時は同じtransactionでcheckも未確認へ戻す。dismiss済みconcernは終端とする。
+- Access rule: SKU IDだけを受ける権限helperがworkspace、identity、判定時刻をsessionから取得し、owner／inventory managerまたは有効なcapture担当だけを許可する。RLSを強制し、別workspace、別SKU、担当外、期限切れ・取消済み担当を拒否する。
+- Why: 後から気になる箇所だけを書き換えて最終確認を古いまま残すこと、自己確認、権限情報のprobe、原本履歴の破壊をDBでも防ぐため。
+- Verification: 公式PostgreSQL 18.6 fresh/upgrade、53-table RLS、2独立接続の実Lock競合、34 files / 253 tests、独立Sol Critical/High/Medium/Low 0をPASS。
+- Applies to: migration `0034`、inspection contracts、P12-B API、P12-C mobile/PC live routes
+- Follow-up: P12-Bは本決定をAPIだけで再実装せず、同じDB制約を利用する。
+
+### 2026-08-29 — 具体的な撮影項目と既存5写真分類を分け、6種類の項目確認前は初期データを書かない
+
+- Type: decision
+- Context: mobile20はシャツ8撮影、写真v6は5分類、PC13は6商品種類ごとの件数を示すが、具体的な安定keyと必須／任意を確定していない。
+- Decision or rule: 襟・袖口・裾等の具体的な撮影完了は`shot_key`、既存保存・一覧互換は`front / back / brand_tag / care_label / flaw`のroleで別管理する。パンツとスカートは承認済みの入口を共通に保ち、利用者が確認した場合だけ内部templateを分ける。
+- Why: 8撮影を5分類へ潰して撮り忘れを見逃すこと、既存pilotの4写真契約を壊すこと、件数だけを根拠に項目を推測することを避けるため。
+- Applies to: P12-Bの0035候補、商品種類template、写真完了判定、P12-Cの残り件数
+- Verification: Luna maxの棚卸しで6種類を未確認のまま安全にseedできないと判定し、Sol maxが承認用2案を`p12-product-template-proposal-v1.md`へ分離した。
+- Follow-up: 利用者が推奨A／代替Bとパンツ／スカート分岐を確認するまで、0035、seed、API、Webを書かない。

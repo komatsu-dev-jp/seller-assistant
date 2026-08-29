@@ -492,6 +492,392 @@ export const productMediaUploadResponseSchema = mediaAssetResponseSchema.omit({
   originalStorageKey: true,
 });
 
+export const inspectionCheckStatusSchema = z.enum([
+  "unconfirmed",
+  "no_issue_confirmed",
+  "concern_present",
+]);
+
+export const inspectionConcernTypeSchema = z.enum([
+  "stain",
+  "scratch",
+  "pilling",
+  "fray",
+  "fade",
+  "peel",
+  "odor",
+  "other",
+]);
+
+export const inspectionConcernSeveritySchema = z.enum(["small", "noticeable", "affects_use"]);
+
+export const inspectionConcernReviewStateSchema = z
+  .enum(["draft", "pending_review", "human_confirmed", "changes_requested", "human_dismissed"])
+  .describe(
+    "Draft, pending, changes-requested, and human-confirmed remain active; only terminal human-dismissed resolves the concern",
+  );
+
+const inspectionItemKeySchema = z.string().regex(/^[a-z][a-z0-9_]{1,63}$/u);
+const inspectionProductCategorySchema = z.string().regex(/^[a-z][a-z0-9_]{1,63}$/u);
+const inspectionDefinitionVersionSchema = z.number().int().min(1).max(1000);
+const inspectionRevisionSchema = z.number().int().min(1).max(10_000);
+
+function validateInspectionRevisionLink(
+  value: { revision: number; supersedesRevisionId: string | null },
+  context: z.RefinementCtx,
+) {
+  if (value.revision === 1 && value.supersedesRevisionId !== null) {
+    context.addIssue({
+      code: "custom",
+      path: ["supersedesRevisionId"],
+      message: "The first inspection revision cannot supersede another revision",
+    });
+  }
+  if (value.revision > 1 && value.supersedesRevisionId === null) {
+    context.addIssue({
+      code: "custom",
+      path: ["supersedesRevisionId"],
+      message: "A later inspection revision must identify its predecessor",
+    });
+  }
+}
+
+function validateInspectionConcernReferences(
+  value: { status: z.infer<typeof inspectionCheckStatusSchema>; concernRevisionIds: string[] },
+  context: z.RefinementCtx,
+) {
+  const expectedCount = value.status === "concern_present" ? value.concernRevisionIds.length : 0;
+  if (
+    (value.status === "concern_present" && (expectedCount < 1 || expectedCount > 20)) ||
+    (value.status !== "concern_present" && value.concernRevisionIds.length !== 0)
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["concernRevisionIds"],
+      message: "Only concern-present checks may reference one to twenty concern revisions",
+    });
+  }
+  if (new Set(value.concernRevisionIds).size !== value.concernRevisionIds.length) {
+    context.addIssue({
+      code: "custom",
+      path: ["concernRevisionIds"],
+      message: "Concern revision IDs must not contain duplicates",
+    });
+  }
+}
+
+function validateInspectionResponsePredecessor(
+  value: {
+    revision: number;
+    supersedesRevisionId: string | null;
+    supersededRecordedBy: string | null;
+  },
+  context: z.RefinementCtx,
+) {
+  if ((value.supersedesRevisionId === null) !== (value.supersededRecordedBy === null)) {
+    context.addIssue({
+      code: "custom",
+      path: ["supersededRecordedBy"],
+      message: "The predecessor recorder must accompany the predecessor revision ID",
+    });
+  }
+}
+
+export const recordInspectionCheckResultRequestSchema = z
+  .object({
+    revisionId: z.string().uuid(),
+    inspectionItemKey: inspectionItemKeySchema,
+    productCategory: inspectionProductCategorySchema,
+    definitionVersion: inspectionDefinitionVersionSchema,
+    status: inspectionCheckStatusSchema,
+    concernRevisionIds: z
+      .array(z.string().uuid())
+      .max(20)
+      .describe(
+        "Exact complete set of latest human-confirmed concern revision IDs; never media storage keys",
+      ),
+    revision: inspectionRevisionSchema,
+    supersedesRevisionId: z.string().uuid().nullable(),
+    humanConfirmed: z.boolean(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    validateInspectionRevisionLink(value, context);
+    validateInspectionConcernReferences(value, context);
+    if (value.humanConfirmed !== (value.status !== "unconfirmed")) {
+      context.addIssue({
+        code: "custom",
+        path: ["humanConfirmed"],
+        message: "Human confirmation must match the inspection check status",
+      });
+    }
+    if (value.status !== "unconfirmed" && value.revision <= 1) {
+      context.addIssue({
+        code: "custom",
+        path: ["revision"],
+        message: "A confirmed check must supersede an unconfirmed revision",
+      });
+    }
+  });
+
+export const inspectionCheckResultRevisionResponseSchema = z
+  .object({
+    revisionId: z.string().uuid(),
+    workspaceId: workspaceIdSchema,
+    skuId: z.string().uuid(),
+    inspectionItemKey: inspectionItemKeySchema,
+    productCategory: inspectionProductCategorySchema,
+    definitionVersion: inspectionDefinitionVersionSchema,
+    status: inspectionCheckStatusSchema,
+    concernRevisionIds: z
+      .array(z.string().uuid())
+      .max(20)
+      .describe(
+        "Exact complete set of latest human-confirmed concern revision IDs; never media storage keys",
+      ),
+    revision: inspectionRevisionSchema,
+    supersedesRevisionId: z.string().uuid().nullable(),
+    supersededRecordedBy: z
+      .string()
+      .uuid()
+      .nullable()
+      .describe("Actor who recorded the immediately preceding revision"),
+    supersededStatus: inspectionCheckStatusSchema
+      .nullable()
+      .describe("Status of the immutable immediately preceding revision"),
+    createdBy: z.string().uuid().describe("Actor who created the first revision in the chain"),
+    createdAt: z.iso.datetime(),
+    recordedBy: z.string().uuid().describe("Actor who recorded this exact revision"),
+    recordedAt: z.iso.datetime(),
+    confirmedBy: z.string().uuid().nullable().describe("Actor who confirmed this exact revision"),
+    confirmedAt: z.iso.datetime().nullable(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    validateInspectionRevisionLink(value, context);
+    validateInspectionConcernReferences(value, context);
+    validateInspectionResponsePredecessor(value, context);
+    const isConfirmed = value.status !== "unconfirmed";
+    if (isConfirmed !== (value.confirmedBy !== null && value.confirmedAt !== null)) {
+      context.addIssue({
+        code: "custom",
+        path: ["confirmedBy"],
+        message: "Confirmation metadata must match the inspection check status",
+      });
+    }
+    if (isConfirmed && value.confirmedBy === value.supersededRecordedBy) {
+      context.addIssue({
+        code: "custom",
+        path: ["confirmedBy"],
+        message: "The prior revision recorder cannot confirm their own submission",
+      });
+    }
+    if (isConfirmed && value.revision <= 1) {
+      context.addIssue({
+        code: "custom",
+        path: ["revision"],
+        message: "A confirmed check must supersede an unconfirmed revision",
+      });
+    }
+    if (
+      (value.supersedesRevisionId === null) !== (value.supersededStatus === null) ||
+      (isConfirmed && value.supersededStatus !== "unconfirmed")
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["supersededStatus"],
+        message: "A confirmed check must directly supersede an unconfirmed revision",
+      });
+    }
+  });
+
+export const inspectionConcernMarkerSchema = z
+  .object({
+    sourceAssetId: z.string().uuid(),
+    x: z.number().min(0).max(1),
+    y: z.number().min(0).max(1),
+  })
+  .strict();
+
+export const recordInspectionConcernRevisionRequestSchema = z
+  .object({
+    revisionId: z.string().uuid(),
+    concernId: z.string().uuid(),
+    inspectionItemKey: inspectionItemKeySchema,
+    productCategory: inspectionProductCategorySchema,
+    definitionVersion: inspectionDefinitionVersionSchema,
+    revision: inspectionRevisionSchema,
+    supersedesRevisionId: z.string().uuid().nullable(),
+    itemLocation: z.string().trim().min(1).max(120),
+    concernType: inspectionConcernTypeSchema,
+    severity: inspectionConcernSeveritySchema,
+    marker: inspectionConcernMarkerSchema.nullable(),
+    contextEvidenceAssetId: z.string().uuid().nullable(),
+    detailEvidenceAssetId: z.string().uuid().nullable(),
+    memo: z.string().trim().min(1).max(500).nullable(),
+    reviewState: inspectionConcernReviewStateSchema,
+    humanReviewed: z
+      .boolean()
+      .describe(
+        "True only for human-confirmed, changes-requested, or human-dismissed review revisions",
+      ),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    validateInspectionRevisionLink(value, context);
+    const hasAnyPhoto =
+      value.marker !== null ||
+      value.contextEvidenceAssetId !== null ||
+      value.detailEvidenceAssetId !== null;
+    if (value.concernType !== "odor" && value.marker === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["marker"],
+        message: "A visible concern requires a marker on its source photo",
+      });
+    }
+    if (value.concernType !== "odor" && value.contextEvidenceAssetId === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["contextEvidenceAssetId"],
+        message: "A visible concern requires a context evidence photo",
+      });
+    }
+    if (value.concernType === "odor" && value.memo === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["memo"],
+        message: "An odor concern always requires an explanation",
+      });
+    } else if (!hasAnyPhoto && value.concernType !== "odor") {
+      context.addIssue({
+        code: "custom",
+        path: ["memo"],
+        message: "Only a non-visual odor concern may omit photos, and it requires an explanation",
+      });
+    }
+    const isHumanReview =
+      value.reviewState === "human_confirmed" ||
+      value.reviewState === "changes_requested" ||
+      value.reviewState === "human_dismissed";
+    if (value.humanReviewed !== isHumanReview) {
+      context.addIssue({
+        code: "custom",
+        path: ["humanReviewed"],
+        message: "Human review must match the concern review state",
+      });
+    }
+    if (isHumanReview && value.revision <= 1) {
+      context.addIssue({
+        code: "custom",
+        path: ["revision"],
+        message: "A concern review must supersede a pending-review revision",
+      });
+    }
+  });
+
+export const inspectionConcernRevisionResponseSchema = z
+  .object({
+    revisionId: z.string().uuid(),
+    concernId: z.string().uuid(),
+    workspaceId: workspaceIdSchema,
+    skuId: z.string().uuid(),
+    inspectionItemKey: inspectionItemKeySchema,
+    productCategory: inspectionProductCategorySchema,
+    definitionVersion: inspectionDefinitionVersionSchema,
+    revision: inspectionRevisionSchema,
+    supersedesRevisionId: z.string().uuid().nullable(),
+    itemLocation: z.string().trim().min(1).max(120),
+    concernType: inspectionConcernTypeSchema,
+    severity: inspectionConcernSeveritySchema,
+    marker: inspectionConcernMarkerSchema.nullable(),
+    contextEvidenceAssetId: z.string().uuid().nullable(),
+    detailEvidenceAssetId: z.string().uuid().nullable(),
+    memo: z.string().trim().min(1).max(500).nullable(),
+    reviewState: inspectionConcernReviewStateSchema,
+    supersededRecordedBy: z
+      .string()
+      .uuid()
+      .nullable()
+      .describe("Actor who recorded the immediately preceding revision"),
+    supersededReviewState: inspectionConcernReviewStateSchema
+      .nullable()
+      .describe("Review state of the immutable immediately preceding revision"),
+    createdBy: z.string().uuid().describe("Actor who created the first revision in the chain"),
+    createdAt: z.iso.datetime(),
+    recordedBy: z.string().uuid().describe("Actor who recorded this exact revision"),
+    recordedAt: z.iso.datetime(),
+    reviewedBy: z.string().uuid().nullable().describe("Actor who reviewed this exact revision"),
+    reviewedAt: z.iso.datetime().nullable(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    validateInspectionRevisionLink(value, context);
+    validateInspectionResponsePredecessor(value, context);
+    const hasAnyPhoto =
+      value.marker !== null ||
+      value.contextEvidenceAssetId !== null ||
+      value.detailEvidenceAssetId !== null;
+    if (value.concernType !== "odor" && value.marker === null) {
+      context.addIssue({ code: "custom", path: ["marker"], message: "Marker is required" });
+    }
+    if (value.concernType !== "odor" && value.contextEvidenceAssetId === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["contextEvidenceAssetId"],
+        message: "Context evidence is required",
+      });
+    }
+    if (value.concernType === "odor" && value.memo === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["memo"],
+        message: "An odor concern always requires an explanation",
+      });
+    } else if (!hasAnyPhoto && value.concernType !== "odor") {
+      context.addIssue({
+        code: "custom",
+        path: ["memo"],
+        message: "A photo-free non-visual concern requires an explanation",
+      });
+    }
+    const isReviewed =
+      value.reviewState === "human_confirmed" ||
+      value.reviewState === "changes_requested" ||
+      value.reviewState === "human_dismissed";
+    if (isReviewed !== (value.reviewedBy !== null && value.reviewedAt !== null)) {
+      context.addIssue({
+        code: "custom",
+        path: ["reviewedBy"],
+        message: "Reviewer metadata must match the concern review state",
+      });
+    }
+    if (isReviewed && value.reviewedBy === value.supersededRecordedBy) {
+      context.addIssue({
+        code: "custom",
+        path: ["reviewedBy"],
+        message: "The prior revision recorder cannot review their own submission",
+      });
+    }
+    if (isReviewed && value.revision <= 1) {
+      context.addIssue({
+        code: "custom",
+        path: ["revision"],
+        message: "A concern review must supersede a pending-review revision",
+      });
+    }
+    if (
+      (value.supersedesRevisionId === null) !== (value.supersededReviewState === null) ||
+      (isReviewed && value.supersededReviewState !== "pending_review")
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["supersededReviewState"],
+        message: "A concern review must directly supersede a pending-review revision",
+      });
+    }
+  });
+
 export const recordMeasurementRequestSchema = z
   .object({
     definitionId: z.string().regex(/^[a-z][a-z0-9_]{1,63}$/u),
@@ -1714,6 +2100,18 @@ export type AdvanceP0WorkflowRequest = z.infer<typeof advanceP0WorkflowRequestSc
 export type P0WorkflowResponse = z.infer<typeof p0WorkflowResponseSchema>;
 export type RegisterMediaAssetRequest = z.infer<typeof registerMediaAssetRequestSchema>;
 export type MediaAssetResponse = z.infer<typeof mediaAssetResponseSchema>;
+export type RecordInspectionCheckResultRequest = z.infer<
+  typeof recordInspectionCheckResultRequestSchema
+>;
+export type InspectionCheckResultRevisionResponse = z.infer<
+  typeof inspectionCheckResultRevisionResponseSchema
+>;
+export type RecordInspectionConcernRevisionRequest = z.infer<
+  typeof recordInspectionConcernRevisionRequestSchema
+>;
+export type InspectionConcernRevisionResponse = z.infer<
+  typeof inspectionConcernRevisionResponseSchema
+>;
 export type RecordMeasurementRequest = z.infer<typeof recordMeasurementRequestSchema>;
 export type MeasurementResponse = z.infer<typeof measurementResponseSchema>;
 export type CaptureTaskResponse = z.infer<typeof captureTaskResponseSchema>;
