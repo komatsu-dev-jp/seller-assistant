@@ -1,0 +1,72 @@
+name: 実装パケット
+description: 新しい機能、改善、調査から実装までを安全に依頼します。
+title: "[Task] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        まず目的と受け入れ条件を明確にします。秘密情報、住所、原価、売上、生ログ、アクセストークンは記入しないでください。
+        Sol が計画段階でリスクと実装モデルを決め、GitHub Project の項目へ反映します。
+  - type: textarea
+    id: outcome
+    attributes:
+      label: 達成したいこと
+      description: 誰が、どの場面で、何を達成できれば成功かを一文で書きます。
+      placeholder: "例: 検品担当が、入荷時に商品ラベルと保管場所を二重読取して、誤格納なく在庫を確定できる。"
+    validations:
+      required: true
+  - type: textarea
+    id: problem_and_context
+    attributes:
+      label: 現在の課題と利用場面
+      description: 困っていること、利用者、発生頻度、既存の仕様や画面への影響を書きます。
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: 対象範囲と対象外
+      description: 今回変更するものと、今回変更しないものを分けます。
+      placeholder: |
+        対象: ...
+        対象外: ...
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: 受け入れ条件
+      description: 完了を判定できる、確認可能な条件を書きます。
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+  - type: dropdown
+    id: initial_risk
+    attributes:
+      label: 初期リスク
+      description: 不明なら未判定を選びます。最終判定はSolの計画で行います。
+      options:
+        - 未判定
+        - Low
+        - Medium
+        - Critical
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: 制約・安全条件
+      description: 期限、費用、互換性、権限、個人情報、外部連携、人による承認などを記入します。
+      placeholder: 外部サービスへの書込みは人の承認後だけにする。個人情報をIssueへ書かない。
+  - type: textarea
+    id: specification_and_evidence
+    attributes:
+      label: 関連仕様・証拠
+      description: 既存のdocs、Notion、Slack承認、画面、調査結果のリンクまたはパスを書きます。未作成なら空欄で構いません。
+  - type: textarea
+    id: approval_evidence
+    attributes:
+      label: 利用者承認の証拠
+      description: 承認が必要な場合だけ、Slackスレッドなどのリンクを後から追記します。不要なら「不要」と書きます。

@@ -9,6 +9,10 @@
 - AIは文章・仕訳の候補を作り、人が確認した内容だけを確定します。
 - 本番公開とPRマージは今回の範囲外です。
 
+## 開発管理
+
+作業依頼、進捗、モデル振り分け、Solレビュー、利用者承認は、共通の[AI App Delivery Project](https://github.com/users/komatsu-dev-jp/projects/1)で管理します。具体的な使い方は[GitHub Projects 運用](docs/implementation/github-projects-workflow.md)を参照してください。
+
 ## 必要なもの
 
 - Node.js 24以上
