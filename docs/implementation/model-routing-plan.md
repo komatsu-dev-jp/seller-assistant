@@ -249,4 +249,21 @@
 - rootは公式PostgreSQL 18.6でfresh、upgrade、2独立接続の実Lock競合を実行し、最終`npm.cmd run check`までPASSした。P12-Aは合格、P12-B technical gateはGO。
 - Luna maxの読み取り専用棚卸しでは、6商品種類の件数はあるが、安定keyと必須／任意が未確定で、そのまま安全にseedできないと判定した。
 - Sol maxは承認済み件数を変えない推奨A／代替Bを`p12-product-template-proposal-v1.md`へ整理した。利用者確認までは提案であり、P12-B source書込みを開始しない。
-- 利用者が2点を確認後、0035・RLS・完了manifest・非公開mediaはSol max、固定fixtureと対応表はLuna max、API契約固定後のWeb接続はTerra high、最終権限・offline・media reviewは別Sol maxへ割り当てる。
+- 利用者が2点を確認後、次の空きmigration 0036・RLS・完了manifest・非公開mediaはSol max、固定fixtureと対応表はLuna max、API契約固定後のWeb接続はTerra high、最終権限・offline・media reviewは別Sol maxへ割り当てる。
+
+## 2026-08-29 P13発送前写真の設計gate
+
+- 製品gate: GO。承認済みPC08と全ページ忠実再現指示から、初回UIは`高額商品だけ撮る`を推奨選択、目安額は空欄、写真使用時は商品写真と梱包後写真を各1枚以上と固定した。架空例30,000円はseedしない。
+- 設計gate: 別`gpt-5.6-sol` / `max`が現行order/media/financeとの差を監査し、P13-Aを重大と判定した。最低能力はSol max、適格なwriterと別Sol reviewerが利用可能なため`MODEL_SWITCH_REQUIRED`なし。
+- P13-A: 新規`0035_shipping_preflight_photo.sql`、strict contracts、order repository/API、private storage、nullable販売額、fresh/upgrade/concurrencyをSol maxの唯一writerへ割り当てる。P12-Bへ依存させない。
+- P13-B: backend contractと権限が独立Sol判定で凍結した後だけ、実運用Web接続をTerra highへ分離する。静的approved review routeは変更しない。
+- P12-B: 未承認提案のmigration候補は0036へ移す。項目、seed、API、Webは利用者確認まで引き続き停止する。
+- 正本: `docs/implementation/p13-shipping-photo-contract-v1.md`。
+
+## 2026-08-30 P13-A完了とP13-B割当
+
+- P13-Aは`gpt-5.6-sol` / `max`の唯一writerが実装し、別Sol maxが販売額basis、権限、追記履歴、再送、同時操作、旧`packed`注文の更新回復を敵対的に確認した。
+- rootは新規fresh DBへ35 migrationを適用して`test:postgres`を、新規upgrade DBで0001〜0035の`test:postgres-upgrade`を実行した。最終`npm.cmd run check`は35 files / 271 tests、format/lint/typecheck/build、Next 86 routesをPASSした。
+- 別Sol maxの最終判定はCritical 0 / High 0 / Medium 0 / Low 0、P13-A PASS、P13-B gate GO。P13-Bだけを`gpt-5.6-terra` / `high`へ割り当て、静的approved review routeを変更せず実運用routeを接続する。
+- P13-Bは390/768/1440px、キーボード、44px target、読込・空・失敗・再試行、loopback以外のrequest 0を実ブラウザで確認する。DB、金額、権限、状態契約へ変更が必要になった場合はTerraで推測せずSolへ戻す。
+- P12-B/Cは利用者の2項目確認待ち、P14はP13-B後。Draft PR #9はDraftのまま維持し、merge、本番公開、課金、外部APIを行わない。

@@ -937,7 +937,7 @@ export const createOrderRequestSchema = z
       .regex(/^[A-Z0-9-]+$/u),
     skuId: z.string().uuid(),
     inventoryUnitId: z.string().uuid(),
-    saleAmountMinor: z.number().int().positive().max(100_000_000),
+    saleAmountMinor: z.number().int().positive().max(100_000_000).nullable(),
     costAmountMinor: z.number().int().nonnegative().max(100_000_000),
     sellingFeeMinor: z.number().int().nonnegative().max(100_000_000),
     shippingCostMinor: z.number().int().nonnegative().max(100_000_000),
@@ -1719,6 +1719,174 @@ export const shippingTaskResponseSchema = z.object({
   assignmentExpiresAt: z.iso.datetime(),
 });
 
+export const shippingPhotoPolicyModeSchema = z.enum(["high_value_only", "all", "disabled"]);
+export const shippingPhotoRoleSchema = z.enum(["product", "packed_package"]);
+export const shippingPhotoDecisionReasonSchema = z.enum([
+  "policy_missing",
+  "policy_all",
+  "policy_disabled",
+  "threshold_met",
+  "threshold_below",
+  "sale_amount_missing",
+  "manual_use",
+  "manual_skip",
+]);
+export const shippingPhotoPreflightStateSchema = z.enum([
+  "choice_required",
+  "capture_required",
+  "awaiting_confirmation",
+  "confirmed",
+  "satisfied_without_photo",
+]);
+
+export const updateShippingPhotoPolicyRequestSchema = z
+  .object({
+    mode: shippingPhotoPolicyModeSchema,
+    highValueThresholdMinor: z.number().int().positive().max(100_000_000).nullable(),
+    expectedRevision: z.number().int().positive().max(10_000).nullable(),
+    idempotencyKey: z.string().uuid(),
+    humanConfirmed: z.literal(true),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (value.mode === "high_value_only" && value.highValueThresholdMinor === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["highValueThresholdMinor"],
+        message: "High-value-only policy requires a positive threshold",
+      });
+    }
+    if (value.mode !== "high_value_only" && value.highValueThresholdMinor !== null) {
+      context.addIssue({
+        code: "custom",
+        path: ["highValueThresholdMinor"],
+        message: "Only high-value-only policy accepts a threshold",
+      });
+    }
+  });
+
+export const shippingPhotoPolicyResponseSchema = z
+  .object({
+    policyRevisionId: z.string().uuid(),
+    mode: shippingPhotoPolicyModeSchema,
+    highValueThresholdMinor: z.number().int().positive().max(100_000_000).nullable(),
+    revision: z.number().int().positive().max(10_000),
+    supersedesRevisionId: z.string().uuid().nullable(),
+    changedBy: z.string().uuid(),
+    changedAt: z.iso.datetime(),
+  })
+  .strict();
+
+export const evaluateShippingPhotoPreflightRequestSchema = z
+  .object({
+    expectedDecisionRevision: z.number().int().positive().max(10_000).nullable(),
+    idempotencyKey: z.string().uuid(),
+    humanConfirmed: z.literal(true),
+  })
+  .strict();
+
+export const overrideShippingPhotoDecisionRequestSchema = z
+  .object({
+    choice: z.enum(["use_photos", "skip_photos"]),
+    expectedDecisionRevision: z.number().int().positive().max(10_000).nullable(),
+    idempotencyKey: z.string().uuid(),
+    humanConfirmed: z.literal(true),
+  })
+  .strict();
+
+export const uploadShippingPhotoQuerySchema = z
+  .object({
+    role: shippingPhotoRoleSchema,
+    idempotencyKey: z.string().uuid(),
+    humanConfirmed: z.enum(["true"]).transform(() => true as const),
+  })
+  .strict();
+
+export const shippingPhotoAssetResponseSchema = z
+  .object({
+    assetId: z.string().uuid(),
+    orderId: z.string().uuid(),
+    role: shippingPhotoRoleSchema,
+    mimeType: z.enum(["image/jpeg", "image/png"]),
+    sizeBytes: z
+      .number()
+      .int()
+      .positive()
+      .max(25 * 1024 * 1024),
+    width: z.number().int().positive().max(12_000),
+    height: z.number().int().positive().max(12_000),
+    capturedBy: z.string().uuid(),
+    capturedAt: z.iso.datetime(),
+  })
+  .strict();
+
+export const confirmShippingPhotosRequestSchema = z
+  .object({
+    assetIds: z.array(z.string().uuid()).min(2).max(100),
+    idempotencyKey: z.string().uuid(),
+    humanConfirmed: z.literal(true),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (new Set(value.assetIds).size !== value.assetIds.length) {
+      context.addIssue({
+        code: "custom",
+        path: ["assetIds"],
+        message: "Shipping photo confirmation asset IDs must be unique",
+      });
+    }
+  });
+
+export const shippingPhotoConfirmationResponseSchema = z
+  .object({
+    confirmationId: z.string().uuid(),
+    orderId: z.string().uuid(),
+    decisionRevisionId: z.string().uuid(),
+    assetIds: z.array(z.string().uuid()).min(2).max(100),
+    confirmedBy: z.string().uuid(),
+    confirmedAt: z.iso.datetime(),
+  })
+  .strict();
+
+export const shippingPhotoPreflightResponseSchema = z
+  .object({
+    orderId: z.string().uuid(),
+    decisionRevisionId: z.string().uuid().nullable(),
+    decisionRevision: z.number().int().positive().max(10_000).nullable(),
+    state: shippingPhotoPreflightStateSchema,
+    photoRequired: z.boolean().nullable(),
+    decisionReason: shippingPhotoDecisionReasonSchema.nullable(),
+    saleAmountStatus: z.enum(["present", "missing"]),
+    assets: z.array(shippingPhotoAssetResponseSchema),
+    confirmedAssetIds: z.array(z.string().uuid()),
+    photoConfirmationId: z.string().uuid().nullable(),
+    packingHumanConfirmed: z.boolean(),
+    shipmentHumanConfirmed: z.boolean(),
+    updatedAt: z.iso.datetime(),
+  })
+  .strict();
+
+export const recordOrderSaleAmountRequestSchema = z
+  .object({
+    saleAmountMinor: z.number().int().positive().max(100_000_000),
+    taxBasis: z.enum(["tax_included", "tax_excluded", "unknown"]),
+    sourceMeaning: z.string().trim().min(1).max(160),
+    occurredAt: z.iso.datetime(),
+    idempotencyKey: z.string().uuid(),
+    humanConfirmed: z.literal(true),
+  })
+  .strict();
+
+export const recordOrderSaleAmountResponseSchema = z
+  .object({
+    orderId: z.string().uuid(),
+    financialEventId: z.string().uuid(),
+    saleAmountMinor: z.number().int().positive().max(100_000_000),
+    recordedBy: z.string().uuid(),
+    recordedAt: z.iso.datetime(),
+  })
+  .strict();
+
 export const createAddressLeaseRequestSchema = z
   .object({ purpose: z.literal("shipping_label"), humanConfirmed: z.literal(true) })
   .strict();
@@ -1746,9 +1914,7 @@ export const pickOrderRequestSchema = putawayInventoryRequestSchema
 
 export const packOrderRequestSchema = z
   .object({
-    packingEvidenceReferenceId: z.string().uuid(),
     addressLeaseId: z.string().uuid().nullable(),
-    confirmedAt: z.iso.datetime(),
     idempotencyKey: z.string().uuid(),
     humanConfirmed: z.literal(true),
   })
@@ -1757,7 +1923,6 @@ export const packOrderRequestSchema = z
 export const shipOrderRequestSchema = z
   .object({
     addressLeaseId: z.string().uuid().nullable(),
-    shippedAt: z.iso.datetime(),
     idempotencyKey: z.string().uuid(),
     humanConfirmed: z.literal(true),
   })
@@ -2169,6 +2334,27 @@ export type ApproveStocktakeRequest = z.infer<typeof approveStocktakeRequestSche
 export type ReissueInventoryLabelRequest = z.infer<typeof reissueInventoryLabelRequestSchema>;
 export type ReissuedInventoryLabelResponse = z.infer<typeof reissuedInventoryLabelResponseSchema>;
 export type ShippingTaskResponse = z.infer<typeof shippingTaskResponseSchema>;
+export type ShippingPhotoPolicyMode = z.infer<typeof shippingPhotoPolicyModeSchema>;
+export type ShippingPhotoRole = z.infer<typeof shippingPhotoRoleSchema>;
+export type UpdateShippingPhotoPolicyRequest = z.infer<
+  typeof updateShippingPhotoPolicyRequestSchema
+>;
+export type ShippingPhotoPolicyResponse = z.infer<typeof shippingPhotoPolicyResponseSchema>;
+export type EvaluateShippingPhotoPreflightRequest = z.infer<
+  typeof evaluateShippingPhotoPreflightRequestSchema
+>;
+export type OverrideShippingPhotoDecisionRequest = z.infer<
+  typeof overrideShippingPhotoDecisionRequestSchema
+>;
+export type UploadShippingPhotoQuery = z.infer<typeof uploadShippingPhotoQuerySchema>;
+export type ShippingPhotoAssetResponse = z.infer<typeof shippingPhotoAssetResponseSchema>;
+export type ConfirmShippingPhotosRequest = z.infer<typeof confirmShippingPhotosRequestSchema>;
+export type ShippingPhotoConfirmationResponse = z.infer<
+  typeof shippingPhotoConfirmationResponseSchema
+>;
+export type ShippingPhotoPreflightResponse = z.infer<typeof shippingPhotoPreflightResponseSchema>;
+export type RecordOrderSaleAmountRequest = z.infer<typeof recordOrderSaleAmountRequestSchema>;
+export type RecordOrderSaleAmountResponse = z.infer<typeof recordOrderSaleAmountResponseSchema>;
 export type CreateAddressLeaseRequest = z.infer<typeof createAddressLeaseRequestSchema>;
 export type AddressLeaseResponse = z.infer<typeof addressLeaseResponseSchema>;
 export type ShippingAddressResponse = z.infer<typeof shippingAddressResponseSchema>;

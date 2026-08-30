@@ -137,6 +137,10 @@ const inspectionConcernMigrationPath = fileURLToPath(
   new URL("../migrations/0034_inspection_concern_contract.sql", import.meta.url),
 );
 const inspectionConcernSql = readFileSync(inspectionConcernMigrationPath, "utf8");
+const shippingPhotoMigrationPath = fileURLToPath(
+  new URL("../migrations/0035_shipping_preflight_photo.sql", import.meta.url),
+);
+const shippingPhotoSql = readFileSync(shippingPhotoMigrationPath, "utf8");
 
 describe("P0 PostgreSQL migration contract", () => {
   it("enables and forces workspace RLS for business tables", () => {
@@ -844,6 +848,204 @@ describe("P0 PostgreSQL migration contract", () => {
     );
     expect(inspectionConcernSql).not.toMatch(
       /grant\s+(?:all|update|delete|truncate).*inspection_/iu,
+    );
+  });
+
+  it("adds P13 shipping policy, decision, private asset and separate confirmations", () => {
+    for (const table of [
+      "shipping_photo_policy_revision",
+      "shipping_sale_basis_snapshot",
+      "order_shipping_photo_decision",
+      "shipping_photo_asset",
+      "shipping_photo_confirmation",
+      "shipment_human_confirmation",
+    ]) {
+      expect(shippingPhotoSql).toContain(`create table ${table}`);
+    }
+    expect(shippingPhotoSql).toContain("'high_value_only', 'all', 'disabled'");
+    expect(shippingPhotoSql).toContain("high_value_threshold_minor between 1 and 100000000");
+    expect(shippingPhotoSql).not.toContain("30000");
+    expect(shippingPhotoSql).toContain("sale_amount_state in ('present', 'missing')");
+    expect(shippingPhotoSql).toContain("sale_basis_id uuid not null");
+    expect(shippingPhotoSql).toContain("active_sale_event_ids uuid[] not null");
+    expect(shippingPhotoSql).toContain("active_sale_total_minor bigint");
+    expect(shippingPhotoSql).toContain("source_set_sha256 text not null");
+    expect(shippingPhotoSql).toContain("'product', 'packed_package'");
+    expect(shippingPhotoSql).toContain("asset_ids uuid[] not null");
+    expect(shippingPhotoSql).toContain("server_confirmed boolean not null default false");
+  });
+
+  it("keeps P13 revisions and photos append-only without revision branches", () => {
+    expect(shippingPhotoSql).toContain("shipping_photo_policy_one_successor");
+    expect(shippingPhotoSql).toContain("order_shipping_photo_decision_one_successor");
+    expect(shippingPhotoSql).toContain("where supersedes_id is not null");
+    expect(shippingPhotoSql).toContain(
+      "shipping preflight history is append-only; create a successor or new confirmation",
+    );
+    for (const table of [
+      "shipping_photo_policy_revision",
+      "shipping_sale_basis_snapshot",
+      "order_shipping_photo_decision",
+      "shipping_photo_asset",
+      "shipping_photo_confirmation",
+      "shipment_human_confirmation",
+      "packing_evidence",
+    ]) {
+      expect(shippingPhotoSql).toContain(`before update or delete on ${table}`);
+    }
+    expect(shippingPhotoSql).toContain(
+      "revoke update, delete on shipping_photo_policy_revision, order_shipping_photo_decision",
+    );
+    expect(shippingPhotoSql).toContain(
+      "revoke insert, update, delete on shipping_sale_basis_snapshot from resale_app_runtime",
+    );
+  });
+
+  it("preserves legacy packing evidence while allowing one explicit server recovery", () => {
+    expect(shippingPhotoSql).toContain(
+      "drop constraint packing_evidence_workspace_id_order_id_key",
+    );
+    expect(shippingPhotoSql).toContain("packing_evidence_one_legacy_per_order");
+    expect(shippingPhotoSql).toContain("where not server_confirmed");
+    expect(shippingPhotoSql).toContain("packing_evidence_one_server_confirmation_per_order");
+    expect(shippingPhotoSql).toContain("where server_confirmed");
+    expect(shippingPhotoSql).toContain("order_state = 'packed' and has_legacy");
+    expect(shippingPhotoSql).toContain("if has_server_confirmation");
+    expect(shippingPhotoSql).toContain("new.server_confirmed := true");
+  });
+
+  it("deduplicates a direct decision retry before creating a sale basis snapshot", () => {
+    const workspaceLock = shippingPhotoSql.indexOf(
+      "perform 1 from public.workspace where id = new.workspace_id for update",
+    );
+    const orderLock = shippingPhotoSql.indexOf("select orders.state into order_state");
+    const replayLookup = shippingPhotoSql.indexOf("select decision.* into replay");
+    const replayReturn = shippingPhotoSql.indexOf("return null;", replayLookup);
+    const basisInsert = shippingPhotoSql.indexOf(
+      "insert into public.shipping_sale_basis_snapshot",
+      replayLookup,
+    );
+
+    expect(workspaceLock).toBeGreaterThan(-1);
+    expect(orderLock).toBeGreaterThan(workspaceLock);
+    expect(replayLookup).toBeGreaterThan(orderLock);
+    expect(replayReturn).toBeGreaterThan(replayLookup);
+    expect(basisInsert).toBeGreaterThan(replayReturn);
+    expect(shippingPhotoSql).toContain("decision.idempotency_key = new.idempotency_key");
+    expect(shippingPhotoSql).toContain("replay.payload_hash is distinct from new.payload_hash");
+    expect(shippingPhotoSql).toContain(
+      "shipping photo decision idempotency key has another payload",
+    );
+  });
+
+  it("binds P13 RLS to the session actor and a current shipping assignment", () => {
+    expect(shippingPhotoSql).toContain(
+      "create or replace function can_actor_access_shipping_order(target_order_id uuid)",
+    );
+    expect(shippingPhotoSql).toContain("public.app_workspace_id()");
+    expect(shippingPhotoSql).toContain("public.app_identity_id()");
+    expect(shippingPhotoSql).toContain("membership.role in ('owner', 'inventory_manager')");
+    expect(shippingPhotoSql).toContain("membership.role = 'shipping'");
+    expect(shippingPhotoSql).toContain("assignment.revoked_at is null");
+    expect(shippingPhotoSql).toContain("assignment.starts_at <= statement_timestamp()");
+    expect(shippingPhotoSql).toContain("assignment.expires_at > statement_timestamp()");
+    expect(shippingPhotoSql).toContain("orders.state <> 'cancelled'");
+    expect(shippingPhotoSql).toContain("membership.role = 'owner'");
+    expect(shippingPhotoSql).toContain("force row level security");
+    expect(shippingPhotoSql).toContain("can_actor_access_shipping_order(order_id)");
+    expect(shippingPhotoSql).not.toMatch(
+      /can_actor_access_shipping_order\(\s*(?:target_workspace_id|target_identity_id|uuid\s*,)/iu,
+    );
+    expect(shippingPhotoSql).toContain(
+      "create or replace function lock_current_shipping_workspace() returns boolean",
+    );
+    expect(shippingPhotoSql).toContain("language plpgsql volatile security definer");
+    expect(shippingPhotoSql).toContain("workspace_row.id = current_workspace_id");
+    expect(shippingPhotoSql).toContain("membership.identity_id = current_identity_id");
+    expect(shippingPhotoSql).toContain("and membership.active");
+    expect(shippingPhotoSql).toContain("for update of workspace_row");
+    expect(shippingPhotoSql).toContain(
+      "revoke all on function lock_current_shipping_workspace() from public",
+    );
+    expect(shippingPhotoSql).toContain(
+      "grant execute on function lock_current_shipping_workspace() to resale_app_runtime",
+    );
+    expect(shippingPhotoSql).not.toMatch(
+      /lock_current_shipping_workspace\(\s*(?:uuid|target_workspace_id|target_identity_id)/iu,
+    );
+    expect(shippingPhotoSql).not.toMatch(/grant\s+select\s+on\s+(?:table\s+)?workspace\b/iu);
+    expect(shippingPhotoSql).toContain(
+      "create policy shipping_sale_basis_owner_accounting on shipping_sale_basis_snapshot",
+    );
+    expect(shippingPhotoSql).toContain("membership.role in ('owner', 'accounting')");
+    expect(shippingPhotoSql).toContain(
+      "with check (\n  workspace_id = app_workspace_id()\n  and can_actor_access_shipping_order(order_id)\n)",
+    );
+    expect(shippingPhotoSql).toContain(
+      "alter table shipping_sale_basis_snapshot force row level security",
+    );
+    expect(shippingPhotoSql).toContain(
+      "grant select on shipping_sale_basis_snapshot to resale_app_runtime",
+    );
+  });
+
+  it("requires an exact current two-role photo set before packing or shipment", () => {
+    expect(shippingPhotoSql).toContain("count(distinct asset_id)::integer");
+    expect(shippingPhotoSql).toContain("submitted_ids is distinct from current_ids");
+    expect(shippingPhotoSql).toContain("product_count < 1 or packed_count < 1");
+    expect(shippingPhotoSql).toContain("if asset_count >= 100 then");
+    expect(shippingPhotoSql).toContain("at most 100 immutable assets");
+    expect(shippingPhotoSql).toContain("confirmation.asset_ids = current_ids");
+    expect(shippingPhotoSql).toContain("shipping_photo_preflight_satisfied");
+    expect(shippingPhotoSql).toContain("shipping_sale_basis_snapshot_is_current");
+    expect(shippingPhotoSql).toContain("orders.state in ('confirmed', 'picking', 'packed')");
+    expect(shippingPhotoSql).toContain("new.evidence_reference_id := new.id");
+    expect(shippingPhotoSql).toContain("new.confirmed_at := statement_timestamp()");
+    expect(shippingPhotoSql).toContain("evidence.server_confirmed");
+    expect(shippingPhotoSql).toContain("confirmation.confirmed_by = actor_id");
+    expect(shippingPhotoSql).toContain(
+      "packed state requires assigned human packing confirmation and satisfied photo preflight",
+    );
+    expect(shippingPhotoSql).toContain(
+      "shipped state requires assigned human shipment confirmation and satisfied photo preflight",
+    );
+  });
+
+  it("keeps shipping originals private and a missing sale absent instead of zero", () => {
+    expect(shippingPhotoSql).toContain("original_storage_key text not null");
+    expect(shippingPhotoSql).toContain("original_sha256 text not null");
+    expect(shippingPhotoSql).not.toContain("financial_event_one_sale_per_order");
+    expect(shippingPhotoSql).toContain("sum(event.amount_minor)");
+    expect(shippingPhotoSql).toContain("array_agg(event.id order by event.id)");
+    expect(shippingPhotoSql).toContain("event.reverses_event_id is null");
+    expect(shippingPhotoSql).toContain("reversal.reverses_event_id = event.id");
+    expect(shippingPhotoSql).toContain("event.amount_minor <= 0");
+    expect(shippingPhotoSql).toContain("event.currency <> 'JPY'");
+    expect(shippingPhotoSql).toContain("source_set_sha256");
+    for (const immutableFact of [
+      "'amountMinor', event.amount_minor",
+      "'currency', event.currency",
+      "'occurredAt', extract(epoch from event.occurred_at)",
+      "'taxBasis', event.tax_basis",
+      "'sourceMeaning', event.source_meaning",
+    ]) {
+      expect(shippingPhotoSql).toContain(immutableFact);
+    }
+    expect(shippingPhotoSql).toContain("when sale_basis.active_sale_count = 1 then");
+    expect(shippingPhotoSql).toContain("sale_basis.active_sale_event_ids[1]");
+    expect(shippingPhotoSql).toContain("when sale_basis.active_sale_count = 0 then 'missing'");
+    expect(shippingPhotoSql).toContain(
+      "latest_policy.mode = 'high_value_only'\n      and sale_basis.active_sale_count = 0",
+    );
+    expect(shippingPhotoSql).toContain("financial_event_shipping_sale_basis_lock");
+    expect(shippingPhotoSql).toContain("for update");
+    expect(shippingPhotoSql).not.toContain(
+      "shipping photo decision requires one unambiguous sale event",
+    );
+    expect(shippingPhotoSql).toContain("new.sale_amount_state := case");
+    expect(shippingPhotoSql).not.toMatch(/coalesce\([^)]*sale/iu);
+    expect(shippingPhotoSql).not.toMatch(
+      /insert\s+into\s+shipping_photo_asset[\s\S]*https?:\/\//iu,
     );
   });
 

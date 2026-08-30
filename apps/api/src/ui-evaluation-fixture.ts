@@ -790,15 +790,12 @@ async function createAndShipOrder(input: {
     addressLeaseId: lease.leaseId,
   });
   await input.orderRepository.packOrder(input.account.workspaceId, orderId, actor(input.account), {
-    packingEvidenceReferenceId: randomUUID(),
     addressLeaseId: lease.leaseId,
-    confirmedAt: iso(),
     idempotencyKey: randomUUID(),
     humanConfirmed: true,
   });
   await input.orderRepository.shipOrder(input.account.workspaceId, orderId, actor(input.account), {
     addressLeaseId: lease.leaseId,
-    shippedAt: iso(),
     idempotencyKey: randomUUID(),
     humanConfirmed: true,
   });

@@ -6,16 +6,27 @@ import type {
   CreateAccountingExportRequest,
   CreateAddressLeaseRequest,
   CreateOrderRequest,
+  ConfirmShippingPhotosRequest,
+  EvaluateShippingPhotoPreflightRequest,
   FinancialSummaryResponse,
   InspectReturnRequest,
   OrderOperationResponse,
   OrderAssignmentResponse,
+  OverrideShippingPhotoDecisionRequest,
   PackOrderRequest,
   PickOrderRequest,
   QuarantineReturnRequest,
   ReturnOrderRequest,
   ShipOrderRequest,
+  ShippingPhotoAssetResponse,
+  ShippingPhotoConfirmationResponse,
+  ShippingPhotoPolicyResponse,
+  ShippingPhotoPreflightResponse,
+  ShippingPhotoRole,
   ShippingTaskResponse,
+  RecordOrderSaleAmountRequest,
+  RecordOrderSaleAmountResponse,
+  UpdateShippingPhotoPolicyRequest,
 } from "@resale/contracts";
 import {
   calculateFinancialsV1,
@@ -51,6 +62,27 @@ export interface AccountingExportContent {
   sha256: string;
 }
 
+export interface RegisterShippingPhotoRecord {
+  assetId: string;
+  role: ShippingPhotoRole;
+  mimeType: "image/jpeg" | "image/png";
+  sizeBytes: number;
+  width: number;
+  height: number;
+  sha256: string;
+  storageKey: string;
+  idempotencyKey: string;
+}
+
+export interface PrivateShippingPhotoContent {
+  storageKey: string;
+  sha256: string;
+  mimeType: "image/jpeg" | "image/png";
+  sizeBytes: number;
+  width: number;
+  height: number;
+}
+
 export interface OrderRepository {
   createOrder(
     workspaceId: string,
@@ -64,6 +96,56 @@ export interface OrderRepository {
     input: AssignOrderRequest,
   ): Promise<OrderAssignmentResponse>;
   shippingTasks(workspaceId: string, actor: RequestActor): Promise<ShippingTaskResponse[]>;
+  shippingPhotoPolicy(
+    workspaceId: string,
+    actor: RequestActor,
+  ): Promise<ShippingPhotoPolicyResponse | null>;
+  updateShippingPhotoPolicy(
+    workspaceId: string,
+    actor: RequestActor,
+    input: UpdateShippingPhotoPolicyRequest,
+  ): Promise<ShippingPhotoPolicyResponse>;
+  shippingPhotoPreflight(
+    workspaceId: string,
+    orderId: string,
+    actor: RequestActor,
+  ): Promise<ShippingPhotoPreflightResponse>;
+  evaluateShippingPhotoPreflight(
+    workspaceId: string,
+    orderId: string,
+    actor: RequestActor,
+    input: EvaluateShippingPhotoPreflightRequest,
+  ): Promise<ShippingPhotoPreflightResponse>;
+  overrideShippingPhotoDecision(
+    workspaceId: string,
+    orderId: string,
+    actor: RequestActor,
+    input: OverrideShippingPhotoDecisionRequest,
+  ): Promise<ShippingPhotoPreflightResponse>;
+  registerShippingPhoto(
+    workspaceId: string,
+    orderId: string,
+    actor: RequestActor,
+    record: RegisterShippingPhotoRecord,
+  ): Promise<ShippingPhotoAssetResponse>;
+  readShippingPhoto(
+    workspaceId: string,
+    orderId: string,
+    assetId: string,
+    actor: RequestActor,
+  ): Promise<PrivateShippingPhotoContent>;
+  confirmShippingPhotos(
+    workspaceId: string,
+    orderId: string,
+    actor: RequestActor,
+    input: ConfirmShippingPhotosRequest,
+  ): Promise<ShippingPhotoConfirmationResponse>;
+  recordSaleAmount(
+    workspaceId: string,
+    orderId: string,
+    actor: RequestActor,
+    input: RecordOrderSaleAmountRequest,
+  ): Promise<RecordOrderSaleAmountResponse>;
   createAddressLease(
     workspaceId: string,
     orderId: string,
@@ -172,6 +254,56 @@ interface FinancialEventRow {
   occurred_at: Date;
 }
 
+interface ShippingPhotoPolicyRow {
+  id: string;
+  mode: ShippingPhotoPolicyResponse["mode"];
+  high_value_threshold_minor: number | null;
+  revision: number;
+  supersedes_id: string | null;
+  idempotency_key: string;
+  payload_hash: string;
+  changed_by: string;
+  changed_at: Date;
+}
+
+interface ShippingPhotoDecisionRow {
+  id: string;
+  sale_basis_id: string;
+  sale_amount_state: ShippingPhotoPreflightResponse["saleAmountStatus"];
+  decision_reason: NonNullable<ShippingPhotoPreflightResponse["decisionReason"]>;
+  decision_state: "choice_required" | "capture_required" | "satisfied_without_photo";
+  photo_required: boolean | null;
+  revision: number;
+  supersedes_id: string | null;
+  idempotency_key: string;
+  payload_hash: string;
+  decided_at: Date;
+}
+
+interface ShippingPhotoAssetRow {
+  id: string;
+  order_id: string;
+  role: ShippingPhotoRole;
+  original_sha256: string;
+  original_storage_key: string;
+  mime_type: "image/jpeg" | "image/png";
+  size_bytes: number;
+  width: number;
+  height: number;
+  payload_hash: string;
+  captured_by: string;
+  captured_at: Date;
+}
+
+interface ShippingPhotoConfirmationRow {
+  id: string;
+  decision_id: string;
+  asset_ids: string[];
+  payload_hash: string;
+  confirmed_by: string;
+  confirmed_at: Date;
+}
+
 class StaleOrderScanLabelError extends RepositoryError {
   constructor(
     readonly evidence: {
@@ -211,7 +343,7 @@ export class PostgresOrderRepository implements OrderRepository {
     });
     try {
       return await this.sql.begin(async (transaction) => {
-        await setWorkspace(transaction, workspaceId);
+        await setWorkspace(transaction, workspaceId, actor.identityId);
         const role = await requireRole(transaction, workspaceId, actor.identityId, [
           "owner",
           "inventory_manager",
@@ -261,6 +393,7 @@ export class PostgresOrderRepository implements OrderRepository {
           ["packaging", record.input.packagingCostMinor, "seller", "梱包費"],
         ] as const;
         for (const [eventType, amount, bearer, label] of facts) {
+          if (amount === null) continue;
           await transaction`
             insert into financial_event (
               workspace_id, sku_id, order_id, event_type, amount_minor, currency,
@@ -323,7 +456,7 @@ export class PostgresOrderRepository implements OrderRepository {
   ): Promise<OrderAssignmentResponse> {
     try {
       return await this.sql.begin(async (transaction) => {
-        await setWorkspace(transaction, workspaceId);
+        await setWorkspace(transaction, workspaceId, actor.identityId);
         await requireRole(transaction, workspaceId, actor.identityId, [
           "owner",
           "inventory_manager",
@@ -402,7 +535,7 @@ export class PostgresOrderRepository implements OrderRepository {
   async shippingTasks(workspaceId: string, actor: RequestActor): Promise<ShippingTaskResponse[]> {
     try {
       return await this.sql.begin(async (transaction) => {
-        await setWorkspace(transaction, workspaceId);
+        await setWorkspace(transaction, workspaceId, actor.identityId);
         const role = await requireRole(transaction, workspaceId, actor.identityId, [
           "owner",
           "inventory_manager",
@@ -469,6 +602,483 @@ export class PostgresOrderRepository implements OrderRepository {
     }
   }
 
+  async shippingPhotoPolicy(
+    workspaceId: string,
+    actor: RequestActor,
+  ): Promise<ShippingPhotoPolicyResponse | null> {
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId, actor.identityId);
+        await requireRole(transaction, workspaceId, actor.identityId, ["owner"]);
+        const rows = await currentShippingPhotoPolicy(transaction, workspaceId);
+        return rows[0] ? toShippingPhotoPolicyResponse(rows[0]) : null;
+      });
+    } catch (error) {
+      throw normalizeOrderError(error);
+    }
+  }
+
+  async updateShippingPhotoPolicy(
+    workspaceId: string,
+    actor: RequestActor,
+    input: UpdateShippingPhotoPolicyRequest,
+  ): Promise<ShippingPhotoPolicyResponse> {
+    const payloadHash = hashPayload(input);
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId, actor.identityId);
+        await requireRole(transaction, workspaceId, actor.identityId, ["owner"]);
+        await transaction`select lock_current_shipping_workspace()`;
+        const replay = await transaction<ShippingPhotoPolicyRow[]>`
+          select id, mode, high_value_threshold_minor::integer as high_value_threshold_minor,
+                 revision, supersedes_id, idempotency_key, payload_hash, changed_by, changed_at
+          from shipping_photo_policy_revision
+          where workspace_id = ${workspaceId} and idempotency_key = ${input.idempotencyKey}
+        `;
+        if (replay[0]) {
+          if (replay[0].payload_hash !== payloadHash) {
+            throw new RepositoryError("conflict", "The policy idempotency key has another payload");
+          }
+          return toShippingPhotoPolicyResponse(replay[0]);
+        }
+        const [current] = await currentShippingPhotoPolicy(transaction, workspaceId);
+        if ((current?.revision ?? null) !== input.expectedRevision) {
+          throw new RepositoryError("conflict", "The shipping photo policy revision is stale");
+        }
+        const rows = await transaction<ShippingPhotoPolicyRow[]>`
+          insert into shipping_photo_policy_revision (
+            workspace_id, mode, high_value_threshold_minor, revision, supersedes_id,
+            idempotency_key, payload_hash
+          ) values (
+            ${workspaceId}, ${input.mode}, ${input.highValueThresholdMinor},
+            ${(current?.revision ?? 0) + 1}, ${current?.id ?? null},
+            ${input.idempotencyKey}, ${payloadHash}
+          )
+          returning id, mode, high_value_threshold_minor::integer as high_value_threshold_minor,
+                    revision, supersedes_id, idempotency_key, payload_hash, changed_by, changed_at
+        `;
+        const row = rows[0];
+        if (!row)
+          throw new RepositoryError("database_error", "Shipping photo policy was not saved");
+        await insertAudit(
+          transaction,
+          workspaceId,
+          actor.identityId,
+          "shipping.photo_policy.changed",
+          row.id,
+          ["mode", "high_value_threshold_minor", "revision"],
+          { revision: current?.revision ?? null },
+          { mode: row.mode, revision: row.revision },
+          "shipping_photo_policy_human_confirmed",
+        );
+        return toShippingPhotoPolicyResponse(row);
+      });
+    } catch (error) {
+      throw normalizeOrderError(error);
+    }
+  }
+
+  async shippingPhotoPreflight(
+    workspaceId: string,
+    orderId: string,
+    actor: RequestActor,
+  ): Promise<ShippingPhotoPreflightResponse> {
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId, actor.identityId);
+        const role = await requireRole(transaction, workspaceId, actor.identityId, [
+          "owner",
+          "inventory_manager",
+          "shipping",
+        ]);
+        await requireOrderAssignmentIfShipping(
+          transaction,
+          workspaceId,
+          orderId,
+          actor.identityId,
+          role,
+        );
+        return buildShippingPhotoPreflight(transaction, workspaceId, orderId);
+      });
+    } catch (error) {
+      throw normalizeOrderError(error);
+    }
+  }
+
+  async evaluateShippingPhotoPreflight(
+    workspaceId: string,
+    orderId: string,
+    actor: RequestActor,
+    input: EvaluateShippingPhotoPreflightRequest,
+  ): Promise<ShippingPhotoPreflightResponse> {
+    return this.recordShippingPhotoDecision(
+      workspaceId,
+      orderId,
+      actor,
+      input.expectedDecisionRevision,
+      input.idempotencyKey,
+      null,
+    );
+  }
+
+  async overrideShippingPhotoDecision(
+    workspaceId: string,
+    orderId: string,
+    actor: RequestActor,
+    input: OverrideShippingPhotoDecisionRequest,
+  ): Promise<ShippingPhotoPreflightResponse> {
+    return this.recordShippingPhotoDecision(
+      workspaceId,
+      orderId,
+      actor,
+      input.expectedDecisionRevision,
+      input.idempotencyKey,
+      input.choice,
+    );
+  }
+
+  async registerShippingPhoto(
+    workspaceId: string,
+    orderId: string,
+    actor: RequestActor,
+    record: RegisterShippingPhotoRecord,
+  ): Promise<ShippingPhotoAssetResponse> {
+    const payloadHash = hashPayload({
+      orderId,
+      role: record.role,
+      mimeType: record.mimeType,
+      sizeBytes: record.sizeBytes,
+      width: record.width,
+      height: record.height,
+      sha256: record.sha256,
+    });
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId, actor.identityId);
+        const role = await requireRole(transaction, workspaceId, actor.identityId, [
+          "owner",
+          "inventory_manager",
+          "shipping",
+        ]);
+        await requireOrderAssignmentIfShipping(
+          transaction,
+          workspaceId,
+          orderId,
+          actor.identityId,
+          role,
+        );
+        const existing = await shippingPhotoAssetByIdempotency(
+          transaction,
+          workspaceId,
+          orderId,
+          record.idempotencyKey,
+        );
+        if (existing[0]) {
+          if (existing[0].payload_hash !== payloadHash) {
+            throw new RepositoryError("conflict", "The photo idempotency key has another payload");
+          }
+          return toShippingPhotoAssetResponse(existing[0]);
+        }
+        let rows: ShippingPhotoAssetRow[] = await transaction<ShippingPhotoAssetRow[]>`
+          insert into shipping_photo_asset (
+            id, workspace_id, order_id, role, original_sha256, original_storage_key,
+            mime_type, size_bytes, width, height, upload_idempotency_key, payload_hash
+          ) values (
+            ${record.assetId}, ${workspaceId}, ${orderId}, ${record.role}, ${record.sha256},
+            ${record.storageKey}, ${record.mimeType}, ${record.sizeBytes}, ${record.width},
+            ${record.height}, ${record.idempotencyKey}, ${payloadHash}
+          )
+          on conflict (workspace_id, order_id, upload_idempotency_key) do nothing
+          returning id, order_id, role, original_sha256, original_storage_key, mime_type,
+                    size_bytes::integer as size_bytes, width, height, payload_hash,
+                    captured_by, captured_at
+        `;
+        const inserted = rows[0] !== undefined;
+        if (!rows[0]) {
+          rows = await shippingPhotoAssetByIdempotency(
+            transaction,
+            workspaceId,
+            orderId,
+            record.idempotencyKey,
+          );
+        }
+        const row = rows[0];
+        if (!row || row.payload_hash !== payloadHash) {
+          throw new RepositoryError("conflict", "The photo idempotency key has another payload");
+        }
+        if (inserted) {
+          await insertAudit(
+            transaction,
+            workspaceId,
+            actor.identityId,
+            "shipping.photo.captured",
+            row.id,
+            ["order_id", "role", "mime_type", "size_bytes"],
+            { photo: "absent" },
+            { orderId, role: row.role, sizeBytes: row.size_bytes },
+            "private_shipping_photo_human_captured",
+          );
+        }
+        return toShippingPhotoAssetResponse(row);
+      });
+    } catch (error) {
+      throw normalizeOrderError(error);
+    }
+  }
+
+  async readShippingPhoto(
+    workspaceId: string,
+    orderId: string,
+    assetId: string,
+    actor: RequestActor,
+  ): Promise<PrivateShippingPhotoContent> {
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId, actor.identityId);
+        const role = await requireRole(transaction, workspaceId, actor.identityId, [
+          "owner",
+          "inventory_manager",
+          "shipping",
+        ]);
+        await requireOrderAssignmentIfShipping(
+          transaction,
+          workspaceId,
+          orderId,
+          actor.identityId,
+          role,
+        );
+        const rows = await transaction<ShippingPhotoAssetRow[]>`
+          select id, order_id, role, original_sha256, original_storage_key, mime_type,
+                 size_bytes::integer as size_bytes, width, height, payload_hash,
+                 captured_by, captured_at
+          from shipping_photo_asset
+          where workspace_id = ${workspaceId} and order_id = ${orderId} and id = ${assetId}
+        `;
+        const row = rows[0];
+        if (!row) throw new RepositoryError("forbidden", "The shipping photo is unavailable");
+        return {
+          storageKey: row.original_storage_key,
+          sha256: row.original_sha256,
+          mimeType: row.mime_type,
+          sizeBytes: row.size_bytes,
+          width: row.width,
+          height: row.height,
+        };
+      });
+    } catch (error) {
+      throw normalizeOrderError(error);
+    }
+  }
+
+  async confirmShippingPhotos(
+    workspaceId: string,
+    orderId: string,
+    actor: RequestActor,
+    input: ConfirmShippingPhotosRequest,
+  ): Promise<ShippingPhotoConfirmationResponse> {
+    const canonicalAssetIds = [...input.assetIds].sort();
+    const payloadHash = hashPayload({ ...input, assetIds: canonicalAssetIds });
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId, actor.identityId);
+        const role = await requireRole(transaction, workspaceId, actor.identityId, [
+          "owner",
+          "inventory_manager",
+          "shipping",
+        ]);
+        await requireOrderAssignmentIfShipping(
+          transaction,
+          workspaceId,
+          orderId,
+          actor.identityId,
+          role,
+        );
+        let rows = await shippingPhotoConfirmationByIdempotency(
+          transaction,
+          workspaceId,
+          orderId,
+          input.idempotencyKey,
+        );
+        if (rows[0]) {
+          if (rows[0].payload_hash !== payloadHash) {
+            throw new RepositoryError(
+              "conflict",
+              "The photo confirmation idempotency key has another payload",
+            );
+          }
+          return toShippingPhotoConfirmationResponse(orderId, rows[0]);
+        }
+        const [decision] = await currentShippingPhotoDecision(transaction, workspaceId, orderId);
+        if (!decision) {
+          throw new RepositoryError("conflict", "A shipping photo decision is required first");
+        }
+        rows = await transaction<ShippingPhotoConfirmationRow[]>`
+          insert into shipping_photo_confirmation (
+            workspace_id, order_id, decision_id, asset_ids, idempotency_key, payload_hash
+          ) values (
+            ${workspaceId}, ${orderId}, ${decision.id}, ${canonicalAssetIds},
+            ${input.idempotencyKey}, ${payloadHash}
+          )
+          on conflict (workspace_id, order_id, idempotency_key) do nothing
+          returning id, decision_id, asset_ids, payload_hash, confirmed_by, confirmed_at
+        `;
+        const inserted = rows[0] !== undefined;
+        if (!rows[0]) {
+          rows = await shippingPhotoConfirmationByIdempotency(
+            transaction,
+            workspaceId,
+            orderId,
+            input.idempotencyKey,
+          );
+        }
+        const row = rows[0];
+        if (!row || row.payload_hash !== payloadHash) {
+          throw new RepositoryError(
+            "conflict",
+            "The photo confirmation idempotency key has another payload",
+          );
+        }
+        if (inserted) {
+          await insertAudit(
+            transaction,
+            workspaceId,
+            actor.identityId,
+            "shipping.photos.confirmed",
+            row.id,
+            ["order_id", "decision_id", "asset_ids"],
+            { confirmation: "absent" },
+            { orderId, assetCount: row.asset_ids.length },
+            "shipping_photo_set_human_confirmed",
+          );
+        }
+        return toShippingPhotoConfirmationResponse(orderId, row);
+      });
+    } catch (error) {
+      throw normalizeOrderError(error);
+    }
+  }
+
+  async recordSaleAmount(
+    workspaceId: string,
+    orderId: string,
+    actor: RequestActor,
+    input: RecordOrderSaleAmountRequest,
+  ): Promise<RecordOrderSaleAmountResponse> {
+    const payloadHash = hashPayload({ orderId, ...input, actorId: actor.identityId });
+    const operation = "order_sale_amount";
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId, actor.identityId);
+        await requireRole(transaction, workspaceId, actor.identityId, [
+          "owner",
+          "inventory_manager",
+        ]);
+        await transaction`select lock_current_shipping_workspace()`;
+        const replay = await transaction<
+          Array<{
+            payload_hash: string;
+            event_id: string;
+            amount_minor: number;
+            created_at: Date;
+          }>
+        >`
+          select record.payload_hash, event.id as event_id,
+                 event.amount_minor::integer as amount_minor, record.created_at
+          from idempotency_record record
+          join financial_event event
+            on event.workspace_id = record.workspace_id
+           and event.id = record.result_reference_id
+          where record.workspace_id = ${workspaceId}
+            and record.operation = ${operation}
+            and record.idempotency_key = ${input.idempotencyKey}
+        `;
+        if (replay[0]) {
+          if (replay[0].payload_hash !== payloadHash) {
+            throw new RepositoryError(
+              "conflict",
+              "The sale amount idempotency key has another payload",
+            );
+          }
+          return {
+            orderId,
+            financialEventId: replay[0].event_id,
+            saleAmountMinor: replay[0].amount_minor,
+            recordedBy: actor.identityId,
+            recordedAt: replay[0].created_at.toISOString(),
+          };
+        }
+        const mutableOrders = await transaction<Array<{ id: string }>>`
+          select id from sales_order
+          where workspace_id = ${workspaceId} and id = ${orderId}
+            and state in ('confirmed', 'picking', 'packed')
+          for update
+        `;
+        if (!mutableOrders[0]) {
+          throw new RepositoryError(
+            "conflict",
+            "Sale amount can only be recorded before the order is shipped or cancelled",
+          );
+        }
+        const existingSales = await transaction<Array<{ event_count: number }>>`
+          select count(*)::integer as event_count
+          from financial_event event
+          where event.workspace_id = ${workspaceId} and event.order_id = ${orderId}
+            and event.event_type = 'sale'
+        `;
+        if ((existingSales[0]?.event_count ?? 0) > 0) {
+          throw new RepositoryError(
+            "conflict",
+            "A sale amount already exists; use the accounting adjustment workflow",
+          );
+        }
+        const order = await requireOrderUnit(transaction, workspaceId, orderId);
+        const saleEventId = randomUUID();
+        await transaction`
+          insert into financial_event (
+            id, workspace_id, sku_id, order_id, event_type, amount_minor, currency,
+            tax_basis, bearer, source, source_meaning, rounding_rule_version,
+            source_already_net, occurred_at
+          ) values (
+            ${saleEventId}, ${workspaceId}, ${order.sku_id}, ${orderId}, 'sale',
+            ${input.saleAmountMinor}, 'JPY', ${input.taxBasis}, 'channel', 'manual',
+            ${input.sourceMeaning}, 'jpy-v1', false, ${input.occurredAt}
+          )
+        `;
+        const recorded = await transaction<Array<{ created_at: Date }>>`
+          insert into idempotency_record (
+            workspace_id, operation, idempotency_key, payload_hash, result_reference_id
+          ) values (
+            ${workspaceId}, ${operation}, ${input.idempotencyKey}, ${payloadHash}, ${saleEventId}
+          )
+          returning created_at
+        `;
+        const recordedAt = recorded[0]?.created_at;
+        if (!recordedAt)
+          throw new RepositoryError("database_error", "Sale amount was not recorded");
+        await insertAudit(
+          transaction,
+          workspaceId,
+          actor.identityId,
+          "order.sale_amount.recorded",
+          saleEventId,
+          ["order_id", "event_type", "amount_minor"],
+          { saleAmount: "missing" },
+          { saleAmount: "human_recorded" },
+          "sale_amount_human_confirmed",
+        );
+        return {
+          orderId,
+          financialEventId: saleEventId,
+          saleAmountMinor: input.saleAmountMinor,
+          recordedBy: actor.identityId,
+          recordedAt: recordedAt.toISOString(),
+        };
+      });
+    } catch (error) {
+      throw normalizeOrderError(error);
+    }
+  }
+
   async createAddressLease(
     workspaceId: string,
     orderId: string,
@@ -478,7 +1088,7 @@ export class PostgresOrderRepository implements OrderRepository {
     void input;
     try {
       return await this.sql.begin(async (transaction) => {
-        await setWorkspace(transaction, workspaceId);
+        await setWorkspace(transaction, workspaceId, actor.identityId);
         const role = await requireRole(transaction, workspaceId, actor.identityId, [
           "owner",
           "inventory_manager",
@@ -541,7 +1151,7 @@ export class PostgresOrderRepository implements OrderRepository {
   ): Promise<EncryptedAddressAccess> {
     try {
       return await this.sql.begin(async (transaction) => {
-        await setWorkspace(transaction, workspaceId);
+        await setWorkspace(transaction, workspaceId, actor.identityId);
         const role = await requireRole(transaction, workspaceId, actor.identityId, [
           "owner",
           "inventory_manager",
@@ -697,6 +1307,21 @@ export class PostgresOrderRepository implements OrderRepository {
           actor.identityId,
           input.addressLeaseId,
         );
+        const legacyPackedRecovery =
+          order.order_state === "packed" && order.inventory_status === "packed";
+        if (legacyPackedRecovery) {
+          if (!leaseActive) {
+            throw new RepositoryError(
+              "conflict",
+              "Pack recovery requires an active shipping address lease",
+            );
+          }
+          await transaction`
+            insert into packing_evidence (workspace_id, order_id)
+            values (${workspaceId}, ${orderId})
+          `;
+          return { state: "packed" as const, inventoryStatus: "packed" as const };
+        }
         const violations = validateOrderTransition({
           from: order.order_state,
           to: "packed",
@@ -710,13 +1335,9 @@ export class PostgresOrderRepository implements OrderRepository {
           throw new RepositoryError("conflict", `Pack rejected: ${violations.join(",")}`);
         }
         await transaction`
-        insert into packing_evidence (
-          workspace_id, order_id, evidence_reference_id, confirmed_by, confirmed_at
-        ) values (
-          ${workspaceId}, ${orderId}, ${input.packingEvidenceReferenceId},
-          ${actor.identityId}, ${input.confirmedAt}
-        )
-      `;
+          insert into packing_evidence (workspace_id, order_id)
+          values (${workspaceId}, ${orderId})
+        `;
         await transaction`
         update sales_order set state = 'packed'
         where workspace_id = ${workspaceId} and id = ${orderId}
@@ -766,9 +1387,17 @@ export class PostgresOrderRepository implements OrderRepository {
           throw new RepositoryError("conflict", `Ship rejected: ${violations.join(",")}`);
         }
         await transaction`
-        update sales_order set state = 'shipped'
-        where workspace_id = ${workspaceId} and id = ${orderId}
-      `;
+          insert into shipment_human_confirmation (
+            workspace_id, order_id, idempotency_key, payload_hash
+          ) values (
+            ${workspaceId}, ${orderId}, ${input.idempotencyKey},
+            ${hashPayload({ orderId, ...input, actorId: actor.identityId })}
+          )
+        `;
+        await transaction`
+          update sales_order set state = 'shipped'
+          where workspace_id = ${workspaceId} and id = ${orderId}
+        `;
         return { state: "shipped" as const, inventoryStatus: "shipped" as const };
       },
     );
@@ -926,7 +1555,7 @@ export class PostgresOrderRepository implements OrderRepository {
   ): Promise<FinancialSummaryResponse> {
     try {
       return await this.sql.begin(async (transaction) => {
-        await setWorkspace(transaction, workspaceId);
+        await setWorkspace(transaction, workspaceId, actor.identityId);
         await requireRole(transaction, workspaceId, actor.identityId, [
           "owner",
           "inventory_manager",
@@ -948,7 +1577,7 @@ export class PostgresOrderRepository implements OrderRepository {
   ): Promise<AccountingExportResponse> {
     try {
       return await this.sql.begin(async (transaction) => {
-        await setWorkspace(transaction, workspaceId);
+        await setWorkspace(transaction, workspaceId, actor.identityId);
         const role = await requireRole(transaction, workspaceId, actor.identityId, [
           "owner",
           "accounting",
@@ -1041,7 +1670,7 @@ export class PostgresOrderRepository implements OrderRepository {
   ): Promise<AccountingExportContent> {
     try {
       return await this.sql.begin(async (transaction) => {
-        await setWorkspace(transaction, workspaceId);
+        await setWorkspace(transaction, workspaceId, actor.identityId);
         await requireRole(transaction, workspaceId, actor.identityId, ["owner", "accounting"]);
         const rows = await transaction<
           Array<{ filename: "journal-candidates.csv"; csv_content: string; csv_sha256: string }>
@@ -1062,6 +1691,122 @@ export class PostgresOrderRepository implements OrderRepository {
     await this.sql.end({ timeout: 5 });
   }
 
+  private async recordShippingPhotoDecision(
+    workspaceId: string,
+    orderId: string,
+    actor: RequestActor,
+    expectedDecisionRevision: number | null,
+    idempotencyKey: string,
+    overrideChoice: "use_photos" | "skip_photos" | null,
+  ): Promise<ShippingPhotoPreflightResponse> {
+    const payloadHash = hashPayload({
+      orderId,
+      expectedDecisionRevision,
+      idempotencyKey,
+      overrideChoice,
+      humanConfirmed: true,
+      actorId: actor.identityId,
+    });
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId, actor.identityId);
+        const role = await requireRole(transaction, workspaceId, actor.identityId, [
+          "owner",
+          "inventory_manager",
+          "shipping",
+        ]);
+        await requireOrderAssignmentIfShipping(
+          transaction,
+          workspaceId,
+          orderId,
+          actor.identityId,
+          role,
+        );
+        await transaction`select lock_current_shipping_workspace()`;
+        const lockedOrders = await transaction<Array<{ id: string }>>`
+          select id from sales_order
+          where workspace_id = ${workspaceId} and id = ${orderId}
+          for update
+        `;
+        if (!lockedOrders[0]) {
+          throw new RepositoryError("forbidden", "The shipping order is unavailable");
+        }
+        const replay = await transaction<ShippingPhotoDecisionRow[]>`
+          select id, sale_basis_id, sale_amount_state, decision_reason, decision_state, photo_required,
+                 revision, supersedes_id, idempotency_key, payload_hash, decided_at
+          from order_shipping_photo_decision
+          where workspace_id = ${workspaceId} and order_id = ${orderId}
+            and idempotency_key = ${idempotencyKey}
+        `;
+        if (replay[0]) {
+          if (replay[0].payload_hash !== payloadHash) {
+            throw new RepositoryError(
+              "conflict",
+              "The shipping photo decision idempotency key has another payload",
+            );
+          }
+          return buildShippingPhotoPreflight(transaction, workspaceId, orderId);
+        }
+
+        const [current] = await currentShippingPhotoDecision(transaction, workspaceId, orderId);
+        if ((current?.revision ?? null) !== expectedDecisionRevision) {
+          throw new RepositoryError("conflict", "The shipping photo decision revision is stale");
+        }
+        let rows = await transaction<ShippingPhotoDecisionRow[]>`
+          insert into order_shipping_photo_decision (
+            workspace_id, order_id, sale_amount_state, decision_reason, override_choice,
+            decision_state, photo_required, revision, supersedes_id,
+            idempotency_key, payload_hash
+          ) values (
+            ${workspaceId}, ${orderId}, 'missing', 'policy_missing', ${overrideChoice},
+            'choice_required', null, ${(current?.revision ?? 0) + 1},
+            ${current?.id ?? null}, ${idempotencyKey}, ${payloadHash}
+          )
+          on conflict (workspace_id, order_id, idempotency_key) do nothing
+          returning id, sale_basis_id, sale_amount_state, decision_reason, decision_state, photo_required,
+                    revision, supersedes_id, idempotency_key, payload_hash, decided_at
+        `;
+        if (!rows[0]) {
+          rows = await transaction<ShippingPhotoDecisionRow[]>`
+            select id, sale_basis_id, sale_amount_state, decision_reason, decision_state, photo_required,
+                   revision, supersedes_id, idempotency_key, payload_hash, decided_at
+            from order_shipping_photo_decision
+            where workspace_id = ${workspaceId} and order_id = ${orderId}
+              and idempotency_key = ${idempotencyKey}
+          `;
+        }
+        const row = rows[0];
+        if (!row || row.payload_hash !== payloadHash) {
+          throw new RepositoryError(
+            "conflict",
+            "The shipping photo decision idempotency key has another payload",
+          );
+        }
+        await insertAudit(
+          transaction,
+          workspaceId,
+          actor.identityId,
+          "shipping.photo_preflight.decided",
+          row.id,
+          ["order_id", "decision_state", "photo_required", "revision"],
+          { revision: current?.revision ?? null },
+          {
+            orderId,
+            decisionState: row.decision_state,
+            photoRequired: row.photo_required,
+            revision: row.revision,
+          },
+          overrideChoice === null
+            ? "shipping_photo_policy_human_evaluated"
+            : "shipping_photo_override_human_confirmed",
+        );
+        return buildShippingPhotoPreflight(transaction, workspaceId, orderId);
+      });
+    } catch (error) {
+      throw normalizeOrderError(error);
+    }
+  }
+
   private async mutateOrder<T extends { idempotencyKey: string }>(
     workspaceId: string,
     orderId: string,
@@ -1076,7 +1821,7 @@ export class PostgresOrderRepository implements OrderRepository {
     const payloadHash = hashPayload(input);
     try {
       return await this.sql.begin(async (transaction) => {
-        await setWorkspace(transaction, workspaceId);
+        await setWorkspace(transaction, workspaceId, actor.identityId);
         const role = await requireRole(transaction, workspaceId, actor.identityId, [
           "owner",
           "inventory_manager",
@@ -1100,6 +1845,24 @@ export class PostgresOrderRepository implements OrderRepository {
           payloadHash,
         );
         if (replay) return replay;
+        if (operation === "pack" || operation === "ship") {
+          const lockedOrders = await transaction<Array<{ id: string }>>`
+            select id from sales_order
+            where workspace_id = ${workspaceId} and id = ${orderId}
+            for update
+          `;
+          if (!lockedOrders[0]) {
+            throw new RepositoryError("forbidden", "The allocated order is not available");
+          }
+          const lockedReplay = await operationReplay(
+            transaction,
+            workspaceId,
+            operation,
+            input.idempotencyKey,
+            payloadHash,
+          );
+          if (lockedReplay) return lockedReplay;
+        }
         const before = await requireOrderUnit(transaction, workspaceId, orderId);
         const result = await mutation(transaction, role);
         await insertOperationRecord(transaction, {
@@ -1111,7 +1874,14 @@ export class PostgresOrderRepository implements OrderRepository {
           state: result.state,
           inventoryStatus: result.inventoryStatus,
         });
-        if (operation === "pick" || operation === "pack" || operation === "ship") {
+        const packedRecovery =
+          operation === "pack" &&
+          before.order_state === "packed" &&
+          before.inventory_status === "packed";
+        if (
+          (operation === "pick" || operation === "pack" || operation === "ship") &&
+          !packedRecovery
+        ) {
           await advanceP0ForOrderOperation(
             transaction,
             workspaceId,
@@ -1139,7 +1909,7 @@ export class PostgresOrderRepository implements OrderRepository {
       if (error instanceof StaleOrderScanLabelError) {
         try {
           await this.sql.begin(async (transaction) => {
-            await setWorkspace(transaction, workspaceId);
+            await setWorkspace(transaction, workspaceId, actor.identityId);
             await requireRole(transaction, workspaceId, actor.identityId, [
               "owner",
               "inventory_manager",
@@ -1182,8 +1952,244 @@ export class PostgresOrderRepository implements OrderRepository {
   }
 }
 
-async function setWorkspace(sql: postgres.TransactionSql, workspaceId: string): Promise<void> {
+async function setWorkspace(
+  sql: postgres.TransactionSql,
+  workspaceId: string,
+  identityId: string,
+): Promise<void> {
   await sql`select set_config('app.workspace_id', ${workspaceId}, true)`;
+  await sql`select set_config('app.identity_id', ${identityId}, true)`;
+}
+
+function currentShippingPhotoPolicy(
+  sql: postgres.TransactionSql,
+  workspaceId: string,
+): Promise<ShippingPhotoPolicyRow[]> {
+  return sql<ShippingPhotoPolicyRow[]>`
+    select policy.id, policy.mode,
+           policy.high_value_threshold_minor::integer as high_value_threshold_minor,
+           policy.revision, policy.supersedes_id, policy.idempotency_key,
+           policy.payload_hash, policy.changed_by, policy.changed_at
+    from shipping_photo_policy_revision policy
+    where policy.workspace_id = ${workspaceId}
+      and not exists (
+        select 1 from shipping_photo_policy_revision successor
+        where successor.workspace_id = policy.workspace_id
+          and successor.supersedes_id = policy.id
+      )
+    order by policy.revision desc
+    limit 1
+  `;
+}
+
+function currentShippingPhotoDecision(
+  sql: postgres.TransactionSql,
+  workspaceId: string,
+  orderId: string,
+): Promise<ShippingPhotoDecisionRow[]> {
+  return sql<ShippingPhotoDecisionRow[]>`
+    select decision.id, decision.sale_basis_id, decision.sale_amount_state, decision.decision_reason,
+           decision.decision_state, decision.photo_required, decision.revision,
+           decision.supersedes_id, decision.idempotency_key, decision.payload_hash,
+           decision.decided_at
+    from order_shipping_photo_decision decision
+    where decision.workspace_id = ${workspaceId} and decision.order_id = ${orderId}
+      and not exists (
+        select 1 from order_shipping_photo_decision successor
+        where successor.workspace_id = decision.workspace_id
+          and successor.supersedes_id = decision.id
+      )
+    order by decision.revision desc
+    limit 1
+  `;
+}
+
+function shippingPhotoAssetByIdempotency(
+  sql: postgres.TransactionSql,
+  workspaceId: string,
+  orderId: string,
+  idempotencyKey: string,
+): Promise<ShippingPhotoAssetRow[]> {
+  return sql<ShippingPhotoAssetRow[]>`
+    select id, order_id, role, original_sha256, original_storage_key, mime_type,
+           size_bytes::integer as size_bytes, width, height, payload_hash,
+           captured_by, captured_at
+    from shipping_photo_asset
+    where workspace_id = ${workspaceId} and order_id = ${orderId}
+      and upload_idempotency_key = ${idempotencyKey}
+  `;
+}
+
+function shippingPhotoConfirmationByIdempotency(
+  sql: postgres.TransactionSql,
+  workspaceId: string,
+  orderId: string,
+  idempotencyKey: string,
+): Promise<ShippingPhotoConfirmationRow[]> {
+  return sql<ShippingPhotoConfirmationRow[]>`
+    select id, decision_id, asset_ids, payload_hash, confirmed_by, confirmed_at
+    from shipping_photo_confirmation
+    where workspace_id = ${workspaceId} and order_id = ${orderId}
+      and idempotency_key = ${idempotencyKey}
+  `;
+}
+
+function toShippingPhotoPolicyResponse(row: ShippingPhotoPolicyRow): ShippingPhotoPolicyResponse {
+  return {
+    policyRevisionId: row.id,
+    mode: row.mode,
+    highValueThresholdMinor: row.high_value_threshold_minor,
+    revision: row.revision,
+    supersedesRevisionId: row.supersedes_id,
+    changedBy: row.changed_by,
+    changedAt: row.changed_at.toISOString(),
+  };
+}
+
+function toShippingPhotoAssetResponse(row: ShippingPhotoAssetRow): ShippingPhotoAssetResponse {
+  return {
+    assetId: row.id,
+    orderId: row.order_id,
+    role: row.role,
+    mimeType: row.mime_type,
+    sizeBytes: row.size_bytes,
+    width: row.width,
+    height: row.height,
+    capturedBy: row.captured_by,
+    capturedAt: row.captured_at.toISOString(),
+  };
+}
+
+function toShippingPhotoConfirmationResponse(
+  orderId: string,
+  row: ShippingPhotoConfirmationRow,
+): ShippingPhotoConfirmationResponse {
+  return {
+    confirmationId: row.id,
+    orderId,
+    decisionRevisionId: row.decision_id,
+    assetIds: [...row.asset_ids],
+    confirmedBy: row.confirmed_by,
+    confirmedAt: row.confirmed_at.toISOString(),
+  };
+}
+
+async function buildShippingPhotoPreflight(
+  sql: postgres.TransactionSql,
+  workspaceId: string,
+  orderId: string,
+): Promise<ShippingPhotoPreflightResponse> {
+  const access = await sql<Array<{ allowed: boolean }>>`
+    select can_actor_access_shipping_order(${orderId}) as allowed
+  `;
+  if (!access[0]?.allowed) {
+    throw new RepositoryError("forbidden", "The shipping order is unavailable");
+  }
+  const orders = await sql<Array<{ created_at: Date }>>`
+    select created_at from sales_order
+    where workspace_id = ${workspaceId} and id = ${orderId}
+  `;
+  const order = orders[0];
+  if (!order) throw new RepositoryError("forbidden", "The shipping order is unavailable");
+
+  const [decision] = await currentShippingPhotoDecision(sql, workspaceId, orderId);
+  if (decision) {
+    const basisState = await sql<Array<{ current: boolean }>>`
+      select current_actor_shipping_sale_basis_is_current(
+        ${orderId}, ${decision.sale_basis_id}
+      ) as current
+    `;
+    if (!basisState[0]?.current) {
+      throw new RepositoryError(
+        "conflict",
+        "The shipping photo decision is out of date; review this order again",
+      );
+    }
+  }
+  const assets = await sql<ShippingPhotoAssetRow[]>`
+    select id, order_id, role, original_sha256, original_storage_key, mime_type,
+           size_bytes::integer as size_bytes, width, height, payload_hash,
+           captured_by, captured_at
+    from shipping_photo_asset
+    where workspace_id = ${workspaceId} and order_id = ${orderId}
+    order by captured_at, id
+  `;
+  const confirmations = decision
+    ? await sql<ShippingPhotoConfirmationRow[]>`
+        select id, decision_id, asset_ids, payload_hash, confirmed_by, confirmed_at
+        from shipping_photo_confirmation
+        where workspace_id = ${workspaceId} and order_id = ${orderId}
+          and decision_id = ${decision.id}
+        order by confirmed_at desc, id desc
+      `
+    : [];
+  const currentAssetIds = assets.map((asset) => asset.id).sort();
+  const exactConfirmation = confirmations.find((confirmation) =>
+    sameUuidList([...confirmation.asset_ids].sort(), currentAssetIds),
+  );
+  const packing = await sql<Array<{ confirmed_at: Date }>>`
+    select confirmed_at from packing_evidence
+    where workspace_id = ${workspaceId} and order_id = ${orderId} and server_confirmed
+  `;
+  const shipment = await sql<Array<{ confirmed_at: Date }>>`
+    select confirmed_at from shipment_human_confirmation
+    where workspace_id = ${workspaceId} and order_id = ${orderId}
+  `;
+  const sale = await sql<Array<{ present: boolean }>>`
+    select exists (
+      select 1 from financial_event event
+      where event.workspace_id = ${workspaceId} and event.order_id = ${orderId}
+        and event.event_type = 'sale' and event.reverses_event_id is null
+        and not exists (
+          select 1 from financial_event reversal
+          where reversal.workspace_id = event.workspace_id
+            and reversal.reverses_event_id = event.id
+        )
+    ) as present
+  `;
+
+  const hasBothRoles =
+    assets.some((asset) => asset.role === "product") &&
+    assets.some((asset) => asset.role === "packed_package");
+  const state: ShippingPhotoPreflightResponse["state"] =
+    !decision || decision.photo_required === null
+      ? "choice_required"
+      : decision.photo_required === false
+        ? "satisfied_without_photo"
+        : !hasBothRoles
+          ? "capture_required"
+          : exactConfirmation
+            ? "confirmed"
+            : "awaiting_confirmation";
+  const updateTimes = [
+    order.created_at,
+    decision?.decided_at,
+    ...assets.map((asset) => asset.captured_at),
+    exactConfirmation?.confirmed_at,
+    packing[0]?.confirmed_at,
+    shipment[0]?.confirmed_at,
+  ].filter((value): value is Date => value instanceof Date);
+  const updatedAt = new Date(Math.max(...updateTimes.map((value) => value.getTime())));
+
+  return {
+    orderId,
+    decisionRevisionId: decision?.id ?? null,
+    decisionRevision: decision?.revision ?? null,
+    state,
+    photoRequired: decision?.photo_required ?? null,
+    decisionReason: decision?.decision_reason ?? null,
+    saleAmountStatus: decision?.sale_amount_state ?? (sale[0]?.present ? "present" : "missing"),
+    assets: assets.map(toShippingPhotoAssetResponse),
+    confirmedAssetIds: exactConfirmation ? [...exactConfirmation.asset_ids] : [],
+    photoConfirmationId: exactConfirmation?.id ?? null,
+    packingHumanConfirmed: Boolean(packing[0]),
+    shipmentHumanConfirmed: Boolean(shipment[0]),
+    updatedAt: updatedAt.toISOString(),
+  };
+}
+
+function sameUuidList(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 async function requireRole(
@@ -1693,6 +2699,9 @@ function normalizeOrderError(error: unknown): RepositoryError {
     typeof error === "object" && error !== null && "code" in error ? String(error.code) : "";
   if (["23505", "23514", "23P01", "40001"].includes(code)) {
     return new RepositoryError("conflict", "The order operation conflicted with current data");
+  }
+  if (code === "42501") {
+    return new RepositoryError("forbidden", "The actor cannot access this shipping order");
   }
   return new RepositoryError("database_error", "The order operation failed safely");
 }

@@ -170,5 +170,25 @@ Claude Codeの `claude/opus-spec-audit-proposals` を現main、既存仕様、�
 - freshは34 migration、53-table RLS、2独立接続の実Lock競合をPASS。競合は成功1／SQLSTATE 23505拒否1、最新chain 1本。upgradeは既存SKU/media/pilot/finance/export bytes/hash/auditの不変をPASS。
 - root checkは34 files / 253 tests、coverage 84.66 / 80.56 / 100 / 90.68、format/lint/typecheck、API/Web build 86 routesをPASS。
 - 実装していない別Sol maxの最終reviewはCritical 0 / High 0 / Medium 0 / Low 0。P12-A PASS、P12-B technical gate GO。
-- 次の停止条件: 6商品種類の具体的な必須／任意項目が承認資料で未確定。`docs/implementation/p12-product-template-proposal-v1.md`の推奨A／代替Bとパンツ／スカート分岐を利用者が確認するまで、0035、seed、API、Webを書かない。
+- 次の停止条件: 6商品種類の具体的な必須／任意項目が承認資料で未確定。`docs/implementation/p12-product-template-proposal-v1.md`の推奨A／代替Bとパンツ／スカート分岐を利用者が確認するまで、P12-Bの0036、seed、API、Webを書かない。
 - Draft PR #9は引き続きOPEN/Draft。ready化、merge、本番公開、有料サービス、外部APIは行わない。
+
+## 2026-08-29 P13設計GO・0035先行割当
+
+- 承認済みPC08と全ページ忠実再現指示を再照合し、初回UIは`高額商品だけ撮る`を推奨選択、金額目安は空欄、写真使用時は商品写真と梱包後写真を各1枚以上と固定した。架空の30,000円は保存しない。
+- 現行の販売額必須、ランダムUUIDの梱包証拠、写真policyなし、workspaceだけのmedia RLSとの差を別Sol maxが重大と判定した。
+- P13-Aは`docs/implementation/p13-shipping-photo-contract-v1.md`を正本に、Sol maxの唯一writerが新規0035、contracts/API/DB/Storage、nullable販売額、権限・状態・競合を実装する。
+- 未作成・未適用の0035はP13へ割り当てる。P12-Bは0036候補へ機械的に移すだけで、利用者確認まで項目、seed、API、Webを実装しない。
+- P13-Aのfresh/upgrade PostgreSQL、全check、独立Sol reviewが合格するまでP13-B Webへ進まない。PR merge、本番公開、外部送信、有料serviceは行わない。
+
+## 2026-08-30 P13-A実装・検証完了
+
+- `0035_shipping_preflight_photo.sql`、contracts、order repository/API、private local storage、nullable販売額、Web既存callerのpack/ship request契約を実装した。承認済み静的review routeと見た目は変更していない。
+- policyは`high_value_only / all / disabled`。初期30,000円を保存せず、販売額欠損は0円にせず、商品写真・梱包後写真、写真確認、梱包確認、発送確認を分離した。
+- decision basisは有効saleの正確なUUID集合・合計・hashを追記保存する。後のsale/reversalで古くなった判断はpack/shipを止め、販売額・目安額・basis IDをshipping応答へ出さない。
+- 写真upload・確認、decision、pack、shipの同時再送を実Lock競合で確認し、同一内容は同一結果、異内容は拒否、業務行・監査・workflow副作用は各1件だけとした。
+- 旧版ですでに`packed`の未発送注文は、旧梱包行を自動昇格・変更せず、人の再確認を新しいserver行として追記して発送できる。旧行false1・新行true1を部分一意で固定する。
+- fresh: `resale_p13_fresh_20260830f`、35 migration、64 public tables、`npm.cmd run test:postgres` PASS。upgrade: `resale_p13_upgrade_20260830d`、空DBから0001〜0035、`npm.cmd run test:postgres-upgrade` PASS。途中B/Cは0035前fixture不備で停止し、再利用せずDで再実行した。
+- final check: 35 files / 271 tests、format/lint/typecheck、API/Web build、Next 86 routes PASS。別Sol maxはCritical/High/Medium/Low 0、P13-A PASS、P13-B GO。
+- 次は`gpt-5.6-terra` / `high`でP13-Bの実運用Webだけを接続する。静的approved route、DB/権限/金額契約を変更しない。390/768/1440、keyboard、44px、loading/empty/error/retry、外部request 0を確認する。
+- AC-066／TA-047全体はP13-Bと実iPhone確認が残るためpartial。P12-B/Cは利用者2項目確認待ち、P14も未実装。PR #9はDraftのまま、merge・本番公開・外部送信・課金なし。

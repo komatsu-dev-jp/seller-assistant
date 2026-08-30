@@ -1,6 +1,11 @@
 "use client";
 
-import type { OrderOperationResponse, ShippingTaskResponse } from "@resale/contracts";
+import type {
+  OrderOperationResponse,
+  PackOrderRequest,
+  ShipOrderRequest,
+  ShippingTaskResponse,
+} from "@resale/contracts";
 import { useCallback, useEffect, useState } from "react";
 
 import { LogoutButton } from "./logout-button";
@@ -122,12 +127,10 @@ export function ShippingWorkspace({ workspaceId }: { workspaceId: string }) {
           {
             method: "POST",
             body: JSON.stringify({
-              packingEvidenceReferenceId: crypto.randomUUID(),
               addressLeaseId: activeLease,
-              confirmedAt: new Date().toISOString(),
               idempotencyKey: crypto.randomUUID(),
               humanConfirmed: true,
-            }),
+            } satisfies PackOrderRequest),
           },
         );
       } else {
@@ -137,10 +140,9 @@ export function ShippingWorkspace({ workspaceId }: { workspaceId: string }) {
             method: "POST",
             body: JSON.stringify({
               addressLeaseId: activeLease,
-              shippedAt: new Date().toISOString(),
               idempotencyKey: crypto.randomUUID(),
               humanConfirmed: true,
-            }),
+            } satisfies ShipOrderRequest),
           },
         );
       }

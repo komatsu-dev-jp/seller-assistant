@@ -61,7 +61,7 @@
 - 技術gate: GO。写真の具体的項目`shot_key`と既存5分類`role`を分離し、承認済みmobile20、写真v6、PC13を同時に維持する。
 - 製品gate: 利用者確認待ち。PC13は6種類の件数だけを固定しており、具体的な検品・撮影・採寸項目と必須／任意を確定していない。
 - 確認資料: `docs/implementation/p12-product-template-proposal-v1.md`。推奨A／代替Bと、パンツ／スカートを別テンプレートへ分けるかの2点だけを確認する。
-- 停止条件: 利用者確認前に0035 migration、初期データ、API、実運用画面へ提案値を書き込まない。静的review routeの見た目を変更しない。
+- 停止条件: 利用者確認前に0036 migration、初期データ、API、実運用画面へ提案値を書き込まない。0035は承認済みP13へ割り当て、静的review routeの見た目を変更しない。
 
 ## P13 選択式の発送前写真
 
@@ -69,6 +69,9 @@
 - 設計/実装: Sol max。Web表示だけの分離後にTerra highを使える。
 - 合格: 3設定、高額目安、金額未入力時の人の選択、写真非公開、外部送信0、写真だけの発送確定0。
 - 検証: contracts/API/DB/Storage/権限/金額欠損/再送/監査/Web。
+- 製品gate: GO。承認済みPC08から、初回UIは`高額商品だけ撮る`を推奨選択、金額目安は空欄で人が保存するまでpolicyなし、写真使用時は商品写真と梱包後写真を各1枚以上と固定する。
+- 技術契約: `p13-shipping-photo-contract-v1.md`。P13-Aは新規0035、contracts/API/DB/StorageをSol max、P13-Bの実運用Webはbackend凍結後にTerra high、最終確認は別Sol maxとする。
+- 変更禁止: P12-Bの商品項目、既存0034以前のmigration、静的approved review route、外部送信、販売額の0円補完、写真だけのpack/ship。
 
 ## P14 本人操作支援と用語整合
 

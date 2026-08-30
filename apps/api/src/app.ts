@@ -17,6 +17,7 @@ import {
   advanceP0WorkflowRequestSchema,
   captureSummarySchema,
   captureTaskResponseSchema,
+  confirmShippingPhotosRequestSchema,
   confirmIdentityCandidateRequestSchema,
   confirmProductAttributesRequestSchema,
   confirmAccountingImportRequestSchema,
@@ -37,6 +38,7 @@ import {
   discrepancyChallengeResponseSchema,
   discrepancyEvidenceListItemSchema,
   discrepancyEvidenceResponseSchema,
+  evaluateShippingPhotoPreflightRequestSchema,
   inspectReturnRequestSchema,
   inventorySummarySchema,
   ownerPulseResponseSchema,
@@ -48,6 +50,7 @@ import {
   marketplaceReferenceResponseSchema,
   orderOperationResponseSchema,
   orderAssignmentResponseSchema,
+  overrideShippingPhotoDecisionRequestSchema,
   packOrderRequestSchema,
   pickOrderRequestSchema,
   p0WorkflowResponseSchema,
@@ -65,6 +68,8 @@ import {
   invalidatePilotRunRequestSchema,
   recordPilotExceptionRequestSchema,
   recordMeasurementRequestSchema,
+  recordOrderSaleAmountRequestSchema,
+  recordOrderSaleAmountResponseSchema,
   reviewLocationPhotoRequestSchema,
   revokeTeamAssignmentRequestSchema,
   resolveStocktakeDiscrepancyRequestSchema,
@@ -72,6 +77,10 @@ import {
   returnOrderRequestSchema,
   sessionContextResponseSchema,
   shippingAddressResponseSchema,
+  shippingPhotoAssetResponseSchema,
+  shippingPhotoConfirmationResponseSchema,
+  shippingPhotoPolicyResponseSchema,
+  shippingPhotoPreflightResponseSchema,
   shippingTaskResponseSchema,
   shipOrderRequestSchema,
   skuResponseSchema,
@@ -83,9 +92,11 @@ import {
   teamMemberResponseSchema,
   teamStateResponseSchema,
   updateAccountingProfileRequestSchema,
+  updateShippingPhotoPolicyRequestSchema,
   uploadLocationPhotoQuerySchema,
   uploadDiscrepancyEvidenceQuerySchema,
   uploadProductMediaQuerySchema,
+  uploadShippingPhotoQuerySchema,
   versionedAccountingExportResponseSchema,
   workspaceIdSchema,
   type ApiError,
@@ -995,6 +1006,352 @@ export function buildApp(options: BuildAppOptions = {}) {
         input.data,
       );
       return reply.code(201).send(orderAssignmentResponseSchema.parse(result));
+    } catch (error) {
+      const mapped = mapRepositoryError(error, request.id);
+      return reply.code(mapped.status).send(mapped.payload);
+    }
+  });
+
+  app.get<{
+    Params: { workspaceId: string };
+    Reply: ReturnType<typeof shippingPhotoPolicyResponseSchema.parse> | ApiError | undefined;
+  }>("/v1/workspaces/:workspaceId/shipping-photo-policy", async (request, reply) => {
+    const context = await workspaceRequestContext(
+      request.params.workspaceId,
+      request.headers,
+      request.id,
+      authenticate,
+    );
+    if (context.error) return reply.code(context.status).send(context.error);
+    if (!options.orderRepository) {
+      return reply.code(503).send(orderServiceUnavailable(request.id));
+    }
+    try {
+      const result = await options.orderRepository.shippingPhotoPolicy(
+        context.workspaceId,
+        context.actor,
+      );
+      if (!result) {
+        return reply.header("cache-control", "private, no-store").code(204).send(undefined);
+      }
+      return reply
+        .header("cache-control", "private, no-store")
+        .send(shippingPhotoPolicyResponseSchema.parse(result));
+    } catch (error) {
+      const mapped = mapRepositoryError(error, request.id);
+      return reply.code(mapped.status).send(mapped.payload);
+    }
+  });
+
+  app.put<{
+    Params: { workspaceId: string };
+    Body: unknown;
+    Reply: ReturnType<typeof shippingPhotoPolicyResponseSchema.parse> | ApiError;
+  }>("/v1/workspaces/:workspaceId/shipping-photo-policy", async (request, reply) => {
+    const context = await workspaceRequestContext(
+      request.params.workspaceId,
+      request.headers,
+      request.id,
+      authenticate,
+    );
+    const input = updateShippingPhotoPolicyRequestSchema.safeParse(request.body);
+    if (context.error) return reply.code(context.status).send(context.error);
+    if (!input.success) return reply.code(400).send(invalidOrderInput(request.id));
+    if (!options.orderRepository) {
+      return reply.code(503).send(orderServiceUnavailable(request.id));
+    }
+    try {
+      const result = await options.orderRepository.updateShippingPhotoPolicy(
+        context.workspaceId,
+        context.actor,
+        input.data,
+      );
+      return reply.send(shippingPhotoPolicyResponseSchema.parse(result));
+    } catch (error) {
+      const mapped = mapRepositoryError(error, request.id);
+      return reply.code(mapped.status).send(mapped.payload);
+    }
+  });
+
+  app.get<{
+    Params: { workspaceId: string; orderId: string };
+    Reply: ReturnType<typeof shippingPhotoPreflightResponseSchema.parse> | ApiError;
+  }>(
+    "/v1/workspaces/:workspaceId/orders/:orderId/shipping-photo-preflight",
+    async (request, reply) => {
+      const context = await orderRequestContext(
+        request.params,
+        request.headers,
+        request.id,
+        authenticate,
+      );
+      if (context.error) return reply.code(context.status).send(context.error);
+      if (!options.orderRepository) {
+        return reply.code(503).send(orderServiceUnavailable(request.id));
+      }
+      try {
+        const result = await options.orderRepository.shippingPhotoPreflight(
+          context.workspaceId,
+          context.orderId,
+          context.actor,
+        );
+        return reply
+          .header("cache-control", "private, no-store")
+          .send(shippingPhotoPreflightResponseSchema.parse(result));
+      } catch (error) {
+        const mapped = mapRepositoryError(error, request.id);
+        return reply.code(mapped.status).send(mapped.payload);
+      }
+    },
+  );
+
+  app.post<{
+    Params: { workspaceId: string; orderId: string };
+    Body: unknown;
+    Reply: ReturnType<typeof shippingPhotoPreflightResponseSchema.parse> | ApiError;
+  }>(
+    "/v1/workspaces/:workspaceId/orders/:orderId/shipping-photo-preflight",
+    async (request, reply) => {
+      const context = await orderRequestContext(
+        request.params,
+        request.headers,
+        request.id,
+        authenticate,
+      );
+      const input = evaluateShippingPhotoPreflightRequestSchema.safeParse(request.body);
+      if (context.error) return reply.code(context.status).send(context.error);
+      if (!input.success) return reply.code(400).send(invalidOrderInput(request.id));
+      if (!options.orderRepository) {
+        return reply.code(503).send(orderServiceUnavailable(request.id));
+      }
+      try {
+        const result = await options.orderRepository.evaluateShippingPhotoPreflight(
+          context.workspaceId,
+          context.orderId,
+          context.actor,
+          input.data,
+        );
+        return reply.send(shippingPhotoPreflightResponseSchema.parse(result));
+      } catch (error) {
+        const mapped = mapRepositoryError(error, request.id);
+        return reply.code(mapped.status).send(mapped.payload);
+      }
+    },
+  );
+
+  app.post<{
+    Params: { workspaceId: string; orderId: string };
+    Body: unknown;
+    Reply: ReturnType<typeof shippingPhotoPreflightResponseSchema.parse> | ApiError;
+  }>(
+    "/v1/workspaces/:workspaceId/orders/:orderId/shipping-photo-override",
+    async (request, reply) => {
+      const context = await orderRequestContext(
+        request.params,
+        request.headers,
+        request.id,
+        authenticate,
+      );
+      const input = overrideShippingPhotoDecisionRequestSchema.safeParse(request.body);
+      if (context.error) return reply.code(context.status).send(context.error);
+      if (!input.success) return reply.code(400).send(invalidOrderInput(request.id));
+      if (!options.orderRepository) {
+        return reply.code(503).send(orderServiceUnavailable(request.id));
+      }
+      try {
+        const result = await options.orderRepository.overrideShippingPhotoDecision(
+          context.workspaceId,
+          context.orderId,
+          context.actor,
+          input.data,
+        );
+        return reply.send(shippingPhotoPreflightResponseSchema.parse(result));
+      } catch (error) {
+        const mapped = mapRepositoryError(error, request.id);
+        return reply.code(mapped.status).send(mapped.payload);
+      }
+    },
+  );
+
+  app.post<{
+    Params: { workspaceId: string; orderId: string };
+    Querystring: unknown;
+    Body: Buffer;
+    Reply: ReturnType<typeof shippingPhotoAssetResponseSchema.parse> | ApiError;
+  }>("/v1/workspaces/:workspaceId/orders/:orderId/shipping-photos", async (request, reply) => {
+    const context = await orderRequestContext(
+      request.params,
+      request.headers,
+      request.id,
+      authenticate,
+    );
+    const query = uploadShippingPhotoQuerySchema.safeParse(request.query);
+    if (context.error) return reply.code(context.status).send(context.error);
+    if (!query.success || !Buffer.isBuffer(request.body)) {
+      return reply.code(400).send(mediaInputError(request.id));
+    }
+    if (!options.orderRepository) {
+      return reply.code(503).send(orderServiceUnavailable(request.id));
+    }
+    if (!options.mediaStore) return reply.code(503).send(mediaStoreUnavailable(request.id));
+
+    let inspected: ReturnType<typeof inspectImage>;
+    try {
+      inspected = inspectImage(request.body);
+    } catch {
+      return reply.code(400).send(mediaInputError(request.id));
+    }
+    const assetId = randomUUID();
+    const extension = inspected.mimeType === "image/jpeg" ? "jpg" : "png";
+    const storageKey = `workspaces/${context.workspaceId}/originals/shipping-${context.orderId}-${assetId}.${extension}`;
+    let stored: Awaited<ReturnType<PrivateMediaStore["saveOriginal"]>>;
+    try {
+      stored = await options.mediaStore.saveOriginal(storageKey, request.body);
+    } catch {
+      return reply.code(503).send(mediaStoreUnavailable(request.id));
+    }
+    let result: Awaited<ReturnType<OrderRepository["registerShippingPhoto"]>>;
+    try {
+      result = await options.orderRepository.registerShippingPhoto(
+        context.workspaceId,
+        context.orderId,
+        context.actor,
+        {
+          assetId,
+          role: query.data.role,
+          mimeType: inspected.mimeType,
+          sizeBytes: stored.sizeBytes,
+          width: inspected.width,
+          height: inspected.height,
+          sha256: stored.sha256,
+          storageKey: stored.storageKey,
+          idempotencyKey: query.data.idempotencyKey,
+        },
+      );
+    } catch (error) {
+      if (stored.created) await options.mediaStore.removeOriginal(stored.storageKey, stored.sha256);
+      if (error instanceof RepositoryError) {
+        const mapped = mapRepositoryError(error, request.id);
+        return reply.code(mapped.status).send(mapped.payload);
+      }
+      return reply.code(503).send(mediaStoreUnavailable(request.id));
+    }
+    if (result.assetId !== assetId && stored.created) {
+      await options.mediaStore.removeOriginal(stored.storageKey, stored.sha256);
+    }
+    return reply.code(201).send(shippingPhotoAssetResponseSchema.parse(result));
+  });
+
+  app.get<{
+    Params: { workspaceId: string; orderId: string; assetId: string };
+  }>(
+    "/v1/workspaces/:workspaceId/orders/:orderId/shipping-photos/:assetId/content",
+    async (request, reply) => {
+      const context = await orderRequestContext(
+        request.params,
+        request.headers,
+        request.id,
+        authenticate,
+      );
+      const asset = workspaceIdSchema.safeParse(request.params.assetId);
+      if (context.error) return reply.code(context.status).send(context.error);
+      if (!asset.success) return reply.code(400).send(invalidOrderInput(request.id));
+      if (!options.orderRepository) {
+        return reply.code(503).send(orderServiceUnavailable(request.id));
+      }
+      if (!options.mediaStore) return reply.code(503).send(mediaStoreUnavailable(request.id));
+      try {
+        const stored = await options.orderRepository.readShippingPhoto(
+          context.workspaceId,
+          context.orderId,
+          asset.data,
+          context.actor,
+        );
+        const sanitized = await options.mediaStore.readSanitizedOriginal({
+          storageKey: stored.storageKey,
+          expectedSha256: stored.sha256,
+          expectedMimeType: stored.mimeType,
+          expectedSizeBytes: stored.sizeBytes,
+          expectedWidth: stored.width,
+          expectedHeight: stored.height,
+        });
+        return reply
+          .header("content-type", stored.mimeType)
+          .header("content-length", String(sanitized.length))
+          .header("content-disposition", "inline")
+          .header("cache-control", "private, no-store")
+          .header("pragma", "no-cache")
+          .header("x-content-type-options", "nosniff")
+          .send(sanitized);
+      } catch (error) {
+        if (error instanceof RepositoryError) {
+          const mapped = mapRepositoryError(error, request.id);
+          return reply.code(mapped.status).send(mapped.payload);
+        }
+        return reply.code(503).send(mediaStoreUnavailable(request.id));
+      }
+    },
+  );
+
+  app.post<{
+    Params: { workspaceId: string; orderId: string };
+    Body: unknown;
+    Reply: ReturnType<typeof shippingPhotoConfirmationResponseSchema.parse> | ApiError;
+  }>(
+    "/v1/workspaces/:workspaceId/orders/:orderId/shipping-photo-confirmations",
+    async (request, reply) => {
+      const context = await orderRequestContext(
+        request.params,
+        request.headers,
+        request.id,
+        authenticate,
+      );
+      const input = confirmShippingPhotosRequestSchema.safeParse(request.body);
+      if (context.error) return reply.code(context.status).send(context.error);
+      if (!input.success) return reply.code(400).send(invalidOrderInput(request.id));
+      if (!options.orderRepository) {
+        return reply.code(503).send(orderServiceUnavailable(request.id));
+      }
+      try {
+        const result = await options.orderRepository.confirmShippingPhotos(
+          context.workspaceId,
+          context.orderId,
+          context.actor,
+          input.data,
+        );
+        return reply.code(201).send(shippingPhotoConfirmationResponseSchema.parse(result));
+      } catch (error) {
+        const mapped = mapRepositoryError(error, request.id);
+        return reply.code(mapped.status).send(mapped.payload);
+      }
+    },
+  );
+
+  app.post<{
+    Params: { workspaceId: string; orderId: string };
+    Body: unknown;
+    Reply: ReturnType<typeof recordOrderSaleAmountResponseSchema.parse> | ApiError;
+  }>("/v1/workspaces/:workspaceId/orders/:orderId/sale-amount", async (request, reply) => {
+    const context = await orderRequestContext(
+      request.params,
+      request.headers,
+      request.id,
+      authenticate,
+    );
+    const input = recordOrderSaleAmountRequestSchema.safeParse(request.body);
+    if (context.error) return reply.code(context.status).send(context.error);
+    if (!input.success) return reply.code(400).send(invalidOrderInput(request.id));
+    if (!options.orderRepository) {
+      return reply.code(503).send(orderServiceUnavailable(request.id));
+    }
+    try {
+      const result = await options.orderRepository.recordSaleAmount(
+        context.workspaceId,
+        context.orderId,
+        context.actor,
+        input.data,
+      );
+      return reply.code(201).send(recordOrderSaleAmountResponseSchema.parse(result));
     } catch (error) {
       const mapped = mapRepositoryError(error, request.id);
       return reply.code(mapped.status).send(mapped.payload);

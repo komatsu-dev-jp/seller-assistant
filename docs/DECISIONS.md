@@ -415,6 +415,27 @@ APIキー、トークン、個人情報、生ログ、会話全文、一時的�
 - Context: mobile20はシャツ8撮影、写真v6は5分類、PC13は6商品種類ごとの件数を示すが、具体的な安定keyと必須／任意を確定していない。
 - Decision or rule: 襟・袖口・裾等の具体的な撮影完了は`shot_key`、既存保存・一覧互換は`front / back / brand_tag / care_label / flaw`のroleで別管理する。パンツとスカートは承認済みの入口を共通に保ち、利用者が確認した場合だけ内部templateを分ける。
 - Why: 8撮影を5分類へ潰して撮り忘れを見逃すこと、既存pilotの4写真契約を壊すこと、件数だけを根拠に項目を推測することを避けるため。
-- Applies to: P12-Bの0035候補、商品種類template、写真完了判定、P12-Cの残り件数
+- Applies to: P12-Bの0036候補、商品種類template、写真完了判定、P12-Cの残り件数
 - Verification: Luna maxの棚卸しで6種類を未確認のまま安全にseedできないと判定し、Sol maxが承認用2案を`p12-product-template-proposal-v1.md`へ分離した。
-- Follow-up: 利用者が推奨A／代替Bとパンツ／スカート分岐を確認するまで、0035、seed、API、Webを書かない。
+- Follow-up: 利用者が推奨A／代替Bとパンツ／スカート分岐を確認するまで、0036、seed、API、Webを書かない。
+
+### 2026-08-29 — 発送前写真を商品・梱包後各1枚とし、P13を0035へ先行割当する
+
+- Type: decision
+- Context: 承認済みPC08は`高額商品だけ撮る`を選択表示し、商品写真と梱包写真を別カードで示す。30,000円は架空例である。現行実装は販売額必須かつランダムUUIDを梱包証拠として送るため、承認仕様へ接続できない。
+- Decision or rule: 初回UIは`高額商品だけ撮る`を推奨選択するが、正の目安額を人が保存するまでDB policyを作らない。写真を使う注文は商品写真と梱包後写真を各1枚以上必要とする。写真確認、梱包確認、発送確認を別記録にし、写真だけで状態を進めない。
+- Access rule: policy変更はownerだけ。shipping担当は有効な注文割当の工程状態と写真だけを扱い、販売額、目安額、原価、利益、税務情報を取得しない。
+- Migration: 未作成・未適用の0035をP13へ割り当てる。P12-Bは未承認のまま0036候補へ移し、商品項目、seed、API、Webを実装しない。0034以前は編集しない。
+- Verification: AC-066、TA-047、PC08、selected direction、現行contracts/order/media実装をSol maxが読み取り監査し、残る利用者質問0件と判定した。
+- Applies to: `p13-shipping-photo-contract-v1.md`、P13-A/B、P12-Bの採番だけ。
+- Follow-up: P13-AをSol maxが実装し、fresh/upgrade PostgreSQL、独立接続の競合、全check、別Sol reviewを合格してからWeb接続へ進む。
+
+### 2026-08-30 — P13-Aを合格とし、旧梱包記録を保持した再確認経路でP13-Bへ進む
+
+- Type: implementation and migration gate
+- Context: 発送前写真のpolicy、販売額欠損、非公開写真、写真・梱包・発送の別確認を実装した後、並行再送の監査重複と、更新前から`packed`だった注文が発送不能になる経路を独立reviewで検出した。
+- Decision or rule: 写真upload・確認・pack・ship・decisionの同一内容再送は、DB lock後に既存結果を返し、業務行・監査・操作記録を各1件だけにする。更新前の梱包記録は`server_confirmed=false`のまま変更・自動昇格せず、`packed`かつ旧行あり・server確認なしの場合だけ、人が有効な住所表示許可と満たされた写真判定を確認して新しいserver梱包行を1件追記できる。
+- Safety boundary: 販売額を0円補完しない。shipping担当へ販売額、目安額、原価、利益、税務情報、private storage keyを返さない。写真だけで注文状態を進めず、外部送信、課金、本番公開、PR mergeを行わない。
+- Verification: 新規fresh DBへ35 migrationを適用した`test:postgres`、新規upgrade DBの0001〜0035、35 files / 271 testsのfull check、別接続の実Lock競合をPASS。別Sol maxはCritical 0 / High 0 / Medium 0 / Low 0、P13-A PASS、P13-B GOと判定した。
+- Applies to: migration `0035`、P13 contracts/API/storage、pack/ship、旧packed注文の更新互換、P13-B Web gate。
+- Follow-up: P13-BはTerra highへ限定し、静的approved review routeを変更せず、390/768/1440、keyboard、44px、loading/empty/error/retry、外部request 0を確認する。AC-066／TA-047全体はP13-Bと実iPhone確認までpartialとする。

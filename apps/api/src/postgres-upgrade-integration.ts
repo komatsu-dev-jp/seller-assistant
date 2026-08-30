@@ -20,7 +20,7 @@ const legacyMigrations = migrationNames.filter((name) => Number(name.slice(0, 4)
 const upgradeMigrations = migrationNames.filter((name) => Number(name.slice(0, 4)) > 14);
 assert.ok(legacyMigrations.length > 0, "Legacy migrations must be present");
 assert.deepEqual(
-  upgradeMigrations.slice(-14).map((name) => name.slice(0, 4)),
+  upgradeMigrations.slice(-15).map((name) => name.slice(0, 4)),
   [
     "0021",
     "0022",
@@ -36,6 +36,7 @@ assert.deepEqual(
     "0032",
     "0033",
     "0034",
+    "0035",
   ],
   "The upgrade fixture must include the revised-A migrations",
 );
@@ -51,6 +52,7 @@ const pilotMigrationVersionAlignmentMigration = upgradeMigrations.find((name) =>
 );
 const listingPrepPilotV11Migration = upgradeMigrations.find((name) => name.startsWith("0033_"));
 const inspectionConcernMigration = upgradeMigrations.find((name) => name.startsWith("0034_"));
+const shippingPhotoPreflightMigration = upgradeMigrations.find((name) => name.startsWith("0035_"));
 assert.ok(modeAwareApprovalMigration, "Migration 0027 must be present");
 assert.ok(completeApprovalMigration, "Migration 0028 must be present");
 assert.ok(safeMappingReplacementMigration, "Migration 0029 must be present");
@@ -59,6 +61,7 @@ assert.ok(restoreActorMovementSnapshotMigration, "Migration 0031 must be present
 assert.ok(pilotMigrationVersionAlignmentMigration, "Migration 0032 must be present");
 assert.ok(listingPrepPilotV11Migration, "Migration 0033 must be present");
 assert.ok(inspectionConcernMigration, "Migration 0034 must be present");
+assert.ok(shippingPhotoPreflightMigration, "Migration 0035 must be present");
 const upgradesBeforeApprovalRepair = upgradeMigrations.filter(
   (name) => Number(name.slice(0, 4)) < 27,
 );
@@ -97,6 +100,7 @@ try {
     discrepancyAudit: "00000000-0000-4000-8000-000000000113",
     mappingRule: "00000000-0000-4000-8000-000000000114",
     financialEvent: "00000000-0000-4000-8000-000000000115",
+    financialEventSecond: "00000000-0000-4000-8000-000000000129",
     journalCandidate: "00000000-0000-4000-8000-000000000116",
     exportBatch: "00000000-0000-4000-8000-000000000117",
     accountingAudit: "00000000-0000-4000-8000-000000000118",
@@ -104,6 +108,13 @@ try {
     historicalPilotRun: "00000000-0000-4000-8000-000000000120",
     currentPilotRun: "00000000-0000-4000-8000-000000000121",
     currentPilotV11Run: "00000000-0000-4000-8000-000000000123",
+    packingEvidence: "00000000-0000-4000-8000-000000000127",
+    packedRecoverySku: "00000000-0000-4000-8000-000000000130",
+    packedRecoveryLocation: "00000000-0000-4000-8000-000000000131",
+    packedRecoveryInventory: "00000000-0000-4000-8000-000000000132",
+    packedRecoveryOrder: "00000000-0000-4000-8000-000000000133",
+    packedRecoveryEvidence: "00000000-0000-4000-8000-000000000134",
+    packedRecoveryReference: "00000000-0000-4000-8000-000000000135",
   } as const;
 
   await sql.begin(async (transaction) => {
@@ -142,6 +153,37 @@ try {
       insert into inventory_unit (
         id, workspace_id, sku_id, inventory_number, status, location_id
       ) values (${ids.inventory}, ${ids.workspace}, ${ids.sku}, 'INV-000001', 'putaway_pending', null)
+    `;
+    await transaction`
+      insert into product_sku (id, workspace_id, sku_code, title, category)
+      values (
+        ${ids.packedRecoverySku}, ${ids.workspace}, 'SKU-LEGACY-PACKED',
+        'Legacy packed recovery item', 'outer'
+      )
+    `;
+    await transaction`
+      insert into p0_workflow (workspace_id, sku_id, state, last_action, version)
+      values (
+        ${ids.workspace}, ${ids.packedRecoverySku}, 'packed', 'confirm_pack', 7
+      )
+    `;
+    await transaction`
+      insert into location_node (
+        id, workspace_id, code, name, depth, can_store_inventory,
+        single_item_only, allow_mixed_sku, max_units
+      ) values (
+        ${ids.packedRecoveryLocation}, ${ids.workspace},
+        ${appendCodeCheckDigit("PACK-RECOVERY")}, 'Legacy packed recovery shelf', 0,
+        true, true, false, 1
+      )
+    `;
+    await transaction`
+      insert into inventory_unit (
+        id, workspace_id, sku_id, inventory_number, status, location_id
+      ) values (
+        ${ids.packedRecoveryInventory}, ${ids.workspace}, ${ids.packedRecoverySku},
+        'INV-000002', 'putaway_pending', null
+      )
     `;
     await transaction`
       insert into count_session (
@@ -195,7 +237,44 @@ try {
       insert into sales_order (id, workspace_id, order_number, state)
       values (${ids.order}, ${ids.workspace}, 'ORDER-LEGACY-0001', 'returned')
     `;
+    await transaction`
+      insert into packing_evidence (
+        id, workspace_id, order_id, evidence_reference_id, confirmed_by,
+        confirmed_at, created_at
+      ) values (
+        ${ids.packingEvidence}, ${ids.workspace}, ${ids.order},
+        ${"00000000-0000-4000-8000-000000000128"}, ${ids.owner},
+        '2026-01-02T03:04:07.000Z', '2026-01-02T03:04:08.000Z'
+      )
+    `;
     await transaction`set local session_replication_role = replica`;
+    await transaction`
+      update inventory_unit
+      set status = 'packed', location_id = ${ids.packedRecoveryLocation}
+      where workspace_id = ${ids.workspace} and id = ${ids.packedRecoveryInventory}
+    `;
+    await transaction`
+      insert into sales_order (id, workspace_id, order_number, state)
+      values (
+        ${ids.packedRecoveryOrder}, ${ids.workspace}, 'ORDER-LEGACY-PACKED', 'packed'
+      )
+    `;
+    await transaction`
+      insert into order_allocation (workspace_id, order_id, inventory_unit_id)
+      values (
+        ${ids.workspace}, ${ids.packedRecoveryOrder}, ${ids.packedRecoveryInventory}
+      )
+    `;
+    await transaction`
+      insert into packing_evidence (
+        id, workspace_id, order_id, evidence_reference_id, confirmed_by,
+        confirmed_at, created_at
+      ) values (
+        ${ids.packedRecoveryEvidence}, ${ids.workspace}, ${ids.packedRecoveryOrder},
+        ${ids.packedRecoveryReference}, ${ids.owner},
+        '2026-01-03T03:04:07.000Z', '2026-01-03T03:04:08.000Z'
+      )
+    `;
     await transaction`
       update inventory_unit set status = 'disposed', location_id = null
       where workspace_id = ${ids.workspace} and id = ${ids.inventory}
@@ -486,12 +565,19 @@ try {
       insert into financial_event (
         id, workspace_id, sku_id, order_id, event_type, amount_minor, currency,
         tax_basis, bearer, source, source_meaning, rounding_rule_version, occurred_at
-      ) values (
-        ${ids.financialEvent}, ${ids.workspace}, ${ids.sku}, ${ids.order}, 'sale', 1234,
-        'JPY', 'tax_included', 'buyer', 'legacy_upgrade_fixture',
-        'historical sale retained across migration', 'legacy-v1',
-        '2026-01-02T03:00:00.000Z'::timestamptz
-      )
+      ) values
+        (
+          ${ids.financialEvent}, ${ids.workspace}, ${ids.sku}, ${ids.order}, 'sale', 1234,
+          'JPY', 'tax_included', 'buyer', 'legacy_upgrade_fixture',
+          'historical sale retained across migration', 'legacy-v1',
+          '2026-01-02T03:00:00.000Z'::timestamptz
+        ),
+        (
+          ${ids.financialEventSecond}, ${ids.workspace}, ${ids.sku}, ${ids.order}, 'sale', 234,
+          'JPY', 'tax_included', 'buyer', 'legacy_upgrade_fixture',
+          'second historical sale retained across migration', 'legacy-v1',
+          '2026-01-02T03:00:01.000Z'::timestamptz
+        )
     `;
     await transaction`
       insert into journal_candidate (
@@ -1223,6 +1309,250 @@ try {
     table_count: 2,
     row_count: 0,
   });
+  const readLegacyPackingEvidence = async () => {
+    const rows = await sql<
+      Array<{
+        id: string;
+        workspace_id: string;
+        order_id: string;
+        evidence_reference_id: string;
+        confirmed_by: string;
+        confirmed_at: string;
+        created_at: string;
+      }>
+    >`
+      select id, workspace_id, order_id, evidence_reference_id, confirmed_by,
+             confirmed_at::text, created_at::text
+      from packing_evidence
+      where workspace_id = ${ids.workspace} and id = ${ids.packingEvidence}
+    `;
+    return Array.from(rows, (row) => ({ ...row }));
+  };
+  const readLegacyPackedRecovery = async () => {
+    const rows = await sql<
+      Array<{
+        evidence_id: string;
+        evidence_reference_id: string;
+        confirmed_by: string;
+        confirmed_at: string;
+        created_at: string;
+        order_state: string;
+        inventory_status: string;
+        workflow_state: string;
+      }>
+    >`
+      select evidence.id as evidence_id, evidence.evidence_reference_id,
+             evidence.confirmed_by, evidence.confirmed_at::text, evidence.created_at::text,
+             orders.state as order_state, unit.status::text as inventory_status,
+             workflow.state as workflow_state
+      from packing_evidence evidence
+      join sales_order orders
+        on orders.workspace_id = evidence.workspace_id and orders.id = evidence.order_id
+      join order_allocation allocation
+        on allocation.workspace_id = orders.workspace_id and allocation.order_id = orders.id
+       and allocation.active
+      join inventory_unit unit
+        on unit.workspace_id = allocation.workspace_id and unit.id = allocation.inventory_unit_id
+      join p0_workflow workflow
+        on workflow.workspace_id = unit.workspace_id and workflow.sku_id = unit.sku_id
+      where evidence.workspace_id = ${ids.workspace}
+        and evidence.id = ${ids.packedRecoveryEvidence}
+    `;
+    return Array.from(rows, (row) => ({ ...row }));
+  };
+  const historyBeforeShippingPhotoContract = await readInspectionUpgradeHistory();
+  const packingBeforeShippingPhotoContract = await readLegacyPackingEvidence();
+  const packedRecoveryBeforeShippingPhotoContract = await readLegacyPackedRecovery();
+  const duplicateSalesBeforeShippingPhotoContract = await sql<
+    Array<{ id: string; amount_minor: number; occurred_at: string }>
+  >`
+    select id, amount_minor::integer as amount_minor, occurred_at::text
+    from financial_event
+    where workspace_id = ${ids.workspace} and order_id = ${ids.order}
+      and event_type = 'sale' and reverses_event_id is null
+    order by id
+  `;
+  assert.equal(duplicateSalesBeforeShippingPhotoContract.length, 2);
+  await applyMigration(shippingPhotoPreflightMigration);
+  assert.deepEqual(
+    await readInspectionUpgradeHistory(),
+    historyBeforeShippingPhotoContract,
+    "The additive shipping-photo migration must not rewrite existing SKU, media, pilot, finance, export bytes/hashes or audit history",
+  );
+  assert.deepEqual(
+    await readLegacyPackingEvidence(),
+    packingBeforeShippingPhotoContract,
+    "0035 must preserve every pre-existing packing evidence ID, reference, actor and timestamp",
+  );
+  assert.deepEqual(
+    await readLegacyPackedRecovery(),
+    packedRecoveryBeforeShippingPhotoContract,
+    "0035 must not rewrite or auto-promote a packed order's legacy evidence or state",
+  );
+  const duplicateSalesAfterShippingPhotoContract = await sql<
+    Array<{ id: string; amount_minor: number; occurred_at: string }>
+  >`
+    select id, amount_minor::integer as amount_minor, occurred_at::text
+    from financial_event
+    where workspace_id = ${ids.workspace} and order_id = ${ids.order}
+      and event_type = 'sale' and reverses_event_id is null
+    order by id
+  `;
+  assert.deepEqual(
+    Array.from(duplicateSalesAfterShippingPhotoContract, (row) => ({ ...row })),
+    Array.from(duplicateSalesBeforeShippingPhotoContract, (row) => ({ ...row })),
+    "0035 must preserve multiple historical sale events for one order",
+  );
+  const [{ count: saleUniquenessIndexCount }] = await sql<[{ count: number }]>`
+    select count(*)::integer as count
+    from pg_indexes
+    where schemaname = 'public' and tablename = 'financial_event'
+      and indexname = 'financial_event_one_sale_per_order'
+  `;
+  assert.equal(saleUniquenessIndexCount, 0);
+  const [legacyPackingUpgrade] = await sql<[{ server_confirmed: boolean }]>`
+    select server_confirmed from packing_evidence
+    where workspace_id = ${ids.workspace} and id = ${ids.packingEvidence}
+  `;
+  assert.equal(
+    legacyPackingUpgrade.server_confirmed,
+    false,
+    "Legacy evidence must not be promoted into a server-issued P13 confirmation",
+  );
+  const [shippingPhotoContractTables] = await sql<[{ table_count: number; row_count: number }]>`
+    select
+      (
+        select count(*)::integer from information_schema.tables
+        where table_schema = 'public'
+          and table_name in (
+            'shipping_photo_policy_revision', 'order_shipping_photo_decision',
+            'shipping_photo_asset', 'shipping_photo_confirmation',
+            'shipment_human_confirmation', 'shipping_sale_basis_snapshot'
+          )
+      ) as table_count,
+      (
+        (select count(*)::integer from shipping_photo_policy_revision)
+        + (select count(*)::integer from order_shipping_photo_decision)
+        + (select count(*)::integer from shipping_photo_asset)
+        + (select count(*)::integer from shipping_photo_confirmation)
+        + (select count(*)::integer from shipment_human_confirmation)
+        + (select count(*)::integer from shipping_sale_basis_snapshot)
+      ) as row_count
+  `;
+  assert.deepEqual(shippingPhotoContractTables, {
+    table_count: 6,
+    row_count: 0,
+  });
+  const [packedRecoveryImmediatelyAfterUpgrade] = await sql<
+    [{ legacy_count: number; server_count: number }]
+  >`
+    select
+      count(*) filter (where not server_confirmed)::integer as legacy_count,
+      count(*) filter (where server_confirmed)::integer as server_count
+    from packing_evidence
+    where workspace_id = ${ids.workspace} and order_id = ${ids.packedRecoveryOrder}
+  `;
+  assert.deepEqual(
+    { ...packedRecoveryImmediatelyAfterUpgrade },
+    { legacy_count: 1, server_count: 0 },
+    "0035 must not automatically promote legacy packing evidence",
+  );
+  await sql.begin(async (transaction) => {
+    await transaction`set local role resale_app_runtime`;
+    await transaction`select set_config('app.workspace_id', ${ids.workspace}, true)`;
+    await transaction`select set_config('app.identity_id', ${ids.owner}, true)`;
+    await transaction`
+      insert into shipping_photo_policy_revision (
+        workspace_id, mode, high_value_threshold_minor, revision, supersedes_id,
+        idempotency_key, payload_hash
+      ) values (
+        ${ids.workspace}, 'disabled', null, 1, null,
+        ${"00000000-0000-4000-8000-000000000136"}, ${"a".repeat(64)}
+      )
+    `;
+    await transaction`
+      insert into order_shipping_photo_decision (
+        workspace_id, order_id, sale_amount_state, decision_reason,
+        decision_state, photo_required, revision, supersedes_id,
+        idempotency_key, payload_hash
+      ) values (
+        ${ids.workspace}, ${ids.packedRecoveryOrder}, 'missing', 'policy_missing',
+        'choice_required', null, 1, null,
+        ${"00000000-0000-4000-8000-000000000137"}, ${"b".repeat(64)}
+      )
+    `;
+    await transaction`
+      insert into packing_evidence (workspace_id, order_id)
+      values (${ids.workspace}, ${ids.packedRecoveryOrder})
+    `;
+    await transaction`
+      insert into shipment_human_confirmation (
+        workspace_id, order_id, idempotency_key, payload_hash
+      ) values (
+        ${ids.workspace}, ${ids.packedRecoveryOrder},
+        ${"00000000-0000-4000-8000-000000000138"}, ${"c".repeat(64)}
+      )
+    `;
+    await transaction`
+      update sales_order set state = 'shipped'
+      where workspace_id = ${ids.workspace} and id = ${ids.packedRecoveryOrder}
+    `;
+  });
+  const upgradedPackedRecoveryRows = await sql<
+    Array<{
+      id: string;
+      evidence_reference_id: string;
+      confirmed_by: string;
+      confirmed_at: string;
+      created_at: string;
+      server_confirmed: boolean;
+    }>
+  >`
+    select id, evidence_reference_id, confirmed_by, confirmed_at::text,
+           created_at::text, server_confirmed
+    from packing_evidence
+    where workspace_id = ${ids.workspace} and order_id = ${ids.packedRecoveryOrder}
+    order by server_confirmed, id
+  `;
+  assert.equal(upgradedPackedRecoveryRows.length, 2);
+  assert.deepEqual(
+    { ...upgradedPackedRecoveryRows[0] },
+    {
+      id: ids.packedRecoveryEvidence,
+      evidence_reference_id: ids.packedRecoveryReference,
+      confirmed_by: ids.owner,
+      confirmed_at: packedRecoveryBeforeShippingPhotoContract[0]?.confirmed_at,
+      created_at: packedRecoveryBeforeShippingPhotoContract[0]?.created_at,
+      server_confirmed: false,
+    },
+    "The legacy packing row must remain byte-for-byte equivalent after recovery",
+  );
+  assert.equal(upgradedPackedRecoveryRows[1]?.server_confirmed, true);
+  assert.equal(
+    upgradedPackedRecoveryRows[1]?.evidence_reference_id,
+    upgradedPackedRecoveryRows[1]?.id,
+  );
+  assert.equal(upgradedPackedRecoveryRows[1]?.confirmed_by, ids.owner);
+  const [upgradedPackedRecoveryState] = await sql<
+    [{ order_state: string; inventory_status: string; shipment_count: number }]
+  >`
+    select orders.state as order_state, unit.status::text as inventory_status,
+           (select count(*)::integer from shipment_human_confirmation shipment
+            where shipment.workspace_id = orders.workspace_id
+              and shipment.order_id = orders.id) as shipment_count
+    from sales_order orders
+    join order_allocation allocation
+      on allocation.workspace_id = orders.workspace_id and allocation.order_id = orders.id
+     and allocation.active
+    join inventory_unit unit
+      on unit.workspace_id = allocation.workspace_id and unit.id = allocation.inventory_unit_id
+    where orders.workspace_id = ${ids.workspace} and orders.id = ${ids.packedRecoveryOrder}
+  `;
+  assert.deepEqual(
+    { ...upgradedPackedRecoveryState },
+    { order_state: "shipped", inventory_status: "shipped", shipment_count: 1 },
+    "A human re-confirmed legacy packed order must remain shippable after upgrade",
+  );
   const v11TableProtection = await sql<
     Array<{ table_name: string; row_security: boolean; force_row_security: boolean }>
   >`
@@ -1394,7 +1724,7 @@ try {
   );
 
   process.stdout.write(
-    `postgres-upgrade-integration: PASS (${legacyMigrations[0]} through ${upgradeMigrations.at(-1)}, additive inspection tables installed without rewriting SKU/media/pilot/finance/audit history, historical two-actor approval preserved and mode-normalized, state/evidence/actors/timestamps/audit preserved, injected 0028, 0029, 0030 and 0031 failures fully rolled back after reconnect, actor-bound movement-snapshot restore function upgraded without direct scan UPDATE, historical mapping/candidate IDs and export hashes/bytes preserved, historical v1.0 pilot environment preserved with nullable v1.1 fields and current v1.1/0033 accepted, non-approved approval metadata remains null, return dispose mapped to disposal_pending)\n`,
+    `postgres-upgrade-integration: PASS (${legacyMigrations[0]} through ${upgradeMigrations.at(-1)}, additive inspection and shipping-photo tables installed without rewriting SKU/media/pilot/finance/audit history, legacy packing evidence preserved without promotion to server-confirmed, historical two-actor approval preserved and mode-normalized, state/evidence/actors/timestamps/audit preserved, injected 0028, 0029, 0030 and 0031 failures fully rolled back after reconnect, actor-bound movement-snapshot restore function upgraded without direct scan UPDATE, historical mapping/candidate IDs and export hashes/bytes preserved, historical v1.0 pilot environment preserved with nullable v1.1 fields and current v1.1/0033 accepted, non-approved approval metadata remains null, return dispose mapped to disposal_pending)\n`,
   );
 } finally {
   await sql.end({ timeout: 5 });

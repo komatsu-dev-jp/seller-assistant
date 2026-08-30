@@ -9,6 +9,7 @@ import { createWriteOriginValidator } from "./security.js";
 import { createCookieAuthenticator, createSignedSession } from "./session.js";
 import type { LoginService } from "./auth.js";
 import { LocalPrivateMediaStore, type PrivateMediaStore } from "./local-media-store.js";
+import type { OrderRepository, RegisterShippingPhotoRecord } from "./order-repository.js";
 
 const apps: ReturnType<typeof buildApp>[] = [];
 const mediaRoots: string[] = [];
@@ -30,6 +31,24 @@ function buildTestApp(
     validateWriteOrigin: () => true,
     ...(mediaStore ? { mediaStore } : {}),
   });
+}
+
+function buildOrderTestApp(orderRepository: OrderRepository, mediaStore?: PrivateMediaStore) {
+  const app = buildApp({
+    orderRepository,
+    authenticate: (headers) => {
+      const identityId = headers["x-actor-id"];
+      const activeWorkspaceId = headers["x-workspace-id"];
+      if (typeof identityId !== "string") return null;
+      return typeof activeWorkspaceId === "string"
+        ? { identityId, workspaceId: activeWorkspaceId }
+        : { identityId };
+    },
+    validateWriteOrigin: () => true,
+    ...(mediaStore ? { mediaStore } : {}),
+  });
+  apps.push(app);
+  return app;
 }
 
 afterEach(async () => {
@@ -822,6 +841,378 @@ describe("P0 workspace API", () => {
       `${photoId}.jpg`,
     );
     await expect(stat(originalPath)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+});
+
+describe("P13 shipping photo API", () => {
+  const workspaceId = "71111111-1111-4111-8111-111111111111";
+  const actorId = "72222222-2222-4222-8222-222222222222";
+  const orderId = "73333333-3333-4333-8333-333333333333";
+  const policyRevisionId = "74444444-4444-4444-8444-444444444444";
+  const decisionRevisionId = "75555555-5555-4555-8555-555555555555";
+  const productAssetId = "76666666-6666-4666-8666-666666666666";
+  const packedAssetId = "77777777-7777-4777-8777-777777777777";
+  const confirmationId = "78888888-8888-4888-8888-888888888888";
+  const headers = { "x-actor-id": actorId, "x-workspace-id": workspaceId };
+  const policy = {
+    policyRevisionId,
+    mode: "high_value_only" as const,
+    highValueThresholdMinor: 50_000,
+    revision: 1,
+    supersedesRevisionId: null,
+    changedBy: actorId,
+    changedAt: "2026-08-30T01:00:00.000Z",
+  };
+  const preflight = {
+    orderId,
+    decisionRevisionId,
+    decisionRevision: 1,
+    state: "capture_required" as const,
+    photoRequired: true,
+    decisionReason: "threshold_met" as const,
+    saleAmountStatus: "present" as const,
+    assets: [],
+    confirmedAssetIds: [],
+    photoConfirmationId: null,
+    packingHumanConfirmed: false,
+    shipmentHumanConfirmed: false,
+    updatedAt: "2026-08-30T01:01:00.000Z",
+  };
+
+  it("keeps policy, decision, override and late sale inputs strict and sanitized", async () => {
+    let policyUpdates = 0;
+    let evaluations = 0;
+    let overrides = 0;
+    let saleRecords = 0;
+    const repository = {
+      close: () => Promise.resolve(),
+      shippingPhotoPolicy: () => Promise.resolve(null),
+      updateShippingPhotoPolicy: () => {
+        policyUpdates += 1;
+        return Promise.resolve(policy);
+      },
+      shippingPhotoPreflight: () => Promise.resolve(preflight),
+      evaluateShippingPhotoPreflight: () => {
+        evaluations += 1;
+        return Promise.resolve(preflight);
+      },
+      overrideShippingPhotoDecision: () => {
+        overrides += 1;
+        return Promise.resolve({
+          ...preflight,
+          state: "satisfied_without_photo" as const,
+          photoRequired: false,
+          decisionReason: "manual_skip" as const,
+        });
+      },
+      recordSaleAmount: () => {
+        saleRecords += 1;
+        return Promise.resolve({
+          orderId,
+          financialEventId: "79999999-9999-4999-8999-999999999999",
+          saleAmountMinor: 50_000,
+          recordedBy: actorId,
+          recordedAt: "2026-08-30T01:02:00.000Z",
+        });
+      },
+    } as unknown as OrderRepository;
+    const app = buildOrderTestApp(repository);
+
+    const missingPolicy = await app.inject({
+      method: "GET",
+      url: `/v1/workspaces/${workspaceId}/shipping-photo-policy`,
+      headers,
+    });
+    expect(missingPolicy.statusCode).toBe(204);
+    expect(missingPolicy.headers["cache-control"]).toBe("private, no-store");
+
+    const privatePolicyInput = await app.inject({
+      method: "PUT",
+      url: `/v1/workspaces/${workspaceId}/shipping-photo-policy`,
+      headers,
+      payload: {
+        mode: "high_value_only",
+        highValueThresholdMinor: 50_000,
+        expectedRevision: null,
+        idempotencyKey: "7aaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        humanConfirmed: true,
+        actorId,
+      },
+    });
+    expect(privatePolicyInput.statusCode).toBe(400);
+    expect(policyUpdates).toBe(0);
+
+    const savedPolicy = await app.inject({
+      method: "PUT",
+      url: `/v1/workspaces/${workspaceId}/shipping-photo-policy`,
+      headers,
+      payload: {
+        mode: "high_value_only",
+        highValueThresholdMinor: 50_000,
+        expectedRevision: null,
+        idempotencyKey: "7aaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        humanConfirmed: true,
+      },
+    });
+    expect(savedPolicy.statusCode).toBe(200);
+    expect(savedPolicy.json()).toEqual(policy);
+
+    const privateDecisionInput = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceId}/orders/${orderId}/shipping-photo-preflight`,
+      headers,
+      payload: {
+        expectedDecisionRevision: null,
+        idempotencyKey: "7bbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        humanConfirmed: true,
+        confirmedAt: "2026-08-30T01:01:00.000Z",
+      },
+    });
+    expect(privateDecisionInput.statusCode).toBe(400);
+    expect(evaluations).toBe(0);
+
+    const evaluated = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceId}/orders/${orderId}/shipping-photo-preflight`,
+      headers,
+      payload: {
+        expectedDecisionRevision: null,
+        idempotencyKey: "7bbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        humanConfirmed: true,
+      },
+    });
+    expect(evaluated.statusCode).toBe(200);
+    expect(evaluated.json()).not.toHaveProperty("saleAmountMinor");
+    expect(evaluated.json()).not.toHaveProperty("highValueThresholdMinor");
+    expect(evaluated.json()).not.toHaveProperty("storageKey");
+
+    const overridden = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceId}/orders/${orderId}/shipping-photo-override`,
+      headers,
+      payload: {
+        choice: "skip_photos",
+        expectedDecisionRevision: 1,
+        idempotencyKey: "7ccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        humanConfirmed: true,
+      },
+    });
+    expect(overridden.statusCode).toBe(200);
+    expect(overridden.json()).toMatchObject({
+      state: "satisfied_without_photo",
+      photoRequired: false,
+      decisionReason: "manual_skip",
+    });
+
+    const zeroSale = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceId}/orders/${orderId}/sale-amount`,
+      headers,
+      payload: {
+        saleAmountMinor: 0,
+        taxBasis: "unknown",
+        sourceMeaning: "販売額を本人確認",
+        occurredAt: "2026-08-30T01:02:00.000Z",
+        idempotencyKey: "7ddddddd-dddd-4ddd-8ddd-dddddddddddd",
+        humanConfirmed: true,
+      },
+    });
+    expect(zeroSale.statusCode).toBe(400);
+    expect(saleRecords).toBe(0);
+
+    const recordedSale = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceId}/orders/${orderId}/sale-amount`,
+      headers,
+      payload: {
+        saleAmountMinor: 50_000,
+        taxBasis: "unknown",
+        sourceMeaning: "販売額を本人確認",
+        occurredAt: "2026-08-30T01:02:00.000Z",
+        idempotencyKey: "7ddddddd-dddd-4ddd-8ddd-dddddddddddd",
+        humanConfirmed: true,
+      },
+    });
+    expect(recordedSale.statusCode).toBe(201);
+    expect(recordedSale.json()).toMatchObject({ saleAmountMinor: 50_000, recordedBy: actorId });
+    expect(policyUpdates).toBe(1);
+    expect(evaluations).toBe(1);
+    expect(overrides).toBe(1);
+    expect(saleRecords).toBe(1);
+  });
+
+  it("stores private photo bytes outside public responses and serves only sanitized no-store content", async () => {
+    const sha256 = "a".repeat(64);
+    const removed: Array<{ storageKey: string; sha256: string }> = [];
+    const saved: string[] = [];
+    const privateReads: unknown[] = [];
+    let registered: RegisterShippingPhotoRecord | undefined;
+    const mediaStore: PrivateMediaStore = {
+      saveOriginal: (storageKey, bytes) => {
+        saved.push(storageKey);
+        return Promise.resolve({ storageKey, sha256, sizeBytes: bytes.length, created: true });
+      },
+      readSanitizedOriginal: (input) => {
+        privateReads.push(input);
+        return Promise.resolve(Buffer.from("sanitized-image"));
+      },
+      removeOriginal: (storageKey, expectedSha256) => {
+        removed.push({ storageKey, sha256: expectedSha256 });
+        return Promise.resolve();
+      },
+      createSanitizedDisplay: () => Promise.reject(new Error("not used")),
+      readDisplay: () => Promise.reject(new Error("not used")),
+      removeDisplay: () => Promise.reject(new Error("not used")),
+    };
+    const assetResponse = {
+      assetId: productAssetId,
+      orderId,
+      role: "product" as const,
+      mimeType: "image/jpeg" as const,
+      sizeBytes: jpegWithGpsMetadata().length,
+      width: 2000,
+      height: 1500,
+      capturedBy: actorId,
+      capturedAt: "2026-08-30T01:03:00.000Z",
+    };
+    const repository = {
+      close: () => Promise.resolve(),
+      registerShippingPhoto: (
+        _workspaceId: string,
+        _orderId: string,
+        _actor: unknown,
+        record: RegisterShippingPhotoRecord,
+      ) => {
+        registered = record;
+        return Promise.resolve(assetResponse);
+      },
+      readShippingPhoto: () =>
+        Promise.resolve({
+          storageKey: `workspaces/${workspaceId}/originals/shipping-${orderId}-${productAssetId}.jpg`,
+          sha256,
+          mimeType: "image/jpeg" as const,
+          sizeBytes: assetResponse.sizeBytes,
+          width: 2000,
+          height: 1500,
+        }),
+      confirmShippingPhotos: () =>
+        Promise.resolve({
+          confirmationId,
+          orderId,
+          decisionRevisionId,
+          assetIds: [productAssetId, packedAssetId],
+          confirmedBy: actorId,
+          confirmedAt: "2026-08-30T01:04:00.000Z",
+        }),
+    } as unknown as OrderRepository;
+    const app = buildOrderTestApp(repository, mediaStore);
+
+    const privateQuery = new URLSearchParams({
+      role: "product",
+      idempotencyKey: "7eeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+      humanConfirmed: "true",
+      storageKey: "client-controlled",
+    });
+    const rejected = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceId}/orders/${orderId}/shipping-photos?${privateQuery.toString()}`,
+      headers: { ...headers, "content-type": "image/jpeg" },
+      payload: jpegWithGpsMetadata(),
+    });
+    expect(rejected.statusCode).toBe(400);
+    expect(saved).toHaveLength(0);
+
+    const query = new URLSearchParams({
+      role: "product",
+      idempotencyKey: "7eeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+      humanConfirmed: "true",
+    });
+    const uploaded = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceId}/orders/${orderId}/shipping-photos?${query.toString()}`,
+      headers: { ...headers, "content-type": "image/jpeg" },
+      payload: jpegWithGpsMetadata(),
+    });
+    expect(uploaded.statusCode, uploaded.body).toBe(201);
+    expect(uploaded.json()).toEqual(assetResponse);
+    expect(uploaded.json()).not.toHaveProperty("storageKey");
+    expect(uploaded.json()).not.toHaveProperty("sha256");
+    expect(registered).toMatchObject({
+      role: "product",
+      mimeType: "image/jpeg",
+      width: 2000,
+      height: 1500,
+      sha256,
+    });
+    expect(registered?.storageKey).toMatch(
+      new RegExp(`^workspaces/${workspaceId}/originals/shipping-${orderId}-[0-9a-f-]{36}\\.jpg$`),
+    );
+    expect(removed).toEqual([{ storageKey: saved[0], sha256 }]);
+
+    const content = await app.inject({
+      method: "GET",
+      url: `/v1/workspaces/${workspaceId}/orders/${orderId}/shipping-photos/${productAssetId}/content`,
+      headers,
+    });
+    expect(content.statusCode).toBe(200);
+    expect(content.rawPayload).toEqual(Buffer.from("sanitized-image"));
+    expect(content.headers["cache-control"]).toBe("private, no-store");
+    expect(content.headers.pragma).toBe("no-cache");
+    expect(content.headers["x-content-type-options"]).toBe("nosniff");
+    expect(privateReads).toHaveLength(1);
+
+    const confirmed = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceId}/orders/${orderId}/shipping-photo-confirmations`,
+      headers,
+      payload: {
+        assetIds: [productAssetId, packedAssetId],
+        idempotencyKey: "7fffffff-ffff-4fff-8fff-ffffffffffff",
+        humanConfirmed: true,
+      },
+    });
+    expect(confirmed.statusCode).toBe(201);
+    expect(confirmed.json()).toMatchObject({
+      confirmationId,
+      assetIds: [productAssetId, packedAssetId],
+      confirmedBy: actorId,
+    });
+  });
+
+  it("removes newly saved bytes when photo registration is rejected", async () => {
+    const sha256 = "b".repeat(64);
+    const removed: string[] = [];
+    const mediaStore: PrivateMediaStore = {
+      saveOriginal: (storageKey, bytes) =>
+        Promise.resolve({ storageKey, sha256, sizeBytes: bytes.length, created: true }),
+      removeOriginal: (storageKey) => {
+        removed.push(storageKey);
+        return Promise.resolve();
+      },
+      createSanitizedDisplay: () => Promise.reject(new Error("not used")),
+      readDisplay: () => Promise.reject(new Error("not used")),
+      readSanitizedOriginal: () => Promise.reject(new Error("not used")),
+      removeDisplay: () => Promise.reject(new Error("not used")),
+    };
+    const repository = {
+      close: () => Promise.resolve(),
+      registerShippingPhoto: () =>
+        Promise.reject(new RepositoryError("conflict", "simulated stale decision")),
+    } as unknown as OrderRepository;
+    const app = buildOrderTestApp(repository, mediaStore);
+    const query = new URLSearchParams({
+      role: "packed_package",
+      idempotencyKey: "7aaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      humanConfirmed: "true",
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceId}/orders/${orderId}/shipping-photos?${query.toString()}`,
+      headers: { ...headers, "content-type": "image/jpeg" },
+      payload: jpegWithGpsMetadata(),
+    });
+    expect(response.statusCode).toBe(409);
+    expect(removed).toHaveLength(1);
   });
 });
 

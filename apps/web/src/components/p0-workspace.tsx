@@ -4,7 +4,9 @@ import type {
   MeasurementResponse,
   OrderOperationResponse,
   P0ItemResponse,
+  PackOrderRequest,
   PilotRunResponse,
+  ShipOrderRequest,
 } from "@resale/contracts";
 import {
   listingPrepPilotFixtureManifestSha256,
@@ -689,22 +691,19 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
         await requestJson(`/v1/workspaces/${workspaceId}/orders/${orderId}/pack`, {
           method: "POST",
           body: JSON.stringify({
-            packingEvidenceReferenceId: crypto.randomUUID(),
             addressLeaseId: leaseId,
-            confirmedAt: new Date().toISOString(),
             idempotencyKey: crypto.randomUUID(),
             humanConfirmed: true,
-          }),
+          } satisfies PackOrderRequest),
         });
       } else if (item.orderState === "packed") {
         await requestJson(`/v1/workspaces/${workspaceId}/orders/${orderId}/ship`, {
           method: "POST",
           body: JSON.stringify({
             addressLeaseId: leaseId,
-            shippedAt: new Date().toISOString(),
             idempotencyKey: crypto.randomUUID(),
             humanConfirmed: true,
-          }),
+          } satisfies ShipOrderRequest),
         });
       }
       await refreshItems();

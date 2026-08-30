@@ -7,6 +7,8 @@ import {
   accountMappingRuleSchema,
   assignOrderRequestSchema,
   checkedLocationCodeSchema,
+  confirmShippingPhotosRequestSchema,
+  createOrderRequestSchema,
   createMarketplaceReferenceRequestSchema,
   createP0ItemRequestSchema,
   createTeamAssignmentRequestSchema,
@@ -22,6 +24,9 @@ import {
   measurementProfileResponseSchema,
   inspectionCheckResultRevisionResponseSchema,
   inspectionConcernRevisionResponseSchema,
+  evaluateShippingPhotoPreflightRequestSchema,
+  overrideShippingPhotoDecisionRequestSchema,
+  packOrderRequestSchema,
   pilotRunResponseSchema,
   recordInspectionCheckResultRequestSchema,
   recordInspectionConcernRevisionRequestSchema,
@@ -32,7 +37,227 @@ import {
   advanceP0WorkflowRequestSchema,
   recordMeasurementRequestSchema,
   stocktakeDiscrepancySchema,
+  shippingPhotoAssetResponseSchema,
+  shippingPhotoPreflightResponseSchema,
+  shipOrderRequestSchema,
+  updateShippingPhotoPolicyRequestSchema,
+  uploadShippingPhotoQuerySchema,
 } from "./index.js";
+
+describe("P13 shipping preflight photo contracts", () => {
+  const firstId = "10000000-0000-4000-8000-000000000001";
+  const secondId = "10000000-0000-4000-8000-000000000002";
+  const basePolicy = {
+    mode: "high_value_only",
+    highValueThresholdMinor: 30_000,
+    expectedRevision: null,
+    idempotencyKey: firstId,
+    humanConfirmed: true,
+  } as const;
+
+  it("supports all three policy modes without seeding a threshold", () => {
+    expect(updateShippingPhotoPolicyRequestSchema.safeParse(basePolicy).success).toBe(true);
+    expect(
+      updateShippingPhotoPolicyRequestSchema.safeParse({
+        ...basePolicy,
+        highValueThresholdMinor: null,
+      }).success,
+    ).toBe(false);
+    expect(
+      updateShippingPhotoPolicyRequestSchema.safeParse({
+        ...basePolicy,
+        mode: "all",
+        highValueThresholdMinor: null,
+      }).success,
+    ).toBe(true);
+    expect(
+      updateShippingPhotoPolicyRequestSchema.safeParse({
+        ...basePolicy,
+        mode: "disabled",
+        highValueThresholdMinor: null,
+      }).success,
+    ).toBe(true);
+    expect(
+      updateShippingPhotoPolicyRequestSchema.safeParse({ ...basePolicy, mode: "all" }).success,
+    ).toBe(false);
+  });
+
+  it("keeps a missing order sale amount distinct from zero", () => {
+    const request = {
+      orderNumber: "OD-20260829-001",
+      skuId: firstId,
+      inventoryUnitId: secondId,
+      saleAmountMinor: null,
+      costAmountMinor: 1_000,
+      sellingFeeMinor: 0,
+      shippingCostMinor: 0,
+      packagingCostMinor: 0,
+      taxBasis: "unknown",
+      sourceMeaning: "架空の手入力",
+      occurredAt: "2026-08-29T00:00:00.000Z",
+      shippingAddress: "架空住所",
+      idempotencyKey: "10000000-0000-4000-8000-000000000003",
+      humanConfirmed: true,
+    } as const;
+    expect(createOrderRequestSchema.safeParse(request).success).toBe(true);
+    expect(createOrderRequestSchema.safeParse({ ...request, saleAmountMinor: 0 }).success).toBe(
+      false,
+    );
+  });
+
+  it("rejects actor, workspace, SKU, storage, digest and confirmation-time input", () => {
+    const preflight = {
+      expectedDecisionRevision: null,
+      idempotencyKey: firstId,
+      humanConfirmed: true,
+    } as const;
+    expect(evaluateShippingPhotoPreflightRequestSchema.safeParse(preflight).success).toBe(true);
+    for (const privateField of [
+      { actorId: secondId },
+      { workspaceId: secondId },
+      { skuId: secondId },
+      { storageKey: "workspaces/private/original.jpg" },
+      { sha256: "a".repeat(64) },
+      { confirmedAt: "2026-08-29T00:00:00.000Z" },
+    ]) {
+      expect(
+        evaluateShippingPhotoPreflightRequestSchema.safeParse({
+          ...preflight,
+          ...privateField,
+        }).success,
+      ).toBe(false);
+    }
+    expect(
+      uploadShippingPhotoQuerySchema.safeParse({
+        role: "product",
+        idempotencyKey: firstId,
+        humanConfirmed: "true",
+        sha256: "a".repeat(64),
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts only the two shipping photo roles and a unique confirmation set", () => {
+    expect(
+      uploadShippingPhotoQuerySchema.safeParse({
+        role: "product",
+        idempotencyKey: firstId,
+        humanConfirmed: "true",
+      }).success,
+    ).toBe(true);
+    expect(
+      uploadShippingPhotoQuerySchema.safeParse({
+        role: "packed_package",
+        idempotencyKey: firstId,
+        humanConfirmed: "true",
+      }).success,
+    ).toBe(true);
+    expect(
+      uploadShippingPhotoQuerySchema.safeParse({
+        role: "shipping_label",
+        idempotencyKey: firstId,
+        humanConfirmed: "true",
+      }).success,
+    ).toBe(false);
+    expect(
+      confirmShippingPhotosRequestSchema.safeParse({
+        assetIds: [firstId, secondId],
+        idempotencyKey: firstId,
+        humanConfirmed: true,
+      }).success,
+    ).toBe(true);
+    expect(
+      confirmShippingPhotosRequestSchema.safeParse({
+        assetIds: [firstId, firstId],
+        idempotencyKey: firstId,
+        humanConfirmed: true,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("separates override, packing and shipment confirmations", () => {
+    expect(
+      overrideShippingPhotoDecisionRequestSchema.safeParse({
+        choice: "use_photos",
+        expectedDecisionRevision: 1,
+        idempotencyKey: firstId,
+        humanConfirmed: true,
+      }).success,
+    ).toBe(true);
+    const packing = {
+      addressLeaseId: null,
+      idempotencyKey: firstId,
+      humanConfirmed: true,
+    } as const;
+    expect(packOrderRequestSchema.safeParse(packing).success).toBe(true);
+    expect(
+      packOrderRequestSchema.safeParse({ ...packing, packingEvidenceReferenceId: secondId })
+        .success,
+    ).toBe(false);
+    expect(
+      shipOrderRequestSchema.safeParse({
+        addressLeaseId: null,
+        idempotencyKey: secondId,
+        humanConfirmed: true,
+      }).success,
+    ).toBe(true);
+    expect(
+      shipOrderRequestSchema.safeParse({
+        addressLeaseId: null,
+        shippedAt: "2026-08-29T00:00:00.000Z",
+        idempotencyKey: secondId,
+        humanConfirmed: true,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("keeps private storage and financial thresholds out of shipping responses", () => {
+    const asset = {
+      assetId: firstId,
+      orderId: secondId,
+      role: "product",
+      mimeType: "image/png",
+      sizeBytes: 100,
+      width: 10,
+      height: 10,
+      capturedBy: firstId,
+      capturedAt: "2026-08-29T00:00:00.000Z",
+    } as const;
+    expect(shippingPhotoAssetResponseSchema.safeParse(asset).success).toBe(true);
+    expect(
+      shippingPhotoAssetResponseSchema.safeParse({ ...asset, originalStorageKey: "private" })
+        .success,
+    ).toBe(false);
+    const preflight = {
+      orderId: secondId,
+      decisionRevisionId: firstId,
+      decisionRevision: 1,
+      state: "capture_required",
+      photoRequired: true,
+      decisionReason: "policy_all",
+      saleAmountStatus: "present",
+      assets: [asset],
+      confirmedAssetIds: [],
+      photoConfirmationId: null,
+      packingHumanConfirmed: false,
+      shipmentHumanConfirmed: false,
+      updatedAt: "2026-08-29T00:00:00.000Z",
+    } as const;
+    expect(shippingPhotoPreflightResponseSchema.safeParse(preflight).success).toBe(true);
+    expect(
+      shippingPhotoPreflightResponseSchema.safeParse({
+        ...preflight,
+        saleAmountMinor: 30_000,
+      }).success,
+    ).toBe(false);
+    expect(
+      shippingPhotoPreflightResponseSchema.safeParse({
+        ...preflight,
+        highValueThresholdMinor: 30_000,
+      }).success,
+    ).toBe(false);
+  });
+});
 
 describe("safe discrepancy and accounting preview read models", () => {
   it("keeps an unknown tax basis visible as an accounting export blocker", () => {
@@ -665,7 +890,7 @@ describe("ten-product pilot contract", () => {
     expect(() => listingPrepPilotItemIdentifiers("not-a-run-id", "TOP-01")).toThrow();
   });
 
-  it("keeps v1.1 starts on their verified 0033 snapshot after additive P12 migrations", () => {
+  it("keeps v1.1 starts on their verified 0033 snapshot after additive P12/P13 migrations", () => {
     const latestMigrationVersion = readdirSync(new URL("../../db/migrations/", import.meta.url))
       .filter((name) => /^\d{4}_.+\.sql$/u.test(name))
       .sort()
@@ -684,7 +909,7 @@ describe("ten-product pilot contract", () => {
     } as const;
     expect(startPilotRunRequestSchema.safeParse(valid).success).toBe(true);
     expect(listingPrepPilotMigrationVersion).toBe("0033");
-    expect(latestMigrationVersion).toBe("0034");
+    expect(latestMigrationVersion).toBe("0035");
     expect(
       startPilotRunRequestSchema.safeParse({ ...valid, migrationVersion: "0028" }).success,
     ).toBe(false);
