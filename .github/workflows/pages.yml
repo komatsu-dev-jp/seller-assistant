@@ -28,7 +28,7 @@ jobs:
         run: npm ci
       - name: Build the shared approved-screen review app
         env:
-          REVIEW_BASE_PATH: /resale-ops-app
+          REVIEW_BASE_PATH: /seller-assistant
         run: npm run build --workspace @resale/review
       - name: Record the reviewed commit
         run: printf '%s\n' "${{ github.sha }}" > apps/review/out/commit.txt
