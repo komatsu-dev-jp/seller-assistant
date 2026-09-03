@@ -4156,7 +4156,69 @@
   font-weight: 700;
 }
 
-/* Final viewport guard: preserve every PC36 control inside the 512px board. */
+/* Final viewport guard: preserve every PC33/PC36 control inside the approved
+   768 x 512 board without relying on scrolling. */
+.screen33 .inventoryBottom p {
+  margin: 0;
+  padding: 3px 4px;
+}
+
+.screen33 .inventoryBottom,
+.screen33 .inventoryBottom > .card:first-child,
+.screen33 .inventoryBottom > .card:last-child {
+  height: 140px;
+}
+
+.screen33 .historyLink {
+  margin-top: 3px;
+}
+
+.screen36 .statuses .card {
+  height: 272px;
+}
+
+.screen36 .statuses .card h3 {
+  margin-bottom: 4px;
+  font-size: 10px;
+}
+
+.screen36 .statuses .card > p {
+  margin: 2px 0;
+  font-size: 9px;
+  line-height: 1.25;
+}
+
+.screen36 .greenbox,
+.screen36 .redbox {
+  margin: 5px 0;
+  padding: 6px;
+}
+
+.screen36 .greenbox p,
+.screen36 .redbox p,
+.screen36 .operationBox p {
+  margin: 2px 0;
+  font-size: 8px;
+  line-height: 1.2;
+}
+
+.screen36 .operationBox {
+  margin: 4px 0;
+  padding: 6px;
+}
+
+.screen36 .statuses .provisionalBtn,
+.screen36 .statuses .greenBtn,
+.screen36 .statuses .redBtn {
+  padding: 6px;
+  font-size: 9px;
+}
+
+.screen36 .holdTimer {
+  margin-top: 2px;
+  font-size: 8px;
+}
+
 .screen36 .statusBottom .flow,
 .screen36 .deleteGuard {
   height: 124px;

@@ -30,6 +30,7 @@ import {
   measurementDefinitionsFor,
   templateForCategory,
 } from "../lib/measurement-profile";
+import { optionalFormText } from "../lib/form-data-fields";
 import { recoverablePilotCorrection } from "../lib/pilot-correction";
 import { pilotDisplayCategory } from "../lib/pilot-category";
 import {
@@ -301,7 +302,12 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
 
   async function createPurchase(form: FormData) {
     await run(async () => {
-      if (textField(form, "pilotRunId")) await ensurePilotEventsSynced();
+      const pilotRunId = optionalFormText(form, "pilotRunId");
+      const productFixtureId = optionalFormText(form, "productFixtureId");
+      if ((pilotRunId === null) !== (productFixtureId === null)) {
+        throw new Error("計測用の商品情報を確認できません。画面を読み直してください。");
+      }
+      if (pilotRunId) await ensurePilotEventsSynced();
       const created = await requestJson<P0ItemResponse>(`/v1/workspaces/${workspaceId}/p0-items`, {
         method: "POST",
         body: JSON.stringify({
@@ -316,17 +322,16 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
           allocatedCostMinor: numberField(form, "allocatedCostMinor"),
           idempotencyKey: crypto.randomUUID(),
           humanConfirmed: true,
-          ...(textField(form, "pilotRunId") && textField(form, "productFixtureId")
+          ...(pilotRunId && productFixtureId
             ? {
                 pilot: {
-                  runId: textField(form, "pilotRunId"),
-                  productFixtureId: textField(form, "productFixtureId"),
+                  runId: pilotRunId,
+                  productFixtureId,
                 },
               }
             : {}),
         }),
       });
-      const pilotRunId = textField(form, "pilotRunId");
       if (pilotRunId) {
         sessionStorage.setItem(
           pilotActiveMarkerKey(workspaceId),

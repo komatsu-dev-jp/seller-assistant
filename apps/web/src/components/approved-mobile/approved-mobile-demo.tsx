@@ -323,6 +323,7 @@ function ChoiceCard({
   onClick,
   tone = "blue",
   visual,
+  indicator = "check",
 }: {
   label: string;
   detail: string;
@@ -330,6 +331,7 @@ function ChoiceCard({
   onClick: () => void;
   tone?: "blue" | "green" | "amber";
   visual?: ReactNode;
+  indicator?: "check" | "radio";
 }) {
   return (
     <button
@@ -344,12 +346,39 @@ function ChoiceCard({
       aria-pressed={active}
     >
       {visual ? <span className={styles.choiceVisual}>{visual}</span> : null}
-      <span className={styles.choiceRadio}>{active ? "✓" : ""}</span>
+      <span className={cn(styles.choiceRadio, indicator === "radio" && styles.choiceRadioDot)}>
+        {active && indicator === "check" ? "✓" : ""}
+      </span>
       <span>
         <strong>{label}</strong>
         <small>{detail}</small>
       </span>
       <span className={styles.chevron}>›</span>
+    </button>
+  );
+}
+
+function ShippingMethodRow({
+  label,
+  fee,
+  active,
+  onClick,
+}: {
+  label: string;
+  fee: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={cn(styles.shippingMethodRow, active && styles.shippingMethodRowActive)}
+      aria-pressed={active}
+      onClick={onClick}
+    >
+      <span className={styles.shippingMethodRadio} aria-hidden="true" />
+      <strong>{label}</strong>
+      <b>{fee}</b>
     </button>
   );
 }
@@ -2295,34 +2324,33 @@ function RenderScreenContent({ id }: { id: string }) {
         <section className={styles.contentStack}>
           <div className={styles.salesChannelChip}>メルカリで使える方法を選んでください</div>
           <div className={styles.shippingOptions}>
-            <ChoiceCard
+            <ShippingMethodRow
               label="ゆうパケットポストmini"
-              detail="160円"
+              fee="160円"
               active={choice === "first"}
               onClick={() => setChoice("first")}
-              tone="green"
             />
-            <ChoiceCard
+            <ShippingMethodRow
               label="ネコポス"
-              detail="210円"
+              fee="210円"
               active={choice === "second"}
               onClick={() => setChoice("second")}
             />
-            <ChoiceCard
+            <ShippingMethodRow
               label="ゆうパケットポスト"
-              detail="215円"
+              fee="215円"
               active={choice === "third"}
               onClick={() => setChoice("third")}
             />
-            <ChoiceCard
+            <ShippingMethodRow
               label="宅急便コンパクト"
-              detail="450円＋箱"
+              fee="450円＋箱"
               active={choice === "none"}
               onClick={() => setChoice("none")}
             />
-            <ChoiceCard
+            <ShippingMethodRow
               label="ゆうパケットプラス"
-              detail="455円"
+              fee="455円"
               active={false}
               onClick={() => setChoice("none")}
             />
@@ -2331,7 +2359,10 @@ function RenderScreenContent({ id }: { id: string }) {
             ほかのサイズを見る　›
           </button>
           <div className={styles.officialDate}>
-            <span>♢</span>
+            <svg className={styles.officialCheckIcon} viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 2.8 19 5.6v5.2c0 4.7-2.8 8.1-7 10.4-4.2-2.3-7-5.7-7-10.4V5.6L12 2.8Z" />
+              <path d="m8.7 11.8 2.1 2.1 4.6-5" />
+            </svg>
             <strong>公式確認　2026/08/26</strong>
           </div>
         </section>
@@ -2339,7 +2370,8 @@ function RenderScreenContent({ id }: { id: string }) {
     case "37":
       return (
         <section className={styles.contentStack}>
-          <div className={styles.summaryRows}>
+          <p className={styles.boardInstruction}>内容を確認してください</p>
+          <div className={cn(styles.summaryRows, styles.shippingReviewRows)}>
             <DataRow label="商品" value="オックスフォードシャツ" />
             <DataRow label="販売先" value="メルカリ" />
             <DataRow label="取引ID" value="TX-260826-012" />
@@ -2349,13 +2381,13 @@ function RenderScreenContent({ id }: { id: string }) {
           <button type="button" className={styles.outlineButton}>
             公式料金を確認
           </button>
-          <div className={styles.warningBanner}>料金は変わることがあります</div>
+          <div className={styles.warningBanner}>⚠ 料金は変わることがあります</div>
         </section>
       );
     case "38":
       return (
         <section className={styles.contentStack}>
-          <p className={styles.boardInstruction}>発送内容を確認してください</p>
+          <p className={styles.boardInstruction}>内容を記録してください</p>
           <div className={cn(styles.confirmRow, styles.shipConfirm)}>
             <CheckMark tone="green" />
             <div>

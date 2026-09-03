@@ -38,13 +38,17 @@ export function PcCanvas({
       window.cancelAnimationFrame(frame);
       window.removeEventListener("resize", update);
     };
-  }, []);
+  }, [className]);
 
   const viewportStyle: CSSProperties = {
     width: "100vw",
     minHeight: "100vh",
     height: "100vh",
-    overflow: "hidden",
+    // The approved desktop board remains width-first. Short windows must be
+    // able to reach the footer, while the className-dependent effect above
+    // resets retained focus scrolling whenever the live screen changes.
+    overflowX: "hidden",
+    overflowY: "auto",
     display: "flex",
     justifyContent: "center",
     alignItems: "flex-start",

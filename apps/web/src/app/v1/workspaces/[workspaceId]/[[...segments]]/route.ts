@@ -2,6 +2,12 @@ import type { NextRequest } from "next/server";
 import { matchesConfiguredAppOrigin } from "../../../../../lib/request-origin";
 import {
   createWorkspaceProxyRequestInit,
+  isAllowedOrderShippingProxyPath,
+  isAllowedShippingPhotoProxyPath,
+  privateNoStoreNoContentResponse,
+  readShippingPhotoUpload,
+  ShippingPhotoUploadError,
+  type WorkspaceProxyMethod,
   type WorkspaceProxyRequestBody,
 } from "../../../../../lib/workspace-proxy-request";
 
@@ -32,15 +38,29 @@ export async function POST(
   return proxyWorkspaceRequest(request, context, "POST");
 }
 
+export async function PUT(
+  request: NextRequest,
+  context: { params: Promise<{ workspaceId: string; segments?: string[] }> },
+) {
+  return proxyWorkspaceRequest(request, context, "PUT");
+}
+
+export async function PATCH(
+  request: NextRequest,
+  context: { params: Promise<{ workspaceId: string; segments?: string[] }> },
+) {
+  return proxyWorkspaceRequest(request, context, "PATCH");
+}
+
 async function proxyWorkspaceRequest(
   request: NextRequest,
   context: { params: Promise<{ workspaceId: string; segments?: string[] }> },
-  method: "GET" | "POST",
+  method: WorkspaceProxyMethod,
 ): Promise<Response> {
   const apiOrigin = process.env.API_INTERNAL_ORIGIN;
   const appOrigin = process.env.APP_ORIGIN;
   if (!apiOrigin) return apiError(503, "api_not_connected", "ローカルAPIが未接続です。");
-  if (method === "POST" && !matchesConfiguredAppOrigin(request, appOrigin, true)) {
+  if (method !== "GET" && !matchesConfiguredAppOrigin(request, appOrigin, true)) {
     return apiError(403, "app_origin_rejected", "アプリのURLを確認できません。");
   }
 
@@ -49,11 +69,17 @@ async function proxyWorkspaceRequest(
     return apiError(404, "route_not_available", "この操作はPWAから利用できません。");
   }
   try {
+    const shippingPhotoUpload =
+      method === "POST" &&
+      segments.length === 3 &&
+      segments[0] === "orders" &&
+      segments[2] === "shipping-photos";
     const binaryUpload =
       method === "POST" &&
       ((segments.length === 3 &&
         (segments[2] === "media-uploads" ||
-          (segments[0] === "locations" && segments[2] === "photos"))) ||
+          (segments[0] === "locations" && segments[2] === "photos") ||
+          (segments[0] === "orders" && segments[2] === "shipping-photos"))) ||
         (segments.length === 5 &&
           segments[0] === "stocktakes" &&
           segments[2] === "discrepancies" &&
@@ -64,13 +90,15 @@ async function proxyWorkspaceRequest(
       apiOrigin,
     );
     const body: WorkspaceProxyRequestBody | undefined =
-      method === "POST"
+      method !== "GET"
         ? binaryUpload
-          ? {
-              kind: "binary",
-              data: await request.arrayBuffer(),
-              contentType: request.headers.get("content-type") ?? "",
-            }
+          ? shippingPhotoUpload
+            ? { kind: "binary", ...(await readShippingPhotoUpload(request)) }
+            : {
+                kind: "binary",
+                data: await request.arrayBuffer(),
+                contentType: request.headers.get("content-type") ?? "",
+              }
           : { kind: "json", text: await request.text() }
         : undefined;
     const upstreamInit = createWorkspaceProxyRequestInit({
@@ -81,7 +109,14 @@ async function proxyWorkspaceRequest(
       ...(body ? { body } : {}),
     });
     const upstream = await fetch(endpoint, upstreamInit);
-    const safeStatus = [200, 201, 400, 401, 403, 404, 409].includes(upstream.status)
+    if (
+      upstream.status === 204 &&
+      shippingPhotoUpload === false &&
+      segments[0] === "shipping-photo-policy"
+    ) {
+      return privateNoStoreNoContentResponse();
+    }
+    const safeStatus = [200, 201, 204, 400, 401, 403, 404, 409, 413].includes(upstream.status)
       ? upstream.status
       : 503;
     const contentType = upstream.headers.get("content-type") ?? "application/json";
@@ -89,6 +124,8 @@ async function proxyWorkspaceRequest(
       const headers = new Headers({
         "content-type": contentType,
         "cache-control": "private, no-store",
+        pragma: "no-cache",
+        "x-content-type-options": "nosniff",
       });
       for (const name of ["content-disposition", "x-content-sha256"]) {
         const value = upstream.headers.get(name);
@@ -100,6 +137,8 @@ async function proxyWorkspaceRequest(
       const headers = new Headers({
         "content-type": contentType,
         "cache-control": "private, no-store",
+        pragma: "no-cache",
+        "x-content-type-options": "nosniff",
       });
       for (const name of ["content-disposition", "x-content-type-options"]) {
         const value = upstream.headers.get(name);
@@ -121,12 +160,29 @@ async function proxyWorkspaceRequest(
       status: safeStatus,
       headers: { "cache-control": "private, no-store" },
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof ShippingPhotoUploadError) {
+      return apiError(error.status, "shipping_photo_rejected", error.message);
+    }
     return apiError(503, "api_unreachable", "APIへ接続できません。");
   }
 }
 
-function isAllowedPath(method: "GET" | "POST", segments: string[]): boolean {
+export function isAllowedPath(method: WorkspaceProxyMethod, segments: string[]): boolean {
+  const shippingPhotoPath = isAllowedShippingPhotoProxyPath(method, segments, uuid);
+  if (shippingPhotoPath !== null) return shippingPhotoPath;
+  const orderShippingPath = isAllowedOrderShippingProxyPath(method, segments, uuid);
+  if (orderShippingPath !== null) return orderShippingPath;
+  if (
+    method === "GET" &&
+    segments.length === 4 &&
+    segments[0] === "orders" &&
+    uuid.test(segments[1] ?? "") &&
+    segments[2] === "pick-location-photo" &&
+    segments[3] === "content"
+  ) {
+    return true;
+  }
   if (method === "GET" && segments.length === 1 && segments[0] === "owner-pulse") {
     return true;
   }

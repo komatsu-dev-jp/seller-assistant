@@ -12,6 +12,14 @@ if (!adminUrl) {
   throw new Error("TEST_UPGRADE_DATABASE_ADMIN_URL is required");
 }
 
+function hasDatabaseCode(expectedCode: string): (error: unknown) => boolean {
+  return (error) =>
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    String(error.code) === expectedCode;
+}
+
 const migrationsUrl = new URL("../../../packages/db/migrations/", import.meta.url);
 const migrationNames = (await readdir(migrationsUrl))
   .filter((name) => /^\d{4}_.+\.sql$/u.test(name))
@@ -20,7 +28,7 @@ const legacyMigrations = migrationNames.filter((name) => Number(name.slice(0, 4)
 const upgradeMigrations = migrationNames.filter((name) => Number(name.slice(0, 4)) > 14);
 assert.ok(legacyMigrations.length > 0, "Legacy migrations must be present");
 assert.deepEqual(
-  upgradeMigrations.slice(-15).map((name) => name.slice(0, 4)),
+  upgradeMigrations.slice(-18).map((name) => name.slice(0, 4)),
   [
     "0021",
     "0022",
@@ -37,6 +45,9 @@ assert.deepEqual(
     "0033",
     "0034",
     "0035",
+    "0037",
+    "0038",
+    "0039",
   ],
   "The upgrade fixture must include the revised-A migrations",
 );
@@ -53,6 +64,13 @@ const pilotMigrationVersionAlignmentMigration = upgradeMigrations.find((name) =>
 const listingPrepPilotV11Migration = upgradeMigrations.find((name) => name.startsWith("0033_"));
 const inspectionConcernMigration = upgradeMigrations.find((name) => name.startsWith("0034_"));
 const shippingPhotoPreflightMigration = upgradeMigrations.find((name) => name.startsWith("0035_"));
+const orderRegistrationShippingMethodMigration = upgradeMigrations.find((name) =>
+  name.startsWith("0037_"),
+);
+const orderAddressModeMigration = upgradeMigrations.find((name) => name.startsWith("0038_"));
+const registeredMissingFinancialFactsMigration = upgradeMigrations.find((name) =>
+  name.startsWith("0039_"),
+);
 assert.ok(modeAwareApprovalMigration, "Migration 0027 must be present");
 assert.ok(completeApprovalMigration, "Migration 0028 must be present");
 assert.ok(safeMappingReplacementMigration, "Migration 0029 must be present");
@@ -62,6 +80,9 @@ assert.ok(pilotMigrationVersionAlignmentMigration, "Migration 0032 must be prese
 assert.ok(listingPrepPilotV11Migration, "Migration 0033 must be present");
 assert.ok(inspectionConcernMigration, "Migration 0034 must be present");
 assert.ok(shippingPhotoPreflightMigration, "Migration 0035 must be present");
+assert.ok(orderRegistrationShippingMethodMigration, "Migration 0037 must be present");
+assert.ok(orderAddressModeMigration, "Migration 0038 must be present");
+assert.ok(registeredMissingFinancialFactsMigration, "Migration 0039 must be present");
 const upgradesBeforeApprovalRepair = upgradeMigrations.filter(
   (name) => Number(name.slice(0, 4)) < 27,
 );
@@ -115,6 +136,11 @@ try {
     packedRecoveryOrder: "00000000-0000-4000-8000-000000000133",
     packedRecoveryEvidence: "00000000-0000-4000-8000-000000000134",
     packedRecoveryReference: "00000000-0000-4000-8000-000000000135",
+    shippingFinancialEvent: "00000000-0000-4000-8000-000000000139",
+    shippingFinancialEventSecond: "00000000-0000-4000-8000-000000000140",
+    anonymousAddressOrder: "00000000-0000-4000-8000-000000000141",
+    storedAddressOrder: "00000000-0000-4000-8000-000000000142",
+    invalidStoredAddressOrder: "00000000-0000-4000-8000-000000000143",
   } as const;
 
   await sql.begin(async (transaction) => {
@@ -257,6 +283,16 @@ try {
       insert into sales_order (id, workspace_id, order_number, state)
       values (
         ${ids.packedRecoveryOrder}, ${ids.workspace}, 'ORDER-LEGACY-PACKED', 'packed'
+      )
+    `;
+    await transaction`
+      insert into order_private_address (
+        workspace_id, order_id, ciphertext, nonce, auth_tag, key_version,
+        created_by, created_at
+      ) values (
+        ${ids.workspace}, ${ids.packedRecoveryOrder}, decode('010203', 'hex'),
+        decode(repeat('04', 12), 'hex'), decode(repeat('05', 16), 'hex'),
+        'legacy-upgrade-v1', ${ids.owner}, '2026-01-03T03:04:06.000Z'
       )
     `;
     await transaction`
@@ -1443,6 +1479,543 @@ try {
     table_count: 6,
     row_count: 0,
   });
+  await sql`
+    insert into financial_event (
+      id, workspace_id, sku_id, order_id, event_type, amount_minor, currency,
+      tax_basis, bearer, source, source_meaning, rounding_rule_version,
+      source_already_net, occurred_at
+    ) values
+      (
+        ${ids.shippingFinancialEvent}, ${ids.workspace}, ${ids.sku}, ${ids.order},
+        'shipping', 500, 'JPY', 'tax_included', 'seller', 'legacy_upgrade_fixture',
+        'first historical shipping fact retained across migration', 'legacy-v1', false,
+        '2026-01-02T03:00:02.000Z'::timestamptz
+      ),
+      (
+        ${ids.shippingFinancialEventSecond}, ${ids.workspace}, ${ids.sku}, ${ids.order},
+        'shipping', 100, 'JPY', 'tax_included', 'seller', 'legacy_upgrade_fixture',
+        'second historical shipping fact retained across migration', 'legacy-v1', false,
+        '2026-01-02T03:00:03.000Z'::timestamptz
+      )
+  `;
+  const historyBeforeOrderRegistrationContract = await readInspectionUpgradeHistory();
+  const packingBeforeOrderRegistrationContract = await readLegacyPackingEvidence();
+  const packedRecoveryBeforeOrderRegistrationContract = await readLegacyPackedRecovery();
+  const duplicateSalesBeforeOrderRegistrationContract = await sql<
+    Array<{ id: string; amount_minor: number; occurred_at: string }>
+  >`
+    select id, amount_minor::integer as amount_minor, occurred_at::text
+    from financial_event
+    where workspace_id = ${ids.workspace} and order_id = ${ids.order}
+      and event_type = 'sale' and reverses_event_id is null
+    order by id
+  `;
+  const duplicateShippingBeforeOrderRegistrationContract = await sql<
+    Array<{ id: string; amount_minor: number; source_meaning: string; occurred_at: string }>
+  >`
+    select id, amount_minor::integer as amount_minor, source_meaning, occurred_at::text
+    from financial_event
+    where workspace_id = ${ids.workspace} and order_id = ${ids.order}
+      and event_type = 'shipping' and reverses_event_id is null
+    order by id
+  `;
+  assert.equal(duplicateShippingBeforeOrderRegistrationContract.length, 2);
+  const orderRegistrationSource = await readFile(
+    new URL(orderRegistrationShippingMethodMigration, migrationsUrl),
+    "utf8",
+  );
+  const injectedOrderRegistrationFailureSource = orderRegistrationSource.replace(
+    /commit;\s*$/u,
+    `do $injected$ begin
+       raise exception 'injected 0037 rollback test';
+     end $injected$;
+     commit;`,
+  );
+  assert.notEqual(injectedOrderRegistrationFailureSource, orderRegistrationSource);
+  await assert.rejects(
+    () => sql.unsafe(injectedOrderRegistrationFailureSource),
+    /injected 0037 rollback test/u,
+  );
+
+  await sql.end({ timeout: 5 });
+  sql = postgres(adminUrl, { max: 1, prepare: false });
+
+  const [orderRegistrationSchemaAfterRollback] = await sql<
+    [{ table_count: number; shipment_column_count: number }]
+  >`
+    select
+      (
+        select count(*)::integer from information_schema.tables
+        where table_schema = 'public'
+          and table_name in (
+            'order_number_counter', 'order_registration_revision',
+            'order_channel_transaction_claim',
+            'shipping_method_catalog_revision', 'order_shipping_method_selection',
+            'order_shipping_readiness_confirmation'
+          )
+      ) as table_count,
+      (
+        select count(*)::integer from information_schema.columns
+        where table_schema = 'public' and table_name = 'shipment_human_confirmation'
+          and column_name in (
+            'shipping_method_selection_id', 'readiness_confirmation_id',
+            'shipping_fee_minor', 'shipped_at', 'shipping_financial_event_id'
+          )
+      ) as shipment_column_count
+  `;
+  assert.deepEqual(
+    { ...orderRegistrationSchemaAfterRollback },
+    { table_count: 0, shipment_column_count: 0 },
+    "A failed 0037 transaction must leave no partial P14 schema behind",
+  );
+  assert.deepEqual(
+    await readInspectionUpgradeHistory(),
+    historyBeforeOrderRegistrationContract,
+    "A failed 0037 transaction must preserve existing SKU, finance, export and audit history",
+  );
+  assert.deepEqual(
+    await readLegacyPackingEvidence(),
+    packingBeforeOrderRegistrationContract,
+    "A failed 0037 transaction must preserve legacy packing data",
+  );
+  await applyMigration(orderRegistrationShippingMethodMigration);
+  assert.deepEqual(
+    await readInspectionUpgradeHistory(),
+    historyBeforeOrderRegistrationContract,
+    "0037 must not rewrite existing SKU, media, pilot, finance, export or audit history",
+  );
+  assert.deepEqual(
+    await readLegacyPackingEvidence(),
+    packingBeforeOrderRegistrationContract,
+    "0037 must preserve existing packing evidence",
+  );
+  assert.deepEqual(
+    await readLegacyPackedRecovery(),
+    packedRecoveryBeforeOrderRegistrationContract,
+    "0037 must preserve legacy packed recovery state and evidence",
+  );
+  const duplicateSalesAfterOrderRegistrationContract = await sql<
+    Array<{ id: string; amount_minor: number; occurred_at: string }>
+  >`
+    select id, amount_minor::integer as amount_minor, occurred_at::text
+    from financial_event
+    where workspace_id = ${ids.workspace} and order_id = ${ids.order}
+      and event_type = 'sale' and reverses_event_id is null
+    order by id
+  `;
+  assert.deepEqual(
+    Array.from(duplicateSalesAfterOrderRegistrationContract, (row) => ({ ...row })),
+    Array.from(duplicateSalesBeforeOrderRegistrationContract, (row) => ({ ...row })),
+    "0037 must preserve historical sale events",
+  );
+  const duplicateShippingAfterOrderRegistrationContract = await sql<
+    Array<{ id: string; amount_minor: number; source_meaning: string; occurred_at: string }>
+  >`
+    select id, amount_minor::integer as amount_minor, source_meaning, occurred_at::text
+    from financial_event
+    where workspace_id = ${ids.workspace} and order_id = ${ids.order}
+      and event_type = 'shipping' and reverses_event_id is null
+    order by id
+  `;
+  assert.deepEqual(
+    Array.from(duplicateShippingAfterOrderRegistrationContract, (row) => ({ ...row })),
+    Array.from(duplicateShippingBeforeOrderRegistrationContract, (row) => ({ ...row })),
+    "0037 must preserve multiple historical shipping facts instead of blocking the upgrade",
+  );
+  const [orderRegistrationContractTables] = await sql<
+    [{ table_count: number; row_count: number; shipment_column_count: number }]
+  >`
+    select
+      (
+        select count(*)::integer from information_schema.tables
+        where table_schema = 'public'
+          and table_name in (
+            'order_number_counter', 'order_registration_revision',
+            'order_channel_transaction_claim',
+            'shipping_method_catalog_revision', 'order_shipping_method_selection',
+            'order_shipping_readiness_confirmation'
+          )
+      ) as table_count,
+      (
+        (select count(*)::integer from order_number_counter)
+        + (select count(*)::integer from order_registration_revision)
+        + (select count(*)::integer from order_channel_transaction_claim)
+        + (select count(*)::integer from shipping_method_catalog_revision)
+        + (select count(*)::integer from order_shipping_method_selection)
+        + (select count(*)::integer from order_shipping_readiness_confirmation)
+      ) as row_count,
+      (
+        select count(*)::integer from information_schema.columns
+        where table_schema = 'public' and table_name = 'shipment_human_confirmation'
+          and column_name in (
+            'shipping_method_selection_id', 'readiness_confirmation_id',
+            'shipping_fee_minor', 'shipped_at', 'shipping_financial_event_id'
+          )
+      ) as shipment_column_count
+  `;
+  assert.deepEqual(orderRegistrationContractTables, {
+    table_count: 6,
+    row_count: 0,
+    shipment_column_count: 5,
+  });
+  const historyBeforeAddressModeContract = await readInspectionUpgradeHistory();
+  const packingBeforeAddressModeContract = await readLegacyPackingEvidence();
+  const packedRecoveryBeforeAddressModeContract = await readLegacyPackedRecovery();
+  const legacyPrivateAddressBeforeAddressMode = await sql<
+    Array<{
+      workspace_id: string;
+      order_id: string;
+      ciphertext_hex: string;
+      nonce_hex: string;
+      auth_tag_hex: string;
+      key_version: string;
+      created_by: string;
+      created_at: string;
+    }>
+  >`
+    select workspace_id, order_id, encode(ciphertext, 'hex') as ciphertext_hex,
+           encode(nonce, 'hex') as nonce_hex, encode(auth_tag, 'hex') as auth_tag_hex,
+           key_version, created_by, created_at::text
+    from order_private_address
+    where workspace_id = ${ids.workspace} and order_id = ${ids.packedRecoveryOrder}
+  `;
+  const auditBeforeAddressModeContract = await sql<
+    Array<{
+      id: string;
+      action: string;
+      target_type: string;
+      target_id: string;
+      occurred_at: string;
+      redacted_changes: unknown;
+    }>
+  >`
+    select id, action, target_type, target_id, occurred_at::text, redacted_changes
+    from audit_event
+    where workspace_id = ${ids.workspace}
+    order by occurred_at, id
+  `;
+  const orderAddressModeSource = await readFile(
+    new URL(orderAddressModeMigration, migrationsUrl),
+    "utf8",
+  );
+  const injectedOrderAddressModeFailureSource = orderAddressModeSource.replace(
+    /commit;\s*$/u,
+    `do $injected$ begin
+       raise exception 'injected 0038 rollback test';
+     end $injected$;
+     commit;`,
+  );
+  assert.notEqual(injectedOrderAddressModeFailureSource, orderAddressModeSource);
+  await assert.rejects(
+    () => sql.unsafe(injectedOrderAddressModeFailureSource),
+    /injected 0038 rollback test/u,
+  );
+
+  await sql.end({ timeout: 5 });
+  sql = postgres(adminUrl, { max: 1, prepare: false });
+
+  const [addressModeSchemaAfterRollback] = await sql<
+    [{ column_count: number; function_count: number }]
+  >`
+    select
+      (
+        select count(*)::integer from information_schema.columns
+        where table_schema = 'public' and table_name = 'sales_order'
+          and column_name = 'address_mode'
+      ) as column_count,
+      (
+        select count(*)::integer
+        from pg_proc procedure_row
+        join pg_namespace namespace on namespace.oid = procedure_row.pronamespace
+        where namespace.nspname = 'public'
+          and procedure_row.proname in (
+            'reject_order_address_mode_change', 'validate_new_order_address_storage',
+            'validate_private_address_mode', 'validate_address_access_lease_mode',
+            'order_has_current_actor_address_lease',
+            'require_address_lease_for_order_work',
+            'require_address_lease_for_order_evidence'
+          )
+      ) as function_count
+  `;
+  assert.deepEqual(
+    { ...addressModeSchemaAfterRollback },
+    { column_count: 0, function_count: 0 },
+    "A failed 0038 transaction must leave no partial address-mode schema behind",
+  );
+  assert.deepEqual(
+    await readInspectionUpgradeHistory(),
+    historyBeforeAddressModeContract,
+    "A failed 0038 transaction must preserve existing SKU, finance, export and audit history",
+  );
+  assert.deepEqual(
+    await readLegacyPackedRecovery(),
+    packedRecoveryBeforeAddressModeContract,
+    "A failed 0038 transaction must preserve legacy packed state and evidence",
+  );
+  const legacyPrivateAddressAfterAddressModeRollback = await sql<
+    Array<{
+      workspace_id: string;
+      order_id: string;
+      ciphertext_hex: string;
+      nonce_hex: string;
+      auth_tag_hex: string;
+      key_version: string;
+      created_by: string;
+      created_at: string;
+    }>
+  >`
+    select workspace_id, order_id, encode(ciphertext, 'hex') as ciphertext_hex,
+           encode(nonce, 'hex') as nonce_hex, encode(auth_tag, 'hex') as auth_tag_hex,
+           key_version, created_by, created_at::text
+    from order_private_address
+    where workspace_id = ${ids.workspace} and order_id = ${ids.packedRecoveryOrder}
+  `;
+  assert.deepEqual(
+    Array.from(legacyPrivateAddressAfterAddressModeRollback, (row) => ({ ...row })),
+    Array.from(legacyPrivateAddressBeforeAddressMode, (row) => ({ ...row })),
+    "A failed 0038 transaction must preserve encrypted-address bytes and metadata",
+  );
+  await applyMigration(orderAddressModeMigration);
+  assert.deepEqual(
+    await readInspectionUpgradeHistory(),
+    historyBeforeAddressModeContract,
+    "0038 must not rewrite existing SKU, media, pilot, finance, export or audit history",
+  );
+  assert.deepEqual(
+    await readLegacyPackingEvidence(),
+    packingBeforeAddressModeContract,
+    "0038 must preserve every legacy packing row",
+  );
+  assert.deepEqual(
+    await readLegacyPackedRecovery(),
+    packedRecoveryBeforeAddressModeContract,
+    "0038 must preserve legacy packed state and evidence",
+  );
+  const legacyPrivateAddressAfterAddressMode = await sql<
+    Array<{
+      workspace_id: string;
+      order_id: string;
+      ciphertext_hex: string;
+      nonce_hex: string;
+      auth_tag_hex: string;
+      key_version: string;
+      created_by: string;
+      created_at: string;
+    }>
+  >`
+    select workspace_id, order_id, encode(ciphertext, 'hex') as ciphertext_hex,
+           encode(nonce, 'hex') as nonce_hex, encode(auth_tag, 'hex') as auth_tag_hex,
+           key_version, created_by, created_at::text
+    from order_private_address
+    where workspace_id = ${ids.workspace} and order_id = ${ids.packedRecoveryOrder}
+  `;
+  assert.deepEqual(
+    Array.from(legacyPrivateAddressAfterAddressMode, (row) => ({ ...row })),
+    Array.from(legacyPrivateAddressBeforeAddressMode, (row) => ({ ...row })),
+    "0038 must not rewrite legacy encrypted-address bytes or metadata",
+  );
+  const auditAfterAddressModeContract = await sql<
+    Array<{
+      id: string;
+      action: string;
+      target_type: string;
+      target_id: string;
+      occurred_at: string;
+      redacted_changes: unknown;
+    }>
+  >`
+    select id, action, target_type, target_id, occurred_at::text, redacted_changes
+    from audit_event
+    where workspace_id = ${ids.workspace}
+    order by occurred_at, id
+  `;
+  assert.deepEqual(
+    Array.from(auditAfterAddressModeContract, (row) => ({ ...row })),
+    Array.from(auditBeforeAddressModeContract, (row) => ({ ...row })),
+    "0038 must not fabricate, delete or rewrite audit history",
+  );
+  const readShipmentConfirmationFunctionDefinition = async () => {
+    const [row] = await sql<[{ definition: string }]>`
+      select pg_get_functiondef('validate_shipment_human_confirmation()'::regprocedure)
+        as definition
+    `;
+    return row.definition;
+  };
+  const shipmentFunctionBeforeMissingFactsMigration =
+    await readShipmentConfirmationFunctionDefinition();
+  assert.match(shipmentFunctionBeforeMissingFactsMigration, /fee_fact_count <> 1/iu);
+  const historyBeforeMissingFinancialFactsContract = await readInspectionUpgradeHistory();
+  const missingFinancialFactsSource = await readFile(
+    new URL(registeredMissingFinancialFactsMigration, migrationsUrl),
+    "utf8",
+  );
+  const injectedMissingFinancialFactsFailureSource = missingFinancialFactsSource.replace(
+    /commit;\s*$/u,
+    `do $injected$ begin
+       raise exception 'injected 0039 rollback test';
+     end $injected$;
+     commit;`,
+  );
+  assert.notEqual(injectedMissingFinancialFactsFailureSource, missingFinancialFactsSource);
+  await assert.rejects(
+    () => sql.unsafe(injectedMissingFinancialFactsFailureSource),
+    /injected 0039 rollback test/u,
+  );
+
+  await sql.end({ timeout: 5 });
+  sql = postgres(adminUrl, { max: 1, prepare: false });
+
+  assert.equal(
+    await readShipmentConfirmationFunctionDefinition(),
+    shipmentFunctionBeforeMissingFactsMigration,
+    "A failed 0039 transaction must restore the strict prior shipment function",
+  );
+  assert.deepEqual(
+    await readInspectionUpgradeHistory(),
+    historyBeforeMissingFinancialFactsContract,
+    "A failed 0039 transaction must preserve SKU, finance, export and audit history",
+  );
+  await applyMigration(registeredMissingFinancialFactsMigration);
+  const shipmentFunctionAfterMissingFactsMigration =
+    await readShipmentConfirmationFunctionDefinition();
+  assert.match(shipmentFunctionAfterMissingFactsMigration, /fee_fact_count > 1/iu);
+  assert.match(shipmentFunctionAfterMissingFactsMigration, /packaging_fact_count > 1/iu);
+  assert.doesNotMatch(shipmentFunctionAfterMissingFactsMigration, /fee_fact_count <> 1/iu);
+  assert.doesNotMatch(shipmentFunctionAfterMissingFactsMigration, /packaging_fact_count <> 1/iu);
+  assert.deepEqual(
+    await readInspectionUpgradeHistory(),
+    historyBeforeMissingFinancialFactsContract,
+    "0039 must replace only the shipment guard without rewriting existing history",
+  );
+  const legacyAddressModes = await sql<
+    Array<{
+      id: string;
+      address_mode: string | null;
+      effective_address_mode: string;
+      private_address_count: number;
+    }>
+  >`
+    select orders.id, orders.address_mode,
+           coalesce(orders.address_mode, 'stored') as effective_address_mode,
+           (select count(*)::integer from order_private_address address_row
+            where address_row.workspace_id = orders.workspace_id
+              and address_row.order_id = orders.id) as private_address_count
+    from sales_order orders
+    where orders.workspace_id = ${ids.workspace}
+      and orders.id in (${ids.order}, ${ids.packedRecoveryOrder})
+    order by orders.id
+  `;
+  assert.deepEqual(
+    Array.from(legacyAddressModes, (row) => ({ ...row })),
+    [
+      {
+        id: ids.order,
+        address_mode: null,
+        effective_address_mode: "stored",
+        private_address_count: 0,
+      },
+      {
+        id: ids.packedRecoveryOrder,
+        address_mode: null,
+        effective_address_mode: "stored",
+        private_address_count: 1,
+      },
+    ].sort((left, right) => left.id.localeCompare(right.id)),
+    "Legacy NULL modes must remain NULL while every runtime rule treats them as stored",
+  );
+  await assert.rejects(
+    () => sql`
+      update sales_order set address_mode = 'anonymous'
+      where workspace_id = ${ids.workspace} and id = ${ids.order}
+    `,
+    hasDatabaseCode("23514"),
+    "A legacy order's effective stored mode must be immutable",
+  );
+  await sql`
+    insert into sales_order (id, workspace_id, order_number, state, address_mode)
+    values (
+      ${ids.anonymousAddressOrder}, ${ids.workspace},
+      'ORDER-UPGRADE-ANONYMOUS', 'confirmed', 'anonymous'
+    )
+  `;
+  await sql.begin(async (transaction) => {
+    await transaction`
+      insert into sales_order (id, workspace_id, order_number, state, address_mode)
+      values (
+        ${ids.storedAddressOrder}, ${ids.workspace},
+        'ORDER-UPGRADE-STORED', 'confirmed', 'stored'
+      )
+    `;
+    await transaction`
+      insert into order_private_address (
+        workspace_id, order_id, ciphertext, nonce, auth_tag, key_version, created_by
+      ) values (
+        ${ids.workspace}, ${ids.storedAddressOrder}, decode('06', 'hex'),
+        decode(repeat('07', 12), 'hex'), decode(repeat('08', 16), 'hex'),
+        'upgrade-stored-v1', ${ids.owner}
+      )
+    `;
+  });
+  const addressModeCreationCounts = await sql<
+    Array<{ id: string; address_mode: string; private_address_count: number }>
+  >`
+    select orders.id, orders.address_mode,
+           (select count(*)::integer from order_private_address address_row
+            where address_row.workspace_id = orders.workspace_id
+              and address_row.order_id = orders.id) as private_address_count
+    from sales_order orders
+    where orders.workspace_id = ${ids.workspace}
+      and orders.id in (${ids.anonymousAddressOrder}, ${ids.storedAddressOrder})
+    order by orders.id
+  `;
+  assert.deepEqual(
+    Array.from(addressModeCreationCounts, (row) => ({ ...row })),
+    [
+      {
+        id: ids.anonymousAddressOrder,
+        address_mode: "anonymous",
+        private_address_count: 0,
+      },
+      {
+        id: ids.storedAddressOrder,
+        address_mode: "stored",
+        private_address_count: 1,
+      },
+    ].sort((left, right) => left.id.localeCompare(right.id)),
+  );
+  await assert.rejects(
+    () =>
+      sql.begin(async (transaction) => {
+        await transaction`
+          insert into sales_order (id, workspace_id, order_number, state, address_mode)
+          values (
+            ${ids.invalidStoredAddressOrder}, ${ids.workspace},
+            'ORDER-UPGRADE-STORED-MISSING', 'confirmed', 'stored'
+          )
+        `;
+      }),
+    hasDatabaseCode("23514"),
+    "A new stored order and its one private row must commit atomically",
+  );
+  await assert.rejects(
+    () =>
+      sql.begin(async (transaction) => {
+        await transaction`set local role resale_app_runtime`;
+        await transaction`select set_config('app.workspace_id', ${ids.workspace}, true)`;
+        await transaction`select set_config('app.identity_id', ${ids.owner}, true)`;
+        await transaction`
+          insert into address_access_lease (
+            workspace_id, order_id, identity_id, purpose, issued_by, issued_at, expires_at
+          ) values (
+            ${ids.workspace}, ${ids.anonymousAddressOrder}, ${ids.owner},
+            'shipping_label', ${ids.owner}, statement_timestamp(),
+            statement_timestamp() + interval '5 minutes'
+          )
+        `;
+      }),
+    hasDatabaseCode("23514"),
+    "An anonymous order must reject address-lease issuance after upgrade",
+  );
   const [packedRecoveryImmediatelyAfterUpgrade] = await sql<
     [{ legacy_count: number; server_count: number }]
   >`
@@ -1461,6 +2034,15 @@ try {
     await transaction`set local role resale_app_runtime`;
     await transaction`select set_config('app.workspace_id', ${ids.workspace}, true)`;
     await transaction`select set_config('app.identity_id', ${ids.owner}, true)`;
+    await transaction`
+      insert into address_access_lease (
+        workspace_id, order_id, identity_id, purpose, issued_by, issued_at, expires_at
+      ) values (
+        ${ids.workspace}, ${ids.packedRecoveryOrder}, ${ids.owner},
+        'shipping_label', ${ids.owner}, statement_timestamp(),
+        statement_timestamp() + interval '5 minutes'
+      )
+    `;
     await transaction`
       insert into shipping_photo_policy_revision (
         workspace_id, mode, high_value_threshold_minor, revision, supersedes_id,
@@ -1724,7 +2306,7 @@ try {
   );
 
   process.stdout.write(
-    `postgres-upgrade-integration: PASS (${legacyMigrations[0]} through ${upgradeMigrations.at(-1)}, additive inspection and shipping-photo tables installed without rewriting SKU/media/pilot/finance/audit history, legacy packing evidence preserved without promotion to server-confirmed, historical two-actor approval preserved and mode-normalized, state/evidence/actors/timestamps/audit preserved, injected 0028, 0029, 0030 and 0031 failures fully rolled back after reconnect, actor-bound movement-snapshot restore function upgraded without direct scan UPDATE, historical mapping/candidate IDs and export hashes/bytes preserved, historical v1.0 pilot environment preserved with nullable v1.1 fields and current v1.1/0033 accepted, non-approved approval metadata remains null, return dispose mapped to disposal_pending)\n`,
+    `postgres-upgrade-integration: PASS (${legacyMigrations[0]} through ${upgradeMigrations.at(-1)}, additive inspection, shipping-photo, P14 order/shipping-method, explicit address-mode and missing-financial-fact controls installed without rewriting SKU/media/pilot/finance/audit history, legacy NULL address mode remains stored without row/history rewrite, anonymous and stored creation cardinality enforced, legacy packing and shipment behavior preserved without fabricated P14 evidence, historical two-actor approval preserved and mode-normalized, state/evidence/actors/timestamps/audit preserved, injected 0028, 0029, 0030, 0031, 0037, 0038 and 0039 failures fully rolled back after reconnect and reapplied, actor-bound movement-snapshot restore function upgraded without direct scan UPDATE, historical mapping/candidate IDs and export hashes/bytes preserved, historical v1.0 pilot environment preserved with nullable v1.1 fields and current v1.1/0033 accepted, non-approved approval metadata remains null, return dispose mapped to disposal_pending)\n`,
   );
 } finally {
   await sql.end({ timeout: 5 });

@@ -5,6 +5,8 @@ import { GET, POST } from "./route";
 const workspaceId = "11111111-1111-4111-8111-111111111111";
 const ruleId = "22222222-2222-4222-8222-222222222222";
 const skuId = "33333333-3333-4333-8333-333333333333";
+const orderId = "44444444-4444-4444-8444-444444444444";
+const inventoryUnitId = "55555555-5555-4555-8555-555555555555";
 const appOrigin = "http://127.0.0.1:3000";
 
 const exactSegments = ["accounting", "mapping-rules", ruleId, "replacements"];
@@ -55,6 +57,66 @@ describe("workspace accounting mapping-rules proxy allowlist", () => {
     });
 
     expect(response.status).toBe(404);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+});
+
+describe("assigned order location-photo proxy allowlist", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  it("forwards only the exact GET path and binding query as private image bytes", async () => {
+    vi.stubEnv("API_INTERNAL_ORIGIN", "http://api.invalid");
+    const bytes = new TextEncoder().encode("approved-zero-gps-derivative");
+    const upstream = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(bytes, {
+        status: 200,
+        headers: { "content-type": "image/jpeg", "content-disposition": "inline" },
+      }),
+    );
+    const segments = ["orders", orderId, "pick-location-photo", "content"];
+    const query = `?inventoryUnitId=${inventoryUnitId}&movementSequence=7`;
+    const response = await GET(
+      new NextRequest(
+        `http://127.0.0.1:3000/v1/workspaces/${workspaceId}/${segments.join("/")}${query}`,
+        { headers: { accept: "image/avif,image/webp,image/jpeg,image/png" } },
+      ),
+      { params: Promise.resolve({ workspaceId, segments }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(response.headers.get("pragma")).toBe("no-cache");
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(upstream).toHaveBeenCalledOnce();
+    expect(String(upstream.mock.calls[0]?.[0])).toBe(
+      `http://api.invalid/v1/workspaces/${workspaceId}/${segments.join("/")}${query}`,
+    );
+  });
+
+  it("rejects near-match paths and non-GET methods without contacting the API", async () => {
+    vi.stubEnv("API_INTERNAL_ORIGIN", "http://api.invalid");
+    vi.stubEnv("APP_ORIGIN", appOrigin);
+    const upstream = vi.spyOn(globalThis, "fetch");
+    const nearMatch = ["orders", orderId, "pick-location-photo", "content-extra"];
+    const rejectedNearMatch = await GET(
+      new NextRequest(`http://127.0.0.1:3000/v1/workspaces/${workspaceId}/${nearMatch.join("/")}`),
+      { params: Promise.resolve({ workspaceId, segments: nearMatch }) },
+    );
+    const exact = ["orders", orderId, "pick-location-photo", "content"];
+    const rejectedPost = await POST(
+      new NextRequest(`http://127.0.0.1:3000/v1/workspaces/${workspaceId}/${exact.join("/")}`, {
+        method: "POST",
+        headers: { origin: appOrigin },
+      }),
+      { params: Promise.resolve({ workspaceId, segments: exact }) },
+    );
+
+    expect(rejectedNearMatch.status).toBe(404);
+    expect(rejectedPost.status).toBe(404);
     expect(upstream).not.toHaveBeenCalled();
   });
 });

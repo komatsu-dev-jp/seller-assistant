@@ -5,5 +5,5 @@ export const dynamic = "force-dynamic";
 
 export default async function ShippingPage() {
   const session = await requirePageSession(["owner", "inventory_manager", "shipping"]);
-  return <ShippingWorkspace workspaceId={session.workspaceId} />;
+  return <ShippingWorkspace workspaceId={session.workspaceId} role={session.role} />;
 }

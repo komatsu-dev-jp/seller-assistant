@@ -18,18 +18,29 @@ describe("pack and ship request callers follow the strict public contracts", () 
 
     for (const operation of operations) {
       const routeIndex = source.indexOf(`/${operation.route}\``);
-      const payloadIndex = source.indexOf("body: JSON.stringify({", routeIndex);
-      const payloadEnd = source.indexOf(`} satisfies ${operation.requestType}`, payloadIndex);
+      const payloadEnd = source.indexOf(operation.requestType, routeIndex);
 
       expect(routeIndex).toBeGreaterThan(-1);
-      expect(payloadIndex).toBeGreaterThan(routeIndex);
-      expect(payloadEnd).toBeGreaterThan(payloadIndex);
+      expect(payloadEnd).toBeGreaterThan(routeIndex);
 
-      const payload = source.slice(payloadIndex, payloadEnd);
+      const payload = source.slice(routeIndex, payloadEnd);
       expect(payload).toContain("addressLeaseId:");
       expect(payload).toContain("idempotencyKey:");
       expect(payload).toContain("humanConfirmed:");
-      expect(payload).not.toMatch(/confirmedAt|packingEvidenceReferenceId|shippedAt/u);
+      expect(payload).not.toMatch(/confirmedAt|packingEvidenceReferenceId/u);
+
+      if (operation.route === "pack") {
+        expect(payload).not.toContain("shippedAt");
+      }
+
+      if (operation.route === "ship" && path.endsWith("shipping-workspace.tsx")) {
+        expect(payload).toContain("shippingMethodSelectionId:");
+        expect(payload).toContain("readinessConfirmationId:");
+        expect(payload).toContain("shippedAt:");
+        expect(payload).toContain("intent.shippingMethodSelectionId &&");
+        expect(payload).toContain("intent.readinessConfirmationId &&");
+        expect(payload).toContain("intent.shippedAt");
+      }
     }
   });
 });

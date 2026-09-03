@@ -439,3 +439,38 @@ APIキー、トークン、個人情報、生ログ、会話全文、一時的�
 - Verification: 新規fresh DBへ35 migrationを適用した`test:postgres`、新規upgrade DBの0001〜0035、35 files / 271 testsのfull check、別接続の実Lock競合をPASS。別Sol maxはCritical 0 / High 0 / Medium 0 / Low 0、P13-A PASS、P13-B GOと判定した。
 - Applies to: migration `0035`、P13 contracts/API/storage、pack/ship、旧packed注文の更新互換、P13-B Web gate。
 - Follow-up: P13-BはTerra highへ限定し、静的approved review routeを変更せず、390/768/1440、keyboard、44px、loading/empty/error/retry、外部request 0を確認する。AC-066／TA-047全体はP13-Bと実iPhone確認までpartialとする。
+
+### 2026-09-03 — 匿名配送は住所を保存せず、場所写真は役割ごとに最小権限で表示する
+
+- Type: implementation, privacy and authorization decision
+- Context: 承認済みM34〜38/PC29〜32を実APIへ接続した際、匿名配送でも住所行を作る旧契約と、ownerの場所写真表示にも注文割当を要求して403になる権限差異を実ブラウザで検出した。
+- Decision or rule: 匿名配送は住所行を作らず、住所表示許可も発行しない。住所あり配送だけを暗号化した非公開行として保存し、本人・注文単位・5分の表示許可を使う。旧注文の未設定値は`NULL`で読み、架空住所や0円へ補完しない。
+- Access rule: owner/inventory managerは有効なworkspace membershipで最新承認済みの現在場所写真を読める。shipping担当は自分の有効な注文割当がある注文だけを読める。どちらも有効な現物引当、現在地、最新承認済み写真、位置情報0の派生画像だけに限定し、写真取得後も権限を再確認する。
+- Safety boundary: shipping担当へ住所の保存先、販売額、原価、利益、税務情報を返さない。外部API、外部画像保存、スクレイピング、RPA、自動出品、自動発送、本番公開、PR mergeを追加しない。
+- Verification: `0038_order_address_mode.sql`を含むfresh/upgrade PostgreSQL 0001〜0038、65-table RLS、匿名0行・住所あり暗号化1行・本人表示許可・担当解除・取得後再認証・並行操作をPASS。ローカル実ブラウザでモバイル匿名注文とPC住所あり注文を完走し、修正後のowner画面で非公開object URLの場所写真を表示、console error/warning 0を確認した。最新full checkは45 files / 396 testsをPASSした。
+- Applies to: migration `0038`、order contract/repository/API、location photo authorization、M34〜38、PC29〜32、P13-B/P14。
+- Follow-up: 別Sol maxが凍結差分を独立レビューする。実iPhoneと人手pilotは別gateとして未確認を維持し、Draft PR #9をready化またはmergeしない。
+
+### 2026-09-03 — 未入力の販売事実を0円にせず、発送・会計を欠損認識のまま安全に進める
+
+- Type: corrective financial, timing and migration decision
+- Context: P13-B/P14の最初の独立レビューで、登録時の未知の販売手数料・梱包費を0円で保存すること、商品・場所読取時刻を1ms差で合成すること、0037/0038の途中失敗rollback証拠不足を検出した。
+- Decision or rule: 注文登録では原価だけを既知事実として保存し、販売額・販売手数料・梱包費は未入力のまま保持する。未入力は0円と異なる。発送には人が未入力を認識した準備確認と選択済み送料を要求し、会計summary・新規CSV・再出力は主要事実が揃うまで停止する。
+- Time rule: 商品番号と場所番号は、それぞれ入力が一致した実時刻を保持する。自動生成した1ms差の時刻を監査事実として保存しない。注文より前の発送時刻は拒否する。
+- Migration rule: 適用済み履歴の0037/0038は書き換えず、新規forward migration 0039で登録注文の金額事実制約を追加する。0037/0038/0039は途中失敗を注入し、各migration全体のrollbackと再適用を確認する。
+- Compatibility: 登録注文の原価は正確に1件、販売額・手数料・梱包費は各0〜1件、発送送料は正確に1件とする。既存注文に複数のsale revisionがある履歴は件数1へ縮めず、最新有効値の選択を維持する。
+- UI boundary: 承認済みPC29の「販売金額 必須」と「未入力でも続行」の意味上の矛盾は、利用者の再承認なしに文言を変更しない。現実装は未入力を許可し、人の確認と会計停止で安全を守る。
+- Verification: fresh `resale_p14_final_fresh_20260903f`、upgrade `resale_p14_final_upgrade_20260903e`で0001〜0039、0037/0038/0039 rollback、45 files / 401 tests、実ブラウザの実読取間隔・不正発送時刻409・訂正後発送・未知金額0行・会計停止をPASSした。全127画面も修正後buildから再撮影・比較した。
+- Applies to: migration `0039`、注文登録、二重読取、発送、会計summary/export、M34〜38、PC29〜32、P14最終gate。
+- Follow-up: 修正後の凍結差分を別Sol maxが再レビューする。Critical/High 0まではDraft PRをready化せず、merge・本番公開を行わない。
+
+### 2026-09-03 — P13-B/P14修正後の独立レビューを合格とし、Draft PRだけを最新化する
+
+- Type: final independent review gate
+- Context: 未入力金額、実読取時刻、migration rollbackを修正し、最新のfull check、fresh/upgrade PostgreSQL、全127画面、実注文〜発送を再検証した後、書込みを担当していない別Sol maxが凍結差分を監査した。
+- Decision or rule: 最終再レビューはPASS（Critical 0 / High 0 / Medium 1 / Low 1）。過去H1/M2/L1はすべてClosedしたため、既存Draft PR #9へ差分と証拠を反映してよい。Draftのready化、merge、本番公開は行わない。
+- Non-blocking findings: MediumはPC29の「販売金額 必須」と「未入力でも続行」の承認文言矛盾で、利用者再承認待ち。Lowは0039の各不整合を実DBで個別に23514拒否する将来の回帰試験補強で、現行migration本体の不具合ではない。
+- Verification: 独立`npm.cmd run check`はfixture 44 PNG/hash、format、lint、typecheck、45 files / 401 tests、coverage 84.66 / 80.56 / 100 / 90.68、API/Web build、Next 86 routesをPASS。capture 127件、mobile 75、PC 52、overflow/clipped/external resource 0、route-map missing 0、M34〜38/PC29〜32原寸目視もPASSした。
+- Human gates: P12-B/Cの2判断、実iPhone Safari/home/camera/Code 128/offline、A4 24面物理印刷、WARMUP＋固定10商品の人手pilot、実Money Forward取込は実装不合格と分離して未確認を維持する。
+- Applies to: P13-B/P14 final gate、Draft PR #9、acceptance map、design evidence、loop log、active handoff。
+- Follow-up: 限定commit・pushとDraft PR本文更新後、上記人手gateと利用者判断を待つ。未確認を自動合格へ繰り上げない。

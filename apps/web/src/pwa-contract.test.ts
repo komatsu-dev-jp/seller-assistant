@@ -78,11 +78,15 @@ describe("zero-cost PWA contract", () => {
 
   it("keeps login passwords out of URL and browser storage", () => {
     const form = readFileSync(resolve("apps/web/src/components/login-form.tsx"), "utf8");
+    const approvedForm = readFileSync(
+      resolve("apps/web/src/components/approved-live-login.tsx"),
+      "utf8",
+    );
     const proxy = readFileSync(resolve("apps/web/src/app/v1/session/login/route.ts"), "utf8");
-    expect(form).toContain('type="password"');
+    expect(approvedForm).toContain('type="password"');
     expect(form).toContain('fetch("/v1/session/login"');
-    expect(form).toContain('action="/v1/session/login"');
-    expect(form).toContain('method="post"');
+    expect(approvedForm).toContain('action="/v1/session/login"');
+    expect(approvedForm).toContain('method="post"');
     expect(form).toContain('method: "POST"');
     expect(form).not.toMatch(/localStorage|sessionStorage|indexedDB|URLSearchParams/u);
     expect(proxy).not.toMatch(/console\.|localStorage|sessionStorage/u);

@@ -89,7 +89,12 @@ const workspaceProtectedTables = [
   "order_allocation",
   "order_operation_record",
   "order_assignment",
+  "order_number_counter",
+  "order_channel_transaction_claim",
+  "order_registration_revision",
+  "order_shipping_method_selection",
   "order_shipping_photo_decision",
+  "order_shipping_readiness_confirmation",
   "order_private_address",
   "outbox_event",
   "p0_workflow",
@@ -111,6 +116,7 @@ const workspaceProtectedTables = [
   "shipping_photo_asset",
   "shipping_photo_confirmation",
   "shipping_photo_policy_revision",
+  "shipping_method_catalog_revision",
   "shipping_sale_basis_snapshot",
   "sku_work_assignment",
   "workspace_membership",
@@ -324,6 +330,7 @@ const owner = await bootstrapInitialOwner(adminUrl, {
 const registry = new PostgresSessionRegistry(runtimeUrl);
 const mediaRoot = await mkdtemp(join(tmpdir(), "resale-postgres-media-"));
 const addressCipher = new AesGcmAddressCipher("7d".repeat(32));
+const orderRepository = new PostgresOrderRepository(runtimeUrl);
 const app = buildApp({
   repository: new PostgresWorkflowRepository(runtimeUrl),
   loginService: new PostgresLoginService(runtimeUrl, sessionSecret),
@@ -335,7 +342,7 @@ const app = buildApp({
   closeAuthentication: () => registry.close(),
   validateWriteOrigin: () => true,
   mediaStore: new LocalPrivateMediaStore(mediaRoot),
-  orderRepository: new PostgresOrderRepository(runtimeUrl),
+  orderRepository,
   addressCipher,
   p0ItemRepository: new PostgresP0ItemRepository(runtimeUrl),
   teamRepository: new PostgresTeamRepository(runtimeUrl),
@@ -461,6 +468,7 @@ try {
     },
   });
   assert.equal(acquisitionBin.statusCode, 201, acquisitionBin.body);
+  const acquisitionBinId = acquisitionBin.json<{ id: string }>().id;
   const acquisitionScanTime = Date.now();
   const acquisitionPutaway = await app.inject({
     method: "POST",
@@ -1031,6 +1039,7 @@ try {
   const returnBinLabelId = randomUUID();
   const workerPassword = "fictional-field-worker-password";
   const shippingPassword = "fictional-shipping-password";
+  const otherShippingPassword = "fictional-other-shipping-password";
   const managerPassword = "fictional-inventory-manager-password";
   const accountingPassword = "fictional-accounting-password";
   const workerMember = await app.inject({
@@ -1064,6 +1073,20 @@ try {
   const shippingId = shippingMember.json<{ identityId: string }>().identityId;
   assert.ok(shippingId);
   assert.equal(shippingMember.body.includes(shippingPassword), false);
+  const otherShippingMember = await app.inject({
+    method: "POST",
+    url: `/v1/workspaces/${owner.workspaceId}/team/members`,
+    headers: { cookie },
+    payload: {
+      displayName: "架空別配送担当",
+      email: "other-shipping@example.test",
+      initialPassword: otherShippingPassword,
+      role: "shipping",
+      humanConfirmed: true,
+    },
+  });
+  assert.equal(otherShippingMember.statusCode, 201, otherShippingMember.body);
+  assert.equal(otherShippingMember.body.includes(otherShippingPassword), false);
   const managerMember = await app.inject({
     method: "POST",
     url: `/v1/workspaces/${owner.workspaceId}/team/members`,
@@ -1126,6 +1149,15 @@ try {
   const shippingSetCookie = shippingLogin.headers["set-cookie"];
   assert.equal(typeof shippingSetCookie, "string");
   const shippingCookie = String(shippingSetCookie).split(";", 1)[0];
+  const otherShippingLogin = await app.inject({
+    method: "POST",
+    url: "/v1/session/login",
+    payload: { email: "other-shipping@example.test", password: otherShippingPassword },
+  });
+  assert.equal(otherShippingLogin.statusCode, 204, otherShippingLogin.body);
+  const otherShippingSetCookie = otherShippingLogin.headers["set-cookie"];
+  assert.equal(typeof otherShippingSetCookie, "string");
+  const otherShippingCookie = String(otherShippingSetCookie).split(";", 1)[0];
   const managerLogin = await app.inject({
     method: "POST",
     url: "/v1/session/login",
@@ -3216,9 +3248,9 @@ try {
     await inventory.begin(async (transaction) => {
       await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
       await transaction`
-        insert into sales_order (id, workspace_id, order_number, state) values
-          (${firstOrderId}, ${owner.workspaceId}, 'ORDER-DB-1', 'confirmed'),
-          (${secondOrderId}, ${owner.workspaceId}, 'ORDER-DB-2', 'confirmed')
+        insert into sales_order (id, workspace_id, order_number, state, address_mode) values
+          (${firstOrderId}, ${owner.workspaceId}, 'ORDER-DB-1', 'confirmed', 'anonymous'),
+          (${secondOrderId}, ${owner.workspaceId}, 'ORDER-DB-2', 'confirmed', 'anonymous')
       `;
     });
     const simultaneousAllocation = await Promise.allSettled([
@@ -3510,21 +3542,60 @@ try {
     const fictionalAddress = "〒100-0000 架空県テスト市サンプル1-2-3 架空太郎";
     const orderCreateKey = randomUUID();
     const orderCreatePayload = {
-      orderNumber: "ORDER-P0-0001",
+      salesChannelKey: "mercari",
+      salesChannelName: "メルカリ",
+      channelTransactionId: null,
+      buyerDisplayName: null,
       skuId: acquiredItem.skuId,
       inventoryUnitId: acquiredItem.inventoryUnitId,
       saleAmountMinor: 5000,
       costAmountMinor: 1500,
-      sellingFeeMinor: 500,
-      shippingCostMinor: 750,
-      packagingCostMinor: 100,
+      sellingFeeMinor: null,
+      shippingCostMinor: null,
+      packagingCostMinor: null,
       taxBasis: "tax_included",
       sourceMeaning: "架空P0結合試験で人が確認した取引事実",
       occurredAt: new Date().toISOString(),
+      addressMode: "stored",
       shippingAddress: fictionalAddress,
       idempotencyKey: orderCreateKey,
       humanConfirmed: true,
     } as const;
+    const hiddenZeroCreate = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders`,
+      headers: { cookie },
+      payload: {
+        ...orderCreatePayload,
+        sellingFeeMinor: 0,
+        packagingCostMinor: 0,
+        idempotencyKey: randomUUID(),
+      },
+    });
+    assert.equal(hiddenZeroCreate.statusCode, 400, hiddenZeroCreate.body);
+    const directHiddenFactsPayload = {
+      ...orderCreatePayload,
+      sellingFeeMinor: 0,
+      packagingCostMinor: 0,
+      addressMode: "anonymous",
+      shippingAddress: null,
+      idempotencyKey: randomUUID(),
+    } as const;
+    await assert.rejects(
+      () =>
+        orderRepository.createOrder(
+          owner.workspaceId,
+          { identityId: owner.identityId, workspaceId: owner.workspaceId },
+          {
+            orderId: randomUUID(),
+            input: directHiddenFactsPayload,
+            encryptedAddress: null,
+            addressFingerprint: null,
+          },
+        ),
+      /must leave unconfirmed selling and packaging costs missing/u,
+      "Repository callers must not bypass registered-order missing-value semantics",
+    );
     const createdOrder = await app.inject({
       method: "POST",
       url: `/v1/workspaces/${owner.workspaceId}/orders`,
@@ -3540,6 +3611,87 @@ try {
     assert.equal(orderResult.state, "confirmed");
     assert.equal(orderResult.inventoryStatus, "reserved");
     const orderId = orderResult.orderId;
+    const [serverNumberedOrderBeforeShipping] = await inventory.begin(async (transaction) => {
+      await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+      await transaction`select set_config('app.identity_id', ${owner.identityId}, true)`;
+      return transaction<
+        Array<{
+          order_number: string;
+          address_mode: string;
+          private_address_count: number;
+          sale_fact_count: number;
+          cost_fact_count: number;
+          fee_fact_count: number;
+          packaging_fact_count: number;
+          shipping_fact_count: number;
+        }>
+      >`
+        select orders.order_number,
+               coalesce(orders.address_mode, 'stored') as address_mode,
+               (select count(*)::integer from order_private_address address_row
+                where address_row.workspace_id = orders.workspace_id
+                  and address_row.order_id = orders.id) as private_address_count,
+               (select count(*)::integer from financial_event event
+                where event.workspace_id = orders.workspace_id
+                  and event.order_id = orders.id and event.event_type = 'sale')
+                 as sale_fact_count,
+               (select count(*)::integer from financial_event event
+                where event.workspace_id = orders.workspace_id
+                  and event.order_id = orders.id and event.event_type = 'cost')
+                 as cost_fact_count,
+               (select count(*)::integer from financial_event event
+                where event.workspace_id = orders.workspace_id
+                  and event.order_id = orders.id and event.event_type = 'fee')
+                 as fee_fact_count,
+               (select count(*)::integer from financial_event event
+                where event.workspace_id = orders.workspace_id
+                  and event.order_id = orders.id and event.event_type = 'packaging')
+                 as packaging_fact_count,
+               (select count(*)::integer from financial_event event
+                where event.workspace_id = orders.workspace_id
+                  and event.order_id = orders.id and event.event_type = 'shipping')
+                 as shipping_fact_count
+        from sales_order orders
+        where orders.workspace_id = ${owner.workspaceId} and orders.id = ${orderId}
+      `;
+    });
+    assert.match(serverNumberedOrderBeforeShipping?.order_number ?? "", /^ORD-\d{8}-\d{6,}$/u);
+    assert.equal(serverNumberedOrderBeforeShipping?.address_mode, "stored");
+    assert.equal(
+      serverNumberedOrderBeforeShipping?.private_address_count,
+      0,
+      "Even the creating manager must not read the private address row without its own lease",
+    );
+    const storedAddressAdmin = postgres(adminUrl, { max: 1 });
+    try {
+      const [storedAddressCount] = await storedAddressAdmin<[{ address_count: number }]>`
+        select count(*)::integer as address_count
+        from order_private_address
+        where workspace_id = ${owner.workspaceId} and order_id = ${orderId}
+      `;
+      assert.equal(
+        storedAddressCount?.address_count,
+        1,
+        "Stored-address POST must atomically create exactly one encrypted address row",
+      );
+    } finally {
+      await storedAddressAdmin.end({ timeout: 5 });
+    }
+    assert.equal(
+      serverNumberedOrderBeforeShipping?.shipping_fact_count,
+      0,
+      "A registered order must wait for the human-selected shipping fee",
+    );
+    assert.deepEqual(
+      {
+        sale: serverNumberedOrderBeforeShipping?.sale_fact_count,
+        cost: serverNumberedOrderBeforeShipping?.cost_fact_count,
+        fee: serverNumberedOrderBeforeShipping?.fee_fact_count,
+        packaging: serverNumberedOrderBeforeShipping?.packaging_fact_count,
+      },
+      { sale: 1, cost: 1, fee: 0, packaging: 0 },
+      "Registered creation must not turn unconfirmed selling or packaging costs into zero-yen facts",
+    );
     const createReplay = await app.inject({
       method: "POST",
       url: `/v1/workspaces/${owner.workspaceId}/orders`,
@@ -3555,6 +3707,417 @@ try {
       payload: { ...orderCreatePayload, saleAmountMinor: 5001 },
     });
     assert.equal(createConflict.statusCode, 409, createConflict.body);
+
+    const issuedOrderNumbers = await Promise.all(
+      [0, 1].map(() =>
+        inventory.begin(async (transaction) => {
+          await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+          await transaction`select set_config('app.identity_id', ${owner.identityId}, true)`;
+          const rows = await transaction<Array<{ order_number: string }>>`
+            select issue_app_order_number() as order_number
+          `;
+          return rows[0]?.order_number;
+        }),
+      ),
+    );
+    assert.equal(
+      new Set(issuedOrderNumbers).size,
+      2,
+      "Concurrent server order numbers must differ",
+    );
+    for (const issuedOrderNumber of issuedOrderNumbers) {
+      assert.match(issuedOrderNumber ?? "", /^ORD-\d{8}-\d{6,}$/u);
+    }
+    await assert.rejects(
+      () =>
+        inventory.begin(async (transaction) => {
+          await transaction`select set_config('app.workspace_id', ${otherWorkspaceId}, true)`;
+          await transaction`select set_config('app.identity_id', ${owner.identityId}, true)`;
+          await transaction`select issue_app_order_number()`;
+        }),
+      hasDatabaseCode("42501"),
+      "Order number issuance must reject an actor outside the selected workspace",
+    );
+
+    const initialRegistration = await app.inject({
+      method: "GET",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/registration`,
+      headers: { cookie },
+    });
+    assert.equal(initialRegistration.statusCode, 200, initialRegistration.body);
+    assert.equal(initialRegistration.headers["cache-control"], "private, no-store");
+    assert.equal(initialRegistration.headers.pragma, "no-cache");
+    const initialRegistrationBody = initialRegistration.json<{
+      registrationRevisionId: string;
+      salesChannelKey: string;
+      salesChannelName: string;
+      channelTransactionId: string | null;
+      buyerDisplayName: string | null;
+      revision: number;
+    }>();
+    assert.deepEqual(
+      {
+        salesChannelKey: initialRegistrationBody.salesChannelKey,
+        salesChannelName: initialRegistrationBody.salesChannelName,
+        channelTransactionId: initialRegistrationBody.channelTransactionId,
+        buyerDisplayName: initialRegistrationBody.buyerDisplayName,
+        revision: initialRegistrationBody.revision,
+      },
+      {
+        salesChannelKey: "mercari",
+        salesChannelName: "メルカリ",
+        channelTransactionId: null,
+        buyerDisplayName: null,
+        revision: 1,
+      },
+    );
+    const registrationRevisionId = initialRegistrationBody.registrationRevisionId;
+
+    const claimedTransactionId = "P14-CLAIMED-TRANSACTION-001";
+    const claimSourceOrderId = randomUUID();
+    const claimApiConflictOrderId = randomUUID();
+    const claimSqlConflictOrderId = randomUUID();
+    const claimSourceRegistrationId = randomUUID();
+    const claimApiConflictRegistrationId = randomUUID();
+    const claimSqlConflictRegistrationId = randomUUID();
+    await inventory.begin(async (transaction) => {
+      await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+      await transaction`select set_config('app.identity_id', ${owner.identityId}, true)`;
+      await transaction`
+        insert into sales_order (id, workspace_id, order_number, state, address_mode) values
+          (${claimSourceOrderId}, ${owner.workspaceId}, 'ORDER-P14-CLAIM-SOURCE', 'confirmed', 'anonymous'),
+          (${claimApiConflictOrderId}, ${owner.workspaceId}, 'ORDER-P14-CLAIM-API', 'confirmed', 'anonymous'),
+          (${claimSqlConflictOrderId}, ${owner.workspaceId}, 'ORDER-P14-CLAIM-SQL', 'confirmed', 'anonymous')
+      `;
+      await transaction`
+        insert into order_registration_revision (
+          id, workspace_id, order_id, sales_channel_key, sales_channel_name,
+          channel_transaction_id, buyer_display_name, revision, supersedes_id,
+          idempotency_key, payload_hash
+        ) values
+          (
+            ${claimSourceRegistrationId}, ${owner.workspaceId}, ${claimSourceOrderId},
+            'mercari', 'メルカリ', ${claimedTransactionId}, null, 1, null,
+            ${randomUUID()}, ${hashFixture("claim-source")}
+          ),
+          (
+            ${claimApiConflictRegistrationId}, ${owner.workspaceId},
+            ${claimApiConflictOrderId}, 'mercari', 'メルカリ', null, null, 1, null,
+            ${randomUUID()}, ${hashFixture("claim-api-null")}
+          ),
+          (
+            ${claimSqlConflictRegistrationId}, ${owner.workspaceId},
+            ${claimSqlConflictOrderId}, 'mercari', 'メルカリ', null, null, 1, null,
+            ${randomUUID()}, ${hashFixture("claim-sql-null")}
+          )
+      `;
+    });
+    const sameOrderClaimRevision = await app.inject({
+      method: "PATCH",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${claimSourceOrderId}/registration`,
+      headers: { cookie },
+      payload: {
+        salesChannelKey: "mercari",
+        salesChannelName: "メルカリ",
+        channelTransactionId: claimedTransactionId,
+        buyerDisplayName: null,
+        expectedRevision: 1,
+        idempotencyKey: randomUUID(),
+        humanConfirmed: true,
+      },
+    });
+    assert.equal(sameOrderClaimRevision.statusCode, 200, sameOrderClaimRevision.body);
+    assert.equal(sameOrderClaimRevision.headers["cache-control"], "private, no-store");
+    const duplicateClaimThroughApi = await app.inject({
+      method: "PATCH",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${claimApiConflictOrderId}/registration`,
+      headers: { cookie },
+      payload: {
+        salesChannelKey: "mercari",
+        salesChannelName: "メルカリ",
+        channelTransactionId: claimedTransactionId,
+        buyerDisplayName: null,
+        expectedRevision: 1,
+        idempotencyKey: randomUUID(),
+        humanConfirmed: true,
+      },
+    });
+    assert.equal(duplicateClaimThroughApi.statusCode, 409, duplicateClaimThroughApi.body);
+    await assert.rejects(
+      () =>
+        inventory.begin(async (transaction) => {
+          await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+          await transaction`select set_config('app.identity_id', ${owner.identityId}, true)`;
+          await transaction`
+            insert into order_registration_revision (
+              workspace_id, order_id, sales_channel_key, sales_channel_name,
+              channel_transaction_id, buyer_display_name, revision, supersedes_id,
+              idempotency_key, payload_hash
+            ) values (
+              ${owner.workspaceId}, ${claimSqlConflictOrderId}, 'mercari', 'メルカリ',
+              ${claimedTransactionId}, null, 2, ${claimSqlConflictRegistrationId},
+              ${randomUUID()}, ${hashFixture("claim-sql-conflict")}
+            )
+          `;
+        }),
+      hasDatabaseCode("23505"),
+      "Direct SQL must reject one marketplace transaction claimed by another order",
+    );
+    await assert.rejects(
+      () =>
+        inventory.begin(async (transaction) => {
+          await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+          await transaction`select set_config('app.identity_id', ${owner.identityId}, true)`;
+          await transaction`
+            insert into order_channel_transaction_claim (
+              workspace_id, sales_channel_key, channel_transaction_id, order_id
+            ) values (
+              ${owner.workspaceId}, 'mercari', 'FORGED-CLAIM', ${claimApiConflictOrderId}
+            )
+          `;
+        }),
+      /permission denied|row-level security/u,
+      "Runtime SQL must not bypass the registration trigger to forge a transaction claim",
+    );
+
+    const registrationShippingRaceOrderId = randomUUID();
+    await inventory.begin(async (transaction) => {
+      await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+      await transaction`select set_config('app.identity_id', ${owner.identityId}, true)`;
+      await transaction`
+        insert into sales_order (id, workspace_id, order_number, state, address_mode)
+        values (
+          ${registrationShippingRaceOrderId}, ${owner.workspaceId},
+          'ORDER-P14-REGISTRATION-SHIPPING-RACE', 'confirmed', 'anonymous'
+        )
+      `;
+    });
+    const shippingRaceWriter = postgres(runtimeUrl, { max: 1 });
+    const registrationRaceWriter = postgres(runtimeUrl, { max: 1 });
+    const registrationShippingRaceObserver = postgres(adminUrl, { max: 1 });
+    let releaseShippingWriter: (() => void) | undefined;
+    const holdShippingWriter = new Promise<void>((resolve) => {
+      releaseShippingWriter = resolve;
+    });
+    let shippingWriterReadyResolve: ((backendPid: number) => void) | undefined;
+    let shippingWriterReadyReject: ((reason: unknown) => void) | undefined;
+    const shippingWriterReady = new Promise<number>((resolve, reject) => {
+      shippingWriterReadyResolve = resolve;
+      shippingWriterReadyReject = reject;
+    });
+    let registrationWriterStartedResolve: ((backendPid: number) => void) | undefined;
+    let registrationWriterStartedReject: ((reason: unknown) => void) | undefined;
+    const registrationWriterStarted = new Promise<number>((resolve, reject) => {
+      registrationWriterStartedResolve = resolve;
+      registrationWriterStartedReject = reject;
+    });
+    const withP14RaceTimeout = async <T>(promise: Promise<T>, label: string): Promise<T> => {
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      try {
+        return await Promise.race([
+          promise,
+          new Promise<never>((_resolve, reject) => {
+            timeout = setTimeout(() => reject(new Error(`${label} timed out`)), 10_000);
+          }),
+        ]);
+      } finally {
+        if (timeout) clearTimeout(timeout);
+      }
+    };
+    let shippingRaceAttempt: Promise<void> | undefined;
+    let registrationRaceAttempt: Promise<void> | undefined;
+    let registrationShippingRaceResults: PromiseSettledResult<void>[] | undefined;
+    try {
+      shippingRaceAttempt = shippingRaceWriter.begin(async (transaction) => {
+        try {
+          await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+          await transaction`select set_config('app.identity_id', ${owner.identityId}, true)`;
+          await transaction`select set_config('statement_timeout', '20s', true)`;
+          const [connection] = await transaction<[{ backend_pid: number }]>`
+            select pg_backend_pid()::integer as backend_pid
+          `;
+          assert.ok(connection);
+          await transaction`
+            insert into financial_event (
+              workspace_id, sku_id, order_id, event_type, amount_minor, currency,
+              tax_basis, bearer, source, source_meaning, rounding_rule_version,
+              source_already_net, occurred_at
+            ) values (
+              ${owner.workspaceId}, ${acquiredItem.skuId}, ${registrationShippingRaceOrderId},
+              'shipping', 400, 'JPY', 'tax_included', 'seller', 'manual',
+              'P14登録前に記録済みの架空送料', 'jpy-v1', false, statement_timestamp()
+            )
+          `;
+          shippingWriterReadyResolve?.(connection.backend_pid);
+          await holdShippingWriter;
+        } catch (error) {
+          shippingWriterReadyReject?.(error);
+          throw error;
+        }
+      });
+      void shippingRaceAttempt.catch(() => undefined);
+      const shippingWriterBackendPid = await withP14RaceTimeout(
+        shippingWriterReady,
+        "P14 shipping writer",
+      );
+
+      registrationRaceAttempt = registrationRaceWriter.begin(async (transaction) => {
+        try {
+          await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+          await transaction`select set_config('app.identity_id', ${owner.identityId}, true)`;
+          await transaction`select set_config('statement_timeout', '20s', true)`;
+          const [connection] = await transaction<[{ backend_pid: number }]>`
+            select pg_backend_pid()::integer as backend_pid
+          `;
+          assert.ok(connection);
+          registrationWriterStartedResolve?.(connection.backend_pid);
+          await transaction`
+            insert into order_registration_revision (
+              workspace_id, order_id, sales_channel_key, sales_channel_name,
+              channel_transaction_id, buyer_display_name, revision, supersedes_id,
+              idempotency_key, payload_hash
+            ) values (
+              ${owner.workspaceId}, ${registrationShippingRaceOrderId}, 'mercari', 'メルカリ',
+              null, null, 1, null, ${randomUUID()}, ${hashFixture("registration-shipping-race")}
+            )
+          `;
+        } catch (error) {
+          registrationWriterStartedReject?.(error);
+          throw error;
+        }
+      });
+      void registrationRaceAttempt.catch(() => undefined);
+      const registrationWriterBackendPid = await withP14RaceTimeout(
+        registrationWriterStarted,
+        "P14 registration writer",
+      );
+      assert.notEqual(shippingWriterBackendPid, registrationWriterBackendPid);
+
+      await withP14RaceTimeout(
+        (async () => {
+          while (true) {
+            const [blocking] = await registrationShippingRaceObserver<
+              [{ blocked_by_shipping_writer: boolean }]
+            >`
+              select ${shippingWriterBackendPid}::integer = any(
+                pg_blocking_pids(${registrationWriterBackendPid}::integer)
+              ) as blocked_by_shipping_writer
+            `;
+            if (blocking?.blocked_by_shipping_writer) return;
+            await registrationShippingRaceObserver`select pg_sleep(0.02)`;
+          }
+        })(),
+        "P14 registration-versus-shipping row lock",
+      );
+      releaseShippingWriter?.();
+      registrationShippingRaceResults = await withP14RaceTimeout(
+        Promise.allSettled([shippingRaceAttempt, registrationRaceAttempt]),
+        "P14 registration-versus-shipping completion",
+      );
+    } finally {
+      releaseShippingWriter?.();
+      await Promise.allSettled(
+        [shippingRaceAttempt, registrationRaceAttempt].filter(
+          (operation): operation is Promise<void> => operation !== undefined,
+        ),
+      );
+      await Promise.allSettled([
+        shippingRaceWriter.end({ timeout: 5 }),
+        registrationRaceWriter.end({ timeout: 5 }),
+        registrationShippingRaceObserver.end({ timeout: 5 }),
+      ]);
+    }
+    assert.equal(registrationShippingRaceResults?.[0]?.status, "fulfilled");
+    assert.equal(registrationShippingRaceResults?.[1]?.status, "rejected");
+    const rejectedRegistrationRace = registrationShippingRaceResults?.[1];
+    assert.equal(
+      rejectedRegistrationRace?.status === "rejected" &&
+        hasDatabaseCode("23514")(rejectedRegistrationRace.reason),
+      true,
+      "The registration losing the order lock must reject the now-visible legacy shipping fact",
+    );
+    const [registrationShippingRaceState] = await inventory.begin(async (transaction) => {
+      await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+      await transaction`select set_config('app.identity_id', ${owner.identityId}, true)`;
+      return transaction<[{ registration_count: number; shipping_count: number }]>`
+        select
+          (select count(*)::integer from order_registration_revision
+           where workspace_id = ${owner.workspaceId}
+             and order_id = ${registrationShippingRaceOrderId}) as registration_count,
+          (select count(*)::integer from financial_event
+           where workspace_id = ${owner.workspaceId}
+             and order_id = ${registrationShippingRaceOrderId}
+             and event_type = 'shipping') as shipping_count
+      `;
+    });
+    assert.deepEqual(
+      { ...registrationShippingRaceState },
+      { registration_count: 0, shipping_count: 1 },
+      "Registration and a pre-existing shipping fact must never both commit",
+    );
+
+    const unassignedShippingOptions = await app.inject({
+      method: "GET",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/shipping-method-options`,
+      headers: { cookie: shippingCookie },
+    });
+    assert.equal(unassignedShippingOptions.statusCode, 403, unassignedShippingOptions.body);
+
+    const createShippingMethodKey = randomUUID();
+    const createdShippingMethod = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/shipping-methods`,
+      headers: { cookie },
+      payload: {
+        methodId: null,
+        expectedRevision: null,
+        salesChannelKey: "mercari",
+        salesChannelName: "メルカリ",
+        methodName: "架空の追跡付き配送",
+        trackingAvailable: true,
+        feeMinor: 750,
+        deliveryEstimate: "1〜2日",
+        officialCheckedOn: "2026-01-01",
+        officialReferenceUrl: null,
+        officialReferenceNote: "結合試験用の架空公式確認メモ",
+        active: true,
+        idempotencyKey: createShippingMethodKey,
+        humanConfirmed: true,
+      },
+    });
+    assert.equal(createdShippingMethod.statusCode, 201, createdShippingMethod.body);
+    const shippingMethod = createdShippingMethod.json<{
+      methodId: string;
+      catalogRevisionId: string;
+      revision: number;
+    }>();
+    assert.equal(shippingMethod.revision, 1);
+    const shippingMethodReplay = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/shipping-methods`,
+      headers: { cookie },
+      payload: {
+        methodId: null,
+        expectedRevision: null,
+        salesChannelKey: "mercari",
+        salesChannelName: "メルカリ",
+        methodName: "架空の追跡付き配送",
+        trackingAvailable: true,
+        feeMinor: 750,
+        deliveryEstimate: "1〜2日",
+        officialCheckedOn: "2026-01-01",
+        officialReferenceUrl: null,
+        officialReferenceNote: "結合試験用の架空公式確認メモ",
+        active: true,
+        idempotencyKey: createShippingMethodKey,
+        humanConfirmed: true,
+      },
+    });
+    assert.equal(shippingMethodReplay.statusCode, 201, shippingMethodReplay.body);
+    assert.equal(
+      shippingMethodReplay.json<{ catalogRevisionId: string }>().catalogRevisionId,
+      shippingMethod.catalogRevisionId,
+    );
 
     const absentShippingPhotoPolicy = await app.inject({
       method: "GET",
@@ -3645,10 +4208,10 @@ try {
       await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
       await transaction`select set_config('app.identity_id', ${owner.identityId}, true)`;
       await transaction`
-        insert into sales_order (id, workspace_id, order_number, state)
+        insert into sales_order (id, workspace_id, order_number, state, address_mode)
         values (
           ${missingPolicyOverrideOrderId}, ${owner.workspaceId},
-          'ORDER-P13-MISSING-POLICY-OVERRIDE', 'confirmed'
+          'ORDER-P13-MISSING-POLICY-OVERRIDE', 'confirmed', 'anonymous'
         )
       `;
     });
@@ -3856,10 +4419,10 @@ try {
       await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
       await transaction`select set_config('app.identity_id', ${owner.identityId}, true)`;
       await transaction`
-        insert into sales_order (id, workspace_id, order_number, state)
+        insert into sales_order (id, workspace_id, order_number, state, address_mode)
         values (
           ${missingSaleOverrideOrderId}, ${owner.workspaceId},
-          'ORDER-P13-MISSING-SALE-OVERRIDE', 'confirmed'
+          'ORDER-P13-MISSING-SALE-OVERRIDE', 'confirmed', 'anonymous'
         )
       `;
     });
@@ -4011,6 +4574,115 @@ try {
       "P13 late-sale entry must not add a second accounting sale event",
     );
 
+    const assignedLocationPhotoId = randomUUID();
+    const assignedLocationPhotoCollectionUrl = `/v1/workspaces/${owner.workspaceId}/locations/${acquisitionBinId}/photos`;
+    const capturedAssignedLocationPhoto = await app.inject({
+      method: "POST",
+      url: `${assignedLocationPhotoCollectionUrl}?${locationPhotoQuery(assignedLocationPhotoId, randomUUID())}`,
+      headers: { cookie, "content-type": "image/jpeg" },
+      payload: locationPhotoBytes,
+    });
+    assert.equal(capturedAssignedLocationPhoto.statusCode, 201, capturedAssignedLocationPhoto.body);
+    const approvedAssignedLocationPhoto = await app.inject({
+      method: "POST",
+      url: `${assignedLocationPhotoCollectionUrl}/${assignedLocationPhotoId}/approval`,
+      headers: { cookie: managerCookie },
+      payload: { reviewedAt: new Date().toISOString(), humanApproved: true },
+    });
+    assert.equal(approvedAssignedLocationPhoto.statusCode, 200, approvedAssignedLocationPhoto.body);
+    const genericAssignedLocationPhotoContentUrl = approvedAssignedLocationPhoto.json<{
+      contentUrl: string;
+    }>().contentUrl;
+    assert.ok(genericAssignedLocationPhotoContentUrl);
+
+    const ownerTasksBeforeShippingAssignment = await app.inject({
+      method: "GET",
+      url: `/v1/workspaces/${owner.workspaceId}/shipping-tasks`,
+      headers: { cookie },
+    });
+    assert.equal(
+      ownerTasksBeforeShippingAssignment.statusCode,
+      200,
+      ownerTasksBeforeShippingAssignment.body,
+    );
+    const ownerLocationTaskBeforeShippingAssignment = ownerTasksBeforeShippingAssignment
+      .json<
+        Array<{
+          orderId: string;
+          locationPhotoUrl: string | null;
+          assignmentExpiresAt: string | null;
+        }>
+      >()
+      .find((task) => task.orderId === orderId);
+    assert.ok(ownerLocationTaskBeforeShippingAssignment?.locationPhotoUrl);
+    assert.equal(ownerLocationTaskBeforeShippingAssignment.assignmentExpiresAt, null);
+    const managementLocationPhotoUrl = new URL(
+      ownerLocationTaskBeforeShippingAssignment.locationPhotoUrl,
+      "http://local.test",
+    );
+    for (const [role, managementCookie] of [
+      ["owner", cookie],
+      ["inventory manager", managerCookie],
+    ] as const) {
+      const managementLocationPhoto = await app.inject({
+        method: "GET",
+        url: `${managementLocationPhotoUrl.pathname}${managementLocationPhotoUrl.search}`,
+        headers: { cookie: managementCookie },
+      });
+      assert.equal(
+        managementLocationPhoto.statusCode,
+        200,
+        `${role} must read the current order location derivative without a shipping assignment: ${managementLocationPhoto.body}`,
+      );
+      assert.equal(managementLocationPhoto.headers["cache-control"], "private, no-store");
+      assert.equal(managementLocationPhoto.headers["x-content-type-options"], "nosniff");
+      assert.equal(
+        managementLocationPhoto.rawPayload.toString("utf8").includes("GPSLatitude"),
+        false,
+      );
+    }
+    const unassignedShippingLocationPhoto = await app.inject({
+      method: "GET",
+      url: `${managementLocationPhotoUrl.pathname}${managementLocationPhotoUrl.search}`,
+      headers: { cookie: shippingCookie },
+    });
+    assert.equal(
+      unassignedShippingLocationPhoto.statusCode,
+      403,
+      unassignedShippingLocationPhoto.body,
+    );
+    await inventory.begin(async (transaction) => {
+      await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+      await transaction`select set_config('app.identity_id', ${owner.identityId}, true)`;
+      await transaction`
+        insert into order_assignment (
+          workspace_id, order_id, identity_id, starts_at, expires_at, assigned_by
+        ) values (
+          ${owner.workspaceId}, ${orderId}, ${shippingId},
+          statement_timestamp() - interval '2 hours',
+          statement_timestamp() - interval '1 hour', ${owner.identityId}
+        )
+      `;
+    });
+    const expiredShippingLocationPhoto = await app.inject({
+      method: "GET",
+      url: `${managementLocationPhotoUrl.pathname}${managementLocationPhotoUrl.search}`,
+      headers: { cookie: shippingCookie },
+    });
+    assert.equal(expiredShippingLocationPhoto.statusCode, 403, expiredShippingLocationPhoto.body);
+    const unsupportedRoleLocationPhoto = await app.inject({
+      method: "GET",
+      url: `${managementLocationPhotoUrl.pathname}${managementLocationPhotoUrl.search}`,
+      headers: { cookie: workerCookie },
+    });
+    assert.equal(unsupportedRoleLocationPhoto.statusCode, 403, unsupportedRoleLocationPhoto.body);
+    const foreignWorkspaceLocationPhoto = await app.inject({
+      method: "GET",
+      url: `${managementLocationPhotoUrl.pathname.replace(owner.workspaceId, otherWorkspaceId)}${managementLocationPhotoUrl.search}`,
+      headers: { cookie },
+    });
+    assert.equal(foreignWorkspaceLocationPhoto.statusCode, 403, foreignWorkspaceLocationPhoto.body);
+
     const unassignedShippingPreflight = await app.inject({
       method: "GET",
       url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/shipping-photo-preflight`,
@@ -4044,6 +4716,115 @@ try {
     });
     assert.equal(assignedShipping.statusCode, 201, assignedShipping.body);
     const shippingAssignmentId = assignedShipping.json<{ assignmentId: string }>().assignmentId;
+    const tasksWithAssignedLocationPhoto = await app.inject({
+      method: "GET",
+      url: `/v1/workspaces/${owner.workspaceId}/shipping-tasks`,
+      headers: { cookie: shippingCookie },
+    });
+    assert.equal(
+      tasksWithAssignedLocationPhoto.statusCode,
+      200,
+      tasksWithAssignedLocationPhoto.body,
+    );
+    const assignedLocationTask = tasksWithAssignedLocationPhoto
+      .json<
+        Array<{
+          orderId: string;
+          inventoryUnitId: string;
+          locationPhotoUrl: string | null;
+        }>
+      >()
+      .find((task) => task.orderId === orderId);
+    assert.ok(assignedLocationTask?.locationPhotoUrl);
+    const assignedLocationPhotoUrl = new URL(
+      assignedLocationTask.locationPhotoUrl,
+      "http://local.test",
+    );
+    assert.equal(
+      assignedLocationPhotoUrl.pathname,
+      `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/pick-location-photo/content`,
+    );
+    assert.equal(
+      assignedLocationPhotoUrl.searchParams.get("inventoryUnitId"),
+      acquiredItem.inventoryUnitId,
+    );
+    assert.match(
+      assignedLocationPhotoUrl.searchParams.get("movementSequence") ?? "",
+      /^(?:0|[1-9][0-9]*)$/u,
+    );
+    assert.equal(tasksWithAssignedLocationPhoto.body.includes(acquisitionBinId), false);
+    assert.equal(tasksWithAssignedLocationPhoto.body.includes(assignedLocationPhotoId), false);
+    assert.equal(tasksWithAssignedLocationPhoto.body.includes("location-display"), false);
+
+    const assignedLocationPhotoContent = await app.inject({
+      method: "GET",
+      url: `${assignedLocationPhotoUrl.pathname}${assignedLocationPhotoUrl.search}`,
+      headers: { cookie: shippingCookie },
+    });
+    assert.equal(assignedLocationPhotoContent.statusCode, 200, assignedLocationPhotoContent.body);
+    assert.equal(assignedLocationPhotoContent.headers["cache-control"], "private, no-store");
+    assert.equal(assignedLocationPhotoContent.headers.pragma, "no-cache");
+    assert.equal(assignedLocationPhotoContent.headers["x-content-type-options"], "nosniff");
+    assert.equal(
+      assignedLocationPhotoContent.rawPayload.toString("utf8").includes("GPSLatitude"),
+      false,
+    );
+    const otherShippingLocationPhoto = await app.inject({
+      method: "GET",
+      url: `${assignedLocationPhotoUrl.pathname}${assignedLocationPhotoUrl.search}`,
+      headers: { cookie: otherShippingCookie },
+    });
+    assert.equal(otherShippingLocationPhoto.statusCode, 403, otherShippingLocationPhoto.body);
+
+    const genericLocationPhotoAsShipping = await app.inject({
+      method: "GET",
+      url: genericAssignedLocationPhotoContentUrl,
+      headers: { cookie: shippingCookie },
+    });
+    assert.equal(
+      genericLocationPhotoAsShipping.statusCode,
+      403,
+      genericLocationPhotoAsShipping.body,
+    );
+
+    const wrongUnitUrl = new URL(assignedLocationPhotoUrl);
+    wrongUnitUrl.searchParams.set("inventoryUnitId", unitOneId);
+    const wrongUnitPhoto = await app.inject({
+      method: "GET",
+      url: `${wrongUnitUrl.pathname}${wrongUnitUrl.search}`,
+      headers: { cookie: shippingCookie },
+    });
+    assert.equal(wrongUnitPhoto.statusCode, 403, wrongUnitPhoto.body);
+    const wrongMovementUrl = new URL(assignedLocationPhotoUrl);
+    wrongMovementUrl.searchParams.set(
+      "movementSequence",
+      String(Number(wrongMovementUrl.searchParams.get("movementSequence")) + 1),
+    );
+    const wrongMovementPhoto = await app.inject({
+      method: "GET",
+      url: `${wrongMovementUrl.pathname}${wrongMovementUrl.search}`,
+      headers: { cookie: shippingCookie },
+    });
+    assert.equal(wrongMovementPhoto.statusCode, 403, wrongMovementPhoto.body);
+    const wrongOrderUrl = new URL(assignedLocationPhotoUrl);
+    wrongOrderUrl.pathname = wrongOrderUrl.pathname.replace(orderId, randomUUID());
+    const wrongOrderPhoto = await app.inject({
+      method: "GET",
+      url: `${wrongOrderUrl.pathname}${wrongOrderUrl.search}`,
+      headers: { cookie: shippingCookie },
+    });
+    assert.equal(wrongOrderPhoto.statusCode, 403, wrongOrderPhoto.body);
+    const forbiddenLocationPhotoShape = wrongUnitPhoto.json<{ code: string; message: string }>();
+    for (const response of [wrongMovementPhoto, wrongOrderPhoto]) {
+      const body = response.json<{ code: string; message: string }>();
+      assert.deepEqual(
+        { code: body.code, message: body.message },
+        {
+          code: forbiddenLocationPhotoShape.code,
+          message: forbiddenLocationPhotoShape.message,
+        },
+      );
+    }
     const overlongShipping = await app.inject({
       method: "POST",
       url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/assignment`,
@@ -4079,6 +4860,28 @@ try {
       },
     });
     assert.equal(revokedShipping.statusCode, 200, revokedShipping.body);
+    const ownerPhotoAfterShippingRevoke = await app.inject({
+      method: "GET",
+      url: `${assignedLocationPhotoUrl.pathname}${assignedLocationPhotoUrl.search}`,
+      headers: { cookie },
+    });
+    assert.equal(ownerPhotoAfterShippingRevoke.statusCode, 200, ownerPhotoAfterShippingRevoke.body);
+    const assignedPhotoAfterRevoke = await app.inject({
+      method: "GET",
+      url: `${assignedLocationPhotoUrl.pathname}${assignedLocationPhotoUrl.search}`,
+      headers: { cookie: shippingCookie },
+    });
+    assert.equal(assignedPhotoAfterRevoke.statusCode, 403, assignedPhotoAfterRevoke.body);
+    assert.deepEqual(
+      {
+        code: assignedPhotoAfterRevoke.json<{ code: string }>().code,
+        message: assignedPhotoAfterRevoke.json<{ message: string }>().message,
+      },
+      {
+        code: forbiddenLocationPhotoShape.code,
+        message: forbiddenLocationPhotoShape.message,
+      },
+    );
     const tasksAfterRevoke = await app.inject({
       method: "GET",
       url: `/v1/workspaces/${owner.workspaceId}/shipping-tasks`,
@@ -4104,6 +4907,32 @@ try {
       },
     });
     assert.equal(reassignedShipping.statusCode, 201, reassignedShipping.body);
+    await inventory.begin(async (transaction) => {
+      await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+      await transaction`select set_config('app.identity_id', ${owner.identityId}, true)`;
+      await transaction`
+        update order_allocation
+        set active = false, released_at = statement_timestamp()
+        where workspace_id = ${owner.workspaceId}
+          and inventory_unit_id = ${unitOneId}
+          and active
+      `;
+      const [releasedAllocation] = await transaction<Array<{ id: string }>>`
+        insert into order_allocation (
+          workspace_id, order_id, inventory_unit_id
+        ) values (
+          ${owner.workspaceId}, ${orderId}, ${unitOneId}
+        )
+        returning id
+      `;
+      assert.ok(releasedAllocation);
+      await transaction`
+        update order_allocation
+        set active = false, released_at = statement_timestamp()
+        where workspace_id = ${owner.workspaceId}
+          and id = ${releasedAllocation.id}
+      `;
+    });
     const shippingTasks = await app.inject({
       method: "GET",
       url: `/v1/workspaces/${owner.workspaceId}/shipping-tasks`,
@@ -4111,8 +4940,325 @@ try {
     });
     assert.equal(shippingTasks.statusCode, 200, shippingTasks.body);
     assert.deepEqual(
-      shippingTasks.json<Array<{ orderId: string }>>().map((task) => task.orderId),
-      [orderId],
+      shippingTasks
+        .json<Array<{ orderId: string; inventoryUnitId: string; productTitle: string }>>()
+        .map((task) => ({
+          orderId: task.orderId,
+          inventoryUnitId: task.inventoryUnitId,
+          productTitle: task.productTitle,
+        })),
+      [
+        {
+          orderId,
+          inventoryUnitId: acquiredItem.inventoryUnitId,
+          productTitle: top01PilotFixture.title,
+        },
+      ],
+      "Shipping tasks must exclude released allocations even when the same order has an active allocation",
+    );
+
+    const assignedShippingOptions = await app.inject({
+      method: "GET",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/shipping-method-options`,
+      headers: { cookie: shippingCookie },
+    });
+    assert.equal(assignedShippingOptions.statusCode, 200, assignedShippingOptions.body);
+    const assignedShippingOption =
+      assignedShippingOptions.json<
+        Array<Record<string, unknown> & { methodId: string; feeMinor: number }>
+      >()[0];
+    assert.ok(assignedShippingOption);
+    assert.equal(assignedShippingOption.methodId, shippingMethod.methodId);
+    assert.equal(assignedShippingOption.feeMinor, 750);
+    assert.deepEqual(
+      Object.keys(assignedShippingOption).sort(),
+      [
+        "catalogRevisionId",
+        "deliveryEstimate",
+        "feeMinor",
+        "methodId",
+        "methodName",
+        "officialCheckedOn",
+        "salesChannelKey",
+        "salesChannelName",
+        "trackingAvailable",
+      ],
+      "Assigned shipping must receive only the operational method fields",
+    );
+    const shippingRegistrationRead = await app.inject({
+      method: "GET",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/registration`,
+      headers: { cookie: shippingCookie },
+    });
+    assert.equal(shippingRegistrationRead.statusCode, 403, shippingRegistrationRead.body);
+    assert.equal(/buyer|購入者|5000|1500|profit|tax/iu.test(shippingRegistrationRead.body), false);
+    const shippingCatalogRead = await app.inject({
+      method: "GET",
+      url: `/v1/workspaces/${owner.workspaceId}/shipping-methods`,
+      headers: { cookie: shippingCookie },
+    });
+    assert.equal(shippingCatalogRead.statusCode, 403, shippingCatalogRead.body);
+
+    const shippingSelectionKey = randomUUID();
+    const selectShippingMethod = () =>
+      app.inject({
+        method: "POST",
+        url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/shipping-method-selections`,
+        headers: { cookie: shippingCookie },
+        payload: {
+          methodId: shippingMethod.methodId,
+          expectedSelectionRevision: null,
+          idempotencyKey: shippingSelectionKey,
+          humanConfirmed: true,
+        },
+      });
+    const [selectedShippingMethod, concurrentShippingMethodReplay] = await Promise.all([
+      selectShippingMethod(),
+      selectShippingMethod(),
+    ]);
+    assert.equal(selectedShippingMethod.statusCode, 201, selectedShippingMethod.body);
+    assert.equal(
+      concurrentShippingMethodReplay.statusCode,
+      201,
+      concurrentShippingMethodReplay.body,
+    );
+    const shippingSelection = selectedShippingMethod.json<{
+      selectionId: string;
+      revision: number;
+      method: { feeMinor: number; officialCheckedOn: string };
+    }>();
+    assert.equal(shippingSelection.revision, 1);
+    assert.equal(shippingSelection.method.feeMinor, 750);
+    assert.equal(
+      concurrentShippingMethodReplay.json<{ selectionId: string }>().selectionId,
+      shippingSelection.selectionId,
+      "Concurrent exact retries must return one database selection",
+    );
+    const selectionAdmin = postgres(adminUrl, { max: 1 });
+    try {
+      const persistedSelections = await selectionAdmin<
+        Array<{
+          registration_revision_id: string;
+          catalog_revision_id: string;
+          selected_fee_minor: number;
+          selected_by: string;
+        }>
+      >`
+        select registration_revision_id, catalog_revision_id,
+               selected_fee_minor::integer as selected_fee_minor, selected_by
+        from order_shipping_method_selection
+        where workspace_id = ${owner.workspaceId} and id = ${shippingSelection.selectionId}
+      `;
+      assert.deepEqual(
+        Array.from(persistedSelections, (row) => ({ ...row })),
+        [
+          {
+            registration_revision_id: registrationRevisionId,
+            catalog_revision_id: shippingMethod.catalogRevisionId,
+            selected_fee_minor: 750,
+            selected_by: shippingId,
+          },
+        ],
+        "The database must select and freeze the current registration, catalog revision and fee",
+      );
+    } finally {
+      await selectionAdmin.end({ timeout: 5 });
+    }
+    await assert.rejects(
+      () =>
+        inventory.begin(async (transaction) => {
+          await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+          await transaction`select set_config('app.identity_id', ${shippingId}, true)`;
+          await transaction`
+            select selected_by from order_shipping_method_selection
+            where workspace_id = ${owner.workspaceId} and id = ${shippingSelection.selectionId}
+          `;
+        }),
+      /permission denied/u,
+      "Assigned shipping must not receive direct access to selection actor metadata",
+    );
+    const selectedShippingMethodReplay = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/shipping-method-selections`,
+      headers: { cookie: shippingCookie },
+      payload: {
+        methodId: shippingMethod.methodId,
+        expectedSelectionRevision: null,
+        idempotencyKey: shippingSelectionKey,
+        humanConfirmed: true,
+      },
+    });
+    assert.equal(selectedShippingMethodReplay.statusCode, 201, selectedShippingMethodReplay.body);
+    assert.equal(
+      selectedShippingMethodReplay.json<{ selectionId: string }>().selectionId,
+      shippingSelection.selectionId,
+    );
+    const selectionKeyConflict = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/shipping-method-selections`,
+      headers: { cookie: shippingCookie },
+      payload: {
+        methodId: shippingMethod.methodId,
+        expectedSelectionRevision: shippingSelection.revision,
+        idempotencyKey: shippingSelectionKey,
+        humanConfirmed: true,
+      },
+    });
+    assert.equal(selectionKeyConflict.statusCode, 409, selectionKeyConflict.body);
+    const updatedOrderRegistration = await app.inject({
+      method: "PATCH",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/registration`,
+      headers: { cookie },
+      payload: {
+        salesChannelKey: "mercari",
+        salesChannelName: "メルカリ",
+        channelTransactionId: null,
+        buyerDisplayName: null,
+        expectedRevision: initialRegistrationBody.revision,
+        idempotencyKey: randomUUID(),
+        humanConfirmed: true,
+      },
+    });
+    assert.equal(updatedOrderRegistration.statusCode, 200, updatedOrderRegistration.body);
+    assert.equal(updatedOrderRegistration.headers["cache-control"], "private, no-store");
+    assert.equal(updatedOrderRegistration.headers.pragma, "no-cache");
+    const updatedOrderRegistrationBody = updatedOrderRegistration.json<{
+      revision: number;
+      registrationRevisionId: string;
+    }>();
+    assert.equal(updatedOrderRegistrationBody.revision, 2);
+
+    const staleSelectionReadiness = await app.inject({
+      method: "GET",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/shipping-readiness`,
+      headers: { cookie: shippingCookie },
+    });
+    assert.equal(staleSelectionReadiness.statusCode, 200, staleSelectionReadiness.body);
+    const staleSelectionReadinessBody = staleSelectionReadiness.json<{
+      registrationRevision: number | null;
+      selectedMethod: { revision: number } | null;
+      missingInformation: Array<"channel_transaction_id" | "sale_amount">;
+      blockingIssues: string[];
+    }>();
+    assert.equal(staleSelectionReadinessBody.registrationRevision, 2);
+    assert.equal(staleSelectionReadinessBody.selectedMethod?.revision, 1);
+    assert.deepEqual(staleSelectionReadinessBody.blockingIssues, ["shipping_method"]);
+    assert.ok(staleSelectionReadinessBody.registrationRevision);
+    assert.ok(staleSelectionReadinessBody.selectedMethod);
+    const staleSelectionConfirmation = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/shipping-readiness-confirmations`,
+      headers: { cookie: shippingCookie },
+      payload: {
+        expectedRegistrationRevision: staleSelectionReadinessBody.registrationRevision,
+        expectedSelectionRevision: staleSelectionReadinessBody.selectedMethod.revision,
+        acknowledgedMissingInformation: staleSelectionReadinessBody.missingInformation,
+        idempotencyKey: randomUUID(),
+        humanConfirmed: true,
+      },
+    });
+    assert.equal(staleSelectionConfirmation.statusCode, 409, staleSelectionConfirmation.body);
+
+    const reselectedShippingMethod = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/shipping-method-selections`,
+      headers: { cookie: shippingCookie },
+      payload: {
+        methodId: shippingMethod.methodId,
+        expectedSelectionRevision: shippingSelection.revision,
+        idempotencyKey: randomUUID(),
+        humanConfirmed: true,
+      },
+    });
+    assert.equal(reselectedShippingMethod.statusCode, 201, reselectedShippingMethod.body);
+    const currentShippingSelection = reselectedShippingMethod.json<{
+      selectionId: string;
+      revision: number;
+      method: { feeMinor: number };
+    }>();
+    assert.equal(currentShippingSelection.revision, 2);
+    assert.equal(currentShippingSelection.method.feeMinor, 750);
+
+    const prePackReadiness = await app.inject({
+      method: "GET",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/shipping-readiness`,
+      headers: { cookie: shippingCookie },
+    });
+    assert.equal(prePackReadiness.statusCode, 200, prePackReadiness.body);
+    const prePackReadinessBody = prePackReadiness.json<{
+      registrationRevision: number | null;
+      channelTransactionIdStatus: string;
+      saleAmountStatus: string;
+      selectedMethod: { revision: number } | null;
+      missingInformation: Array<"channel_transaction_id" | "sale_amount">;
+      blockingIssues: string[];
+      humanConfirmation: { state: string };
+    }>();
+    assert.deepEqual(
+      {
+        registrationRevision: prePackReadinessBody.registrationRevision,
+        channelTransactionIdStatus: prePackReadinessBody.channelTransactionIdStatus,
+        saleAmountStatus: prePackReadinessBody.saleAmountStatus,
+        missingInformation: prePackReadinessBody.missingInformation,
+        blockingIssues: prePackReadinessBody.blockingIssues,
+        confirmationState: prePackReadinessBody.humanConfirmation.state,
+      },
+      {
+        registrationRevision: updatedOrderRegistrationBody.revision,
+        channelTransactionIdStatus: "missing",
+        saleAmountStatus: "present",
+        missingInformation: ["channel_transaction_id"],
+        blockingIssues: [],
+        confirmationState: "required",
+      },
+    );
+    assert.ok(prePackReadinessBody.registrationRevision);
+    assert.ok(prePackReadinessBody.selectedMethod);
+    assert.equal(prePackReadinessBody.selectedMethod.revision, currentShippingSelection.revision);
+    for (const forbidden of [
+      "buyerDisplayName",
+      "saleAmountMinor",
+      "costAmountMinor",
+      "contributionProfitMinor",
+      "taxBasis",
+      "changedBy",
+      "selectedBy",
+    ]) {
+      assert.equal(forbidden in prePackReadiness.json<Record<string, unknown>>(), false);
+    }
+    const staleRegistrationRevisionConfirmation = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/shipping-readiness-confirmations`,
+      headers: { cookie: shippingCookie },
+      payload: {
+        expectedRegistrationRevision: prePackReadinessBody.registrationRevision + 1,
+        expectedSelectionRevision: prePackReadinessBody.selectedMethod.revision,
+        acknowledgedMissingInformation: prePackReadinessBody.missingInformation,
+        idempotencyKey: randomUUID(),
+        humanConfirmed: true,
+      },
+    });
+    assert.equal(
+      staleRegistrationRevisionConfirmation.statusCode,
+      409,
+      "A shipping client must receive 409 when its readiness registration revision is stale",
+    );
+    const prematureReadinessConfirmation = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/shipping-readiness-confirmations`,
+      headers: { cookie: shippingCookie },
+      payload: {
+        expectedRegistrationRevision: prePackReadinessBody.registrationRevision,
+        expectedSelectionRevision: prePackReadinessBody.selectedMethod.revision,
+        acknowledgedMissingInformation: prePackReadinessBody.missingInformation,
+        idempotencyKey: randomUUID(),
+        humanConfirmed: true,
+      },
+    });
+    assert.equal(
+      prematureReadinessConfirmation.statusCode,
+      409,
+      prematureReadinessConfirmation.body,
     );
 
     const assignedShippingPreflight = await app.inject({
@@ -4241,11 +5387,15 @@ try {
       `;
       assert.equal(stored[0]?.lease_seconds, 300);
       assert.equal(stored[0]?.ciphertext_text.includes("架空県"), false);
-      await addressAdmin`
-        update address_access_lease set issued_at = now() - interval '2 seconds',
-          expires_at = now() - interval '1 second'
-        where workspace_id = ${owner.workspaceId} and id = ${firstLeaseId}
-      `;
+      await addressAdmin.begin(async (transaction) => {
+        await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+        await transaction`select set_config('app.identity_id', ${owner.identityId}, true)`;
+        await transaction`
+          update address_access_lease set issued_at = now() - interval '2 seconds',
+            expires_at = now() - interval '1 second'
+          where workspace_id = ${owner.workspaceId} and id = ${firstLeaseId}
+        `;
+      });
     } finally {
       await addressAdmin.end({ timeout: 5 });
     }
@@ -4264,19 +5414,75 @@ try {
     });
     assert.equal(activeLease.statusCode, 201, activeLease.body);
     const activeLeaseId = activeLease.json<{ leaseId: string }>().leaseId;
-    const scanBase = Date.now();
+    const pickConfirmationTime = Date.now();
+    const inventoryMatchedAt = new Date(pickConfirmationTime - 60_000).toISOString();
+    const locationMatchedAt = new Date(pickConfirmationTime - 20_000).toISOString();
+    const pickConfirmedAt = new Date(pickConfirmationTime).toISOString();
     const pickPayload = {
       inventoryNumber: acquiredItem.inventoryNumber,
       locationCode: appendCodeCheckDigit("HOME-BIN-01"),
       inventoryLabelVersion: 1,
       locationLabelVersion: 1,
       addressLeaseId: activeLeaseId,
-      inventoryScannedAt: new Date(scanBase).toISOString(),
-      locationScannedAt: new Date(scanBase + 1).toISOString(),
-      confirmedAt: new Date(scanBase + 2).toISOString(),
+      inventoryScannedAt: inventoryMatchedAt,
+      locationScannedAt: locationMatchedAt,
+      confirmedAt: pickConfirmedAt,
       idempotencyKey: randomUUID(),
       humanConfirmed: true,
     } as const;
+    for (const [actorLabel, actorCookie, actorId] of [
+      ["owner", cookie, owner.identityId],
+      ["inventory manager", managerCookie, managerId],
+    ] as const) {
+      const crossActorLeasePick = await app.inject({
+        method: "POST",
+        url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/pick`,
+        headers: { cookie: actorCookie },
+        payload: { ...pickPayload, idempotencyKey: randomUUID() },
+      });
+      assert.equal(
+        crossActorLeasePick.statusCode,
+        409,
+        `${actorLabel} must not reuse the shipping actor's address lease`,
+      );
+      await assert.rejects(
+        () =>
+          inventory.begin(async (transaction) => {
+            await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+            await transaction`select set_config('app.identity_id', ${actorId}, true)`;
+            await transaction`
+              update sales_order set state = 'picking'
+              where workspace_id = ${owner.workspaceId} and id = ${orderId}
+            `;
+          }),
+        hasDatabaseCode("23514"),
+        `${actorLabel} must have its own current lease even for a direct state transition`,
+      );
+    }
+    const managerLease = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/address-leases`,
+      headers: { cookie: managerCookie },
+      payload: { purpose: "shipping_label", humanConfirmed: true },
+    });
+    assert.equal(managerLease.statusCode, 201, managerLease.body);
+    const managerLeaseId = managerLease.json<{ leaseId: string }>().leaseId;
+    const managerAddressView = await app.inject({
+      method: "GET",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/address?leaseId=${managerLeaseId}`,
+      headers: { cookie: managerCookie },
+    });
+    assert.equal(managerAddressView.statusCode, 200, managerAddressView.body);
+    assert.equal(
+      managerAddressView.json<{ shippingAddress: string }>().shippingAddress,
+      fictionalAddress,
+    );
+    const ownerUsingManagerLease = await app.inject({
+      method: "GET",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/address?leaseId=${managerLeaseId}`,
+      headers: { cookie },
+    });
+    assert.equal(ownerUsingManagerLease.statusCode, 403, ownerUsingManagerLease.body);
     const stalePick = await app.inject({
       method: "POST",
       url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/pick`,
@@ -4292,6 +5498,36 @@ try {
     });
     assert.equal(picked.statusCode, 200, picked.body);
     assert.equal(picked.json<{ inventoryStatus: string }>().inventoryStatus, "picked");
+    const [persistedPickTimes] = await inventory.begin(async (transaction) => {
+      await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+      await transaction`select set_config('app.identity_id', ${owner.identityId}, true)`;
+      return transaction<
+        Array<{
+          inventory_scanned_at: string;
+          location_scanned_at: string;
+          confirmed_at: string;
+        }>
+      >`
+        select inventory_scanned_at::text, location_scanned_at::text, confirmed_at::text
+        from scan_session
+        where workspace_id = ${owner.workspaceId}
+          and inventory_unit_id = ${acquiredItem.inventoryUnitId}
+          and operation = 'pick'
+      `;
+    });
+    assert.deepEqual(
+      {
+        inventoryScannedAt: new Date(persistedPickTimes?.inventory_scanned_at ?? "").toISOString(),
+        locationScannedAt: new Date(persistedPickTimes?.location_scanned_at ?? "").toISOString(),
+        confirmedAt: new Date(persistedPickTimes?.confirmed_at ?? "").toISOString(),
+      },
+      {
+        inventoryScannedAt: inventoryMatchedAt,
+        locationScannedAt: locationMatchedAt,
+        confirmedAt: pickConfirmedAt,
+      },
+      "Pick must preserve the independently captured match times instead of synthesizing submit-time scans",
+    );
     const pickedReplay = await app.inject({
       method: "POST",
       url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/pick`,
@@ -4415,6 +5651,110 @@ try {
       ],
       "Packing evidence ID, actor and time authority must be server-side",
     );
+    const readyToConfirmReadiness = await app.inject({
+      method: "GET",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/shipping-readiness`,
+      headers: { cookie: shippingCookie },
+    });
+    assert.equal(readyToConfirmReadiness.statusCode, 200, readyToConfirmReadiness.body);
+    const readyToConfirmReadinessBody = readyToConfirmReadiness.json<{
+      registrationRevision: number | null;
+      selectedMethod: { revision: number } | null;
+      missingInformation: Array<"channel_transaction_id" | "sale_amount">;
+    }>();
+    assert.ok(readyToConfirmReadinessBody.registrationRevision);
+    assert.ok(readyToConfirmReadinessBody.selectedMethod);
+    const readinessConfirmationKey = randomUUID();
+    const readinessConfirmationPayload = {
+      expectedRegistrationRevision: readyToConfirmReadinessBody.registrationRevision,
+      expectedSelectionRevision: readyToConfirmReadinessBody.selectedMethod.revision,
+      acknowledgedMissingInformation: readyToConfirmReadinessBody.missingInformation,
+      idempotencyKey: readinessConfirmationKey,
+      humanConfirmed: true,
+    };
+    const confirmedShippingReadiness = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/shipping-readiness-confirmations`,
+      headers: { cookie: shippingCookie },
+      payload: readinessConfirmationPayload,
+    });
+    assert.equal(confirmedShippingReadiness.statusCode, 201, confirmedShippingReadiness.body);
+    const readinessConfirmation = confirmedShippingReadiness.json<{
+      humanConfirmation: { state: string; confirmationId: string; confirmedAt: string };
+    }>().humanConfirmation;
+    assert.equal(readinessConfirmation.state, "confirmed");
+    assert.ok(readinessConfirmation.confirmationId);
+    assert.ok(readinessConfirmation.confirmedAt);
+    const confirmedShippingReadinessReplay = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/shipping-readiness-confirmations`,
+      headers: { cookie: shippingCookie },
+      payload: readinessConfirmationPayload,
+    });
+    assert.equal(
+      confirmedShippingReadinessReplay.statusCode,
+      201,
+      confirmedShippingReadinessReplay.body,
+    );
+    assert.deepEqual(
+      confirmedShippingReadinessReplay.json<{
+        humanConfirmation: { state: string; confirmationId: string; confirmedAt: string };
+      }>().humanConfirmation,
+      {
+        state: "confirmed",
+        confirmationId: readinessConfirmation.confirmationId,
+        confirmedAt: readinessConfirmation.confirmedAt,
+      },
+    );
+    const secondReadinessConfirmation = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/shipping-readiness-confirmations`,
+      headers: { cookie: shippingCookie },
+      payload: { ...readinessConfirmationPayload, idempotencyKey: randomUUID() },
+    });
+    assert.equal(secondReadinessConfirmation.statusCode, 201, secondReadinessConfirmation.body);
+    const secondReadinessConfirmationBody = secondReadinessConfirmation.json<{
+      humanConfirmation: { confirmationId: string; confirmedAt: string };
+    }>().humanConfirmation;
+    assert.notEqual(
+      secondReadinessConfirmationBody.confirmationId,
+      readinessConfirmation.confirmationId,
+    );
+    const oldReadinessReplayAfterNewerConfirmation = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/shipping-readiness-confirmations`,
+      headers: { cookie: shippingCookie },
+      payload: readinessConfirmationPayload,
+    });
+    assert.equal(
+      oldReadinessReplayAfterNewerConfirmation.statusCode,
+      201,
+      oldReadinessReplayAfterNewerConfirmation.body,
+    );
+    assert.deepEqual(
+      oldReadinessReplayAfterNewerConfirmation.json<{
+        humanConfirmation: { state: string; confirmationId: string; confirmedAt: string };
+      }>().humanConfirmation,
+      {
+        state: "confirmed",
+        confirmationId: readinessConfirmation.confirmationId,
+        confirmedAt: readinessConfirmation.confirmedAt,
+      },
+      "An old idempotency key must replay its original confirmation after a newer confirmation",
+    );
+    await assert.rejects(
+      () =>
+        inventory.begin(async (transaction) => {
+          await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+          await transaction`select set_config('app.identity_id', ${owner.identityId}, true)`;
+          await transaction`
+            update order_registration_revision set sales_channel_name = '改変不可'
+            where workspace_id = ${owner.workspaceId} and id = ${registrationRevisionId}
+          `;
+        }),
+      /append-only|permission denied/u,
+      "Order registration history must be append-only at the database boundary",
+    );
     await assert.rejects(
       () =>
         inventory.begin(async (transaction) => {
@@ -4428,19 +5768,82 @@ try {
       hasDatabaseCode("23514"),
       "Direct SQL must not ship without a separate shipment human confirmation",
     );
+    await assert.rejects(
+      () =>
+        inventory.begin(async (transaction) => {
+          await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+          await transaction`select set_config('app.identity_id', ${shippingId}, true)`;
+          await transaction`
+            insert into financial_event (
+              workspace_id, sku_id, order_id, event_type, amount_minor, currency,
+              tax_basis, bearer, source, source_meaning, rounding_rule_version,
+              source_already_net, occurred_at
+            ) values (
+              ${owner.workspaceId}, ${acquiredItem.skuId}, ${orderId}, 'shipping', 750, 'JPY',
+              'tax_included', 'seller', 'manual', '人が選択した配送方法の送料', 'jpy-v1', false,
+              statement_timestamp()
+            )
+          `;
+        }),
+      hasDatabaseCode("23514"),
+      "Direct SQL must not pre-create even a canonical-looking registered shipping fact",
+    );
+    const shippingFactsAfterMismatchRollback = await inventory.begin(async (transaction) => {
+      await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+      await transaction`select set_config('app.identity_id', ${owner.identityId}, true)`;
+      return transaction<Array<{ event_count: number }>>`
+        select count(*)::integer as event_count from financial_event
+        where workspace_id = ${owner.workspaceId} and order_id = ${orderId}
+          and event_type = 'shipping'
+      `;
+    });
+    assert.equal(shippingFactsAfterMismatchRollback[0]?.event_count, 0);
+    const missingP14ShipmentEvidence = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/ship`,
+      headers: { cookie: shippingCookie },
+      payload: {
+        addressLeaseId: activeLeaseId,
+        idempotencyKey: randomUUID(),
+        humanConfirmed: true,
+      },
+    });
+    assert.equal(missingP14ShipmentEvidence.statusCode, 409, missingP14ShipmentEvidence.body);
     const shipKey = randomUUID();
+    const shippedAt = new Date().toISOString();
     const shipped = await app.inject({
       method: "POST",
       url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/ship`,
       headers: { cookie: shippingCookie },
       payload: {
         addressLeaseId: activeLeaseId,
+        shippingMethodSelectionId: currentShippingSelection.selectionId,
+        readinessConfirmationId: readinessConfirmation.confirmationId,
+        shippedAt,
         idempotencyKey: shipKey,
         humanConfirmed: true,
       },
     });
     assert.equal(shipped.statusCode, 200, shipped.body);
     assert.equal(shipped.json<{ inventoryStatus: string }>().inventoryStatus, "shipped");
+    const readinessReplayAfterShipment = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/shipping-readiness-confirmations`,
+      headers: { cookie: shippingCookie },
+      payload: readinessConfirmationPayload,
+    });
+    assert.equal(readinessReplayAfterShipment.statusCode, 201, readinessReplayAfterShipment.body);
+    assert.deepEqual(
+      readinessReplayAfterShipment.json<{
+        humanConfirmation: { state: string; confirmationId: string; confirmedAt: string };
+      }>().humanConfirmation,
+      {
+        state: "confirmed",
+        confirmationId: readinessConfirmation.confirmationId,
+        confirmedAt: readinessConfirmation.confirmedAt,
+      },
+      "An exact committed readiness retry must replay after the order state advances",
+    );
     const shippedSaleMutation = await app.inject({
       method: "POST",
       url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/sale-amount`,
@@ -4468,16 +5871,568 @@ try {
     const humanShippingRecords = await inventory.begin(async (transaction) => {
       await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
       await transaction`select set_config('app.identity_id', ${shippingId}, true)`;
-      return transaction<Array<{ confirmed_by: string; idempotency_key: string }>>`
-        select confirmed_by, idempotency_key::text as idempotency_key
+      return transaction<
+        Array<{
+          confirmed_by: string;
+          idempotency_key: string;
+          shipping_method_selection_id: string;
+          readiness_confirmation_id: string;
+          shipping_fee_minor: number;
+          shipped_at: string;
+          shipping_financial_event_id: string;
+        }>
+      >`
+        select confirmed_by, idempotency_key::text as idempotency_key,
+               shipping_method_selection_id, readiness_confirmation_id,
+               shipping_fee_minor::integer as shipping_fee_minor, shipped_at::text,
+               shipping_financial_event_id
         from shipment_human_confirmation
         where workspace_id = ${owner.workspaceId} and order_id = ${orderId}
       `;
     });
+    assert.equal(humanShippingRecords.length, 1);
     assert.deepEqual(
-      Array.from(humanShippingRecords, (row) => ({ ...row })),
-      [{ confirmed_by: shippingId, idempotency_key: shipKey }],
+      {
+        confirmedBy: humanShippingRecords[0]?.confirmed_by,
+        idempotencyKey: humanShippingRecords[0]?.idempotency_key,
+        selectionId: humanShippingRecords[0]?.shipping_method_selection_id,
+        readinessConfirmationId: humanShippingRecords[0]?.readiness_confirmation_id,
+        shippingFeeMinor: humanShippingRecords[0]?.shipping_fee_minor,
+        shippedAt: new Date(humanShippingRecords[0]?.shipped_at ?? "").toISOString(),
+        shippingFinancialEventId: humanShippingRecords[0]?.shipping_financial_event_id,
+      },
+      {
+        confirmedBy: shippingId,
+        idempotencyKey: shipKey,
+        selectionId: currentShippingSelection.selectionId,
+        readinessConfirmationId: readinessConfirmation.confirmationId,
+        shippingFeeMinor: 750,
+        shippedAt,
+        shippingFinancialEventId: humanShippingRecords[0]?.shipping_financial_event_id,
+      },
     );
+    assert.ok(humanShippingRecords[0]?.shipping_financial_event_id);
+    const shippingFinancialFacts = await inventory.begin(async (transaction) => {
+      await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+      await transaction`select set_config('app.identity_id', ${owner.identityId}, true)`;
+      return transaction<
+        Array<{
+          id: string;
+          amount_minor: number;
+          sku_id: string;
+          tax_basis: string;
+          bearer: string;
+          source: string;
+          source_meaning: string;
+          rounding_rule_version: string;
+          source_already_net: boolean;
+          reverses_event_id: string | null;
+          occurred_at: string;
+        }>
+      >`
+        select id, amount_minor::integer as amount_minor, sku_id, tax_basis,
+               bearer, source, source_meaning, rounding_rule_version,
+               source_already_net, reverses_event_id, occurred_at::text
+        from financial_event
+        where workspace_id = ${owner.workspaceId} and order_id = ${orderId}
+          and event_type = 'shipping'
+      `;
+    });
+    assert.deepEqual(
+      Array.from(shippingFinancialFacts, (fact) => ({
+        ...fact,
+        occurred_at: new Date(fact.occurred_at).toISOString(),
+      })),
+      [
+        {
+          id: humanShippingRecords[0]?.shipping_financial_event_id,
+          amount_minor: 750,
+          sku_id: acquiredItem.skuId,
+          tax_basis: "tax_included",
+          bearer: "seller",
+          source: "manual",
+          source_meaning: "人が選択した配送方法の送料",
+          rounding_rule_version: "jpy-v1",
+          source_already_net: false,
+          reverses_event_id: null,
+          occurred_at: shippedAt,
+        },
+      ],
+      "Shipment confirmation must atomically persist exactly one selected-fee financial fact",
+    );
+    const [registeredFinancialCountsAfterShipping] = await inventory.begin(async (transaction) => {
+      await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+      await transaction`select set_config('app.identity_id', ${owner.identityId}, true)`;
+      return transaction<
+        Array<{
+          sale_count: number;
+          cost_count: number;
+          fee_count: number;
+          shipping_count: number;
+          packaging_count: number;
+        }>
+      >`
+          select
+            count(*) filter (where event_type = 'sale')::integer as sale_count,
+            count(*) filter (where event_type = 'cost')::integer as cost_count,
+            count(*) filter (where event_type = 'fee')::integer as fee_count,
+            count(*) filter (where event_type = 'shipping')::integer as shipping_count,
+            count(*) filter (where event_type = 'packaging')::integer as packaging_count
+          from financial_event
+          where workspace_id = ${owner.workspaceId} and order_id = ${orderId}
+            and reverses_event_id is null
+        `;
+    });
+    assert.deepEqual(
+      { ...registeredFinancialCountsAfterShipping },
+      { sale_count: 1, cost_count: 1, fee_count: 0, shipping_count: 1, packaging_count: 0 },
+      "Shipment must preserve missing registered-order fee and packaging facts as zero rows",
+    );
+
+    const anonymousSkuId = randomUUID();
+    const anonymousUnitId = randomUUID();
+    const anonymousLocationId = randomUUID();
+    const anonymousUnitLabelId = randomUUID();
+    const anonymousLocationLabelId = randomUUID();
+    const anonymousInventoryNumber = appendCodeCheckDigit("INV-990001");
+    const anonymousLocationCode = appendCodeCheckDigit("ANON-BIN-01");
+    const legacyNumericSkuId = randomUUID();
+    const legacyNumericUnitId = randomUUID();
+    const legacyNumericLocationId = randomUUID();
+    const legacyNumericInventoryNumber = appendCodeCheckDigit("INV-990002");
+    const legacyNumericLocationCode = appendCodeCheckDigit("LEGACY-BIN-01");
+    const anonymousFixtureAdmin = postgres(adminUrl, { max: 1 });
+    try {
+      await anonymousFixtureAdmin.begin(async (transaction) => {
+        await transaction`set local session_replication_role = replica`;
+        await transaction`
+          insert into product_sku (id, workspace_id, sku_code, title, category)
+          values (
+            ${anonymousSkuId}, ${owner.workspaceId}, 'SKU-P14-ANONYMOUS',
+            '住所を保存しない架空商品', 'トップス'
+          )
+        `;
+        await transaction`
+          insert into p0_workflow (workspace_id, sku_id, state, last_action, version)
+          values (
+            ${owner.workspaceId}, ${anonymousSkuId}, 'listing_confirmed',
+            'confirm_listing', 4
+          )
+        `;
+        await transaction`
+          insert into location_node (
+            id, workspace_id, parent_id, code, name, depth, can_store_inventory,
+            single_item_only, allow_mixed_sku, max_units
+          ) values (
+            ${anonymousLocationId}, ${owner.workspaceId}, null, ${anonymousLocationCode},
+            '匿名注文用の架空棚', 0, true, true, false, 1
+          )
+        `;
+        await transaction`
+          insert into inventory_unit (
+            id, workspace_id, sku_id, inventory_number, status, location_id
+          ) values (
+            ${anonymousUnitId}, ${owner.workspaceId}, ${anonymousSkuId},
+            ${anonymousInventoryNumber}, 'available', ${anonymousLocationId}
+          )
+        `;
+        await transaction`
+          insert into inventory_label (
+            id, workspace_id, target_type, target_id, label_kind, version,
+            token_hash, short_code, issued_by
+          ) values
+            (
+              ${anonymousUnitLabelId}, ${owner.workspaceId}, 'inventory_unit',
+              ${anonymousUnitId}, 'qr', 1, ${hashFixture("p14-anonymous-unit")},
+              ${anonymousInventoryNumber}, ${owner.identityId}
+            ),
+            (
+              ${anonymousLocationLabelId}, ${owner.workspaceId}, 'location',
+              ${anonymousLocationId}, 'qr', 1, ${hashFixture("p14-anonymous-location")},
+              ${anonymousLocationCode}, ${owner.identityId}
+            )
+        `;
+        await transaction`
+          insert into product_sku (id, workspace_id, sku_code, title, category)
+          values (
+            ${legacyNumericSkuId}, ${owner.workspaceId}, 'SKU-P14-LEGACY-NUMERIC',
+            '従来数値注文用の架空商品', 'トップス'
+          )
+        `;
+        await transaction`
+          insert into p0_workflow (workspace_id, sku_id, state, last_action, version)
+          values (
+            ${owner.workspaceId}, ${legacyNumericSkuId}, 'listing_confirmed',
+            'confirm_listing', 4
+          )
+        `;
+        await transaction`
+          insert into location_node (
+            id, workspace_id, parent_id, code, name, depth, can_store_inventory,
+            single_item_only, allow_mixed_sku, max_units
+          ) values (
+            ${legacyNumericLocationId}, ${owner.workspaceId}, null,
+            ${legacyNumericLocationCode}, '従来注文用の架空棚', 0, true, true, false, 1
+          )
+        `;
+        await transaction`
+          insert into inventory_unit (
+            id, workspace_id, sku_id, inventory_number, status, location_id
+          ) values (
+            ${legacyNumericUnitId}, ${owner.workspaceId}, ${legacyNumericSkuId},
+            ${legacyNumericInventoryNumber}, 'available', ${legacyNumericLocationId}
+          )
+        `;
+      });
+    } finally {
+      await anonymousFixtureAdmin.end({ timeout: 5 });
+    }
+
+    const legacyNumericCreatePayload = {
+      orderNumber: "ORDER-P14-LEGACY-1",
+      skuId: legacyNumericSkuId,
+      inventoryUnitId: legacyNumericUnitId,
+      saleAmountMinor: 4_000,
+      costAmountMinor: 1_300,
+      sellingFeeMinor: 400,
+      shippingCostMinor: 700,
+      packagingCostMinor: 80,
+      taxBasis: "tax_included",
+      sourceMeaning: "従来画面で本人が明示入力した架空取引事実",
+      occurredAt: new Date().toISOString(),
+      shippingAddress: "〒100-0000 架空県従来市1-1",
+      idempotencyKey: randomUUID(),
+      humanConfirmed: true,
+    } as const;
+    const legacyMissingFee = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders`,
+      headers: { cookie },
+      payload: {
+        ...legacyNumericCreatePayload,
+        sellingFeeMinor: null,
+        idempotencyKey: randomUUID(),
+      },
+    });
+    assert.equal(legacyMissingFee.statusCode, 400, legacyMissingFee.body);
+    const legacyNumericCreated = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders`,
+      headers: { cookie },
+      payload: legacyNumericCreatePayload,
+    });
+    assert.equal(legacyNumericCreated.statusCode, 201, legacyNumericCreated.body);
+    const legacyNumericOrderId = legacyNumericCreated.json<{ orderId: string }>().orderId;
+    const legacyNumericFacts = await inventory.begin(async (transaction) => {
+      await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+      await transaction`select set_config('app.identity_id', ${owner.identityId}, true)`;
+      return transaction<Array<{ event_type: string; amount_minor: number }>>`
+        select event_type, amount_minor::integer as amount_minor
+        from financial_event
+        where workspace_id = ${owner.workspaceId} and order_id = ${legacyNumericOrderId}
+        order by event_type
+      `;
+    });
+    assert.deepEqual(
+      Array.from(legacyNumericFacts, (row) => ({ ...row })),
+      [
+        { event_type: "cost", amount_minor: 1_300 },
+        { event_type: "fee", amount_minor: 400 },
+        { event_type: "packaging", amount_minor: 80 },
+        { event_type: "sale", amount_minor: 4_000 },
+        { event_type: "shipping", amount_minor: 700 },
+      ],
+      "Legacy client-numbered creation must preserve every explicitly entered numeric fact",
+    );
+
+    const anonymousCreateKey = randomUUID();
+    const anonymousCreatePayload = {
+      salesChannelKey: "mercari",
+      salesChannelName: "メルカリ",
+      channelTransactionId: null,
+      buyerDisplayName: null,
+      skuId: anonymousSkuId,
+      inventoryUnitId: anonymousUnitId,
+      saleAmountMinor: null,
+      costAmountMinor: 1200,
+      sellingFeeMinor: null,
+      shippingCostMinor: null,
+      packagingCostMinor: null,
+      taxBasis: "unknown",
+      sourceMeaning: "住所・取引ID・販売額なしを人が確認した架空注文",
+      occurredAt: new Date().toISOString(),
+      addressMode: "anonymous",
+      shippingAddress: null,
+      idempotencyKey: anonymousCreateKey,
+      humanConfirmed: true,
+    } as const;
+    const shippingCannotCreateOrder = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders`,
+      headers: { cookie: shippingCookie },
+      payload: anonymousCreatePayload,
+    });
+    assert.equal(shippingCannotCreateOrder.statusCode, 403, shippingCannotCreateOrder.body);
+    const anonymousCreated = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders`,
+      headers: { cookie },
+      payload: anonymousCreatePayload,
+    });
+    assert.equal(anonymousCreated.statusCode, 201, anonymousCreated.body);
+    const anonymousOrderId = anonymousCreated.json<{ orderId: string }>().orderId;
+    const anonymousCreateReplay = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders`,
+      headers: { cookie },
+      payload: anonymousCreatePayload,
+    });
+    assert.equal(anonymousCreateReplay.statusCode, 201, anonymousCreateReplay.body);
+    assert.equal(anonymousCreateReplay.json<{ orderId: string }>().orderId, anonymousOrderId);
+    const anonymousStorageAdmin = postgres(adminUrl, { max: 1 });
+    try {
+      const [anonymousStorage] = await anonymousStorageAdmin<
+        [{ address_mode: string; private_address_count: number; lease_count: number }]
+      >`
+        select coalesce(orders.address_mode, 'stored') as address_mode,
+               (select count(*)::integer from order_private_address address_row
+                where address_row.workspace_id = orders.workspace_id
+                  and address_row.order_id = orders.id) as private_address_count,
+               (select count(*)::integer from address_access_lease lease
+                where lease.workspace_id = orders.workspace_id
+                  and lease.order_id = orders.id) as lease_count
+        from sales_order orders
+        where orders.workspace_id = ${owner.workspaceId} and orders.id = ${anonymousOrderId}
+      `;
+      assert.deepEqual(
+        { ...anonymousStorage },
+        { address_mode: "anonymous", private_address_count: 0, lease_count: 0 },
+        "Anonymous POST must commit no encrypted-address or lease row",
+      );
+    } finally {
+      await anonymousStorageAdmin.end({ timeout: 5 });
+    }
+    const anonymousOwnerLease = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${anonymousOrderId}/address-leases`,
+      headers: { cookie },
+      payload: { purpose: "shipping_label", humanConfirmed: true },
+    });
+    assert.equal(anonymousOwnerLease.statusCode, 409, anonymousOwnerLease.body);
+    const anonymousAddressReveal = await app.inject({
+      method: "GET",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${anonymousOrderId}/address?leaseId=${randomUUID()}`,
+      headers: { cookie },
+    });
+    assert.equal(anonymousAddressReveal.statusCode, 403, anonymousAddressReveal.body);
+    await assert.rejects(
+      () =>
+        inventory.begin(async (transaction) => {
+          await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+          await transaction`select set_config('app.identity_id', ${owner.identityId}, true)`;
+          await transaction`
+            insert into order_private_address (
+              workspace_id, order_id, ciphertext, nonce, auth_tag, key_version, created_by
+            ) values (
+              ${owner.workspaceId}, ${anonymousOrderId}, decode('01', 'hex'),
+              decode(repeat('00', 12), 'hex'), decode(repeat('00', 16), 'hex'),
+              'forbidden-test-v1', ${owner.identityId}
+            )
+          `;
+        }),
+      /private addresses are allowed only for stored-address orders|row-level security/u,
+      "Direct SQL must not add a private address to an anonymous order",
+    );
+
+    const anonymousAssignment = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${anonymousOrderId}/assignment`,
+      headers: { cookie },
+      payload: {
+        assigneeEmail: "shipping@example.test",
+        startsAt: new Date(Date.now() - 60_000).toISOString(),
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+        humanConfirmed: true,
+      },
+    });
+    assert.equal(
+      anonymousAssignment.statusCode,
+      201,
+      "Anonymous orders must remain assignable to shipping",
+    );
+    const anonymousShippingLease = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${anonymousOrderId}/address-leases`,
+      headers: { cookie: shippingCookie },
+      payload: { purpose: "shipping_label", humanConfirmed: true },
+    });
+    assert.equal(anonymousShippingLease.statusCode, 409, anonymousShippingLease.body);
+
+    const anonymousPhotoDecision = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${anonymousOrderId}/shipping-photo-preflight`,
+      headers: { cookie: shippingCookie },
+      payload: {
+        expectedDecisionRevision: null,
+        idempotencyKey: randomUUID(),
+        humanConfirmed: true,
+      },
+    });
+    assert.equal(anonymousPhotoDecision.statusCode, 200, anonymousPhotoDecision.body);
+    const anonymousPhotoDecisionBody = anonymousPhotoDecision.json<{
+      decisionRevision: number;
+      state: string;
+      decisionReason: string;
+      saleAmountStatus: string;
+    }>();
+    assert.deepEqual(
+      {
+        state: anonymousPhotoDecisionBody.state,
+        reason: anonymousPhotoDecisionBody.decisionReason,
+        sale: anonymousPhotoDecisionBody.saleAmountStatus,
+      },
+      { state: "choice_required", reason: "sale_amount_missing", sale: "missing" },
+    );
+    const anonymousPhotoOverride = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${anonymousOrderId}/shipping-photo-override`,
+      headers: { cookie: shippingCookie },
+      payload: {
+        choice: "skip_photos",
+        expectedDecisionRevision: anonymousPhotoDecisionBody.decisionRevision,
+        idempotencyKey: randomUUID(),
+        humanConfirmed: true,
+      },
+    });
+    assert.equal(anonymousPhotoOverride.statusCode, 200, anonymousPhotoOverride.body);
+
+    const anonymousScanBase = Date.now() - 5_000;
+    const anonymousPicked = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${anonymousOrderId}/pick`,
+      headers: { cookie: shippingCookie },
+      payload: {
+        inventoryNumber: anonymousInventoryNumber,
+        locationCode: anonymousLocationCode,
+        inventoryLabelVersion: 1,
+        locationLabelVersion: 1,
+        addressLeaseId: null,
+        inventoryScannedAt: new Date(anonymousScanBase).toISOString(),
+        locationScannedAt: new Date(anonymousScanBase + 1).toISOString(),
+        confirmedAt: new Date(anonymousScanBase + 2).toISOString(),
+        idempotencyKey: randomUUID(),
+        humanConfirmed: true,
+      },
+    });
+    assert.equal(anonymousPicked.statusCode, 200, anonymousPicked.body);
+    assert.equal(anonymousPicked.json<{ inventoryStatus: string }>().inventoryStatus, "picked");
+    const anonymousPacked = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${anonymousOrderId}/pack`,
+      headers: { cookie: shippingCookie },
+      payload: {
+        addressLeaseId: null,
+        idempotencyKey: randomUUID(),
+        humanConfirmed: true,
+      },
+    });
+    assert.equal(anonymousPacked.statusCode, 200, anonymousPacked.body);
+    assert.equal(anonymousPacked.json<{ inventoryStatus: string }>().inventoryStatus, "packed");
+
+    const anonymousShippingSelection = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${anonymousOrderId}/shipping-method-selections`,
+      headers: { cookie: shippingCookie },
+      payload: {
+        methodId: shippingMethod.methodId,
+        expectedSelectionRevision: null,
+        idempotencyKey: randomUUID(),
+        humanConfirmed: true,
+      },
+    });
+    assert.equal(anonymousShippingSelection.statusCode, 201, anonymousShippingSelection.body);
+    const anonymousSelection = anonymousShippingSelection.json<{
+      selectionId: string;
+      revision: number;
+    }>();
+    const anonymousReadiness = await app.inject({
+      method: "GET",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${anonymousOrderId}/shipping-readiness`,
+      headers: { cookie: shippingCookie },
+    });
+    assert.equal(anonymousReadiness.statusCode, 200, anonymousReadiness.body);
+    const anonymousReadinessBody = anonymousReadiness.json<{
+      registrationRevision: number | null;
+      selectedMethod: { revision: number } | null;
+      missingInformation: Array<"channel_transaction_id" | "sale_amount">;
+      blockingIssues: string[];
+    }>();
+    assert.deepEqual(anonymousReadinessBody.missingInformation, [
+      "channel_transaction_id",
+      "sale_amount",
+    ]);
+    assert.deepEqual(anonymousReadinessBody.blockingIssues, []);
+    assert.ok(anonymousReadinessBody.registrationRevision);
+    assert.equal(anonymousReadinessBody.selectedMethod?.revision, anonymousSelection.revision);
+    const anonymousReadinessConfirmation = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${anonymousOrderId}/shipping-readiness-confirmations`,
+      headers: { cookie: shippingCookie },
+      payload: {
+        expectedRegistrationRevision: anonymousReadinessBody.registrationRevision,
+        expectedSelectionRevision: anonymousSelection.revision,
+        acknowledgedMissingInformation: anonymousReadinessBody.missingInformation,
+        idempotencyKey: randomUUID(),
+        humanConfirmed: true,
+      },
+    });
+    assert.equal(
+      anonymousReadinessConfirmation.statusCode,
+      201,
+      anonymousReadinessConfirmation.body,
+    );
+    const anonymousReadinessConfirmationId = anonymousReadinessConfirmation.json<{
+      humanConfirmation: { confirmationId: string };
+    }>().humanConfirmation.confirmationId;
+    const anonymousShipped = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${anonymousOrderId}/ship`,
+      headers: { cookie: shippingCookie },
+      payload: {
+        addressLeaseId: null,
+        shippingMethodSelectionId: anonymousSelection.selectionId,
+        readinessConfirmationId: anonymousReadinessConfirmationId,
+        shippedAt: new Date().toISOString(),
+        idempotencyKey: randomUUID(),
+        humanConfirmed: true,
+      },
+    });
+    assert.equal(anonymousShipped.statusCode, 200, anonymousShipped.body);
+    assert.equal(anonymousShipped.json<{ inventoryStatus: string }>().inventoryStatus, "shipped");
+    const anonymousFinalAdmin = postgres(adminUrl, { max: 1 });
+    try {
+      const [anonymousFinal] = await anonymousFinalAdmin<
+        [{ private_address_count: number; lease_count: number; order_state: string }]
+      >`
+        select
+          (select count(*)::integer from order_private_address address_row
+           where address_row.workspace_id = orders.workspace_id
+             and address_row.order_id = orders.id) as private_address_count,
+          (select count(*)::integer from address_access_lease lease
+           where lease.workspace_id = orders.workspace_id
+             and lease.order_id = orders.id) as lease_count,
+          orders.state as order_state
+        from sales_order orders
+        where orders.workspace_id = ${owner.workspaceId} and orders.id = ${anonymousOrderId}
+      `;
+      assert.deepEqual(
+        { ...anonymousFinal },
+        { private_address_count: 0, lease_count: 0, order_state: "shipped" },
+        "Anonymous fulfillment must complete without ever creating address data or a lease",
+      );
+    } finally {
+      await anonymousFinalAdmin.end({ timeout: 5 });
+    }
 
     const nullSaleOrderId = randomUUID();
     const nullSaleUnitId = await inventory.begin(async (transaction) => {
@@ -4498,8 +6453,11 @@ try {
       const unitId = units[0]?.id;
       assert.ok(unitId, "A free inventory unit is required for the null-sale fixture");
       await transaction`
-        insert into sales_order (id, workspace_id, order_number, state)
-        values (${nullSaleOrderId}, ${owner.workspaceId}, 'ORDER-P13-NULL-SALE', 'confirmed')
+        insert into sales_order (id, workspace_id, order_number, state, address_mode)
+        values (
+          ${nullSaleOrderId}, ${owner.workspaceId}, 'ORDER-P13-NULL-SALE',
+          'confirmed', 'anonymous'
+        )
       `;
       await transaction`
         insert into order_allocation (workspace_id, order_id, inventory_unit_id)
@@ -4715,19 +6673,33 @@ try {
     });
     assert.equal(shippingExport.statusCode, 403, shippingExport.body);
 
-    const financial = await app.inject({
+    const incompleteRegisteredFinancial = await app.inject({
       method: "GET",
       url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/financial-summary`,
       headers: { cookie },
     });
-    assert.equal(financial.statusCode, 200, financial.body);
+    assert.equal(incompleteRegisteredFinancial.statusCode, 409, incompleteRegisteredFinancial.body);
+    const incompleteRegisteredExportPreflight = await app.inject({
+      method: "GET",
+      url: `/v1/workspaces/${owner.workspaceId}/accounting/exports/preflight?orderId=${orderId}`,
+      headers: { cookie },
+    });
     assert.equal(
-      financial.json<{ contributionProfitMinor: number }>().contributionProfitMinor,
-      2150,
+      incompleteRegisteredExportPreflight.statusCode,
+      200,
+      incompleteRegisteredExportPreflight.body,
     );
-    assert.equal(
-      financial.json<{ formulaVersion: string }>().formulaVersion,
-      "financial_formula_v1.0.0",
+    assert.deepEqual(
+      {
+        canCreateFresh: incompleteRegisteredExportPreflight.json<{
+          canCreateFresh: boolean;
+        }>().canCreateFresh,
+        canSupersede: incompleteRegisteredExportPreflight.json<{
+          canSupersede: boolean;
+        }>().canSupersede,
+      },
+      { canCreateFresh: false, canSupersede: false },
+      "Accounting preflight must stop instead of treating missing fee facts as zero yen",
     );
     const accountingOrders = await app.inject({
       method: "GET",
@@ -4737,7 +6709,7 @@ try {
     assert.equal(accountingOrders.statusCode, 200, accountingOrders.body);
     assert.deepEqual(
       accountingOrders.json<Array<{ orderId: string }>>().map((entry) => entry.orderId),
-      [orderId],
+      [anonymousOrderId, orderId],
     );
     const shippingAccountingOrders = await app.inject({
       method: "GET",
@@ -4775,6 +6747,68 @@ try {
       },
     });
     assert.equal(configuredProfile.statusCode, 200, configuredProfile.body);
+
+    const incompleteRegisteredExport = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/accounting/exports`,
+      headers: { cookie },
+      payload: {
+        format: "money_forward_journal_v1",
+        orderId,
+        approvedAt: new Date().toISOString(),
+        idempotencyKey: randomUUID(),
+        humanApproved: true,
+        duplicateOverrideConfirmed: false,
+        supersedesBatchId: null,
+      },
+    });
+    assert.equal(incompleteRegisteredExport.statusCode, 409, incompleteRegisteredExport.body);
+    assert.match(
+      incompleteRegisteredExport.body,
+      /Every required financial fact must be explicitly recorded/u,
+      "Accounting export must identify absent facts instead of exporting implicit zero yen",
+    );
+
+    // The remaining accounting integration checks exercise an explicitly completed
+    // financial fact set. These facts are intentionally added only after proving
+    // that P14 creation and shipment left them absent and blocked both consumers.
+    await inventory.begin(async (transaction) => {
+      await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+      await transaction`select set_config('app.identity_id', ${owner.identityId}, true)`;
+      await transaction`
+        insert into financial_event (
+          workspace_id, sku_id, order_id, event_type, amount_minor, currency,
+          tax_basis, bearer, source, source_meaning, rounding_rule_version,
+          source_already_net, occurred_at
+        ) values
+          (
+            ${owner.workspaceId}, ${acquiredItem.skuId}, ${orderId}, 'fee', 500, 'JPY',
+            'tax_included', 'seller', 'manual',
+            '後続会計試験用に人が明示確認した販売手数料', 'jpy-v1', false,
+            statement_timestamp()
+          ),
+          (
+            ${owner.workspaceId}, ${acquiredItem.skuId}, ${orderId}, 'packaging', 100, 'JPY',
+            'tax_included', 'seller', 'manual',
+            '後続会計試験用に人が明示確認した梱包費', 'jpy-v1', false,
+            statement_timestamp()
+          )
+      `;
+    });
+    const completedFinancial = await app.inject({
+      method: "GET",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/financial-summary`,
+      headers: { cookie },
+    });
+    assert.equal(completedFinancial.statusCode, 200, completedFinancial.body);
+    assert.equal(
+      completedFinancial.json<{ contributionProfitMinor: number }>().contributionProfitMinor,
+      2150,
+    );
+    assert.equal(
+      completedFinancial.json<{ formulaVersion: string }>().formulaVersion,
+      "financial_formula_v1.0.0",
+    );
 
     const mappingAccounts = {
       sale: ["普通預金", "売上高"],
@@ -6097,9 +8131,19 @@ try {
           )
         `;
         await transaction`
-          insert into sales_order (id, workspace_id, order_number, state)
+          insert into sales_order (id, workspace_id, order_number, state, address_mode)
           values (
-            ${exactRetryOrderId}, ${owner.workspaceId}, 'ORDER-P13-EXACT-RETRY', 'picking'
+            ${exactRetryOrderId}, ${owner.workspaceId}, 'ORDER-P13-EXACT-RETRY',
+            'picking', 'stored'
+          )
+        `;
+        await transaction`
+          insert into order_private_address (
+            workspace_id, order_id, ciphertext, nonce, auth_tag, key_version, created_by
+          ) values (
+            ${owner.workspaceId}, ${exactRetryOrderId}, decode('01', 'hex'),
+            decode(repeat('00', 12), 'hex'), decode(repeat('00', 16), 'hex'),
+            'integration-test-v1', ${owner.identityId}
           )
         `;
         await transaction`
@@ -6475,9 +8519,19 @@ try {
           )
         `;
         await transaction`
-          insert into sales_order (id, workspace_id, order_number, state)
+          insert into sales_order (id, workspace_id, order_number, state, address_mode)
           values (
-            ${legacyPackedOrderId}, ${owner.workspaceId}, 'ORDER-P13-LEGACY-PACKED', 'packed'
+            ${legacyPackedOrderId}, ${owner.workspaceId}, 'ORDER-P13-LEGACY-PACKED',
+            'packed', 'stored'
+          )
+        `;
+        await transaction`
+          insert into order_private_address (
+            workspace_id, order_id, ciphertext, nonce, auth_tag, key_version, created_by
+          ) values (
+            ${owner.workspaceId}, ${legacyPackedOrderId}, decode('01', 'hex'),
+            decode(repeat('00', 12), 'hex'), decode(repeat('00', 16), 'hex'),
+            'integration-test-v1', ${owner.identityId}
           )
         `;
         await transaction`
@@ -6687,13 +8741,13 @@ try {
       await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
       await transaction`select set_config('app.identity_id', ${owner.identityId}, true)`;
       await transaction`
-        insert into sales_order (id, workspace_id, order_number, state) values
+        insert into sales_order (id, workspace_id, order_number, state, address_mode) values
           (${idempotentDecisionOrderId}, ${owner.workspaceId},
-           'ORDER-P13-IDEMPOTENT-DECISION-RACE', 'confirmed'),
+           'ORDER-P13-IDEMPOTENT-DECISION-RACE', 'confirmed', 'anonymous'),
           (${saleFirstDecisionOrderId}, ${owner.workspaceId},
-           'ORDER-P13-SALE-FIRST-DECISION-RACE', 'confirmed'),
+           'ORDER-P13-SALE-FIRST-DECISION-RACE', 'confirmed', 'anonymous'),
           (${decisionFirstSaleOrderId}, ${owner.workspaceId},
-           'ORDER-P13-DECISION-FIRST-SALE-RACE', 'confirmed')
+           'ORDER-P13-DECISION-FIRST-SALE-RACE', 'confirmed', 'anonymous')
       `;
     });
     const idempotentDecisionKey = randomUUID();
@@ -6857,8 +8911,11 @@ try {
       await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
       await transaction`select set_config('app.identity_id', ${owner.identityId}, true)`;
       await transaction`
-        insert into sales_order (id, workspace_id, order_number, state)
-        values (${multiSaleOrderId}, ${owner.workspaceId}, 'ORDER-P13-MULTI-SALE', 'confirmed')
+        insert into sales_order (id, workspace_id, order_number, state, address_mode)
+        values (
+          ${multiSaleOrderId}, ${owner.workspaceId}, 'ORDER-P13-MULTI-SALE',
+          'confirmed', 'anonymous'
+        )
       `;
       await transaction`
         insert into financial_event (
@@ -6931,11 +8988,11 @@ try {
       await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
       await transaction`select set_config('app.identity_id', ${owner.identityId}, true)`;
       await transaction`
-        insert into sales_order (id, workspace_id, order_number, state) values
-          (${invalidSaleOrders.zero}, ${owner.workspaceId}, 'ORDER-P13-ZERO-SALE', 'confirmed'),
-          (${invalidSaleOrders.negative}, ${owner.workspaceId}, 'ORDER-P13-NEGATIVE-SALE', 'confirmed'),
-          (${invalidSaleOrders.nonJpy}, ${owner.workspaceId}, 'ORDER-P13-NON-JPY-SALE', 'confirmed'),
-          (${invalidSaleOrders.overflow}, ${owner.workspaceId}, 'ORDER-P13-OVERFLOW-SALE', 'confirmed')
+        insert into sales_order (id, workspace_id, order_number, state, address_mode) values
+          (${invalidSaleOrders.zero}, ${owner.workspaceId}, 'ORDER-P13-ZERO-SALE', 'confirmed', 'anonymous'),
+          (${invalidSaleOrders.negative}, ${owner.workspaceId}, 'ORDER-P13-NEGATIVE-SALE', 'confirmed', 'anonymous'),
+          (${invalidSaleOrders.nonJpy}, ${owner.workspaceId}, 'ORDER-P13-NON-JPY-SALE', 'confirmed', 'anonymous'),
+          (${invalidSaleOrders.overflow}, ${owner.workspaceId}, 'ORDER-P13-OVERFLOW-SALE', 'confirmed', 'anonymous')
       `;
       await transaction`
         insert into financial_event (
@@ -6998,10 +9055,10 @@ try {
       await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
       await transaction`select set_config('app.identity_id', ${owner.identityId}, true)`;
       await transaction`
-        insert into sales_order (id, workspace_id, order_number, state)
+        insert into sales_order (id, workspace_id, order_number, state, address_mode)
         values (
           ${reversedSaleOrderId}, ${owner.workspaceId},
-          'ORDER-P13-REVERSED-SALE', 'confirmed'
+          'ORDER-P13-REVERSED-SALE', 'confirmed', 'anonymous'
         )
       `;
       await transaction`
@@ -7104,10 +9161,19 @@ try {
           )
         `;
         await transaction`
-          insert into sales_order (id, workspace_id, order_number, state)
+          insert into sales_order (id, workspace_id, order_number, state, address_mode)
           values (
             ${packedRecoveryOrderId}, ${owner.workspaceId},
-            'ORDER-P13-PACKED-RECOVERY', 'picking'
+            'ORDER-P13-PACKED-RECOVERY', 'picking', 'stored'
+          )
+        `;
+        await transaction`
+          insert into order_private_address (
+            workspace_id, order_id, ciphertext, nonce, auth_tag, key_version, created_by
+          ) values (
+            ${owner.workspaceId}, ${packedRecoveryOrderId}, decode('01', 'hex'),
+            decode(repeat('00', 12), 'hex'), decode(repeat('00', 16), 'hex'),
+            'integration-test-v1', ${owner.identityId}
           )
         `;
         await transaction`
@@ -7145,6 +9211,14 @@ try {
       },
     });
     assert.equal(recoverySkip.statusCode, 200, recoverySkip.body);
+    const recoveryLease = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${packedRecoveryOrderId}/address-leases`,
+      headers: { cookie },
+      payload: { purpose: "shipping_label", humanConfirmed: true },
+    });
+    assert.equal(recoveryLease.statusCode, 201, recoveryLease.body);
+    const recoveryLeaseId = recoveryLease.json<{ leaseId: string }>().leaseId;
     await inventory.begin(async (transaction) => {
       await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
       await transaction`select set_config('app.identity_id', ${owner.identityId}, true)`;
@@ -7157,14 +9231,6 @@ try {
         where workspace_id = ${owner.workspaceId} and id = ${packedRecoveryOrderId}
       `;
     });
-    const recoveryLease = await app.inject({
-      method: "POST",
-      url: `/v1/workspaces/${owner.workspaceId}/orders/${packedRecoveryOrderId}/address-leases`,
-      headers: { cookie },
-      payload: { purpose: "shipping_label", humanConfirmed: true },
-    });
-    assert.equal(recoveryLease.statusCode, 201, recoveryLease.body);
-    const recoveryLeaseId = recoveryLease.json<{ leaseId: string }>().leaseId;
     const losingRecoveryShipKey = randomUUID();
     const [, losingRecoveryShip] = await (async () => {
       const saleWriter = postgres(runtimeUrl, { max: 1 });
@@ -7429,10 +9495,19 @@ try {
           )
         `;
         await transaction`
-          insert into sales_order (id, workspace_id, order_number, state)
+          insert into sales_order (id, workspace_id, order_number, state, address_mode)
           values (
             ${shipFirstOrderId}, ${owner.workspaceId},
-            'ORDER-P13-SHIP-FIRST-RACE', 'picking'
+            'ORDER-P13-SHIP-FIRST-RACE', 'picking', 'stored'
+          )
+        `;
+        await transaction`
+          insert into order_private_address (
+            workspace_id, order_id, ciphertext, nonce, auth_tag, key_version, created_by
+          ) values (
+            ${owner.workspaceId}, ${shipFirstOrderId}, decode('01', 'hex'),
+            decode(repeat('00', 12), 'hex'), decode(repeat('00', 16), 'hex'),
+            'integration-test-v1', ${owner.identityId}
           )
         `;
         await transaction`
@@ -7470,6 +9545,14 @@ try {
       },
     });
     assert.equal(shipFirstSkip.statusCode, 200, shipFirstSkip.body);
+    const shipFirstLease = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/orders/${shipFirstOrderId}/address-leases`,
+      headers: { cookie },
+      payload: { purpose: "shipping_label", humanConfirmed: true },
+    });
+    assert.equal(shipFirstLease.statusCode, 201, shipFirstLease.body);
+    const shipFirstLeaseId = shipFirstLease.json<{ leaseId: string }>().leaseId;
     await inventory.begin(async (transaction) => {
       await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
       await transaction`select set_config('app.identity_id', ${owner.identityId}, true)`;
@@ -7482,14 +9565,6 @@ try {
         where workspace_id = ${owner.workspaceId} and id = ${shipFirstOrderId}
       `;
     });
-    const shipFirstLease = await app.inject({
-      method: "POST",
-      url: `/v1/workspaces/${owner.workspaceId}/orders/${shipFirstOrderId}/address-leases`,
-      headers: { cookie },
-      payload: { purpose: "shipping_label", humanConfirmed: true },
-    });
-    assert.equal(shipFirstLease.statusCode, 201, shipFirstLease.body);
-    const shipFirstLeaseId = shipFirstLease.json<{ leaseId: string }>().leaseId;
     const [saleAuditBeforeShipFirst] = await inventory.begin(async (transaction) => {
       await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
       await transaction`select set_config('app.identity_id', ${owner.identityId}, true)`;
@@ -7657,6 +9732,20 @@ try {
       "Shipment must commit before the waiting accounting sale makes the basis stale; the API replay must add nothing",
     );
 
+    const postReplacementPreflight = await app.inject({
+      method: "GET",
+      url: `/v1/workspaces/${owner.workspaceId}/accounting/exports/preflight?orderId=${orderId}`,
+      headers: { cookie: accountingCookie },
+    });
+    assert.equal(postReplacementPreflight.statusCode, 200, postReplacementPreflight.body);
+    assert.deepEqual(
+      {
+        canCreateFresh: postReplacementPreflight.json<{ canCreateFresh: boolean }>().canCreateFresh,
+        canSupersede: postReplacementPreflight.json<{ canSupersede: boolean }>().canSupersede,
+      },
+      { canCreateFresh: true, canSupersede: false },
+      "A complete financial history with multiple sale events must remain exportable",
+    );
     const postReplacementExport = await app.inject({
       method: "POST",
       url: `/v1/workspaces/${owner.workspaceId}/accounting/exports`,
@@ -8374,8 +10463,11 @@ try {
 
       const blockedOrderId = randomUUID();
       await soloAdmin`
-        insert into sales_order (id, workspace_id, order_number, state)
-        values (${blockedOrderId}, ${owner.workspaceId}, ${`SO-SOLO-${blockedOrderId.slice(0, 8)}`}, 'confirmed')
+        insert into sales_order (id, workspace_id, order_number, state, address_mode)
+        values (
+          ${blockedOrderId}, ${owner.workspaceId},
+          ${`SO-SOLO-${blockedOrderId.slice(0, 8)}`}, 'confirmed', 'anonymous'
+        )
       `;
       await assert.rejects(
         () =>
@@ -9986,7 +12078,7 @@ try {
 }
 
 process.stdout.write(
-  "postgres-integration: PASS (restricted role, 59-table RLS matrix, assigned inspection concerns with deferred latest-state exact-set consistency, terminal human dismissal, separate prior-recorder review, P13 three-mode shipping-photo policy, immutable private sale-basis snapshots, exact-set private photo confirmation, server packing and separate shipment confirmation, non-probeable session-bound access and denied cross-workspace/role/expired assignment access, append-only server-timed pilot exceptions, purchase-to-versioned-accounting order flow, encrypted 5-minute address lease, checked inventory/location codes, persisted capture/research/listing evidence, reviewed zero-GPS location photo, double scan, immutable stocktake snapshot, complete read evidence, post-start movement separation, audited stale-label rejection, DB-enforced mode-aware solo/dual stocktake approval, approved dual candidate restored by its original owner at the same or a moved location without direct scan UPDATE, exact 27-column accounting CSV, return quarantine, stocktake and label reissue, logout)\n",
+  "postgres-integration: PASS (restricted role, 65-table RLS matrix, P14 collision-free server order numbering, managed shipping-method revisions, assigned minimal shipping context, order-scoped assigned zero-GPS location derivative, explicit missing-information acknowledgement and frozen shipment fee, assigned inspection concerns with deferred latest-state exact-set consistency, terminal human dismissal, separate prior-recorder review, P13 three-mode shipping-photo policy, immutable private sale-basis snapshots, exact-set private photo confirmation, server packing and separate shipment confirmation, non-probeable session-bound access and denied cross-workspace/role/expired assignment access, append-only server-timed pilot exceptions, purchase-to-versioned-accounting order flow, encrypted 5-minute address lease, checked inventory/location codes, persisted capture/research/listing evidence, reviewed zero-GPS location photo, double scan, immutable stocktake snapshot, complete read evidence, post-start movement separation, audited stale-label rejection, DB-enforced mode-aware solo/dual stocktake approval, approved dual candidate restored by its original owner at the same or a moved location without direct scan UPDATE, exact 27-column accounting CSV, return quarantine, stocktake and label reissue, logout)\n",
 );
 
 function jpegWithGpsMetadata(): Buffer {

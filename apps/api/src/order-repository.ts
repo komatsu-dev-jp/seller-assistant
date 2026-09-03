@@ -6,18 +6,26 @@ import type {
   CreateAccountingExportRequest,
   CreateAddressLeaseRequest,
   CreateOrderRequest,
+  ConfirmOrderShippingReadinessRequest,
   ConfirmShippingPhotosRequest,
   EvaluateShippingPhotoPreflightRequest,
   FinancialSummaryResponse,
   InspectReturnRequest,
   OrderOperationResponse,
   OrderAssignmentResponse,
+  OrderRegistrationResponse,
+  OrderShippingMethodSelectionResponse,
+  OrderShippingReadinessResponse,
   OverrideShippingPhotoDecisionRequest,
   PackOrderRequest,
   PickOrderRequest,
   QuarantineReturnRequest,
   ReturnOrderRequest,
+  SaveShippingMethodRequest,
+  SelectOrderShippingMethodRequest,
   ShipOrderRequest,
+  ShippingMethodCatalogResponse,
+  ShippingMethodOptionResponse,
   ShippingPhotoAssetResponse,
   ShippingPhotoConfirmationResponse,
   ShippingPhotoPolicyResponse,
@@ -26,6 +34,7 @@ import type {
   ShippingTaskResponse,
   RecordOrderSaleAmountRequest,
   RecordOrderSaleAmountResponse,
+  UpdateOrderRegistrationRequest,
   UpdateShippingPhotoPolicyRequest,
 } from "@resale/contracts";
 import {
@@ -42,8 +51,8 @@ import { RepositoryError, type RequestActor, type WorkspaceRole } from "./reposi
 
 export interface CreateOrderRecord {
   orderId: string;
-  encryptedAddress: EncryptedAddress;
-  addressFingerprint: string;
+  encryptedAddress: EncryptedAddress | null;
+  addressFingerprint: string | null;
   input: CreateOrderRequest;
 }
 
@@ -75,12 +84,26 @@ export interface RegisterShippingPhotoRecord {
 }
 
 export interface PrivateShippingPhotoContent {
+  assetId: string;
+  orderId: string;
+  skuId: string;
+  photoRole: ShippingPhotoRole;
   storageKey: string;
   sha256: string;
   mimeType: "image/jpeg" | "image/png";
   sizeBytes: number;
   width: number;
   height: number;
+  authorizedIdentityId: string;
+  authorizedRole: "owner" | "inventory_manager" | "shipping";
+  assignmentId: string | null;
+  assignmentExpiresAt: string | null;
+}
+
+export interface AssignedLocationPhotoContent {
+  displayStorageKey: string;
+  displaySha256: string;
+  mimeType: "image/jpeg" | "image/png";
 }
 
 export interface OrderRepository {
@@ -96,6 +119,57 @@ export interface OrderRepository {
     input: AssignOrderRequest,
   ): Promise<OrderAssignmentResponse>;
   shippingTasks(workspaceId: string, actor: RequestActor): Promise<ShippingTaskResponse[]>;
+  readAssignedLocationPhoto(
+    workspaceId: string,
+    orderId: string,
+    inventoryUnitId: string,
+    movementSequence: number,
+    actor: RequestActor,
+  ): Promise<AssignedLocationPhotoContent>;
+  orderRegistration(
+    workspaceId: string,
+    orderId: string,
+    actor: RequestActor,
+  ): Promise<OrderRegistrationResponse>;
+  updateOrderRegistration(
+    workspaceId: string,
+    orderId: string,
+    actor: RequestActor,
+    input: UpdateOrderRegistrationRequest,
+  ): Promise<OrderRegistrationResponse>;
+  shippingMethods(
+    workspaceId: string,
+    actor: RequestActor,
+    salesChannelKey?: string,
+  ): Promise<ShippingMethodCatalogResponse[]>;
+  saveShippingMethod(
+    workspaceId: string,
+    actor: RequestActor,
+    input: SaveShippingMethodRequest,
+    generatedMethodId: string,
+  ): Promise<ShippingMethodCatalogResponse>;
+  shippingMethodOptions(
+    workspaceId: string,
+    orderId: string,
+    actor: RequestActor,
+  ): Promise<ShippingMethodOptionResponse[]>;
+  selectShippingMethod(
+    workspaceId: string,
+    orderId: string,
+    actor: RequestActor,
+    input: SelectOrderShippingMethodRequest,
+  ): Promise<OrderShippingMethodSelectionResponse>;
+  shippingReadiness(
+    workspaceId: string,
+    orderId: string,
+    actor: RequestActor,
+  ): Promise<OrderShippingReadinessResponse>;
+  confirmShippingReadiness(
+    workspaceId: string,
+    orderId: string,
+    actor: RequestActor,
+    input: ConfirmOrderShippingReadinessRequest,
+  ): Promise<OrderShippingReadinessResponse>;
   shippingPhotoPolicy(
     workspaceId: string,
     actor: RequestActor,
@@ -240,6 +314,7 @@ interface OrderUnitRow {
   location_code: string | null;
   movement_seq: number;
   sku_id: string;
+  address_mode: "anonymous" | "stored";
 }
 
 interface FinancialEventRow {
@@ -283,6 +358,7 @@ interface ShippingPhotoDecisionRow {
 interface ShippingPhotoAssetRow {
   id: string;
   order_id: string;
+  sku_id: string;
   role: ShippingPhotoRole;
   original_sha256: string;
   original_storage_key: string;
@@ -302,6 +378,87 @@ interface ShippingPhotoConfirmationRow {
   payload_hash: string;
   confirmed_by: string;
   confirmed_at: Date;
+}
+
+interface OrderRegistrationRow {
+  order_id: string;
+  order_number: string;
+  id: string;
+  sales_channel_key: string;
+  sales_channel_name: string;
+  channel_transaction_id: string | null;
+  buyer_display_name: string | null;
+  revision: number;
+  supersedes_id: string | null;
+  payload_hash: string;
+  changed_at: Date;
+}
+
+interface ShippingMethodCatalogRow {
+  id: string;
+  method_id: string;
+  sales_channel_key: string;
+  sales_channel_name: string;
+  method_name: string;
+  tracking_available: boolean;
+  fee_minor: number;
+  delivery_estimate: string | null;
+  official_checked_on: string;
+  official_reference_url: string | null;
+  official_reference_note: string | null;
+  active: boolean;
+  revision: number;
+  supersedes_id: string | null;
+  payload_hash: string;
+  changed_at: Date;
+}
+
+interface ShippingMethodOptionRow {
+  method_id: string;
+  catalog_revision_id: string;
+  sales_channel_key: string;
+  sales_channel_name: string;
+  method_name: string;
+  tracking_available: boolean;
+  fee_minor: number;
+  delivery_estimate: string | null;
+  official_checked_on: string;
+}
+
+interface ShippingMethodSelectionRow extends ShippingMethodOptionRow {
+  selection_id: string;
+  order_id: string;
+  selection_revision: number;
+  selection_supersedes_id: string | null;
+  payload_hash: string;
+  selected_at: Date;
+}
+
+interface ShippingContextRow {
+  order_id: string;
+  order_number: string;
+  registration_revision_id: string | null;
+  registration_revision: number | null;
+  sales_channel_key: string | null;
+  sales_channel_name: string | null;
+  channel_transaction_id_status: "present" | "missing" | "unregistered";
+  sale_amount_status: "present" | "missing";
+  selection_id: string | null;
+  selection_revision: number | null;
+  selection_supersedes_id: string | null;
+  method_id: string | null;
+  catalog_revision_id: string | null;
+  method_name: string | null;
+  tracking_available: boolean | null;
+  selected_fee_minor: number | null;
+  delivery_estimate: string | null;
+  official_checked_on: string | null;
+  selected_at: Date | null;
+  missing_information: Array<"channel_transaction_id" | "sale_amount">;
+  blocking_issues: Array<"order_registration" | "shipping_method">;
+  confirmation_state: "required" | "confirmed" | "stale";
+  confirmation_id: string | null;
+  confirmation_at: Date | null;
 }
 
 class StaleOrderScanLabelError extends RepositoryError {
@@ -348,6 +505,7 @@ export class PostgresOrderRepository implements OrderRepository {
           "owner",
           "inventory_manager",
         ]);
+        await transaction`select lock_current_shipping_workspace()`;
         const replay = await operationReplay(
           transaction,
           workspaceId,
@@ -356,6 +514,62 @@ export class PostgresOrderRepository implements OrderRepository {
           payloadHash,
         );
         if (replay) return replay;
+
+        const hasOrderRegistration = Boolean(
+          record.input.salesChannelKey && record.input.salesChannelName,
+        );
+        if (
+          record.input.orderNumber === undefined &&
+          (!hasOrderRegistration || record.input.shippingCostMinor !== null)
+        ) {
+          throw new RepositoryError(
+            "conflict",
+            "Server-numbered orders require a sales channel and later human shipping selection",
+          );
+        }
+        if (hasOrderRegistration && record.input.shippingCostMinor !== null) {
+          throw new RepositoryError(
+            "conflict",
+            "Registered orders record shipping cost from the human-selected method",
+          );
+        }
+        if (!hasOrderRegistration && record.input.shippingCostMinor === null) {
+          throw new RepositoryError(
+            "conflict",
+            "Legacy orders require a human-entered shipping cost",
+          );
+        }
+        if (
+          hasOrderRegistration &&
+          (record.input.sellingFeeMinor !== null || record.input.packagingCostMinor !== null)
+        ) {
+          throw new RepositoryError(
+            "conflict",
+            "Registered orders must leave unconfirmed selling and packaging costs missing",
+          );
+        }
+        if (
+          !hasOrderRegistration &&
+          (record.input.sellingFeeMinor === null || record.input.packagingCostMinor === null)
+        ) {
+          throw new RepositoryError(
+            "conflict",
+            "Legacy orders require human-entered selling and packaging costs",
+          );
+        }
+        const storesAddress = record.input.addressMode === "stored";
+        if (
+          (storesAddress &&
+            (record.input.shippingAddress === null ||
+              record.encryptedAddress === null ||
+              record.addressFingerprint === null)) ||
+          (!storesAddress &&
+            (record.input.shippingAddress !== null ||
+              record.encryptedAddress !== null ||
+              record.addressFingerprint !== null))
+        ) {
+          throw new RepositoryError("conflict", "The order address mode and storage disagree");
+        }
 
         const units = await transaction<Array<{ id: string }>>`
           select id from inventory_unit
@@ -368,19 +582,58 @@ export class PostgresOrderRepository implements OrderRepository {
             "Order allocation requires available matching inventory",
           );
         }
+        let orderNumber = record.input.orderNumber;
+        if (!orderNumber) {
+          const issued = await transaction<Array<{ order_number: string }>>`
+            select issue_app_order_number() as order_number
+          `;
+          orderNumber = issued[0]?.order_number;
+        }
+        if (!orderNumber) {
+          throw new RepositoryError(
+            "database_error",
+            "The application order number was not issued",
+          );
+        }
         await transaction`
-          insert into sales_order (id, workspace_id, order_number, state)
-          values (${record.orderId}, ${workspaceId}, ${record.input.orderNumber}, 'confirmed')
-        `;
-        await transaction`
-          insert into order_private_address (
-            workspace_id, order_id, ciphertext, nonce, auth_tag, key_version, created_by
-          ) values (
-            ${workspaceId}, ${record.orderId}, ${record.encryptedAddress.ciphertext},
-            ${record.encryptedAddress.nonce}, ${record.encryptedAddress.authTag},
-            ${record.encryptedAddress.keyVersion}, ${actor.identityId}
+          insert into sales_order (id, workspace_id, order_number, state, address_mode)
+          values (
+            ${record.orderId}, ${workspaceId}, ${orderNumber}, 'confirmed',
+            ${record.input.addressMode}
           )
         `;
+        if (record.input.salesChannelKey && record.input.salesChannelName) {
+          const registrationPayload = {
+            salesChannelKey: record.input.salesChannelKey,
+            salesChannelName: record.input.salesChannelName,
+            channelTransactionId: record.input.channelTransactionId ?? null,
+            buyerDisplayName: record.input.buyerDisplayName ?? null,
+          };
+          await transaction`
+            insert into order_registration_revision (
+              workspace_id, order_id, sales_channel_key, sales_channel_name,
+              channel_transaction_id, buyer_display_name, revision, supersedes_id,
+              idempotency_key, payload_hash
+            ) values (
+              ${workspaceId}, ${record.orderId}, ${registrationPayload.salesChannelKey},
+              ${registrationPayload.salesChannelName},
+              ${registrationPayload.channelTransactionId},
+              ${registrationPayload.buyerDisplayName}, 1, null,
+              ${record.input.idempotencyKey}, ${hashPayload(registrationPayload)}
+            )
+          `;
+        }
+        if (record.encryptedAddress) {
+          await transaction`
+            insert into order_private_address (
+              workspace_id, order_id, ciphertext, nonce, auth_tag, key_version, created_by
+            ) values (
+              ${workspaceId}, ${record.orderId}, ${record.encryptedAddress.ciphertext},
+              ${record.encryptedAddress.nonce}, ${record.encryptedAddress.authTag},
+              ${record.encryptedAddress.keyVersion}, ${actor.identityId}
+            )
+          `;
+        }
         await transaction`
           insert into order_allocation (workspace_id, order_id, inventory_unit_id)
           values (${workspaceId}, ${record.orderId}, ${record.input.inventoryUnitId})
@@ -431,9 +684,13 @@ export class PostgresOrderRepository implements OrderRepository {
           actor.identityId,
           "order.confirmed",
           record.orderId,
-          ["state", "inventory_unit_id"],
-          { state: "absent", inventoryStatus: "available" },
-          { state: "confirmed", inventoryStatus: "reserved" },
+          ["state", "inventory_unit_id", "address_mode"],
+          { state: "absent", inventoryStatus: "available", addressMode: "absent" },
+          {
+            state: "confirmed",
+            inventoryStatus: "reserved",
+            addressMode: record.input.addressMode,
+          },
           "human_confirmed_order_creation",
         );
         return requireOperationResponse(
@@ -545,27 +802,59 @@ export class PostgresOrderRepository implements OrderRepository {
           Array<{
             order_id: string;
             order_number: string;
+            product_title: string;
             state: ShippingTaskResponse["state"];
             inventory_number: string;
             inventory_unit_id: string;
             sku_id: string;
             location_code: string;
+            movement_sequence: number;
+            location_photo_available: boolean;
+            address_mode: ShippingTaskResponse["addressMode"];
             inventory_label_version: number;
             location_label_version: number;
-            expires_at: Date;
+            expires_at: Date | null;
           }>
         >`
-          select orders.id as order_id, orders.order_number, orders.state,
+          select orders.id as order_id, orders.order_number, sku.title as product_title, orders.state,
                  unit.inventory_number, unit.id as inventory_unit_id, unit.sku_id,
-                 location.code as location_code, item_label.version as inventory_label_version,
+                 location.code as location_code, unit.movement_seq::integer as movement_sequence,
+                 exists (
+                   select 1
+                   from location_photo photo
+                   where photo.workspace_id = unit.workspace_id
+                     and photo.location_id = unit.location_id
+                     and photo.review_state = 'approved'
+                     and photo.gps_exif_count = 0
+                     and photo.derivative_asset_id is not null
+                     and photo.derivative_storage_key is not null
+                     and photo.derivative_sha256 is not null
+                     and photo.original_mime_type in ('image/jpeg', 'image/png')
+                 ) as location_photo_available,
+                 coalesce(orders.address_mode, 'stored') as address_mode,
+                 item_label.version as inventory_label_version,
                  location_label.version as location_label_version, assignment.expires_at
-          from order_assignment assignment
-          join sales_order orders
-            on orders.workspace_id = assignment.workspace_id and orders.id = assignment.order_id
+          from sales_order orders
+          left join lateral (
+            select current_assignment.id, current_assignment.expires_at
+            from order_assignment current_assignment
+            where current_assignment.workspace_id = orders.workspace_id
+              and current_assignment.order_id = orders.id
+              and current_assignment.identity_id = ${actor.identityId}
+              and current_assignment.revoked_at is null
+              and current_assignment.starts_at <= statement_timestamp()
+              and current_assignment.expires_at > statement_timestamp()
+            order by current_assignment.expires_at asc, current_assignment.id
+            limit 1
+          ) assignment on true
           join order_allocation allocation
-            on allocation.workspace_id = orders.workspace_id and allocation.order_id = orders.id
+            on allocation.workspace_id = orders.workspace_id
+           and allocation.order_id = orders.id
+           and allocation.active
           join inventory_unit unit
             on unit.workspace_id = allocation.workspace_id and unit.id = allocation.inventory_unit_id
+          join product_sku sku
+            on sku.workspace_id = unit.workspace_id and sku.id = unit.sku_id
           join location_node location
             on location.workspace_id = unit.workspace_id and location.id = unit.location_id
           join inventory_label item_label
@@ -576,26 +865,491 @@ export class PostgresOrderRepository implements OrderRepository {
             on location_label.workspace_id = location.workspace_id
            and location_label.target_type = 'location' and location_label.target_id = location.id
            and location_label.active
-          where assignment.workspace_id = ${workspaceId}
-            and assignment.revoked_at is null
-            and assignment.starts_at <= statement_timestamp()
-            and assignment.expires_at > statement_timestamp()
+          where orders.workspace_id = ${workspaceId}
             and orders.state in ('confirmed', 'picking', 'packed')
-            and (${role === "shipping"}::boolean = false or assignment.identity_id = ${actor.identityId})
-          order by assignment.expires_at, orders.order_number
+            and (${role === "shipping"}::boolean = false or assignment.id is not null)
+          order by assignment.expires_at nulls last, orders.order_number
         `;
         return rows.map((row) => ({
           orderId: row.order_id,
           orderNumber: row.order_number,
+          productTitle: row.product_title,
           state: row.state,
           inventoryNumber: row.inventory_number,
           inventoryUnitId: row.inventory_unit_id,
           skuId: row.sku_id,
           locationCode: row.location_code,
+          locationPhotoUrl: row.location_photo_available
+            ? assignedLocationPhotoContentUrl(
+                workspaceId,
+                row.order_id,
+                row.inventory_unit_id,
+                row.movement_sequence,
+              )
+            : null,
+          addressMode: row.address_mode,
           inventoryLabelVersion: row.inventory_label_version,
           locationLabelVersion: row.location_label_version,
-          assignmentExpiresAt: row.expires_at.toISOString(),
+          assignmentExpiresAt: row.expires_at?.toISOString() ?? null,
         }));
+      });
+    } catch (error) {
+      throw normalizeOrderError(error);
+    }
+  }
+
+  async readAssignedLocationPhoto(
+    workspaceId: string,
+    orderId: string,
+    inventoryUnitId: string,
+    movementSequence: number,
+    actor: RequestActor,
+  ): Promise<AssignedLocationPhotoContent> {
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId, actor.identityId);
+        const rows = await transaction<
+          Array<{
+            derivative_storage_key: string;
+            derivative_sha256: string;
+            original_mime_type: "image/jpeg" | "image/png";
+          }>
+        >`
+          select photo.derivative_storage_key, photo.derivative_sha256,
+                 photo.original_mime_type
+          from sales_order orders
+          join workspace_membership membership
+            on membership.workspace_id = orders.workspace_id
+           and membership.identity_id = ${actor.identityId}
+           and membership.active
+           and membership.role in ('owner', 'inventory_manager', 'shipping')
+          join order_allocation allocation
+            on allocation.workspace_id = orders.workspace_id
+           and allocation.order_id = orders.id
+           and allocation.active
+          join inventory_unit unit
+            on unit.workspace_id = allocation.workspace_id
+           and unit.id = allocation.inventory_unit_id
+          join lateral (
+            select location_photo.derivative_storage_key,
+                   location_photo.derivative_sha256,
+                   location_photo.original_mime_type
+            from location_photo
+            where location_photo.workspace_id = unit.workspace_id
+              and location_photo.location_id = unit.location_id
+              and location_photo.review_state = 'approved'
+              and location_photo.gps_exif_count = 0
+              and location_photo.derivative_asset_id is not null
+              and location_photo.derivative_storage_key is not null
+              and location_photo.derivative_sha256 is not null
+              and location_photo.original_mime_type in ('image/jpeg', 'image/png')
+            order by location_photo.reviewed_at desc, location_photo.id desc
+            limit 1
+          ) photo on true
+          where orders.workspace_id = ${workspaceId}
+            and orders.id = ${orderId}
+            and orders.state in ('confirmed', 'picking', 'packed')
+            and unit.id = ${inventoryUnitId}
+            and unit.location_id is not null
+            and unit.movement_seq = ${movementSequence}
+            and (
+              membership.role in ('owner', 'inventory_manager')
+              or (
+                membership.role = 'shipping'
+                and exists (
+                  select 1
+                  from order_assignment assignment
+                  where assignment.workspace_id = orders.workspace_id
+                    and assignment.order_id = orders.id
+                    and assignment.identity_id = membership.identity_id
+                    and assignment.revoked_at is null
+                    and assignment.starts_at <= statement_timestamp()
+                    and assignment.expires_at > statement_timestamp()
+                )
+              )
+            )
+          limit 1
+        `;
+        const row = rows[0];
+        if (!row) {
+          throw new RepositoryError("forbidden", "The assigned location photo is unavailable");
+        }
+        return {
+          displayStorageKey: row.derivative_storage_key,
+          displaySha256: row.derivative_sha256,
+          mimeType: row.original_mime_type,
+        };
+      });
+    } catch (error) {
+      throw normalizeOrderError(error);
+    }
+  }
+
+  async orderRegistration(
+    workspaceId: string,
+    orderId: string,
+    actor: RequestActor,
+  ): Promise<OrderRegistrationResponse> {
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId, actor.identityId);
+        await requireRole(transaction, workspaceId, actor.identityId, [
+          "owner",
+          "inventory_manager",
+        ]);
+        const rows = await currentOrderRegistration(transaction, workspaceId, orderId);
+        const row = rows[0];
+        if (!row) throw new RepositoryError("forbidden", "Order registration is unavailable");
+        return toOrderRegistrationResponse(row);
+      });
+    } catch (error) {
+      throw normalizeOrderError(error);
+    }
+  }
+
+  async updateOrderRegistration(
+    workspaceId: string,
+    orderId: string,
+    actor: RequestActor,
+    input: UpdateOrderRegistrationRequest,
+  ): Promise<OrderRegistrationResponse> {
+    const payloadHash = hashPayload({ orderId, ...input });
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId, actor.identityId);
+        await requireRole(transaction, workspaceId, actor.identityId, [
+          "owner",
+          "inventory_manager",
+        ]);
+        await transaction`select lock_current_shipping_workspace()`;
+        const replay = await orderRegistrationByIdempotency(
+          transaction,
+          workspaceId,
+          orderId,
+          input.idempotencyKey,
+        );
+        if (replay[0]) {
+          if (replay[0].payload_hash !== payloadHash) {
+            throw new RepositoryError(
+              "conflict",
+              "The order registration idempotency key has another payload",
+            );
+          }
+          return toOrderRegistrationResponse(replay[0]);
+        }
+        const current = (await currentOrderRegistration(transaction, workspaceId, orderId))[0];
+        if (!current || current.revision !== input.expectedRevision) {
+          throw new RepositoryError("conflict", "The order registration revision is stale");
+        }
+        const rows = await transaction<OrderRegistrationRow[]>`
+          insert into order_registration_revision (
+            workspace_id, order_id, sales_channel_key, sales_channel_name,
+            channel_transaction_id, buyer_display_name, revision, supersedes_id,
+            idempotency_key, payload_hash
+          ) values (
+            ${workspaceId}, ${orderId}, ${input.salesChannelKey}, ${input.salesChannelName},
+            ${input.channelTransactionId}, ${input.buyerDisplayName}, ${current.revision + 1},
+            ${current.id}, ${input.idempotencyKey}, ${payloadHash}
+          )
+          returning ${orderId}::uuid as order_id, ${current.order_number}::text as order_number,
+                    id, sales_channel_key, sales_channel_name, channel_transaction_id,
+                    buyer_display_name, revision, supersedes_id, payload_hash, changed_at
+        `;
+        const row =
+          rows[0] ??
+          (
+            await orderRegistrationByIdempotency(
+              transaction,
+              workspaceId,
+              orderId,
+              input.idempotencyKey,
+            )
+          )[0];
+        if (!row) throw new RepositoryError("database_error", "Order registration was not saved");
+        return toOrderRegistrationResponse(row);
+      });
+    } catch (error) {
+      throw normalizeOrderError(error);
+    }
+  }
+
+  async shippingMethods(
+    workspaceId: string,
+    actor: RequestActor,
+    salesChannelKey?: string,
+  ): Promise<ShippingMethodCatalogResponse[]> {
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId, actor.identityId);
+        await requireRole(transaction, workspaceId, actor.identityId, [
+          "owner",
+          "inventory_manager",
+        ]);
+        const rows = await transaction<ShippingMethodCatalogRow[]>`
+          select method.id, method.method_id, method.sales_channel_key,
+                 method.sales_channel_name, method.method_name, method.tracking_available,
+                 method.fee_minor::integer as fee_minor, method.delivery_estimate,
+                 method.official_checked_on::text as official_checked_on,
+                 method.official_reference_url, method.official_reference_note,
+                 method.active, method.revision, method.supersedes_id,
+                 method.payload_hash, method.changed_at
+          from shipping_method_catalog_revision method
+          where method.workspace_id = ${workspaceId}
+            and (${salesChannelKey ?? null}::text is null
+              or method.sales_channel_key = ${salesChannelKey ?? null})
+            and not exists (
+              select 1 from shipping_method_catalog_revision successor
+              where successor.workspace_id = method.workspace_id
+                and successor.method_id = method.method_id
+                and successor.supersedes_id = method.id
+            )
+          order by method.sales_channel_name, method.fee_minor, method.method_name
+        `;
+        return rows.map(toShippingMethodCatalogResponse);
+      });
+    } catch (error) {
+      throw normalizeOrderError(error);
+    }
+  }
+
+  async saveShippingMethod(
+    workspaceId: string,
+    actor: RequestActor,
+    input: SaveShippingMethodRequest,
+    generatedMethodId: string,
+  ): Promise<ShippingMethodCatalogResponse> {
+    const payloadHash = hashPayload(input);
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId, actor.identityId);
+        await requireRole(transaction, workspaceId, actor.identityId, [
+          "owner",
+          "inventory_manager",
+        ]);
+        await transaction`select lock_current_shipping_workspace()`;
+        let rows = await shippingMethodByIdempotency(
+          transaction,
+          workspaceId,
+          input.idempotencyKey,
+        );
+        if (rows[0]) {
+          if (rows[0].payload_hash !== payloadHash) {
+            throw new RepositoryError(
+              "conflict",
+              "The shipping method idempotency key has another payload",
+            );
+          }
+          return toShippingMethodCatalogResponse(rows[0]);
+        }
+        const methodId = input.methodId ?? generatedMethodId;
+        const current = input.methodId
+          ? (await currentShippingMethod(transaction, workspaceId, input.methodId))[0]
+          : null;
+        if ((current?.revision ?? null) !== input.expectedRevision) {
+          throw new RepositoryError("conflict", "The shipping method revision is stale");
+        }
+        rows = await transaction<ShippingMethodCatalogRow[]>`
+          insert into shipping_method_catalog_revision (
+            workspace_id, method_id, sales_channel_key, sales_channel_name, method_name,
+            tracking_available, fee_minor, delivery_estimate, official_checked_on,
+            official_reference_url, official_reference_note, active, revision,
+            supersedes_id, idempotency_key, payload_hash
+          ) values (
+            ${workspaceId}, ${methodId}, ${input.salesChannelKey}, ${input.salesChannelName},
+            ${input.methodName}, ${input.trackingAvailable}, ${input.feeMinor},
+            ${input.deliveryEstimate}, ${input.officialCheckedOn},
+            ${input.officialReferenceUrl}, ${input.officialReferenceNote}, ${input.active},
+            ${(current?.revision ?? 0) + 1}, ${current?.id ?? null},
+            ${input.idempotencyKey}, ${payloadHash}
+          )
+          returning id, method_id, sales_channel_key, sales_channel_name, method_name,
+                    tracking_available, fee_minor::integer as fee_minor, delivery_estimate,
+                    official_checked_on::text as official_checked_on, official_reference_url,
+                    official_reference_note, active, revision, supersedes_id, payload_hash,
+                    changed_at
+        `;
+        if (!rows[0]) {
+          rows = await shippingMethodByIdempotency(transaction, workspaceId, input.idempotencyKey);
+        }
+        const row = rows[0];
+        if (!row) throw new RepositoryError("database_error", "Shipping method was not saved");
+        return toShippingMethodCatalogResponse(row);
+      });
+    } catch (error) {
+      throw normalizeOrderError(error);
+    }
+  }
+
+  async shippingMethodOptions(
+    workspaceId: string,
+    orderId: string,
+    actor: RequestActor,
+  ): Promise<ShippingMethodOptionResponse[]> {
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId, actor.identityId);
+        const role = await requireRole(transaction, workspaceId, actor.identityId, [
+          "owner",
+          "inventory_manager",
+          "shipping",
+        ]);
+        await requireOrderAssignmentIfShipping(
+          transaction,
+          workspaceId,
+          orderId,
+          actor.identityId,
+          role,
+        );
+        const rows = await transaction<ShippingMethodOptionRow[]>`
+          select method_id, catalog_revision_id, sales_channel_key, sales_channel_name,
+                 method_name, tracking_available, fee_minor::integer as fee_minor,
+                 delivery_estimate, official_checked_on::text as official_checked_on
+          from current_actor_shipping_method_options(${orderId})
+        `;
+        return rows.map(toShippingMethodOptionResponse);
+      });
+    } catch (error) {
+      throw normalizeOrderError(error);
+    }
+  }
+
+  async selectShippingMethod(
+    workspaceId: string,
+    orderId: string,
+    actor: RequestActor,
+    input: SelectOrderShippingMethodRequest,
+  ): Promise<OrderShippingMethodSelectionResponse> {
+    const payloadHash = hashPayload({ orderId, ...input });
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId, actor.identityId);
+        const role = await requireRole(transaction, workspaceId, actor.identityId, [
+          "owner",
+          "inventory_manager",
+          "shipping",
+        ]);
+        await requireOrderAssignmentIfShipping(
+          transaction,
+          workspaceId,
+          orderId,
+          actor.identityId,
+          role,
+        );
+        let rows = await shippingMethodSelectionByIdempotency(
+          transaction,
+          orderId,
+          input.idempotencyKey,
+        );
+        if (rows[0]) {
+          if (rows[0].payload_hash !== payloadHash) {
+            throw new RepositoryError(
+              "conflict",
+              "The shipping method selection idempotency key has another payload",
+            );
+          }
+          return toOrderShippingMethodSelectionResponse(rows[0]);
+        }
+        await transaction`
+          select record_order_shipping_method_selection(
+            ${orderId}, ${input.methodId}, ${input.expectedSelectionRevision},
+            ${input.idempotencyKey}, ${payloadHash}
+          )
+        `;
+        rows = await shippingMethodSelectionByIdempotency(
+          transaction,
+          orderId,
+          input.idempotencyKey,
+        );
+        const row = rows[0];
+        if (!row) {
+          throw new RepositoryError("database_error", "Shipping method selection was not saved");
+        }
+        return toOrderShippingMethodSelectionResponse(row);
+      });
+    } catch (error) {
+      throw normalizeOrderError(error);
+    }
+  }
+
+  async shippingReadiness(
+    workspaceId: string,
+    orderId: string,
+    actor: RequestActor,
+  ): Promise<OrderShippingReadinessResponse> {
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId, actor.identityId);
+        const role = await requireRole(transaction, workspaceId, actor.identityId, [
+          "owner",
+          "inventory_manager",
+          "shipping",
+        ]);
+        await requireOrderAssignmentIfShipping(
+          transaction,
+          workspaceId,
+          orderId,
+          actor.identityId,
+          role,
+        );
+        return requireShippingReadiness(transaction, orderId);
+      });
+    } catch (error) {
+      throw normalizeOrderError(error);
+    }
+  }
+
+  async confirmShippingReadiness(
+    workspaceId: string,
+    orderId: string,
+    actor: RequestActor,
+    input: ConfirmOrderShippingReadinessRequest,
+  ): Promise<OrderShippingReadinessResponse> {
+    const payloadHash = hashPayload({ orderId, ...input });
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId, actor.identityId);
+        const role = await requireRole(transaction, workspaceId, actor.identityId, [
+          "owner",
+          "inventory_manager",
+          "shipping",
+        ]);
+        await requireOrderAssignmentIfShipping(
+          transaction,
+          workspaceId,
+          orderId,
+          actor.identityId,
+          role,
+        );
+        const confirmations = await transaction<
+          Array<{
+            confirmation_id: string;
+            confirmation_at: Date;
+            confirmation_current: boolean;
+          }>
+        >`
+          select confirmation_id, confirmation_at, confirmation_current
+          from record_order_shipping_readiness_confirmation(
+            ${orderId}, ${input.expectedRegistrationRevision},
+            ${input.expectedSelectionRevision}, ${input.acknowledgedMissingInformation},
+            ${input.idempotencyKey}, ${payloadHash}
+          )
+        `;
+        const confirmation = confirmations[0];
+        if (!confirmation) {
+          throw new RepositoryError(
+            "database_error",
+            "Shipping readiness confirmation was not saved",
+          );
+        }
+        const readiness = await requireShippingReadiness(transaction, orderId);
+        return {
+          ...readiness,
+          humanConfirmation: {
+            state: confirmation.confirmation_current ? "confirmed" : "stale",
+            confirmationId: confirmation.confirmation_id,
+            confirmedAt: confirmation.confirmation_at.toISOString(),
+          },
+        };
       });
     } catch (error) {
       throw normalizeOrderError(error);
@@ -789,7 +1543,7 @@ export class PostgresOrderRepository implements OrderRepository {
             ${record.height}, ${record.idempotencyKey}, ${payloadHash}
           )
           on conflict (workspace_id, order_id, upload_idempotency_key) do nothing
-          returning id, order_id, role, original_sha256, original_storage_key, mime_type,
+          returning id, order_id, sku_id, role, original_sha256, original_storage_key, mime_type,
                     size_bytes::integer as size_bytes, width, height, payload_hash,
                     captured_by, captured_at
         `;
@@ -840,7 +1594,7 @@ export class PostgresOrderRepository implements OrderRepository {
           "inventory_manager",
           "shipping",
         ]);
-        await requireOrderAssignmentIfShipping(
+        const assignment = await requireOrderAssignmentIfShipping(
           transaction,
           workspaceId,
           orderId,
@@ -848,7 +1602,7 @@ export class PostgresOrderRepository implements OrderRepository {
           role,
         );
         const rows = await transaction<ShippingPhotoAssetRow[]>`
-          select id, order_id, role, original_sha256, original_storage_key, mime_type,
+          select id, order_id, sku_id, role, original_sha256, original_storage_key, mime_type,
                  size_bytes::integer as size_bytes, width, height, payload_hash,
                  captured_by, captured_at
           from shipping_photo_asset
@@ -857,12 +1611,20 @@ export class PostgresOrderRepository implements OrderRepository {
         const row = rows[0];
         if (!row) throw new RepositoryError("forbidden", "The shipping photo is unavailable");
         return {
+          assetId: row.id,
+          orderId: row.order_id,
+          skuId: row.sku_id,
+          photoRole: row.role,
           storageKey: row.original_storage_key,
           sha256: row.original_sha256,
           mimeType: row.mime_type,
           sizeBytes: row.size_bytes,
           width: row.width,
           height: row.height,
+          authorizedIdentityId: actor.identityId,
+          authorizedRole: role as PrivateShippingPhotoContent["authorizedRole"],
+          assignmentId: assignment?.assignmentId ?? null,
+          assignmentExpiresAt: assignment?.expiresAt.toISOString() ?? null,
         };
       });
     } catch (error) {
@@ -1094,7 +1856,7 @@ export class PostgresOrderRepository implements OrderRepository {
           "inventory_manager",
           "shipping",
         ]);
-        const assignmentExpiry = await requireOrderAssignmentIfShipping(
+        const assignment = await requireOrderAssignmentIfShipping(
           transaction,
           workspaceId,
           orderId,
@@ -1109,11 +1871,13 @@ export class PostgresOrderRepository implements OrderRepository {
                  ${actor.identityId}, statement_timestamp(),
                  least(
                    statement_timestamp() + interval '5 minutes',
-                   coalesce(${assignmentExpiry}, statement_timestamp() + interval '5 minutes')
+                   coalesce(${assignment?.expiresAt ?? null}, statement_timestamp() + interval '5 minutes')
                  )
           where exists (
-            select 1 from sales_order where workspace_id = ${workspaceId} and id = ${orderId}
-              and state in ('confirmed', 'picking', 'packed')
+            select 1 from sales_order orders
+            where orders.workspace_id = ${workspaceId} and orders.id = ${orderId}
+              and orders.state in ('confirmed', 'picking', 'packed')
+              and coalesce(orders.address_mode, 'stored') = 'stored'
           )
           returning id, expires_at
         `;
@@ -1178,9 +1942,13 @@ export class PostgresOrderRepository implements OrderRepository {
           from address_access_lease lease
           join order_private_address address
             on address.workspace_id = lease.workspace_id and address.order_id = lease.order_id
+          join sales_order orders
+            on orders.workspace_id = lease.workspace_id and orders.id = lease.order_id
           where lease.workspace_id = ${workspaceId} and lease.order_id = ${orderId}
             and lease.id = ${leaseId} and lease.identity_id = ${actor.identityId}
+            and lease.issued_by = ${actor.identityId}
             and lease.purpose = 'shipping_label' and lease.expires_at > clock_timestamp()
+            and coalesce(orders.address_mode, 'stored') = 'stored'
         `;
         const row = rows[0];
         if (!row) throw new RepositoryError("forbidden", "The address lease is invalid or expired");
@@ -1238,6 +2006,7 @@ export class PostgresOrderRepository implements OrderRepository {
           hasActiveAllocation: true,
           hasConfirmedPickScan: false,
           hasPackingEvidence: false,
+          addressRequired: order.address_mode === "stored",
           addressLeaseActive: leaseActive,
         });
         if (violations.length > 0) {
@@ -1310,7 +2079,7 @@ export class PostgresOrderRepository implements OrderRepository {
         const legacyPackedRecovery =
           order.order_state === "packed" && order.inventory_status === "packed";
         if (legacyPackedRecovery) {
-          if (!leaseActive) {
+          if (order.address_mode === "stored" && !leaseActive) {
             throw new RepositoryError(
               "conflict",
               "Pack recovery requires an active shipping address lease",
@@ -1329,6 +2098,7 @@ export class PostgresOrderRepository implements OrderRepository {
           hasActiveAllocation: true,
           hasConfirmedPickScan: order.inventory_status === "picked",
           hasPackingEvidence: true,
+          addressRequired: order.address_mode === "stored",
           addressLeaseActive: leaseActive,
         });
         if (violations.length > 0) {
@@ -1381,6 +2151,7 @@ export class PostgresOrderRepository implements OrderRepository {
           hasActiveAllocation: true,
           hasConfirmedPickScan: true,
           hasPackingEvidence: packing[0]?.present ?? false,
+          addressRequired: order.address_mode === "stored",
           addressLeaseActive: leaseActive,
         });
         if (violations.length > 0) {
@@ -1388,10 +2159,14 @@ export class PostgresOrderRepository implements OrderRepository {
         }
         await transaction`
           insert into shipment_human_confirmation (
-            workspace_id, order_id, idempotency_key, payload_hash
+            workspace_id, order_id, idempotency_key, payload_hash,
+            shipping_method_selection_id, readiness_confirmation_id, shipped_at
           ) values (
             ${workspaceId}, ${orderId}, ${input.idempotencyKey},
-            ${hashPayload({ orderId, ...input, actorId: actor.identityId })}
+            ${hashPayload({ orderId, ...input, actorId: actor.identityId })},
+            ${input.shippingMethodSelectionId ?? null},
+            ${input.readinessConfirmationId ?? null},
+            ${input.shippedAt ?? null}
           )
         `;
         await transaction`
@@ -1424,6 +2199,7 @@ export class PostgresOrderRepository implements OrderRepository {
           hasActiveAllocation: true,
           hasConfirmedPickScan: true,
           hasPackingEvidence: true,
+          addressRequired: order.address_mode === "stored",
           addressLeaseActive: true,
         });
         if (violations.length > 0) {
@@ -2011,7 +2787,7 @@ function shippingPhotoAssetByIdempotency(
   idempotencyKey: string,
 ): Promise<ShippingPhotoAssetRow[]> {
   return sql<ShippingPhotoAssetRow[]>`
-    select id, order_id, role, original_sha256, original_storage_key, mime_type,
+    select id, order_id, sku_id, role, original_sha256, original_storage_key, mime_type,
            size_bytes::integer as size_bytes, width, height, payload_hash,
            captured_by, captured_at
     from shipping_photo_asset
@@ -2107,7 +2883,7 @@ async function buildShippingPhotoPreflight(
     }
   }
   const assets = await sql<ShippingPhotoAssetRow[]>`
-    select id, order_id, role, original_sha256, original_storage_key, mime_type,
+    select id, order_id, sku_id, role, original_sha256, original_storage_key, mime_type,
            size_bytes::integer as size_bytes, width, height, payload_hash,
            captured_by, captured_at
     from shipping_photo_asset
@@ -2188,8 +2964,261 @@ async function buildShippingPhotoPreflight(
   };
 }
 
+function currentOrderRegistration(
+  sql: postgres.TransactionSql,
+  workspaceId: string,
+  orderId: string,
+): Promise<OrderRegistrationRow[]> {
+  return sql<OrderRegistrationRow[]>`
+    select registration.order_id, orders.order_number, registration.id,
+           registration.sales_channel_key, registration.sales_channel_name,
+           registration.channel_transaction_id, registration.buyer_display_name,
+           registration.revision, registration.supersedes_id, registration.payload_hash,
+           registration.changed_at
+    from order_registration_revision registration
+    join sales_order orders
+      on orders.workspace_id = registration.workspace_id and orders.id = registration.order_id
+    where registration.workspace_id = ${workspaceId} and registration.order_id = ${orderId}
+      and not exists (
+        select 1 from order_registration_revision successor
+        where successor.workspace_id = registration.workspace_id
+          and successor.order_id = registration.order_id
+          and successor.supersedes_id = registration.id
+      )
+    order by registration.revision desc limit 1
+  `;
+}
+
+function orderRegistrationByIdempotency(
+  sql: postgres.TransactionSql,
+  workspaceId: string,
+  orderId: string,
+  idempotencyKey: string,
+): Promise<OrderRegistrationRow[]> {
+  return sql<OrderRegistrationRow[]>`
+    select registration.order_id, orders.order_number, registration.id,
+           registration.sales_channel_key, registration.sales_channel_name,
+           registration.channel_transaction_id, registration.buyer_display_name,
+           registration.revision, registration.supersedes_id, registration.payload_hash,
+           registration.changed_at
+    from order_registration_revision registration
+    join sales_order orders
+      on orders.workspace_id = registration.workspace_id and orders.id = registration.order_id
+    where registration.workspace_id = ${workspaceId} and registration.order_id = ${orderId}
+      and registration.idempotency_key = ${idempotencyKey}
+  `;
+}
+
+function toOrderRegistrationResponse(row: OrderRegistrationRow): OrderRegistrationResponse {
+  return {
+    orderId: row.order_id,
+    orderNumber: row.order_number,
+    registrationRevisionId: row.id,
+    salesChannelKey: row.sales_channel_key,
+    salesChannelName: row.sales_channel_name,
+    channelTransactionId: row.channel_transaction_id,
+    buyerDisplayName: row.buyer_display_name,
+    revision: row.revision,
+    supersedesRevisionId: row.supersedes_id,
+    changedAt: row.changed_at.toISOString(),
+  };
+}
+
+function currentShippingMethod(
+  sql: postgres.TransactionSql,
+  workspaceId: string,
+  methodId: string,
+): Promise<ShippingMethodCatalogRow[]> {
+  return sql<ShippingMethodCatalogRow[]>`
+    select method.id, method.method_id, method.sales_channel_key,
+           method.sales_channel_name, method.method_name, method.tracking_available,
+           method.fee_minor::integer as fee_minor, method.delivery_estimate,
+           method.official_checked_on::text as official_checked_on,
+           method.official_reference_url, method.official_reference_note,
+           method.active, method.revision, method.supersedes_id,
+           method.payload_hash, method.changed_at
+    from shipping_method_catalog_revision method
+    where method.workspace_id = ${workspaceId} and method.method_id = ${methodId}
+      and not exists (
+        select 1 from shipping_method_catalog_revision successor
+        where successor.workspace_id = method.workspace_id
+          and successor.method_id = method.method_id
+          and successor.supersedes_id = method.id
+      )
+    order by method.revision desc limit 1
+  `;
+}
+
+function shippingMethodByIdempotency(
+  sql: postgres.TransactionSql,
+  workspaceId: string,
+  idempotencyKey: string,
+): Promise<ShippingMethodCatalogRow[]> {
+  return sql<ShippingMethodCatalogRow[]>`
+    select method.id, method.method_id, method.sales_channel_key,
+           method.sales_channel_name, method.method_name, method.tracking_available,
+           method.fee_minor::integer as fee_minor, method.delivery_estimate,
+           method.official_checked_on::text as official_checked_on,
+           method.official_reference_url, method.official_reference_note,
+           method.active, method.revision, method.supersedes_id,
+           method.payload_hash, method.changed_at
+    from shipping_method_catalog_revision method
+    where method.workspace_id = ${workspaceId} and method.idempotency_key = ${idempotencyKey}
+  `;
+}
+
+function toShippingMethodCatalogResponse(
+  row: ShippingMethodCatalogRow,
+): ShippingMethodCatalogResponse {
+  return {
+    methodId: row.method_id,
+    catalogRevisionId: row.id,
+    salesChannelKey: row.sales_channel_key,
+    salesChannelName: row.sales_channel_name,
+    methodName: row.method_name,
+    trackingAvailable: row.tracking_available,
+    feeMinor: row.fee_minor,
+    deliveryEstimate: row.delivery_estimate,
+    officialCheckedOn: row.official_checked_on,
+    officialReferenceUrl: row.official_reference_url,
+    officialReferenceNote: row.official_reference_note,
+    active: row.active,
+    revision: row.revision,
+    supersedesRevisionId: row.supersedes_id,
+    changedAt: row.changed_at.toISOString(),
+  };
+}
+
+function toShippingMethodOptionResponse(
+  row: ShippingMethodOptionRow,
+): ShippingMethodOptionResponse {
+  return {
+    methodId: row.method_id,
+    catalogRevisionId: row.catalog_revision_id,
+    salesChannelKey: row.sales_channel_key,
+    salesChannelName: row.sales_channel_name,
+    methodName: row.method_name,
+    trackingAvailable: row.tracking_available,
+    feeMinor: row.fee_minor,
+    deliveryEstimate: row.delivery_estimate,
+    officialCheckedOn: row.official_checked_on,
+  };
+}
+
+function shippingMethodSelectionByIdempotency(
+  sql: postgres.TransactionSql,
+  orderId: string,
+  idempotencyKey: string,
+): Promise<ShippingMethodSelectionRow[]> {
+  return sql<ShippingMethodSelectionRow[]>`
+    select selection_id, order_id, selection_revision, selection_supersedes_id,
+           payload_hash, selected_at, method_id, catalog_revision_id,
+           sales_channel_key, sales_channel_name, method_name, tracking_available,
+           fee_minor::integer as fee_minor,
+           delivery_estimate, official_checked_on::text as official_checked_on
+    from current_actor_shipping_method_selection_by_idempotency(${orderId}, ${idempotencyKey})
+  `;
+}
+
+function toOrderShippingMethodSelectionResponse(
+  row: ShippingMethodSelectionRow,
+): OrderShippingMethodSelectionResponse {
+  return {
+    selectionId: row.selection_id,
+    orderId: row.order_id,
+    revision: row.selection_revision,
+    supersedesSelectionId: row.selection_supersedes_id,
+    method: toShippingMethodOptionResponse(row),
+    selectedAt: row.selected_at.toISOString(),
+  };
+}
+
+function shippingContextRows(
+  sql: postgres.TransactionSql,
+  orderId: string,
+): Promise<ShippingContextRow[]> {
+  return sql<ShippingContextRow[]>`
+    select order_id, order_number, registration_revision_id, registration_revision,
+           sales_channel_key, sales_channel_name, channel_transaction_id_status,
+           sale_amount_status, selection_id, selection_revision, selection_supersedes_id,
+           method_id, catalog_revision_id, method_name, tracking_available,
+           selected_fee_minor::integer as selected_fee_minor, delivery_estimate,
+           official_checked_on::text as official_checked_on, selected_at,
+           missing_information, blocking_issues, confirmation_state,
+           confirmation_id, confirmation_at
+    from current_actor_order_shipping_context(${orderId})
+  `;
+}
+
+async function requireShippingReadiness(
+  sql: postgres.TransactionSql,
+  orderId: string,
+): Promise<OrderShippingReadinessResponse> {
+  const row = (await shippingContextRows(sql, orderId))[0];
+  if (!row) throw new RepositoryError("forbidden", "Shipping readiness is unavailable");
+  const selectedMethod =
+    row.selection_id &&
+    row.selection_revision &&
+    row.method_id &&
+    row.catalog_revision_id &&
+    row.method_name &&
+    row.tracking_available !== null &&
+    row.selected_fee_minor !== null &&
+    row.official_checked_on &&
+    row.selected_at &&
+    row.sales_channel_key &&
+    row.sales_channel_name
+      ? {
+          selectionId: row.selection_id,
+          orderId: row.order_id,
+          revision: row.selection_revision,
+          supersedesSelectionId: row.selection_supersedes_id,
+          method: {
+            methodId: row.method_id,
+            catalogRevisionId: row.catalog_revision_id,
+            salesChannelKey: row.sales_channel_key,
+            salesChannelName: row.sales_channel_name,
+            methodName: row.method_name,
+            trackingAvailable: row.tracking_available,
+            feeMinor: row.selected_fee_minor,
+            deliveryEstimate: row.delivery_estimate,
+            officialCheckedOn: row.official_checked_on,
+          },
+          selectedAt: row.selected_at.toISOString(),
+        }
+      : null;
+  return {
+    orderId: row.order_id,
+    orderNumber: row.order_number,
+    registrationRevision: row.registration_revision,
+    salesChannel:
+      row.sales_channel_key && row.sales_channel_name
+        ? { key: row.sales_channel_key, name: row.sales_channel_name }
+        : null,
+    channelTransactionIdStatus: row.channel_transaction_id_status,
+    saleAmountStatus: row.sale_amount_status,
+    selectedMethod,
+    missingInformation: row.missing_information,
+    blockingIssues: row.blocking_issues,
+    humanConfirmation: {
+      state: row.confirmation_state,
+      confirmationId: row.confirmation_id,
+      confirmedAt: row.confirmation_at?.toISOString() ?? null,
+    },
+  };
+}
+
 function sameUuidList(left: string[], right: string[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function assignedLocationPhotoContentUrl(
+  workspaceId: string,
+  orderId: string,
+  inventoryUnitId: string,
+  movementSequence: number,
+): string {
+  return `/v1/workspaces/${workspaceId}/orders/${orderId}/pick-location-photo/content?inventoryUnitId=${inventoryUnitId}&movementSequence=${movementSequence}`;
 }
 
 async function requireRole(
@@ -2215,10 +3244,10 @@ async function requireOrderAssignmentIfShipping(
   orderId: string,
   identityId: string,
   role: WorkspaceRole,
-): Promise<Date | null> {
+): Promise<{ assignmentId: string; expiresAt: Date } | null> {
   if (role !== "shipping") return null;
-  const rows = await sql<Array<{ expires_at: Date }>>`
-    select expires_at from order_assignment
+  const rows = await sql<Array<{ id: string; expires_at: Date }>>`
+    select id, expires_at from order_assignment
     where workspace_id = ${workspaceId} and order_id = ${orderId}
       and identity_id = ${identityId} and revoked_at is null
       and starts_at <= statement_timestamp() and expires_at > statement_timestamp()
@@ -2228,7 +3257,7 @@ async function requireOrderAssignmentIfShipping(
   if (!row) {
     throw new RepositoryError("forbidden", "The order is outside this shipping assignment");
   }
-  return row.expires_at;
+  return { assignmentId: row.id, expiresAt: row.expires_at };
 }
 
 async function operationReplay(
@@ -2440,7 +3469,8 @@ async function requireOrderUnit(
            sales_order.state as order_state, allocation.id as allocation_id,
            unit.id as inventory_unit_id, unit.inventory_number,
            unit.status as inventory_status, unit.location_id, location.code as location_code,
-           unit.movement_seq::integer as movement_seq, unit.sku_id
+           unit.movement_seq::integer as movement_seq, unit.sku_id,
+           coalesce(sales_order.address_mode, 'stored') as address_mode
     from sales_order
     join order_allocation allocation
       on allocation.workspace_id = sales_order.workspace_id
@@ -2469,6 +3499,7 @@ async function hasActiveAddressLease(
       select 1 from address_access_lease
       where workspace_id = ${workspaceId} and order_id = ${orderId}
         and id = ${leaseId} and identity_id = ${identityId}
+        and issued_by = ${identityId}
         and purpose = 'shipping_label' and expires_at > clock_timestamp()
     ) as active
   `;
@@ -2536,7 +3567,13 @@ async function requireFinancialEvents(
       and event_type in ('sale', 'cost', 'fee', 'shipping', 'packaging')
     order by event_type, id
   `;
-  if (rows.length !== 5)
+  const requiredTypes = ["sale", "cost", "fee", "shipping", "packaging"] as const;
+  if (
+    rows.length !== requiredTypes.length ||
+    requiredTypes.some(
+      (eventType) => rows.filter((event) => event.event_type === eventType).length !== 1,
+    )
+  )
     throw new RepositoryError("conflict", "The order financial facts are incomplete");
   return rows;
 }

@@ -69,7 +69,9 @@ export function MobileAssignmentSummary({
           </strong>
           <p>
             {next
-              ? `期限 ${new Date(next.assignmentExpiresAt).toLocaleString("ja-JP")}`
+              ? next.assignmentExpiresAt
+                ? `期限 ${new Date(next.assignmentExpiresAt).toLocaleString("ja-JP")}`
+                : "管理者として確認中"
               : "管理者の割当後に表示されます。"}
           </p>
         </section>

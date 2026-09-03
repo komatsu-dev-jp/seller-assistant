@@ -95,6 +95,7 @@ describe("P13 shipping preflight photo contracts", () => {
       taxBasis: "unknown",
       sourceMeaning: "架空の手入力",
       occurredAt: "2026-08-29T00:00:00.000Z",
+      addressMode: "stored",
       shippingAddress: "架空住所",
       idempotencyKey: "10000000-0000-4000-8000-000000000003",
       humanConfirmed: true,
@@ -462,6 +463,18 @@ describe("safe discrepancy and accounting preview read models", () => {
         ...replacement,
         exactPriorDuplicate: null,
         canCreateFresh: true,
+        canSupersede: false,
+      }).success,
+    ).toBe(true);
+  });
+
+  it("allows current sources to remain blocked when required financial facts are missing", () => {
+    expect(
+      accountingExportPreflightResponseSchema.safeParse({
+        orderId: "10000000-0000-4000-8000-000000000001",
+        currentSourceSetSha256: "a".repeat(64),
+        exactPriorDuplicate: null,
+        canCreateFresh: false,
         canSupersede: false,
       }).success,
     ).toBe(true);
@@ -890,7 +903,7 @@ describe("ten-product pilot contract", () => {
     expect(() => listingPrepPilotItemIdentifiers("not-a-run-id", "TOP-01")).toThrow();
   });
 
-  it("keeps v1.1 starts on their verified 0033 snapshot after additive P12/P13 migrations", () => {
+  it("keeps v1.1 starts on their verified 0033 snapshot after additive P12/P13/P14 migrations", () => {
     const latestMigrationVersion = readdirSync(new URL("../../db/migrations/", import.meta.url))
       .filter((name) => /^\d{4}_.+\.sql$/u.test(name))
       .sort()
@@ -909,7 +922,7 @@ describe("ten-product pilot contract", () => {
     } as const;
     expect(startPilotRunRequestSchema.safeParse(valid).success).toBe(true);
     expect(listingPrepPilotMigrationVersion).toBe("0033");
-    expect(latestMigrationVersion).toBe("0035");
+    expect(latestMigrationVersion).toBe("0039");
     expect(
       startPilotRunRequestSchema.safeParse({ ...valid, migrationVersion: "0028" }).success,
     ).toBe(false);

@@ -1,7 +1,7 @@
 # Slack承認済みデザイン反映証拠
 
-- 更新日: 2026-08-24（JST）
-- 状態: target SHA `02c4641599eb6885bca3256f7792cf0a08c464bb`でP05独立Terra 100/100 PASS。実利用者・実機・実MF importは未確認
+- 更新日: 2026-09-03（JST）
+- 状態: 承認済みモバイル75画面＋PC52画面を金額欠損修正後の最新同一ビルドから127/127再撮影・比較し、viewport 127/127、欠落0、外部runtime resource 0件。注文系M34〜38/PC29〜32の実API導線もローカル実ブラウザで完走。最終独立Sol再レビューPASS（Critical 0 / High 0）
 - UI正本: `docs/design/selected-direction.md`
 - 修正版A承認: `docs/design/revised-a-approval-v2.md`
 
@@ -13,13 +13,15 @@ Slack承認画像を参考資料ではなくUI受け入れ基準として扱う�
 
 ## 画面別の対応
 
-| 画面     | 承認画像                                                                                  | 実装route                 | 反映内容                                                                                                                        | 実画面証拠                                                                                                                                                                                                             |
-| -------- | ----------------------------------------------------------------------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ホーム   | `home-concept-c-owner-pulse-v1.png`                                                       | `/`                       | スマホは「今日の確認」を先頭にし、PCは4 KPI、月間ウォーターフォール、今日の確認、在庫年齢、仕入先概要を配置。                   | `output/playwright/design-fidelity/home-desktop-slack-approved-final-1440x1000.png` / `home-mobile-slack-approved-final-390x844.png`                                                                                   |
-| 在庫管制 | `web-10-inventory-location-workbench-v1.png`                                              | `/inventory`              | 場所ツリー、部屋・棚・正確な位置の非公開写真、写真確認、場所登録、現物在庫を同じPC作業台へ配置。                                | `output/playwright/design-fidelity/inventory-desktop-slack-approved-final-1440x1000.png`                                                                                                                               |
-| 在庫現場 | `mobile-12-inventory-location-operations-v1.png`                                          | `/mobile`・`/mobile/scan` | 「今日の現場作業」から商品ラベル→場所ラベル→確認へ進む。PC在庫表をスマホ幅へ縮めた `/inventory` をM12の比較対象にはしない。     | `output/playwright/design-fidelity/inventory-mobile-field-home-slack-approved-final-390x844.png` / `inventory-mobile-scan-slack-approved-final-390x844.png`                                                            |
-| 棚卸差異 | `web-11-solo-discrepancy-control-v4.png` / `mobile-13-solo-discrepancy-v2.png`            | `/inventory/stocktake`    | PCは差異キュー＋詳細。スマホは運用モード、商品読取、差異確認、ラベルを工程別に表示し、全フォームの縦積みを廃止。                | `output/playwright/design-fidelity/stocktake-desktop-slack-approved-final-1440x1000.png` / `stocktake-mobile-slack-approved-final-390x844.png` / `stocktake-mobile-difference-slack-approved-final-390x844.png`        |
-| 会計候補 | `web-12-accounting-profile-export-guard-v2.png` / `mobile-14-accounting-readiness-v2.png` | `/accounting`             | PCは設定・mapping・出力ペイン。スマホは出力形式、会計設定、科目候補、CSV確認を工程別表示。未登録mappingを空欄から人が入力する。 | `output/playwright/design-fidelity/accounting-desktop-slack-approved-final-1440x1000.png` / `accounting-mobile-format-slack-approved-final-390x844.png` / `accounting-mobile-profile-slack-approved-final-390x844.png` |
+| 画面                 | 承認画像                                                                                  | 実装route                 | 反映内容                                                                                                                        | 実画面証拠                                                                                                                                                                                                             |
+| -------------------- | ----------------------------------------------------------------------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ホーム               | `home-concept-c-owner-pulse-v1.png`                                                       | `/`                       | スマホは「今日の確認」を先頭にし、PCは4 KPI、月間ウォーターフォール、今日の確認、在庫年齢、仕入先概要を配置。                   | `output/playwright/design-fidelity/home-desktop-slack-approved-final-1440x1000.png` / `home-mobile-slack-approved-final-390x844.png`                                                                                   |
+| 在庫管制             | `web-10-inventory-location-workbench-v1.png`                                              | `/inventory`              | 場所ツリー、部屋・棚・正確な位置の非公開写真、写真確認、場所登録、現物在庫を同じPC作業台へ配置。                                | `output/playwright/design-fidelity/inventory-desktop-slack-approved-final-1440x1000.png`                                                                                                                               |
+| 在庫現場             | `mobile-12-inventory-location-operations-v1.png`                                          | `/mobile`・`/mobile/scan` | 「今日の現場作業」から商品ラベル→場所ラベル→確認へ進む。PC在庫表をスマホ幅へ縮めた `/inventory` をM12の比較対象にはしない。     | `output/playwright/design-fidelity/inventory-mobile-field-home-slack-approved-final-390x844.png` / `inventory-mobile-scan-slack-approved-final-390x844.png`                                                            |
+| 棚卸差異             | `web-11-solo-discrepancy-control-v4.png` / `mobile-13-solo-discrepancy-v2.png`            | `/inventory/stocktake`    | PCは差異キュー＋詳細。スマホは運用モード、商品読取、差異確認、ラベルを工程別に表示し、全フォームの縦積みを廃止。                | `output/playwright/design-fidelity/stocktake-desktop-slack-approved-final-1440x1000.png` / `stocktake-mobile-slack-approved-final-390x844.png` / `stocktake-mobile-difference-slack-approved-final-390x844.png`        |
+| 会計候補             | `web-12-accounting-profile-export-guard-v2.png` / `mobile-14-accounting-readiness-v2.png` | `/accounting`             | PCは設定・mapping・出力ペイン。スマホは出力形式、会計設定、科目候補、CSV確認を工程別表示。未登録mappingを空欄から人が入力する。 | `output/playwright/design-fidelity/accounting-desktop-slack-approved-final-1440x1000.png` / `accounting-mobile-format-slack-approved-final-390x844.png` / `accounting-mobile-profile-slack-approved-final-390x844.png` |
+| 注文・発送（スマホ） | 承認済み追加画面M34〜38                                                                   | `/shipping`               | 注文登録、商品取出し、梱包写真、発送記録、棚卸開始を1画面1目的で進め、保存・二重読取・人の確認を実APIへ接続。                   | `output/playwright/p14-order-address-live-20260902/mobile-m34-to-m35-direct-v2.png` / `output/playwright/root-all-fidelity-p14-final-finance-20260903/mobile`                                                          |
+| 注文・発送（PC）     | 承認済みPC29〜32                                                                          | `/shipping`               | 注文登録、商品・場所の二重読取、選択式写真、梱包確認、発送記録を白いPC作業台へ接続。住所と金額の非公開境界を維持。              | `output/playwright/p14-final-live-finance-20260903/pc32-shipped-anonymous.png` / `output/playwright/root-all-fidelity-p14-final-finance-20260903/pc`                                                                   |
 
 ## 共通デザイン
 
@@ -62,7 +64,7 @@ Slack承認画像を参考資料ではなくUI受け入れ基準として扱う�
 - 実iPhone Safariのホーム画面追加、カメラ、圏外復帰は未確認。
 - 現行commitのseeded browser指定操作（会計、capture、solo/dual棚卸、200%相当390×720、loopback request capture）と、最終独立P05 100/100は確認済み。未完了は実利用者pilot、実iPhone、実MF import、P08最終独立Solレビューである。
 
-上記の未確認項目を成功扱いにせず、最終独立SolレビューでCritical/High 0を確認するまでDraft PRを作成しない。
+上記の未確認項目を成功扱いにしない。Draft PR #9は既存のDraftとして保持し、最終独立SolレビューでCritical/High 0を確認するまでready化せず、PRマージもしない。
 
 ## 2026-08-25 P06R現行検証
 
@@ -70,3 +72,16 @@ Slack承認画像を参考資料ではなくUI受け入れ基準として扱う�
 - fresh PG 33 migrations/restricted LOGIN/49 RLS/rerun、upgrade 0001〜0033 rollback/preservation PASS。synthetic preflightはterminal failed案内/WARMUP、active run、readonly SKU/receipt、old summary 0、capture/listing disabled、未登録表示、category mismatch修正後TOP-01 201を確認。
 - console 0/warn 0、18 requestsは127.0.0.1のみ、390/768/1440 overflow 0。PNGは`output/playwright/p06r-preflight/final-a976-active-{390x844,768x1024,1440x1000}.png`。
 - 独立Terra GOはa976限定、Critical/High/Medium/Low 0、H-P06R-02 Closed。合成preflightであり、人P06・実iPhone・P08 Sol・Draft PRは未確認。
+
+## 2026-09-03 全127画面と注文・発送実運用の同一ビルド証拠
+
+- `node scripts/verify-approved-ui-routes.mjs http://127.0.0.1:4396`は、モバイル75/75、PC52/52、合計127/127 routeをPASSし、外部runtime参照0件だった。
+- `output/playwright/root-all-fidelity-p14-final-finance-20260903`へ金額欠損修正後の同じproduction buildから127画面を撮影した。`capture-report.json`はviewport 127/127合格、外部resource 0件を記録した。
+- `output/playwright/approved-ui-comparison/p14-final-finance-20260903`は、承認済み画像と現在画面を127/127で対応付け、欠落0件、25比較シートを生成した。M34〜38の`mobile-board-07.png`とPC29〜32の`pc-board-08.png`も原寸目視した。
+- モバイル実運用は架空データの匿名配送注文を登録し、サーバー採番後にM35へ直接進むことを確認した。PC実運用は架空データの住所あり注文を登録し、PC30の商品・場所二重読取、PC31の写真方針と梱包確認、PC32の発送記録まで完走した。
+- ownerの場所写真表示が403になる不具合を実ブラウザで検出して権限を修正した。新しいclean sessionでは、最新承認済み場所写真が非公開のローカルobject URLから241×180で表示され、console error/warning 0だった。証拠は`output/playwright/p14-order-address-live-20260902/pc30-owner-photo-fixed.png`。
+- 金額欠損修正後の実ブラウザでは、匿名配送・任意の取引IDと販売額なしでPC29〜32を再走した。商品・場所の読取は実際の操作間隔を保持し、注文より前の発送時刻を409で停止した後、訂正した時刻だけを記録した。発送後も販売額・手数料・梱包費を0円表示せず、会計summaryとCSV作成は主要事実が揃うまで停止した。証拠は`output/playwright/p14-final-live-finance-20260903/pc32-shipped-anonymous.png`。
+- 画面とAPIはいずれも`127.0.0.1`内で検証し、Mercari、Slack、Notion、Photoroom、AI、広告、分析、外部CDN、有料APIへのruntime通信を追加していない。
+- 承認済みPC29には「販売金額 必須」と「未入力でも続行」が同居している。現実装は後者の承認挙動に合わせて未入力を許可しており、見た目の差ではなく承認文言内の意味上の矛盾として、利用者が文言を再承認するまで勝手に変更しない。
+- 書込みを担当していない別Sol maxは、capture 127件、route-map 127/127、M34〜38とPC29〜32の比較シートを独立確認し、重大な構成・導線欠落0、Critical 0 / High 0でPASSとした。PC29の既知文言矛盾だけをMedium 1として分離した。
+- 実iPhone Safari、ホーム画面追加、実カメラ/Code 128、圏外復帰、物理A4ラベル、固定10商品pilot、実Money Forward取込はこの証拠では確認していない。承認画像の端末外枠や架空値は意図的に製品UIへ固定しない。

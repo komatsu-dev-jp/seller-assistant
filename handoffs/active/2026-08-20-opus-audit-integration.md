@@ -1,8 +1,8 @@
 # Handoff: Opus第二次監査の統合
 
-- Status: goal-v2-cost-optimized-evaluation-loop
+- Status: goal-v2-draft-pr-update
 - Owner: Codex / ユーザー
-- Updated: 2026-08-29 JST
+- Updated: 2026-09-03 JST
 - Branch: `codex/opus-audit-integration`
 - Worktree: `C:\Users\softt\Documents\Codex\2026-08-13\iphone-notion-google-research-ios-pc\_worktrees\opus-audit-integration`
 - Base: `origin/main` / `9c4033f09f60971aca5e4876f1ca21c31cb80738`
@@ -70,12 +70,12 @@ Claude Codeの `claude/opus-spec-audit-proposals` を現main、既存仕様、�
 ## 未解決事項
 
 - 実iPhone Safariでのホーム画面追加、カメラ、圏外復帰。
-- seeded browser指定操作とP05独立最終評価100/100（Critical/High/Medium 0）は確認済み。P08 Solレビューは未完了。
+- seeded browser指定操作、P05独立最終評価100/100、P13-B/P14実運用ブラウザ、全127画面の同一ビルド再比較、最終凍結差分のSol再レビューは確認済み。
 - 実利用者pilot、実iPhone Safariのhome/camera/offline/HEIC-WebP、実Money Forward import。
 - `docs/specs/pilot-protocol-v1.1.md`に従う実利用者の`WARMUP-01`＋固定10商品pilot。
 - `docs/specs/ui-evaluation-rubric-v1.md`のP05独立最終採点は100/100 PASS済み。14 PNGとtarget SHAを同文書へ記録した。
-- 実装・設計審査を担当していない別Sol maxによる凍結差分の最終独立レビュー。
-- 実利用者pilot、実iPhone、実MF import、P08 Solレビューが未完了のためDraft PRは未作成。P1、本番公開、PR mergeも未実行。
+- 最終独立Sol再レビューはPASS（Critical 0 / High 0 / Medium 1 / Low 1）。PC29文言は利用者再承認待ち、0039実DB境界試験の追加は非blocking候補。
+- Draft PR #9はOPEN/Draft。最新差分のcommit・push・本文更新、ready化、PR merge、本番公開は未実行。
 - Goal管理機能には旧契約がpaused表示で残る。製品判断は承認済みの`docs/specs/goal-contract-revised-a-v2.md`を正本とし、旧Objectiveを実装根拠にしない。
 
 ## モデル割当と切替ゲート
@@ -94,14 +94,34 @@ Claude Codeの `claude/opus-spec-audit-proposals` を現main、既存仕様、�
 - P05.5/P06R: target application SHA `a976d614819a662cca3be36c23989aecd9ca968e`限定で独立Terra GO、Critical/High/Medium/Low 0、H-P06R-02 Closed。合成preflightは人P06の代替ではない。
 - 書込み: 共有worktreeのため常に1担当。並列化は読み取り専用レビューだけ。
 - 人手gate: 実10商品pilotは人が実施し、モデルで代行・補完しない。
-- 最終review: 実装・設計審査をしていない別Sol maxが凍結差分をレビューする。
+- 最終review: 実装・設計審査をしていない別Sol maxが凍結差分をレビューし、Critical 0 / High 0でPASSした。
 
 ## 次の一手
 
-1. P05独立UIスコアは100/100 PASS済み。実利用者pilotの準備・実施へ進む。
-2. 上記UI gate合格後、実利用者が`docs/specs/pilot-protocol-v1.1.md`どおり`WARMUP-01`＋固定10商品を操作する。
-3. 証拠を更新し、これまで実装・設計審査を担当していない別Sol maxが凍結差分を独立レビューする。
-4. Critical/High 0、UI 90点以上、pilot合格後だけ、外部書込み権限を再確認してDraft PRを作成する。本番公開とmergeは行わない。
+1. 最終独立レビュー済みの差分を限定commit・pushし、既存Draft PR #9の本文だけを最新証拠へ更新する。ready化、本番公開、mergeは行わない。
+2. PC29の販売金額を「必須」か「任意」か、利用者の再承認後に承認画像・実画面・仕様・テストを同時に揃える。
+3. 人手gateとして、利用者が`docs/specs/pilot-protocol-v1.1.md`どおり`WARMUP-01`＋固定10商品、実iPhone、物理ラベル、実Money Forward取込を確認する。
+4. P12-B/Cは`p12-product-template-proposal-v1.md`の2項目を利用者が判断した後に再開する。
+
+## 2026-09-03 最終レビュー指摘の修正と再検証
+
+- 最初の凍結差分レビューはCritical 0 / High 1 / Medium 1 / Low 1。未入力の販売手数料・梱包費を0円にするHigh、読取時刻を1ms差で合成するMedium、0037/0038の注入失敗rollback不足Lowを修正した。
+- 登録時は原価だけを保存し、販売額・手数料・梱包費を欠損のまま保持する。会計summary、新規CSV、再出力は主要事実が揃うまで停止する。forward migration `0039_registered_order_missing_financial_facts.sql`を追加し、既存0037/0038は変更していない。
+- 読取時刻は入力一致時の実時刻へ変更した。実ブラウザ再走では商品→場所17.962秒、場所→確定21.614秒。注文より前の発送時刻は409で拒否し、訂正後だけ発送済みになった。
+- 最終DBは原価1件・選択送料1件、未知の販売額・手数料・梱包費0件、匿名住所行0件、住所表示許可0件。会計preflightは新規/再出力とも不可、summaryは409で、未知値を0円や利益へ変換していない。
+- 最新full checkは45 files / 401 tests、coverage 84.66 / 80.56 / 100 / 90.68、fixture 44 PNG/hash、format/lint/typecheck、API/Web production buildをPASSした。
+- fresh `resale_p14_final_fresh_20260903f`とupgrade `resale_p14_final_upgrade_20260903e`は0001〜0039、restricted role、65-table RLS、0037/0038/0039の注入失敗rollback・再適用、既存データ保持をPASSした。
+- 修正後buildのroute/capture/compareはモバイル75/75、PC52/52、合計127/127、viewport 127/127、欠落0、外部runtime resource 0、比較25シート。証拠は`output/playwright/root-all-fidelity-p14-final-finance-20260903`と`output/playwright/approved-ui-comparison/p14-final-finance-20260903`。
+- 実運用画面の証拠は`output/playwright/p14-final-live-finance-20260903/pc32-shipped-anonymous.png`。PC29の「販売金額 必須」と「未入力でも続行」の意味上の矛盾は承認文言の問題として残し、利用者の再承認なしに変更しない。
+- 修正後差分は新しい別Sol maxが読み取り専用で再レビューし、Critical 0 / High 0でPASSした。次は限定commit・pushとDraft PR #9本文更新だけを行う。ready化、merge、本番公開は行わない。
+
+## 2026-09-03 最終独立再レビューPASS
+
+- 書込みを担当していない別Sol maxが、全未commit差分、契約、API、repository、0037〜0039、RLS、写真の読取後再認可、会計停止、全127画面、証拠文書を読み取り専用で確認した。
+- 判定はPASS、Critical 0 / High 0 / Medium 1 / Low 1。過去H1/M2/L1はすべてClosed。
+- 独立`npm.cmd run check`も45 files / 401 tests、coverage 84.66 / 80.56 / 100 / 90.68、fixture、format/lint/typecheck、API/Web build、Next 86 routesをPASSした。
+- MediumはPC29承認文言の矛盾で利用者再承認待ち。Lowは0039の細かな不整合を実DBで各々拒否する回帰試験の追加候補で、現行SQLの不具合ではない。
+- Draft PR #9はDraftのまま最新化可。次は限定commit・push・本文更新だけを行い、ready化、merge、本番公開は行わない。
 
 ## memory候補
 
@@ -192,3 +212,14 @@ Claude Codeの `claude/opus-spec-audit-proposals` を現main、既存仕様、�
 - final check: 35 files / 271 tests、format/lint/typecheck、API/Web build、Next 86 routes PASS。別Sol maxはCritical/High/Medium/Low 0、P13-A PASS、P13-B GO。
 - 次は`gpt-5.6-terra` / `high`でP13-Bの実運用Webだけを接続する。静的approved route、DB/権限/金額契約を変更しない。390/768/1440、keyboard、44px、loading/empty/error/retry、外部request 0を確認する。
 - AC-066／TA-047全体はP13-Bと実iPhone確認が残るためpartial。P12-B/Cは利用者2項目確認待ち、P14も未実装。PR #9はDraftのまま、merge・本番公開・外部送信・課金なし。
+
+## 2026-09-03 P13-B/P14実装・同一ビルド検証
+
+- M34〜38とPC29〜32を認証済み`/shipping`へ接続し、注文登録、サーバー採番、商品・場所二重読取、選択式発送前写真、梱包確認、発送記録を実API/DBで動かした。承認済み静的routeも保持している。
+- `0037_order_registration_shipping_method.sql`と`0038_order_address_mode.sql`を追加した。匿名配送は住所行0件、住所あり配送は暗号化行1件、表示許可は本人・注文単位・5分、旧未設定注文は`NULL`互換である。
+- モバイル匿名注文は作成直後にM35へ直接遷移、PC住所あり注文はPC29〜32を発送済みまでローカル実ブラウザで完走した。取引IDと販売額は任意のまま、人の発送準備確認を必須にした。
+- ownerの場所写真が403になる不具合を検出し、owner/inventory managerは有効membership、shipping担当は自分の有効な注文割当を要求する権限へ修正した。clean browserで最新承認済み場所写真を非公開object URLから実表示し、console error/warning 0を確認した。
+- 最新full checkはfixture 44 PNG/hash、format/lint/typecheck、45 files / 396 tests、coverage 84.66 / 80.56 / 100 / 90.68、API/Web buildをPASS。fresh/upgrade PostgreSQLは0001〜0038、restricted role、65-table RLS、注文・住所・写真権限・並行操作・既存データ保持・rollbackをPASSした。
+- 最新同一production buildのroute/capture/compareはモバイル75/75、PC52/52、合計127/127、viewport 127/127、欠落0、外部runtime resource 0、比較25シート。証拠は`output/playwright/root-all-fidelity-p14-final-20260903`と`output/playwright/approved-ui-comparison/p14-final-20260903`。
+- 次: 変更を凍結し、実装・設計を担当していない別Sol maxが最終独立レビューする。Critical/Highがあれば修正と全回帰を繰り返す。合格後だけ限定commit、push、Draft PR #9本文更新を行う。ready化、merge、本番公開はしない。
+- 人手待ち: 実iPhone Safari/home/camera/Code 128/offline、A4 24面ラベル物理確認、固定10商品pilot、実Money Forward取込。P12-B/Cは`docs/implementation/p12-product-template-proposal-v1.md`の2項目を利用者が決めるまで実装しない。

@@ -11,6 +11,7 @@ export default tseslint.config(
       "**/coverage/**",
       "**/playwright-report/**",
       "**/output/**",
+      "**/.playwright-cli/**",
       "**/.chrome*/**",
       "eslint.config.mjs",
       "docs/**",

@@ -927,6 +927,17 @@ export const captureSummarySchema = z.object({
   updatedAt: z.iso.datetime(),
 });
 
+export const salesChannelKeySchema = z
+  .string()
+  .trim()
+  .min(2)
+  .max(64)
+  .regex(/^[a-z0-9][a-z0-9_-]+$/u);
+
+export const salesChannelNameSchema = z.string().trim().min(1).max(80);
+
+export const orderAddressModeSchema = z.enum(["anonymous", "stored"]);
+
 export const createOrderRequestSchema = z
   .object({
     orderNumber: z
@@ -934,22 +945,121 @@ export const createOrderRequestSchema = z
       .trim()
       .min(1)
       .max(80)
-      .regex(/^[A-Z0-9-]+$/u),
+      .regex(/^[A-Z0-9-]+$/u)
+      .optional(),
+    salesChannelKey: salesChannelKeySchema.optional(),
+    salesChannelName: salesChannelNameSchema.optional(),
+    channelTransactionId: z.string().trim().min(1).max(160).nullable().optional(),
+    buyerDisplayName: z.string().trim().min(1).max(160).nullable().optional(),
     skuId: z.string().uuid(),
     inventoryUnitId: z.string().uuid(),
     saleAmountMinor: z.number().int().positive().max(100_000_000).nullable(),
     costAmountMinor: z.number().int().nonnegative().max(100_000_000),
-    sellingFeeMinor: z.number().int().nonnegative().max(100_000_000),
-    shippingCostMinor: z.number().int().nonnegative().max(100_000_000),
-    packagingCostMinor: z.number().int().nonnegative().max(100_000_000),
+    sellingFeeMinor: z.number().int().nonnegative().max(100_000_000).nullable(),
+    shippingCostMinor: z.number().int().nonnegative().max(100_000_000).nullable(),
+    packagingCostMinor: z.number().int().nonnegative().max(100_000_000).nullable(),
     taxBasis: z.enum(["tax_included", "tax_excluded", "unknown"]),
     sourceMeaning: z.string().trim().min(1).max(160),
     occurredAt: z.iso.datetime(),
-    shippingAddress: z.string().trim().min(1).max(1000),
+    addressMode: orderAddressModeSchema.optional(),
+    shippingAddress: z.string().trim().min(1).max(1000).nullable(),
     idempotencyKey: z.string().uuid(),
     humanConfirmed: z.literal(true),
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    const hasChannelKey = value.salesChannelKey !== undefined;
+    const hasChannelName = value.salesChannelName !== undefined;
+    const hasOrderRegistration = hasChannelKey && hasChannelName;
+    if (hasChannelKey !== hasChannelName) {
+      context.addIssue({
+        code: "custom",
+        path: hasChannelKey ? ["salesChannelName"] : ["salesChannelKey"],
+        message: "Sales channel key and name must be provided together",
+      });
+    }
+    if (value.orderNumber === undefined && (!hasChannelKey || !hasChannelName)) {
+      context.addIssue({
+        code: "custom",
+        path: ["salesChannelKey"],
+        message: "Server-numbered orders require a sales channel",
+      });
+    }
+    if (
+      (value.channelTransactionId !== undefined || value.buyerDisplayName !== undefined) &&
+      (!hasChannelKey || !hasChannelName)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["salesChannelKey"],
+        message: "Marketplace order details require a sales channel",
+      });
+    }
+    if (hasOrderRegistration && value.shippingCostMinor !== null) {
+      context.addIssue({
+        code: "custom",
+        path: ["shippingCostMinor"],
+        message: "Registered orders record shipping cost from the human-selected method",
+      });
+    }
+    if (!hasOrderRegistration && value.shippingCostMinor === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["shippingCostMinor"],
+        message: "Legacy orders require a human-entered shipping cost",
+      });
+    }
+    if (hasOrderRegistration && value.sellingFeeMinor !== null) {
+      context.addIssue({
+        code: "custom",
+        path: ["sellingFeeMinor"],
+        message: "Registered orders must leave an unconfirmed selling fee missing",
+      });
+    }
+    if (hasOrderRegistration && value.packagingCostMinor !== null) {
+      context.addIssue({
+        code: "custom",
+        path: ["packagingCostMinor"],
+        message: "Registered orders must leave an unconfirmed packaging cost missing",
+      });
+    }
+    if (!hasOrderRegistration && value.sellingFeeMinor === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["sellingFeeMinor"],
+        message: "Legacy orders require a human-entered selling fee",
+      });
+    }
+    if (!hasOrderRegistration && value.packagingCostMinor === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["packagingCostMinor"],
+        message: "Legacy orders require a human-entered packaging cost",
+      });
+    }
+    if (value.orderNumber === undefined && value.addressMode === undefined) {
+      context.addIssue({
+        code: "custom",
+        path: ["addressMode"],
+        message: "Server-numbered orders require an explicit address mode",
+      });
+    }
+    if (value.addressMode === "anonymous" && value.shippingAddress !== null) {
+      context.addIssue({
+        code: "custom",
+        path: ["shippingAddress"],
+        message: "Anonymous orders must not include an address",
+      });
+    }
+    if (value.addressMode !== "anonymous" && value.shippingAddress === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["shippingAddress"],
+        message: "Stored-address orders require an address",
+      });
+    }
+  })
+  .transform((value) => ({ ...value, addressMode: value.addressMode ?? ("stored" as const) }));
 
 export const createP0ItemRequestSchema = z
   .object({
@@ -1706,18 +1816,218 @@ export const orderAssignmentResponseSchema = z.object({
   revokedAt: z.iso.datetime().nullable(),
 });
 
-export const shippingTaskResponseSchema = z.object({
-  orderId: z.string().uuid(),
-  orderNumber: z.string(),
-  state: z.enum(["confirmed", "picking", "packed"]),
-  inventoryNumber: inventoryNumberSchema,
-  inventoryUnitId: z.string().uuid(),
-  skuId: z.string().uuid(),
-  locationCode: checkedLocationCodeSchema,
-  inventoryLabelVersion: z.number().int().positive(),
-  locationLabelVersion: z.number().int().positive(),
-  assignmentExpiresAt: z.iso.datetime(),
+const assignedLocationPhotoContentUrlPattern =
+  /^\/v1\/workspaces\/[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}\/orders\/([a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})\/pick-location-photo\/content\?inventoryUnitId=([a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})&movementSequence=(?:0|[1-9][0-9]*)$/u;
+
+const assignedLocationPhotoContentUrlSchema = z
+  .string()
+  .max(512)
+  .regex(assignedLocationPhotoContentUrlPattern);
+
+export const assignedLocationPhotoContentQuerySchema = z
+  .object({
+    inventoryUnitId: z.string().uuid(),
+    movementSequence: z
+      .string()
+      .regex(/^(?:0|[1-9][0-9]*)$/u)
+      .transform(Number)
+      .pipe(z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)),
+  })
+  .strict();
+
+export const shippingTaskResponseSchema = z
+  .object({
+    orderId: z.string().uuid(),
+    orderNumber: z.string(),
+    productTitle: z.string(),
+    state: z.enum(["confirmed", "picking", "packed"]),
+    inventoryNumber: inventoryNumberSchema,
+    inventoryUnitId: z.string().uuid(),
+    skuId: z.string().uuid(),
+    locationCode: checkedLocationCodeSchema,
+    locationPhotoUrl: assignedLocationPhotoContentUrlSchema.nullable(),
+    addressMode: orderAddressModeSchema,
+    inventoryLabelVersion: z.number().int().positive(),
+    locationLabelVersion: z.number().int().positive(),
+    assignmentExpiresAt: z.iso.datetime().nullable(),
+  })
+  .strict()
+  .superRefine((task, context) => {
+    if (!task.locationPhotoUrl) return;
+    const match = assignedLocationPhotoContentUrlPattern.exec(task.locationPhotoUrl);
+    if (match?.[1] !== task.orderId || match?.[2] !== task.inventoryUnitId) {
+      context.addIssue({
+        code: "custom",
+        path: ["locationPhotoUrl"],
+        message: "The location photo URL must match the task order and inventory unit",
+      });
+    }
+  });
+
+export const updateOrderRegistrationRequestSchema = z
+  .object({
+    salesChannelKey: salesChannelKeySchema,
+    salesChannelName: salesChannelNameSchema,
+    channelTransactionId: z.string().trim().min(1).max(160).nullable(),
+    buyerDisplayName: z.string().trim().min(1).max(160).nullable(),
+    expectedRevision: z.number().int().positive().max(10_000),
+    idempotencyKey: z.string().uuid(),
+    humanConfirmed: z.literal(true),
+  })
+  .strict();
+
+export const orderRegistrationResponseSchema = z
+  .object({
+    orderId: z.string().uuid(),
+    orderNumber: z.string().trim().min(1).max(80),
+    registrationRevisionId: z.string().uuid(),
+    salesChannelKey: salesChannelKeySchema,
+    salesChannelName: salesChannelNameSchema,
+    channelTransactionId: z.string().trim().min(1).max(160).nullable(),
+    buyerDisplayName: z.string().trim().min(1).max(160).nullable(),
+    revision: z.number().int().positive().max(10_000),
+    supersedesRevisionId: z.string().uuid().nullable(),
+    changedAt: z.iso.datetime(),
+  })
+  .strict();
+
+const shippingMethodFieldsSchema = z
+  .object({
+    salesChannelKey: salesChannelKeySchema,
+    salesChannelName: salesChannelNameSchema,
+    methodName: z.string().trim().min(1).max(120),
+    trackingAvailable: z.boolean(),
+    feeMinor: z.number().int().nonnegative().max(100_000_000),
+    deliveryEstimate: z.string().trim().min(1).max(80).nullable(),
+    officialCheckedOn: z.iso.date(),
+    officialReferenceUrl: z.string().url().startsWith("https://").max(2048).nullable(),
+    officialReferenceNote: z.string().trim().min(1).max(500).nullable(),
+    active: z.boolean(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (value.officialReferenceUrl === null && value.officialReferenceNote === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["officialReferenceUrl"],
+        message: "An official reference URL or note is required",
+      });
+    }
+  });
+
+export const saveShippingMethodRequestSchema = shippingMethodFieldsSchema
+  .safeExtend({
+    methodId: z.string().uuid().nullable(),
+    expectedRevision: z.number().int().positive().max(10_000).nullable(),
+    idempotencyKey: z.string().uuid(),
+    humanConfirmed: z.literal(true),
+  })
+  .superRefine((value, context) => {
+    if ((value.methodId === null) !== (value.expectedRevision === null)) {
+      context.addIssue({
+        code: "custom",
+        path: value.methodId === null ? ["expectedRevision"] : ["methodId"],
+        message: "A catalog update requires both method ID and expected revision",
+      });
+    }
+  });
+
+export const shippingMethodCatalogResponseSchema = shippingMethodFieldsSchema.safeExtend({
+  methodId: z.string().uuid(),
+  catalogRevisionId: z.string().uuid(),
+  revision: z.number().int().positive().max(10_000),
+  supersedesRevisionId: z.string().uuid().nullable(),
+  changedAt: z.iso.datetime(),
 });
+
+export const shippingMethodOptionResponseSchema = z
+  .object({
+    methodId: z.string().uuid(),
+    catalogRevisionId: z.string().uuid(),
+    salesChannelKey: salesChannelKeySchema,
+    salesChannelName: salesChannelNameSchema,
+    methodName: z.string().trim().min(1).max(120),
+    trackingAvailable: z.boolean(),
+    feeMinor: z.number().int().nonnegative().max(100_000_000),
+    deliveryEstimate: z.string().trim().min(1).max(80).nullable(),
+    officialCheckedOn: z.iso.date(),
+  })
+  .strict();
+
+export const selectOrderShippingMethodRequestSchema = z
+  .object({
+    methodId: z.string().uuid(),
+    expectedSelectionRevision: z.number().int().positive().max(10_000).nullable(),
+    idempotencyKey: z.string().uuid(),
+    humanConfirmed: z.literal(true),
+  })
+  .strict();
+
+export const orderShippingMethodSelectionResponseSchema = z
+  .object({
+    selectionId: z.string().uuid(),
+    orderId: z.string().uuid(),
+    revision: z.number().int().positive().max(10_000),
+    supersedesSelectionId: z.string().uuid().nullable(),
+    method: shippingMethodOptionResponseSchema,
+    selectedAt: z.iso.datetime(),
+  })
+  .strict();
+
+export const orderShippingMissingInformationSchema = z.enum([
+  "channel_transaction_id",
+  "sale_amount",
+]);
+export const orderShippingBlockingIssueSchema = z.enum(["order_registration", "shipping_method"]);
+
+export const confirmOrderShippingReadinessRequestSchema = z
+  .object({
+    expectedRegistrationRevision: z.number().int().positive().max(10_000),
+    expectedSelectionRevision: z.number().int().positive().max(10_000),
+    acknowledgedMissingInformation: z.array(orderShippingMissingInformationSchema).max(2),
+    idempotencyKey: z.string().uuid(),
+    humanConfirmed: z.literal(true),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (
+      new Set(value.acknowledgedMissingInformation).size !==
+      value.acknowledgedMissingInformation.length
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["acknowledgedMissingInformation"],
+        message: "Missing-information acknowledgements must be unique",
+      });
+    }
+  });
+
+export const orderShippingReadinessResponseSchema = z
+  .object({
+    orderId: z.string().uuid(),
+    orderNumber: z.string().trim().min(1).max(80),
+    registrationRevision: z.number().int().positive().max(10_000).nullable(),
+    salesChannel: z
+      .object({
+        key: salesChannelKeySchema,
+        name: salesChannelNameSchema,
+      })
+      .strict()
+      .nullable(),
+    channelTransactionIdStatus: z.enum(["present", "missing", "unregistered"]),
+    saleAmountStatus: z.enum(["present", "missing"]),
+    selectedMethod: orderShippingMethodSelectionResponseSchema.nullable(),
+    missingInformation: z.array(orderShippingMissingInformationSchema).max(2),
+    blockingIssues: z.array(orderShippingBlockingIssueSchema).max(2),
+    humanConfirmation: z
+      .object({
+        state: z.enum(["required", "confirmed", "stale"]),
+        confirmationId: z.string().uuid().nullable(),
+        confirmedAt: z.iso.datetime().nullable(),
+      })
+      .strict(),
+  })
+  .strict();
 
 export const shippingPhotoPolicyModeSchema = z.enum(["high_value_only", "all", "disabled"]);
 export const shippingPhotoRoleSchema = z.enum(["product", "packed_package"]);
@@ -1923,10 +2233,27 @@ export const packOrderRequestSchema = z
 export const shipOrderRequestSchema = z
   .object({
     addressLeaseId: z.string().uuid().nullable(),
+    shippingMethodSelectionId: z.string().uuid().optional(),
+    readinessConfirmationId: z.string().uuid().optional(),
+    shippedAt: z.iso.datetime().optional(),
     idempotencyKey: z.string().uuid(),
     humanConfirmed: z.literal(true),
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    const present = [
+      value.shippingMethodSelectionId,
+      value.readinessConfirmationId,
+      value.shippedAt,
+    ].filter((entry) => entry !== undefined).length;
+    if (present !== 0 && present !== 3) {
+      context.addIssue({
+        code: "custom",
+        path: ["shippingMethodSelectionId"],
+        message: "P14 shipment fields must be provided together",
+      });
+    }
+  });
 
 export const returnOrderRequestSchema = z
   .object({
@@ -2180,18 +2507,18 @@ export const accountingExportPreflightResponseSchema = z
   .superRefine((value, context) => {
     const hasCurrentSources = value.currentSourceSetSha256 !== null;
     const hasExactPrior = value.exactPriorDuplicate !== null;
-    if (value.canCreateFresh !== (hasCurrentSources && !hasExactPrior)) {
+    if (value.canCreateFresh && (!hasCurrentSources || hasExactPrior)) {
       context.addIssue({
         code: "custom",
         path: ["canCreateFresh"],
-        message: "Fresh export permission does not match the exact duplicate result",
+        message: "Fresh export permission requires current sources without an exact duplicate",
       });
     }
-    if (value.canSupersede !== (hasCurrentSources && hasExactPrior)) {
+    if (value.canSupersede && (!hasCurrentSources || !hasExactPrior)) {
       context.addIssue({
         code: "custom",
         path: ["canSupersede"],
-        message: "Supersession permission does not match the exact duplicate result",
+        message: "Supersession permission requires an exact current-source duplicate",
       });
     }
     if (
@@ -2333,7 +2660,26 @@ export type RestoreMissingCandidateRequest = z.infer<typeof restoreMissingCandid
 export type ApproveStocktakeRequest = z.infer<typeof approveStocktakeRequestSchema>;
 export type ReissueInventoryLabelRequest = z.infer<typeof reissueInventoryLabelRequestSchema>;
 export type ReissuedInventoryLabelResponse = z.infer<typeof reissuedInventoryLabelResponseSchema>;
+export type AssignedLocationPhotoContentQuery = z.infer<
+  typeof assignedLocationPhotoContentQuerySchema
+>;
 export type ShippingTaskResponse = z.infer<typeof shippingTaskResponseSchema>;
+export type UpdateOrderRegistrationRequest = z.infer<typeof updateOrderRegistrationRequestSchema>;
+export type OrderRegistrationResponse = z.infer<typeof orderRegistrationResponseSchema>;
+export type SaveShippingMethodRequest = z.infer<typeof saveShippingMethodRequestSchema>;
+export type ShippingMethodCatalogResponse = z.infer<typeof shippingMethodCatalogResponseSchema>;
+export type ShippingMethodOptionResponse = z.infer<typeof shippingMethodOptionResponseSchema>;
+export type SelectOrderShippingMethodRequest = z.infer<
+  typeof selectOrderShippingMethodRequestSchema
+>;
+export type OrderShippingMethodSelectionResponse = z.infer<
+  typeof orderShippingMethodSelectionResponseSchema
+>;
+export type OrderShippingMissingInformation = z.infer<typeof orderShippingMissingInformationSchema>;
+export type ConfirmOrderShippingReadinessRequest = z.infer<
+  typeof confirmOrderShippingReadinessRequestSchema
+>;
+export type OrderShippingReadinessResponse = z.infer<typeof orderShippingReadinessResponseSchema>;
 export type ShippingPhotoPolicyMode = z.infer<typeof shippingPhotoPolicyModeSchema>;
 export type ShippingPhotoRole = z.infer<typeof shippingPhotoRoleSchema>;
 export type UpdateShippingPhotoPolicyRequest = z.infer<

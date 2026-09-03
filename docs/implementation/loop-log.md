@@ -391,3 +391,29 @@
 - 最終reviewのMedium 1に対し、2つの独立runtime接続、別PID、実Lock待ち、成功1／23505拒否1、枝分かれ0を確認するattack testを追加した。
 - 公式PostgreSQL 18.6のfreshとupgrade、root check 34 files / 253 tests、coverage 84.66 / 80.56 / 100 / 90.68、86 routes buildをPASS。独立Sol最終判定はCritical/High/Medium/Low 0。
 - P12-AはPASS、P12-B technical gateはGO。ただし6商品種類の具体的な必須／任意項目は未承認のため、`p12-product-template-proposal-v1.md`へ提案として分離し、seed/API/Web実装を停止した。
+
+## Iteration 38 — 2026-09-03 P13-B/P14実運用接続と全127画面の再検証
+
+- 独立設計監査で、承認済み注文画面が実注文を作らないこと、匿名配送でも住所行を作ること、写真取得後の権限再確認が不足することを重大差異として検出した。実装担当をSol max、視覚再監査をLuna max、最終凍結差分レビューを別Sol maxとするcost-optimized割当を維持した。
+- P13-B/P14: M34〜38とPC29〜32を認証済み`/shipping`へ接続した。注文登録はサーバー採番の`POST /orders`、配送方法はローカル定義、任意の取引IDと販売額は欠損のまま保存可能、人の発送準備確認は必須とした。作成直後は不要な更新要求を送らず、次工程へ直接進む。
+- 住所保護: 匿名配送は住所行0件・表示許可0件、住所あり配送だけ暗号化行1件として保存し、本人・注文単位・5分の表示許可を使う。旧注文の未設定値は`NULL`互換とし、shipping担当へ住所の保存先、原価、利益、販売額、税務情報を返さない。
+- 実ブラウザ: モバイルは匿名配送の注文登録から商品取出し画面まで、PCは住所あり配送の注文登録、商品・場所二重読取、選択式写真方針、梱包確認、発送記録まで架空データで完走した。最終DBは発送済み、梱包証拠1件、発送時の人確認1件で、console error/warning 0を確認した。
+- 追加発見: ownerの場所写真APIが注文割当を必須にして403を返した。owner/inventory managerは有効membershipだけ、shipping担当は自分の有効な注文割当を必要とするよう修正した。修正後のclean browserで最新承認済み場所写真を非公開object URLから実表示した。
+- 回帰: 最新同一差分の`npm.cmd run check`はfixture 44 PNG/hash、format、lint、typecheck、45 files / 396 tests、coverage 84.66 / 80.56 / 100 / 90.68、API/Web production buildをPASSした。
+- PostgreSQL: fresh `resale_p14_final_fresh_20260903c`とupgrade `resale_p14_final_upgrade_20260903c`で0001〜0038、restricted role、65-table RLS、注文番号、配送方法、匿名/住所あり配送、場所写真権限、競合、既存データ保持、rollbackをPASSした。
+- UI: route verifierはモバイル75/75、PC52/52、合計127/127。`root-all-fidelity-p14-final-20260903`はviewport 127/127・外部resource 0、`approved-ui-comparison/p14-final-20260903`は127画面・欠落0・25比較シートだった。
+- 未完了: 最終凍結差分の別Sol maxレビュー、実iPhone Safari/home/camera/Code 128/offline、A4 24面ラベル物理確認、実利用者の固定10商品pilot、実Money Forward取込、P12-B/Cの2項目。Draft PR #9はDraftのまま、ready化・merge・本番公開・有料API利用は行わない。
+
+## Iteration 39 — 2026-09-03 金額欠損・実読取時刻・migration rollbackの修正
+
+- 最初の独立SolレビューはCritical 0、High 1、Medium 1、Low 1だった。Highは登録時の未入力手数料・梱包費を0円として保存すること、Mediumは商品・場所読取の時刻を1ms差で合成すること、Lowは0037/0038の注入失敗rollback試験不足だった。
+- 注文登録は原価だけを既知事実として保存し、販売額・販売手数料・梱包費を欠損のまま保持する。隠れた非null値をcontract/repositoryで拒否し、会計summary・新規CSV・再出力は主要事実が揃うまで停止する。既存の複数sale revisionは壊さず、存在判定を使う。
+- 追加のforward migration `0039_registered_order_missing_financial_facts.sql`で、登録注文の発送時に原価は正確に1件、販売額・手数料・梱包費は0〜1件、選択した送料は正確に1件、同一SKU・税設定を要求する。0037/0038は履歴を変更していない。
+- 二重読取は各入力が一致した瞬間をブラウザから送信し、API/DBへその実時刻を保存する。修正後の実走では商品→場所17.962秒、場所→人の確定21.614秒で、1msの合成値ではない。
+- PostgreSQLはfresh `resale_p14_final_fresh_20260903f`とupgrade `resale_p14_final_upgrade_20260903e`で0001〜0039をPASSした。0037/0038/0039へ注入した途中失敗は全変更をrollbackし、その後の再適用と既存データ保持もPASSした。
+- 修正後のfull checkは45 files / 401 tests、coverage 84.66 / 80.56 / 100 / 90.68、fixture 44 PNG/hash、format/lint/typecheck、API/Web build、Next 86 routesをPASSした。
+- 最新production buildはモバイル75/75、PC52/52、合計127/127、viewport 127/127、欠落0、外部runtime resource 0、比較25シートをPASSした。証拠は`root-all-fidelity-p14-final-finance-20260903`と`approved-ui-comparison/p14-final-finance-20260903`。
+- 実ブラウザで匿名注文をPC29〜32まで完走し、注文より前の発送時刻は期待どおり409、訂正後は発送済み、匿名住所行・表示許可・未知金額の0円行は0件、会計preflightは新規/再出力とも不可、summaryは409を確認した。
+- 書込みを担当していない別Sol maxの最終再レビューはPASS（Critical 0 / High 0 / Medium 1 / Low 1）。過去H1/M2/L1はClosed。独立full checkも45 files / 401 tests、全buildをPASSした。
+- MediumはPC29承認文言の意味矛盾で、利用者の再承認まで変更しない。Lowは0039のcost 0/2件、各未知金額2件、SKU/tax不一致を実DBで個別に拒否する回帰試験の補強候補で、現行SQLの不具合ではない。
+- Draft PR #9はDraftのまま最新化可と判定した。ready化・merge・本番公開を行わない。人手gateとP12-B/Cの2判断も未完了のまま分離する。

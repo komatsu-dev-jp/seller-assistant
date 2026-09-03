@@ -141,6 +141,17 @@ const shippingPhotoMigrationPath = fileURLToPath(
   new URL("../migrations/0035_shipping_preflight_photo.sql", import.meta.url),
 );
 const shippingPhotoSql = readFileSync(shippingPhotoMigrationPath, "utf8");
+const orderAddressModeMigrationPath = fileURLToPath(
+  new URL("../migrations/0038_order_address_mode.sql", import.meta.url),
+);
+const orderAddressModeSql = readFileSync(orderAddressModeMigrationPath, "utf8");
+const registeredMissingFinancialFactsMigrationPath = fileURLToPath(
+  new URL("../migrations/0039_registered_order_missing_financial_facts.sql", import.meta.url),
+);
+const registeredMissingFinancialFactsSql = readFileSync(
+  registeredMissingFinancialFactsMigrationPath,
+  "utf8",
+);
 
 describe("P0 PostgreSQL migration contract", () => {
   it("enables and forces workspace RLS for business tables", () => {
@@ -298,6 +309,37 @@ describe("P0 PostgreSQL migration contract", () => {
     expect(orderAccountingSql).not.toContain("shipping_address text");
     expect(orderAccountingSql).toContain("create table address_access_lease");
     expect(orderAccountingSql).toContain("expires_at <= issued_at + interval '5 minutes'");
+  });
+
+  it("makes address storage explicit and minimizes anonymous orders", () => {
+    expect(orderAddressModeSql).toContain("add column address_mode text");
+    expect(orderAddressModeSql).toContain(
+      "alter table sales_order alter column address_mode set default 'stored'",
+    );
+    expect(orderAddressModeSql).not.toMatch(/update\s+sales_order\s+set\s+address_mode/iu);
+    expect(orderAddressModeSql).toContain("coalesce(new.address_mode, 'stored')");
+    expect(orderAddressModeSql).toContain("deferrable initially deferred");
+    expect(orderAddressModeSql).toContain("anonymous orders cannot store a private address");
+    expect(orderAddressModeSql).toContain(
+      "stored-address orders require exactly one private address",
+    );
+    expect(orderAddressModeSql).toContain("address leases require a stored private address");
+    expect(orderAddressModeSql).toContain("new.state in ('picking', 'packed', 'shipped')");
+    expect(orderAddressModeSql).toContain("private_address_minimized_access");
+    expect(orderAddressModeSql).toContain("address_lease_own_access");
+  });
+
+  it("keeps unconfirmed registered-order fees absent through shipment", () => {
+    expect(registeredMissingFinancialFactsSql).toContain(
+      "create or replace function validate_shipment_human_confirmation()",
+    );
+    expect(registeredMissingFinancialFactsSql).toContain("cost_fact_count <> 1");
+    expect(registeredMissingFinancialFactsSql).toContain("sale_fact_count > 1");
+    expect(registeredMissingFinancialFactsSql).toContain("fee_fact_count > 1");
+    expect(registeredMissingFinancialFactsSql).toContain("packaging_fact_count > 1");
+    expect(registeredMissingFinancialFactsSql).toContain("distinct_tax_basis_count <> 1");
+    expect(registeredMissingFinancialFactsSql).toContain("mismatched_sku_count <> 0");
+    expect(registeredMissingFinancialFactsSql).toContain("current_selection.selected_fee_minor");
   });
 
   it("stores idempotent order operations, accounting evidence and return inspection", () => {

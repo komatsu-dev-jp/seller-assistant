@@ -18,6 +18,116 @@
     -apple-system, BlinkMacSystemFont, "SF Pro Display", "Hiragino Sans", "Yu Gothic", sans-serif;
 }
 
+@media (max-width: 620px) {
+  /* Board 07 / screen 37: five summary rows must end above the fixed CTA so
+     the warning remains fully visible. */
+  .contentStack:has(.summaryRows) .summaryRows .dataRow {
+    height: 46px;
+    min-height: 46px;
+    box-sizing: border-box;
+    padding-block: 10px;
+  }
+
+  /* Board 07 / screen 37: keep the fixed labels readable when live product
+     names are longer than the approved example. */
+  .shippingReviewRows .dataRow > span {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  .shippingReviewRows .dataRow > strong {
+    min-width: 0;
+    max-width: 75%;
+    overflow: hidden;
+    overflow-wrap: normal;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+/* Shipping board v4 uses compact, one-line method rows.  They are kept
+   separate from the two-line ChoiceCard used elsewhere in the app. */
+.shippingMethodRow {
+  width: 100%;
+  min-height: 51px;
+  padding: 0 14px;
+  display: grid;
+  grid-template-columns: 25px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+  background: #fff;
+  border: 0;
+  border-bottom: 1px solid #eceff3;
+  font: inherit;
+  text-align: left;
+}
+
+.shippingMethodRow:last-child {
+  border-bottom: 0;
+}
+
+.shippingMethodRowActive {
+  background: var(--green-soft);
+}
+
+.shippingMethodRadio {
+  width: 20px;
+  height: 20px;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  color: var(--green);
+  background: #fff;
+  border: 2px solid #cad3e0;
+  border-radius: 50%;
+}
+
+.shippingMethodRowActive .shippingMethodRadio {
+  border-color: var(--green);
+}
+
+.shippingMethodRowActive .shippingMethodRadio::after {
+  width: 8px;
+  height: 8px;
+  content: "";
+  background: currentColor;
+  border-radius: 50%;
+}
+
+.shippingMethodRow strong,
+.shippingMethodRow b {
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.shippingMethodRow strong {
+  overflow: hidden;
+  font-size: 16px;
+  text-overflow: ellipsis;
+}
+
+.shippingMethodRow b {
+  font-size: 15px;
+}
+
+@media (max-width: 355px) {
+  .shippingMethodRow {
+    min-height: 46px;
+    padding-inline: 11px;
+    grid-template-columns: 23px minmax(0, 1fr) auto;
+    gap: 8px;
+  }
+
+  .shippingMethodRow strong {
+    font-size: 14px;
+  }
+
+  .shippingMethodRow b {
+    font-size: 13px;
+  }
+}
+
 /* Fix 9: keep the approved fix8 type, icon, footer, and CTA sizing, while
    returning the vertical geometry to the compact 390 × 844 composition.
    This is deliberately a component-level correction: the content remains
@@ -1570,6 +1680,29 @@
 .choiceCardActive.choicegreen .choiceRadio {
   border-color: var(--green);
   background: var(--green);
+}
+
+.choiceCardActive .choiceRadioDot {
+  color: var(--blue);
+  background: #fff;
+}
+
+.choiceCardActive.choicegreen .choiceRadioDot {
+  color: var(--green);
+  background: #fff;
+}
+
+.choiceCardActive.choiceamber .choiceRadioDot {
+  color: var(--amber);
+  background: #fff;
+}
+
+.choiceCardActive .choiceRadioDot::after {
+  width: 8px;
+  height: 8px;
+  content: "";
+  background: currentColor;
+  border-radius: 50%;
 }
 .choiceCardActive.choiceamber .choiceRadio {
   border-color: var(--amber);
@@ -5672,6 +5805,17 @@
   color: var(--green);
   border-color: #cdebdc;
   background: var(--green-soft);
+}
+
+.officialCheckIcon {
+  width: 20px;
+  height: 20px;
+  margin-right: 7px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
 }
 
 .settingsCard {

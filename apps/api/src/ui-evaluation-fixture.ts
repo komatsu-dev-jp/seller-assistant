@@ -766,6 +766,7 @@ async function createAndShipOrder(input: {
       taxBasis: input.taxBasis,
       sourceMeaning: "UI評価用の架空手入力取引",
       occurredAt: iso(-60_000),
+      addressMode: "stored",
       shippingAddress,
       idempotencyKey: randomUUID(),
       humanConfirmed: true,

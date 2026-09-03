@@ -179,6 +179,11 @@ export class PostgresAccountingRepository implements AccountingRepository {
           canSupersede: false,
         };
       }
+      const financialFactsComplete = await hasCompleteCoreFinancialFacts(
+        transaction,
+        workspaceId,
+        orderId,
+      );
       const currentSourceSetSha256 = sha256(sources.map((source) => source.id).join("\n"));
       const duplicates = await transaction<ExportBatchRow[]>`
         select * from export_batch
@@ -203,8 +208,8 @@ export class PostgresAccountingRepository implements AccountingRepository {
               >["state"],
             }
           : null,
-        canCreateFresh: duplicate === undefined,
-        canSupersede: duplicate !== undefined,
+        canCreateFresh: financialFactsComplete && duplicate === undefined,
+        canSupersede: financialFactsComplete && duplicate !== undefined,
       };
     });
   }
@@ -444,6 +449,12 @@ export class PostgresAccountingRepository implements AccountingRepository {
         throw new RepositoryError(
           "conflict",
           "Configure and confirm every accounting profile field",
+        );
+      }
+      if (!(await hasCompleteCoreFinancialFacts(transaction, workspaceId, input.orderId))) {
+        throw new RepositoryError(
+          "conflict",
+          "Every required financial fact must be explicitly recorded before accounting export",
         );
       }
       const eventRows = await selectMappedEvents(transaction, workspaceId, input.orderId);
@@ -872,6 +883,25 @@ function toMappingRule(row: MappingRuleRow): AccountMappingRuleResponse {
     changeReasonCode: row.change_reason_code,
     confirmationStatus: row.approved_by && row.approved_at ? "human_confirmed" : "candidate",
   };
+}
+
+async function hasCompleteCoreFinancialFacts(
+  sql: postgres.TransactionSql,
+  workspaceId: string,
+  orderId: string,
+): Promise<boolean> {
+  const counts = await sql<Array<{ event_type: string; fact_count: number }>>`
+    select event_type, count(*)::integer as fact_count
+    from financial_event
+    where workspace_id = ${workspaceId} and order_id = ${orderId}
+      and event_type in ('sale', 'cost', 'fee', 'shipping', 'packaging')
+      and reverses_event_id is null
+    group by event_type
+  `;
+  const countByType = new Map(counts.map((row) => [row.event_type, row.fact_count]));
+  return ["sale", "cost", "fee", "shipping", "packaging"].every(
+    (eventType) => (countByType.get(eventType) ?? 0) >= 1,
+  );
 }
 
 async function selectMappedEvents(
