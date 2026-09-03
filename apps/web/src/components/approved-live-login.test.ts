@@ -5,6 +5,18 @@ import { describe, expect, it } from "vitest";
 const root = resolve(process.cwd(), "apps/web/src/components");
 const source = readFileSync(resolve(root, "approved-live-login.tsx"), "utf8");
 const styles = readFileSync(resolve(root, "approved-live-login.module.css"), "utf8");
+const approvedMobileSource = readFileSync(
+  resolve(root, "approved-mobile/approved-mobile-demo.tsx"),
+  "utf8",
+);
+const shippingMobileSource = readFileSync(
+  resolve(root, "shipping-approved-live-layout-v3.tsx"),
+  "utf8",
+);
+const mobileStyles = readFileSync(
+  resolve(root, "approved-mobile/approved-mobile-demo.module.css"),
+  "utf8",
+);
 
 describe("ApprovedLiveLogin", () => {
   it("keeps the approved Japanese copy and both responsive shells", () => {
@@ -48,6 +60,29 @@ describe("ApprovedLiveLogin", () => {
     expect(source).toContain("/approved-assets/pc-fidelity/login/logo-blue-garment.png");
     expect(source).not.toMatch(/src=["']https?:\/\//u);
     expect(styles).not.toMatch(/url\s*\(/u);
+  });
+
+  it("does not render a duplicate iOS status bar in any mobile source", () => {
+    for (const mobileSource of [source, approvedMobileSource, shippingMobileSource]) {
+      expect(mobileSource).not.toContain("IOSStatusBar");
+      expect(mobileSource).not.toContain("9:41");
+      expect(mobileSource).not.toContain("dynamicIsland");
+      expect(mobileSource).not.toContain("statusBar");
+    }
+    expect(mobileStyles).toContain("env(safe-area-inset-top)");
+    expect(mobileStyles).toMatch(
+      /@media\s*\(max-width:\s*620px\)\s*\{(?:(?!@media\s*\(max-width:\s*620px\)).)*?\.header\s*\{(?=[^}]*min-height:\s*56px;)(?=[^}]*padding-top:\s*max\(8px,\s*env\(safe-area-inset-top\)\);)(?=[^}]*flex:\s*none;)[^}]*\}/su,
+    );
+    expect(mobileStyles).toMatch(
+      /@media\s*\(max-width:\s*620px\)\s*\{(?:(?!@media\s*\(max-width:\s*620px\)).)*?\.scrollArea\s*\{(?=[^}]*flex:\s*1 1 auto;)(?=[^}]*height:\s*auto;)(?=[^}]*min-height:\s*0;)[^}]*\}/su,
+    );
+    expect(mobileStyles).not.toContain("calc(100dvh - 29px)");
+    expect(mobileStyles).toMatch(
+      /\.phoneShell:has\(\.loginContent\) \.scrollArea\s*\{[^}]*env\(safe-area-inset-top\)[^}]*env\(safe-area-inset-bottom\)/su,
+    );
+    expect(mobileStyles).not.toMatch(
+      /\.(?:statusBar|dynamicIsland|statusBarRight|signalIcon|wifiIcon|batteryIcon)\b/u,
+    );
   });
 
   it("keeps the mobile interaction and overflow/focus guards", () => {

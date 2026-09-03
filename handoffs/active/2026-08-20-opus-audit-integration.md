@@ -1,6 +1,6 @@
 # Handoff: Opus第二次監査の統合
 
-- Status: goal-v2-p14r-verified-draft-pr-update
+- Status: goal-v2-p15-mobile-header-verified-draft-pr-update
 - Owner: Codex / ユーザー
 - Updated: 2026-09-03 JST
 - Branch: `codex/opus-audit-integration`
@@ -234,3 +234,12 @@ Claude Codeの `claude/opus-spec-audit-proposals` を現main、既存仕様、�
 - 最新同一production buildのroute/capture/compareはモバイル75/75、PC52/52、合計127/127、viewport 127/127、欠落0、外部runtime resource 0、比較25シート。証拠は`output/playwright/root-all-fidelity-p14-final-20260903`と`output/playwright/approved-ui-comparison/p14-final-20260903`。
 - 次: 変更を凍結し、実装・設計を担当していない別Sol maxが最終独立レビューする。Critical/Highがあれば修正と全回帰を繰り返す。合格後だけ限定commit、push、Draft PR #9本文更新を行う。ready化、merge、本番公開はしない。
 - 人手待ち: 実iPhone Safari/home/camera/Code 128/offline、A4 24面ラベル物理確認、固定10商品pilot、実Money Forward取込。P12-B/Cは`docs/implementation/p12-product-template-proposal-v1.md`の2項目を利用者が決めるまで実装しない。
+
+## 2026-09-03 P15 モバイル上部余白の先行修正
+
+- 利用者の実機画像で、Web内の`9:41`、Dynamic Island、電波、Wi-Fi、電池`77`が実iPhoneのOS表示と重複していたため、全モバイル共通の高優先改善として先行した。
+- Luna maxの唯一writerが、静的75画面、live login、live shippingの擬似表示だけを削除した。通常headerは56px、本文は可変残り高さ、ログインは上下safe-area対応。PC、業務本文、API、DB、権限は変更0件。
+- 390×844の画面04は本文開始`y=93`から`y=56`となり37pxを回収した。全75 routeの横overflow、縦overflow、clipped interactive、external resourceは各0件。
+- 対象17 tests、root full check 45 files / 403 tests、review production build 134 pages / 139 files / 766 precache filesをPASSした。
+- 別Solは初回Critical 0 / High 0 / Medium 0 / Low 1。広すぎたCSS回帰testを`.header`と`.scrollArea`の宣言ブロックへ限定し、再確認はCritical / High / Medium / Low各0、Low Closed、最終PASS。修正後root full checkも45 files / 403 testsで再PASSした。
+- 残りは限定commit/push、既存Draft PR #9とGitHub Pages確認版の更新。実iPhoneのsafe-areaとホーム画面表示は利用者確認待ち。PR ready化・merge、実API/DB公開は行わない。

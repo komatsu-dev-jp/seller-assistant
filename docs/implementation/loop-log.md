@@ -428,3 +428,12 @@
 - rootの`npm.cmd run check`はfixture 44 PNG/hash、format/lint/typecheck、45 files / 401 tests、coverage 84.66 / 80.56 / 100 / 90.68、API/Web build、Next 86 routesをPASSした。
 - 独立reviewerは、7形状、0039固有message/23514、two-salesの一時snapshot/readiness、rollback残骸0、正常発送とlegacy/P13互換を確認し、Critical 0 / High 0 / Medium 0 / Low 0でPASS、以前のLowをClosedと判定した。
 - 残る全体項目はPC29文言、P12-B/C、実iPhone、物理ラベル、固定10商品pilot、実Money Forward取込、GitHub Actions方針である。Draft PRはDraftのままとし、ready化・merge・本番公開を行わない。
+
+## Iteration 41 — 2026-09-03 モバイル擬似ステータス表示の削除と上部余白改善
+
+- 利用者の実機画像から、Web画面内の固定`9:41`、Dynamic Island、電波、Wi-Fi、電池`77`がiPhone本体の表示と重複し、本文を圧迫していることを確認した。内容確認より先に直すべき共通UI不具合としてP15を先行した。
+- cost-optimized割当として、低リスクの共通モバイルUI・CSS・testだけをLuna maxの唯一writerへ限定した。静的75画面、live login、live shippingから擬似表示を削除し、通常ヘッダーを56px、本文を可変残り高さ、ログインを上下safe-area対応にした。PC、業務文言、API、DB、権限、外部接続は変更していない。
+- 修正前の390×844では擬似表示29px＋アプリheader64pxで本文開始が`y=93`だった。修正後はheader `y=0 / h=56`、本文`y=56 / h=788`となり、37pxを操作領域へ戻した。ログインは本文`y=0 / h=844`、上下padding 8pxである。
+- 全75モバイルrouteを再撮影し、75/75 viewport、横overflow 0、縦overflow 0、clipped interactive 0、external resource 0を確認した。対象17 testsとroot full check 45 files / 403 tests、format、lint、typecheck、API/Web build、review 134 pages / 139 files / 766 precache filesをPASSした。
+- 別Solの初回判定はCritical 0 / High 0 / Medium 0 / Low 1。LowはCSS testが無関係な同じ値でも通り得る点だった。Luna maxが`.header`と`.scrollArea`の各宣言ブロックへ検査を限定し、別Solの再確認はCritical / High / Medium / Low各0、Low Closed、最終PASS。修正後のroot full checkも45 files / 403 testsで再PASSした。
+- 実iPhone Safariの実safe-areaとホーム画面表示は利用者確認まで未確認として残す。GitHub Pagesは画面確認用の架空データ静的版だけを更新し、実API/DBは公開しない。Draft PR #9はDraftのまま、ready化・mergeを行わない。

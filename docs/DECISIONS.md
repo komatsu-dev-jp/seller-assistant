@@ -484,3 +484,14 @@ APIキー、トークン、個人情報、生ログ、会話全文、一時的�
 - Verification: fresh `resale_p14r_fresh_20260903a`の`test:postgres`、upgrade `resale_p14r_upgrade_20260903a`の`test:postgres-upgrade`、45 files / 401 testsと全buildを含む`npm.cmd run check`をPASSした。別Sol maxはCritical 0 / High 0 / Medium 0 / Low 0、以前の0039試験不足LowをClosed、Draft PR更新可と判定した。
 - Applies to: `apps/api/src/postgres-integration.ts`、migration `0039`の回帰証拠、P14-R1、acceptance map、loop log、Draft PR #9。
 - Follow-up: Draft PRはDraftのまま維持し、PC29文言、P12-B/C、人手・実機・物理・外部取込gateを未確認として残す。ready化、merge、本番公開を行わない。
+
+### 2026-09-03 — モバイル内の擬似端末ステータス表示を削除し、実端末の安全領域へ委ねる
+
+- Type: mobile UI correction
+- Context: 実iPhoneで確認した利用者画像では、iOS本体が表示する時刻・電波・電池の下に、Webアプリが固定した`9:41`、Dynamic Island、電波、Wi-Fi、電池`77`が重複し、アプリheaderと本文を圧迫していた。
+- Decision or rule: 静的75画面、live login、live shippingから擬似端末表示を削除する。通常のアプリheaderは56px、本文は残り高さを使う。ノッチ等は固定画像で再現せず、CSSの`env(safe-area-inset-top/bottom)`で実端末の安全領域へ対応する。OS/PWA自体を設定するmetadataは擬似表示ではないため維持する。
+- Safety boundary: PC表示、承認済み本文、業務状態、API、DB、権限、金額、外部接続は変更しない。GitHub Pagesは架空データだけの画面確認版とし、実運用API/DBを公開しない。
+- Verification: 対象2 files / 17 tests、root full check 45 files / 403 tests、review production build 134 pagesをPASS。390×844の本文開始位置は`y=93`から`y=56`になり37pxを回収した。全75 mobile routeは横overflow、縦overflow、clipped interactive、external resourceが各0件だった。
+- Independent review: 初回Low 1だったCSS testの範囲を`.header`と`.scrollArea`の宣言ブロックへ限定した。別Solの再確認はCritical / High / Medium / Low各0、最終PASS。
+- Human gate: 実iPhone Safariの実safe-area、ホーム画面追加後の表示は利用者確認まで未確認とする。自動検証で合格へ繰り上げない。
+- Applies to: `approved-mobile-demo`、live login、live shipping、公開レビューPWAの全モバイル画面。

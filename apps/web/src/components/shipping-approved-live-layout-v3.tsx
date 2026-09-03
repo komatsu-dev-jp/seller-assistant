@@ -251,7 +251,6 @@ function LiveMobileShipping(props: ShippingApprovedLiveLayoutProps) {
   return (
     <main className={cn(mobileStyles.page, liveStyles.mobile)} aria-label={`モバイル ${title}`}>
       <div className={mobileStyles.phoneShell}>
-        <IOSStatusBar />
         <LiveMobileHeader title={title} onBack={props.onSecondary} />
         <div
           className={mobileStyles.scrollArea}
@@ -291,20 +290,6 @@ function mobileScreenId(stage: ShippingApprovedStage): "34" | "35" | "36" | "37"
   if (stage === "method") return "36";
   if (stage === "review") return "37";
   return "38";
-}
-
-function IOSStatusBar() {
-  return (
-    <div className={mobileStyles.statusBar} aria-hidden="true">
-      <strong>9:41</strong>
-      <span className={mobileStyles.dynamicIsland} />
-      <span className={mobileStyles.statusBarRight}>
-        <i className={mobileStyles.signalIcon} />
-        <i className={mobileStyles.wifiIcon}>⌁</i>
-        <i className={mobileStyles.batteryIcon}>77</i>
-      </span>
-    </div>
-  );
 }
 
 function LiveMobileHeader({ title, onBack }: { title: string; onBack?: (() => void) | undefined }) {

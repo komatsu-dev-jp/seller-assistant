@@ -13,6 +13,14 @@ const approvedMobileSource = readFileSync(
   resolve(componentRoot, "approved-mobile/approved-mobile-demo.tsx"),
   "utf8",
 );
+const approvedLiveLoginSource = readFileSync(
+  resolve(componentRoot, "approved-live-login.tsx"),
+  "utf8",
+);
+const approvedMobileStyles = readFileSync(
+  resolve(componentRoot, "approved-mobile/approved-mobile-demo.module.css"),
+  "utf8",
+);
 const pcPackSource = source.slice(
   source.indexOf("function PcPack"),
   source.indexOf("function PcShippingSafetyDialog"),
@@ -33,11 +41,34 @@ describe("ShippingApprovedLiveLayout v3", () => {
     expect(source).toContain("approved-pc/approved-pc-middle-screens.module.css");
     expect(source).toContain("<PcCanvas");
     expect(source).toContain("mobileStyles.phoneShell");
-    expect(source).toContain("mobileStyles.statusBar");
+    expect(source).not.toContain("mobileStyles.statusBar");
     expect(source).toContain("mobileStyles.footer");
     expect(source).toContain("pcStyles.utilityHeader");
     expect(source).toContain("pcStyles.utilityPageHeading");
     expect(source).toContain('data-approved-live-shipping="v3"');
+  });
+
+  it("does not render a duplicate iOS status bar in any mobile source", () => {
+    for (const mobileSource of [approvedMobileSource, approvedLiveLoginSource, source]) {
+      expect(mobileSource).not.toContain("IOSStatusBar");
+      expect(mobileSource).not.toContain("9:41");
+      expect(mobileSource).not.toContain("dynamicIsland");
+      expect(mobileSource).not.toContain("statusBar");
+    }
+    expect(approvedMobileStyles).toContain("env(safe-area-inset-top)");
+    expect(approvedMobileStyles).toMatch(
+      /@media\s*\(max-width:\s*620px\)\s*\{(?:(?!@media\s*\(max-width:\s*620px\)).)*?\.header\s*\{(?=[^}]*min-height:\s*56px;)(?=[^}]*padding-top:\s*max\(8px,\s*env\(safe-area-inset-top\)\);)(?=[^}]*flex:\s*none;)[^}]*\}/su,
+    );
+    expect(approvedMobileStyles).toMatch(
+      /@media\s*\(max-width:\s*620px\)\s*\{(?:(?!@media\s*\(max-width:\s*620px\)).)*?\.scrollArea\s*\{(?=[^}]*flex:\s*1 1 auto;)(?=[^}]*height:\s*auto;)(?=[^}]*min-height:\s*0;)[^}]*\}/su,
+    );
+    expect(approvedMobileStyles).not.toContain("calc(100dvh - 29px)");
+    expect(approvedMobileStyles).toMatch(
+      /\.phoneShell:has\(\.loginContent\) \.scrollArea\s*\{[^}]*env\(safe-area-inset-top\)[^}]*env\(safe-area-inset-bottom\)/su,
+    );
+    expect(approvedMobileStyles).not.toMatch(
+      /\.(?:statusBar|dynamicIsland|statusBarRight|signalIcon|wifiIcon|batteryIcon)\b/u,
+    );
   });
 
   it("keeps approved Mobile 34-38 and PC 29-32 content in the correct sequence", () => {

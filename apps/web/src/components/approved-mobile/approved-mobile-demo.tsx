@@ -528,20 +528,6 @@ function Footer({ screen }: { screen: MobileScreen }) {
   );
 }
 
-function IOSStatusBar() {
-  return (
-    <div className={styles.statusBar} aria-hidden="true">
-      <strong>9:41</strong>
-      <span className={styles.dynamicIsland} />
-      <span className={styles.statusBarRight}>
-        <i className={styles.signalIcon} />
-        <i className={styles.wifiIcon}>⌁</i>
-        <i className={styles.batteryIcon}>77</i>
-      </span>
-    </div>
-  );
-}
-
 function Header({ screen, isFirst }: { screen: MobileScreen; isFirst: boolean }) {
   const isHome = screen.id === "04";
   const hideBack = ["02", "03", "04", "05", "06", "sales-01"].includes(screen.id);
@@ -3357,7 +3343,6 @@ export function ApprovedMobileDemo({ screenId }: { screenId: string }) {
   return (
     <main className={styles.page}>
       <div className={styles.phoneShell}>
-        <IOSStatusBar />
         {screen.id === "01" ? null : <Header screen={screen} isFirst={isFirst} />}
         <div className={styles.scrollArea}>
           <RenderScreenContent id={screen.id} />

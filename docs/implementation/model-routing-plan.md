@@ -284,3 +284,21 @@
 - 停止・昇格条件: 現行migrationの実不具合、既存互換の破壊、試験外ファイル変更の必要、期待外SQLSTATE、原因不明の失敗を検出したら変更を広げずルートSolへ戻す。
 - 実行結果: Sol max writerは許可された実DB試験ファイルだけを変更した。rootはfresh `resale_p14r_fresh_20260903a`、upgrade `resale_p14r_upgrade_20260903a`、full checkをPASSし、production SQL/API/WebとUIの変更0件を確認した。
 - 独立判定: 別Sol max reviewerはCritical 0 / High 0 / Medium 0 / Low 0でPASSし、以前の0039試験不足LowをClosed、限定commitとDraft PR更新を可とした。`MODEL_SWITCH_REQUIRED`は発生しなかった。
+
+## 2026-09-03 P15 モバイル上部の端末表示削除と余白改善
+
+- 目的と参照: 実iPhoneではOS側に時刻・電波・電池が表示されるため、Web画面内で重複している固定表示（`9:41`、Dynamic Island、電波、Wi-Fi、電池`77`）を削除し、利用者が確認・操作できる縦方向の領域を増やす。参照は2026-09-03の利用者指示と添付画像。
+- リスク: 低。保存、API、DB、権限、金額、状態遷移を変えないモバイル表示とCSSだけの修正。
+- 実装担当: `gpt-5.6-luna` / `max` / `p15_mobile_header_luna`。共有worktreeのsource書き込み担当はこの担当だけにする。
+- 確認担当: 実装担当とは別のSolによる読み取り専用差分確認と、ルート担当による実ブラウザ比較。
+- 実装運転モード: `cost-optimized`。
+- モデル切替ゲート: 開始前PASS。最低必要能力はLuna maxで、利用可能な担当と一致する。DB、認証、権限、PC画面、承認済み本文、原因不明の表示崩れへ波及した場合は変更を広げずSolへ戻す。
+- 変更可能: `approved-mobile-demo`のTSX/CSS、同じモバイル枠を使うlive loginとlive shippingのTSX、対応するsource contract test、検証後の本計画・Loop・decision・handoff。
+- 変更禁止: API、DB、contracts、PC専用画面、本文・カード密度、外部接続、有料サービス、実データ、PR ready化・merge。
+- 受け入れ条件: 75画面の公開モバイル確認版、live login、live shippingから擬似端末表示が消える。390×844で上部29pxの固定領域を残さず、アプリヘッダーは通常時56px、本文は残り高さを使い、横あふれ0とする。実iPhoneのノッチには`env(safe-area-inset-top)`で重ならない。PC表示は変更しない。
+- 検証: 対象Vitest、root `npm.cmd run check`、review production build、390×844の修正前後計測・画像比較、代表モバイル画面、ログイン、live shipping、公開GitHub PagesのHTTP/commit確認。
+- 実行結果: Luna max担当が許可されたモバイルUI・CSS・対応testだけを変更した。擬似端末表示を静的75画面、live login、live shippingから削除し、通常ヘッダーを56px、本文を可変残り高さ、ログインを上下safe-area対応にした。PC、API、DB、contracts、業務文言の変更は0件。
+- 自動検証: 対象2 test files / 17 tests、root `npm.cmd run check`の45 files / 403 tests、format、lint、typecheck、API/Web production buildをPASS。review production buildは134 pages、139 exported files、766 precache filesを生成した。
+- 画面検証: 390×844の画面04は擬似status barなし、header `y=0 / h=56`、本文`y=56 / h=788`で、修正前より37pxを本文へ戻した。画面01は擬似表示なし、本文`y=0 / h=844`、上下padding 8px。全75 routeは横overflow、縦overflow、clipped interactive、external resourceが各0件。
+- 独立判定: 別Solは初回PASS（Critical 0 / High 0 / Medium 0 / Low 1）。広すぎるCSS回帰testだけをLuna maxが対象2 test files内で限定修正し、別Solの再確認でLowをClosed、Critical / High / Medium / Low各0、最終PASSとした。
+- 状態: source・自動検証・ローカル画面検証・独立レビューを完了。限定commit、既存Draft PR、GitHub Pages確認版の更新へ進める。実iPhone Safariのsafe-areaとホーム画面表示は利用者確認まで未確認として残す。

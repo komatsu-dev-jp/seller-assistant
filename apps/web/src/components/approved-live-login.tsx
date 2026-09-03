@@ -71,20 +71,6 @@ function LoginHeroArt() {
   );
 }
 
-function IOSStatusBar() {
-  return (
-    <div className={mobileStyles.statusBar} aria-hidden="true">
-      <strong>9:41</strong>
-      <span className={mobileStyles.dynamicIsland} />
-      <span className={mobileStyles.statusBarRight}>
-        <i className={mobileStyles.signalIcon} />
-        <i className={mobileStyles.wifiIcon}>⌁</i>
-        <i className={mobileStyles.batteryIcon}>77</i>
-      </span>
-    </div>
-  );
-}
-
 function MailIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -179,7 +165,6 @@ function MobileLogin(props: ApprovedLiveLoginProps) {
     <div className={liveStyles.mobile} aria-label="モバイル 01 ログイン">
       <main className={mobileStyles.page}>
         <div className={mobileStyles.phoneShell}>
-          <IOSStatusBar />
           <div className={mobileStyles.scrollArea}>
             <form
               action="/v1/session/login"
