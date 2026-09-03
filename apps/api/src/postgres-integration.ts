@@ -5798,6 +5798,522 @@ try {
       `;
     });
     assert.equal(shippingFactsAfterMismatchRollback[0]?.event_count, 0);
+
+    const registeredFinancialBoundaryCases = [
+      {
+        kind: "zero_cost",
+        name: "Registered shipment financial boundary: zero active cost facts",
+        fixtureEventIds: [randomUUID(), randomUUID()],
+        temporarySkuId: randomUUID(),
+        expectedInvalidShape: {
+          sale_count: 1,
+          cost_count: 0,
+          fee_count: 0,
+          packaging_count: 0,
+          tax_basis_count: 1,
+          mismatched_sku_count: 0,
+        },
+      },
+      {
+        kind: "two_costs",
+        name: "Registered shipment financial boundary: two active cost facts",
+        fixtureEventIds: [randomUUID(), randomUUID()],
+        temporarySkuId: randomUUID(),
+        expectedInvalidShape: {
+          sale_count: 1,
+          cost_count: 2,
+          fee_count: 0,
+          packaging_count: 0,
+          tax_basis_count: 1,
+          mismatched_sku_count: 0,
+        },
+      },
+      {
+        kind: "two_sales",
+        name: "Registered shipment financial boundary: two active sale facts",
+        fixtureEventIds: [randomUUID(), randomUUID()],
+        temporarySkuId: randomUUID(),
+        expectedInvalidShape: {
+          sale_count: 2,
+          cost_count: 1,
+          fee_count: 0,
+          packaging_count: 0,
+          tax_basis_count: 1,
+          mismatched_sku_count: 0,
+        },
+      },
+      {
+        kind: "two_fees",
+        name: "Registered shipment financial boundary: two active fee facts",
+        fixtureEventIds: [randomUUID(), randomUUID()],
+        temporarySkuId: randomUUID(),
+        expectedInvalidShape: {
+          sale_count: 1,
+          cost_count: 1,
+          fee_count: 2,
+          packaging_count: 0,
+          tax_basis_count: 1,
+          mismatched_sku_count: 0,
+        },
+      },
+      {
+        kind: "two_packaging",
+        name: "Registered shipment financial boundary: two active packaging facts",
+        fixtureEventIds: [randomUUID(), randomUUID()],
+        temporarySkuId: randomUUID(),
+        expectedInvalidShape: {
+          sale_count: 1,
+          cost_count: 1,
+          fee_count: 0,
+          packaging_count: 2,
+          tax_basis_count: 1,
+          mismatched_sku_count: 0,
+        },
+      },
+      {
+        kind: "one_mismatched_sku",
+        name: "Registered shipment financial boundary: one fact uses a different SKU",
+        fixtureEventIds: [randomUUID(), randomUUID()],
+        temporarySkuId: randomUUID(),
+        expectedInvalidShape: {
+          sale_count: 1,
+          cost_count: 1,
+          fee_count: 0,
+          packaging_count: 0,
+          tax_basis_count: 1,
+          mismatched_sku_count: 1,
+        },
+      },
+      {
+        kind: "one_mismatched_tax_basis",
+        name: "Registered shipment financial boundary: one fact uses a different tax basis",
+        fixtureEventIds: [randomUUID(), randomUUID()],
+        temporarySkuId: randomUUID(),
+        expectedInvalidShape: {
+          sale_count: 1,
+          cost_count: 1,
+          fee_count: 0,
+          packaging_count: 0,
+          tax_basis_count: 2,
+          mismatched_sku_count: 0,
+        },
+      },
+    ] as const;
+    const registeredFinancialBoundaryWriter = postgres(adminUrl, { max: 1 });
+    const registeredFinancialBoundaryObserver = postgres(adminUrl, { max: 1 });
+    try {
+      for (const boundaryCase of registeredFinancialBoundaryCases) {
+        const boundaryShippedAt = new Date().toISOString();
+        const boundaryHumanConfirmed = true;
+        await assert.rejects(
+          () =>
+            registeredFinancialBoundaryWriter.begin(async (transaction) => {
+              await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+              await transaction`select set_config('app.identity_id', ${shippingId}, true)`;
+
+              // These fixture-only mutations must never outlive this transaction. The admin
+              // connection bypasses RLS, while replica mode suspends guards only during setup.
+              await transaction`set local session_replication_role = replica`;
+              switch (boundaryCase.kind) {
+                case "zero_cost":
+                  await transaction`
+                    delete from financial_event
+                    where workspace_id = ${owner.workspaceId} and order_id = ${orderId}
+                      and event_type = 'cost' and reverses_event_id is null
+                  `;
+                  break;
+                case "two_costs":
+                  await transaction`
+                    insert into financial_event (
+                      id, workspace_id, sku_id, order_id, event_type, amount_minor, currency,
+                      tax_basis, bearer, source, source_meaning, rounding_rule_version,
+                      source_already_net, occurred_at
+                    ) values (
+                      ${boundaryCase.fixtureEventIds[0]}, ${owner.workspaceId},
+                      ${acquiredItem.skuId}, ${orderId}, 'cost', 1, 'JPY', 'tax_included',
+                      'seller', 'manual', 'P14 0039 two-cost boundary fixture', 'jpy-v1',
+                      false, statement_timestamp()
+                    )
+                  `;
+                  break;
+                case "two_sales":
+                  await transaction`
+                    insert into financial_event (
+                      id, workspace_id, sku_id, order_id, event_type, amount_minor, currency,
+                      tax_basis, bearer, source, source_meaning, rounding_rule_version,
+                      source_already_net, occurred_at
+                    ) values (
+                      ${boundaryCase.fixtureEventIds[0]}, ${owner.workspaceId},
+                      ${acquiredItem.skuId}, ${orderId}, 'sale', 1, 'JPY', 'tax_included',
+                      'seller', 'manual', 'P14 0039 two-sale boundary fixture', 'jpy-v1',
+                      false, statement_timestamp()
+                    )
+                  `;
+                  // A second sale normally makes the P13 photo snapshot and P14 readiness stale.
+                  // Refresh both temporary copies so this case reaches the 0039 count guard itself.
+                  await transaction`
+                    with current_basis as (
+                      select * from collect_shipping_sale_basis(${owner.workspaceId}, ${orderId})
+                    )
+                    update shipping_sale_basis_snapshot snapshot
+                    set active_sale_event_ids = current_basis.active_sale_event_ids,
+                        active_sale_total_minor = current_basis.active_sale_total::bigint,
+                        source_set_sha256 = current_basis.source_set_sha256
+                    from current_basis
+                    where snapshot.workspace_id = ${owner.workspaceId}
+                      and snapshot.order_id = ${orderId}
+                      and snapshot.id = (
+                        select decision.sale_basis_id
+                        from order_shipping_photo_decision decision
+                        where decision.workspace_id = ${owner.workspaceId}
+                          and decision.order_id = ${orderId}
+                          and not exists (
+                            select 1 from order_shipping_photo_decision successor
+                            where successor.workspace_id = decision.workspace_id
+                              and successor.order_id = decision.order_id
+                              and successor.supersedes_id = decision.id
+                          )
+                        order by decision.revision desc
+                        limit 1
+                      )
+                  `;
+                  await transaction`
+                    with current_basis as (
+                      select * from collect_shipping_sale_basis(${owner.workspaceId}, ${orderId})
+                    )
+                    update order_shipping_readiness_confirmation confirmation
+                    set sale_basis_sha256 = current_basis.source_set_sha256
+                    from current_basis
+                    where confirmation.workspace_id = ${owner.workspaceId}
+                      and confirmation.order_id = ${orderId}
+                      and confirmation.id = ${readinessConfirmation.confirmationId}
+                  `;
+                  break;
+                case "two_fees":
+                  await transaction`
+                    insert into financial_event (
+                      id, workspace_id, sku_id, order_id, event_type, amount_minor, currency,
+                      tax_basis, bearer, source, source_meaning, rounding_rule_version,
+                      source_already_net, occurred_at
+                    ) values
+                      (
+                        ${boundaryCase.fixtureEventIds[0]}, ${owner.workspaceId},
+                        ${acquiredItem.skuId}, ${orderId}, 'fee', 1, 'JPY', 'tax_included',
+                        'seller', 'manual', 'P14 0039 first fee boundary fixture', 'jpy-v1',
+                        false, statement_timestamp()
+                      ),
+                      (
+                        ${boundaryCase.fixtureEventIds[1]}, ${owner.workspaceId},
+                        ${acquiredItem.skuId}, ${orderId}, 'fee', 2, 'JPY', 'tax_included',
+                        'seller', 'manual', 'P14 0039 second fee boundary fixture', 'jpy-v1',
+                        false, statement_timestamp()
+                      )
+                  `;
+                  break;
+                case "two_packaging":
+                  await transaction`
+                    insert into financial_event (
+                      id, workspace_id, sku_id, order_id, event_type, amount_minor, currency,
+                      tax_basis, bearer, source, source_meaning, rounding_rule_version,
+                      source_already_net, occurred_at
+                    ) values
+                      (
+                        ${boundaryCase.fixtureEventIds[0]}, ${owner.workspaceId},
+                        ${acquiredItem.skuId}, ${orderId}, 'packaging', 1, 'JPY', 'tax_included',
+                        'seller', 'manual', 'P14 0039 first packaging boundary fixture', 'jpy-v1',
+                        false, statement_timestamp()
+                      ),
+                      (
+                        ${boundaryCase.fixtureEventIds[1]}, ${owner.workspaceId},
+                        ${acquiredItem.skuId}, ${orderId}, 'packaging', 2, 'JPY', 'tax_included',
+                        'seller', 'manual', 'P14 0039 second packaging boundary fixture', 'jpy-v1',
+                        false, statement_timestamp()
+                      )
+                  `;
+                  break;
+                case "one_mismatched_sku":
+                  await transaction`
+                    insert into product_sku (id, workspace_id, sku_code, title, category)
+                    values (
+                      ${boundaryCase.temporarySkuId}, ${owner.workspaceId},
+                      ${`SKU-P14-MISMATCH-${boundaryCase.temporarySkuId.slice(0, 8)}`},
+                      'P14 0039 different-SKU boundary fixture', 'トップス'
+                    )
+                  `;
+                  await transaction`
+                    update financial_event
+                    set sku_id = ${boundaryCase.temporarySkuId}
+                    where workspace_id = ${owner.workspaceId} and order_id = ${orderId}
+                      and event_type = 'cost' and reverses_event_id is null
+                  `;
+                  break;
+                case "one_mismatched_tax_basis":
+                  await transaction`
+                    update financial_event
+                    set tax_basis = 'tax_excluded'
+                    where workspace_id = ${owner.workspaceId} and order_id = ${orderId}
+                      and event_type = 'cost' and reverses_event_id is null
+                  `;
+                  break;
+              }
+              await transaction`set local session_replication_role = origin`;
+
+              const [invalidShape] = await transaction<
+                Array<{
+                  sale_count: number;
+                  cost_count: number;
+                  fee_count: number;
+                  packaging_count: number;
+                  tax_basis_count: number;
+                  mismatched_sku_count: number;
+                }>
+              >`
+                select
+                  count(*) filter (where event_type = 'sale')::integer as sale_count,
+                  count(*) filter (where event_type = 'cost')::integer as cost_count,
+                  count(*) filter (where event_type = 'fee')::integer as fee_count,
+                  count(*) filter (where event_type = 'packaging')::integer as packaging_count,
+                  count(distinct tax_basis)::integer as tax_basis_count,
+                  count(*) filter (
+                    where sku_id is distinct from ${acquiredItem.skuId}
+                  )::integer as mismatched_sku_count
+                from financial_event
+                where workspace_id = ${owner.workspaceId} and order_id = ${orderId}
+                  and event_type in ('sale', 'cost', 'fee', 'packaging')
+                  and reverses_event_id is null
+              `;
+              assert.deepEqual(
+                { ...invalidShape },
+                boundaryCase.expectedInvalidShape,
+                `${boundaryCase.name} must create exactly its intended invalid active fact shape`,
+              );
+
+              const [shipmentPrerequisites] = await transaction<
+                Array<{
+                  triggers_enabled: boolean;
+                  actor_authorized: boolean;
+                  order_packed: boolean;
+                  packing_confirmed: boolean;
+                  photo_preflight_satisfied: boolean;
+                  selection_current: boolean;
+                  readiness_current: boolean;
+                  address_lease_active: boolean;
+                  shipment_time_valid: boolean;
+                }>
+              >`
+                select
+                  current_setting('session_replication_role') = 'origin' as triggers_enabled,
+                  can_actor_access_shipping_order(${orderId}) as actor_authorized,
+                  exists (
+                    select 1 from sales_order orders
+                    where orders.workspace_id = ${owner.workspaceId} and orders.id = ${orderId}
+                      and orders.state = 'packed'
+                  ) as order_packed,
+                  exists (
+                    select 1 from packing_evidence evidence
+                    where evidence.workspace_id = ${owner.workspaceId}
+                      and evidence.order_id = ${orderId} and evidence.server_confirmed
+                  ) as packing_confirmed,
+                  shipping_photo_preflight_satisfied(
+                    ${owner.workspaceId}, ${orderId}
+                  ) as photo_preflight_satisfied,
+                  exists (
+                    select 1 from order_shipping_method_selection selection
+                    where selection.workspace_id = ${owner.workspaceId}
+                      and selection.order_id = ${orderId}
+                      and selection.id = ${currentShippingSelection.selectionId}
+                      and not exists (
+                        select 1 from order_shipping_method_selection successor
+                        where successor.workspace_id = selection.workspace_id
+                          and successor.order_id = selection.order_id
+                          and successor.supersedes_id = selection.id
+                      )
+                  ) as selection_current,
+                  order_shipping_readiness_confirmation_is_current(
+                    ${owner.workspaceId}, ${orderId}, ${readinessConfirmation.confirmationId}
+                  ) as readiness_current,
+                  exists (
+                    select 1 from address_access_lease lease
+                    where lease.workspace_id = ${owner.workspaceId}
+                      and lease.order_id = ${orderId} and lease.id = ${activeLeaseId}
+                      and lease.identity_id = ${shippingId}
+                      and lease.purpose = 'shipping_label'
+                      and lease.expires_at > statement_timestamp()
+                  ) as address_lease_active,
+                  exists (
+                    select 1 from sales_order orders
+                    where orders.workspace_id = ${owner.workspaceId} and orders.id = ${orderId}
+                      and ${boundaryShippedAt}::timestamptz >= orders.created_at
+                      and ${boundaryShippedAt}::timestamptz
+                        <= clock_timestamp() + interval '5 minutes'
+                  ) as shipment_time_valid
+              `;
+              assert.deepEqual(
+                { ...shipmentPrerequisites },
+                {
+                  triggers_enabled: true,
+                  actor_authorized: true,
+                  order_packed: true,
+                  packing_confirmed: true,
+                  photo_preflight_satisfied: true,
+                  selection_current: true,
+                  readiness_current: true,
+                  address_lease_active: true,
+                  shipment_time_valid: true,
+                },
+                `${boundaryCase.name} must keep every non-financial shipment prerequisite valid`,
+              );
+
+              // The row itself is the table's human confirmation. The active lease gates this
+              // direct insert just as the API does, while the trigger fills actor, fee and event IDs.
+              await transaction`
+                insert into shipment_human_confirmation (
+                  workspace_id, order_id, idempotency_key, payload_hash,
+                  shipping_method_selection_id, readiness_confirmation_id, shipped_at
+                )
+                select ${owner.workspaceId}, ${orderId}, ${randomUUID()},
+                       ${hashFixture(`p14-0039-${boundaryCase.kind}-human-confirmed`)},
+                       ${currentShippingSelection.selectionId},
+                       ${readinessConfirmation.confirmationId}, ${boundaryShippedAt}
+                from address_access_lease lease
+                where lease.workspace_id = ${owner.workspaceId}
+                  and lease.order_id = ${orderId} and lease.id = ${activeLeaseId}
+                  and lease.identity_id = ${shippingId}
+                  and lease.purpose = 'shipping_label'
+                  and lease.expires_at > statement_timestamp()
+                  and ${boundaryHumanConfirmed}
+              `;
+              throw new Error(`${boundaryCase.name} was unexpectedly accepted by PostgreSQL`);
+            }),
+          (error) =>
+            hasDatabaseCode("23514")(error) &&
+            typeof error === "object" &&
+            error !== null &&
+            "message" in error &&
+            String(error.message).includes(
+              "registered shipment financial facts are incomplete or inconsistent",
+            ),
+          `${boundaryCase.name} must reach the 0039 financial-fact guard and reject shipment with SQLSTATE 23514`,
+        );
+
+        const [rollbackState] = await registeredFinancialBoundaryObserver.begin(
+          async (transaction) => {
+            await transaction`select set_config('app.workspace_id', ${owner.workspaceId}, true)`;
+            await transaction`select set_config('app.identity_id', ${shippingId}, true)`;
+            return transaction<
+              Array<{
+                order_state: string;
+                shipment_confirmation_count: number;
+                shipping_financial_event_count: number;
+                case_fixture_event_count: number;
+                temporary_sku_count: number;
+                sale_count: number;
+                cost_count: number;
+                fee_count: number;
+                packaging_count: number;
+                mismatched_sku_count: number;
+                mismatched_tax_basis_count: number;
+                photo_preflight_satisfied: boolean;
+                readiness_current: boolean;
+                address_lease_active: boolean;
+              }>
+            >`
+              select orders.state as order_state,
+                     (select count(*)::integer from shipment_human_confirmation confirmation
+                      where confirmation.workspace_id = orders.workspace_id
+                        and confirmation.order_id = orders.id) as shipment_confirmation_count,
+                     (select count(*)::integer from financial_event event
+                      where event.workspace_id = orders.workspace_id
+                        and event.order_id = orders.id
+                        and event.event_type = 'shipping') as shipping_financial_event_count,
+                     (select count(*)::integer from financial_event event
+                      where event.workspace_id = orders.workspace_id
+                        and event.id in ${transaction(Array.from(boundaryCase.fixtureEventIds))}
+                     ) as case_fixture_event_count,
+                     (select count(*)::integer from product_sku sku
+                      where sku.workspace_id = orders.workspace_id
+                        and sku.id = ${boundaryCase.temporarySkuId}) as temporary_sku_count,
+                     (select count(*) filter (where event.event_type = 'sale')::integer
+                      from financial_event event
+                      where event.workspace_id = orders.workspace_id and event.order_id = orders.id
+                        and event.event_type in ('sale', 'cost', 'fee', 'packaging')
+                        and event.reverses_event_id is null) as sale_count,
+                     (select count(*) filter (where event.event_type = 'cost')::integer
+                      from financial_event event
+                      where event.workspace_id = orders.workspace_id and event.order_id = orders.id
+                        and event.event_type in ('sale', 'cost', 'fee', 'packaging')
+                        and event.reverses_event_id is null) as cost_count,
+                     (select count(*) filter (where event.event_type = 'fee')::integer
+                      from financial_event event
+                      where event.workspace_id = orders.workspace_id and event.order_id = orders.id
+                        and event.event_type in ('sale', 'cost', 'fee', 'packaging')
+                        and event.reverses_event_id is null) as fee_count,
+                     (select count(*) filter (where event.event_type = 'packaging')::integer
+                      from financial_event event
+                      where event.workspace_id = orders.workspace_id and event.order_id = orders.id
+                        and event.event_type in ('sale', 'cost', 'fee', 'packaging')
+                        and event.reverses_event_id is null) as packaging_count,
+                     (select count(*) filter (
+                        where event.sku_id is distinct from ${acquiredItem.skuId}
+                      )::integer
+                      from financial_event event
+                      where event.workspace_id = orders.workspace_id and event.order_id = orders.id
+                        and event.event_type in ('sale', 'cost', 'fee', 'packaging')
+                        and event.reverses_event_id is null) as mismatched_sku_count,
+                     (select count(*) filter (
+                        where event.tax_basis is distinct from 'tax_included'
+                      )::integer
+                      from financial_event event
+                      where event.workspace_id = orders.workspace_id and event.order_id = orders.id
+                        and event.event_type in ('sale', 'cost', 'fee', 'packaging')
+                        and event.reverses_event_id is null) as mismatched_tax_basis_count,
+                     shipping_photo_preflight_satisfied(
+                       orders.workspace_id, orders.id
+                     ) as photo_preflight_satisfied,
+                     order_shipping_readiness_confirmation_is_current(
+                       orders.workspace_id, orders.id, ${readinessConfirmation.confirmationId}
+                     ) as readiness_current,
+                     exists (
+                       select 1 from address_access_lease lease
+                       where lease.workspace_id = orders.workspace_id
+                         and lease.order_id = orders.id and lease.id = ${activeLeaseId}
+                         and lease.identity_id = ${shippingId}
+                         and lease.purpose = 'shipping_label'
+                         and lease.expires_at > statement_timestamp()
+                     ) as address_lease_active
+              from sales_order orders
+              where orders.workspace_id = ${owner.workspaceId} and orders.id = ${orderId}
+            `;
+          },
+        );
+        assert.deepEqual(
+          { ...rollbackState },
+          {
+            order_state: "packed",
+            shipment_confirmation_count: 0,
+            shipping_financial_event_count: 0,
+            case_fixture_event_count: 0,
+            temporary_sku_count: 0,
+            sale_count: 1,
+            cost_count: 1,
+            fee_count: 0,
+            packaging_count: 0,
+            mismatched_sku_count: 0,
+            mismatched_tax_basis_count: 0,
+            photo_preflight_satisfied: true,
+            readiness_current: true,
+            address_lease_active: true,
+          },
+          `${boundaryCase.name} must roll back every temporary fixture and leave the order ready for the next case`,
+        );
+      }
+    } finally {
+      await Promise.all([
+        registeredFinancialBoundaryWriter.end({ timeout: 5 }),
+        registeredFinancialBoundaryObserver.end({ timeout: 5 }),
+      ]);
+    }
+
     const missingP14ShipmentEvidence = await app.inject({
       method: "POST",
       url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/ship`,

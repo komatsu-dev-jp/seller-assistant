@@ -267,3 +267,20 @@
 - 別Sol maxの最終判定はCritical 0 / High 0 / Medium 0 / Low 0、P13-A PASS、P13-B gate GO。P13-Bだけを`gpt-5.6-terra` / `high`へ割り当て、静的approved review routeを変更せず実運用routeを接続する。
 - P13-Bは390/768/1440px、キーボード、44px target、読込・空・失敗・再試行、loopback以外のrequest 0を実ブラウザで確認する。DB、金額、権限、状態契約へ変更が必要になった場合はTerraで推測せずSolへ戻す。
 - P12-B/Cは利用者の2項目確認待ち、P14はP13-B後。Draft PR #9はDraftのまま維持し、merge、本番公開、課金、外部APIを行わない。
+
+## 2026-09-03 P14-R1 0039実DB境界試験の補強
+
+- 目的と参照: 最終独立レビューのLow 1を解消し、`0039_registered_order_missing_financial_facts.sql`が登録注文の不正な金額件数・SKU・税設定を実PostgreSQLで拒否することを証明する。参照は`docs/DECISIONS.md`の2026-09-03金額欠損判断、`apps/api/src/postgres-integration.ts`、migration 0039。
+- リスク: 重大。理由は金額事実、発送確定、DB制約、transaction rollbackへ触れるため。
+- 実装担当: `gpt-5.6-sol` / `max` / P14-R1専任writer。
+- 確認担当: 実装担当とは別の`gpt-5.6-sol` / `max`による読み取り専用レビュー。
+- 実装運転モード: `cost-optimized`。
+- モデル切替ゲート: 設計・開始前ともPASS。最低必要能力Sol maxと実行担当が一致し、別Solレビュー経路も利用可能。`MODEL_SWITCH_REQUIRED`なし。
+- 変更可能: `apps/api/src/postgres-integration.ts`だけ。各試験ケースは独立transaction内で不正状態を一時作成し、期待したDB拒否でtransaction全体をrollbackする。
+- 変更禁止: migration 0039本体、0038以前、production contract/API/repository/Web、承認済みUI、実データ、既存DBの永続変更、Git/PR操作、外部送信。
+- 実装内容: 登録済み・梱包済み・発送準備確認済み注文について、原価0件、原価2件、販売額2件、手数料2件、梱包費2件、別SKU、異なる税設定を個別に作り、`shipment_human_confirmation`をSQLSTATE 23514で拒否する。各拒否後に注文状態、発送確認、送料事実が増えていないことを確認し、既存の正常発送試験を維持する。
+- 受け入れ条件: 7境界が実PostgreSQLで個別に拒否され、各transactionが残骸0でrollbackし、正常な欠損fee/packaging注文とlegacy/P13注文の発送互換を壊さない。
+- 検証: 新規使い捨てDBの`npm.cmd run test:postgres`、必要な対象test、`npm.cmd run check`、`git diff --check`、別Sol maxレビュー。
+- 停止・昇格条件: 現行migrationの実不具合、既存互換の破壊、試験外ファイル変更の必要、期待外SQLSTATE、原因不明の失敗を検出したら変更を広げずルートSolへ戻す。
+- 実行結果: Sol max writerは許可された実DB試験ファイルだけを変更した。rootはfresh `resale_p14r_fresh_20260903a`、upgrade `resale_p14r_upgrade_20260903a`、full checkをPASSし、production SQL/API/WebとUIの変更0件を確認した。
+- 独立判定: 別Sol max reviewerはCritical 0 / High 0 / Medium 0 / Low 0でPASSし、以前の0039試験不足LowをClosed、限定commitとDraft PR更新を可とした。`MODEL_SWITCH_REQUIRED`は発生しなかった。

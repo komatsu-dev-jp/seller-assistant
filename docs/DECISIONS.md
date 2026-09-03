@@ -474,3 +474,13 @@ APIキー、トークン、個人情報、生ログ、会話全文、一時的�
 - Human gates: P12-B/Cの2判断、実iPhone Safari/home/camera/Code 128/offline、A4 24面物理印刷、WARMUP＋固定10商品の人手pilot、実Money Forward取込は実装不合格と分離して未確認を維持する。
 - Applies to: P13-B/P14 final gate、Draft PR #9、acceptance map、design evidence、loop log、active handoff。
 - Follow-up: 限定commit・pushとDraft PR本文更新後、上記人手gateと利用者判断を待つ。未確認を自動合格へ繰り上げない。
+
+### 2026-09-03 — migration 0039の登録注文金額境界を実DBで個別固定する
+
+- Type: database regression hardening and independent review gate
+- Context: P13-B/P14最終レビューは0039本体を正しいと判定した一方、原価件数、任意金額の重複、SKU、税設定の各条件を実PostgreSQLで個別に拒否する試験不足をLowとして残した。
+- Decision or rule: 原価0/2件、販売額・手数料・梱包費各2件、別SKU、異なる税設定の7ケースを、独立transactionの一時fixtureとして作る。金額以外の発送前提をすべて有効にした上で、0039固有メッセージとSQLSTATE 23514を要求し、拒否後は別接続で全fixtureのrollbackと元の発送準備状態を確認する。
+- Safety boundary: migration 0039本体、production contract/API/repository/Web、承認済みUIを変更しない。試験用admin接続と`session_replication_role=replica`はfixture準備中の同一rollback対象transactionだけに限定し、発送INSERT前に`origin`へ戻す。
+- Verification: fresh `resale_p14r_fresh_20260903a`の`test:postgres`、upgrade `resale_p14r_upgrade_20260903a`の`test:postgres-upgrade`、45 files / 401 testsと全buildを含む`npm.cmd run check`をPASSした。別Sol maxはCritical 0 / High 0 / Medium 0 / Low 0、以前の0039試験不足LowをClosed、Draft PR更新可と判定した。
+- Applies to: `apps/api/src/postgres-integration.ts`、migration `0039`の回帰証拠、P14-R1、acceptance map、loop log、Draft PR #9。
+- Follow-up: Draft PRはDraftのまま維持し、PC29文言、P12-B/C、人手・実機・物理・外部取込gateを未確認として残す。ready化、merge、本番公開を行わない。

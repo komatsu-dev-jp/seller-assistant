@@ -227,6 +227,16 @@ P0の必須ACは AC-001、003〜008、013〜014、018〜023、025〜026、028〜
 - 書込みを担当していない別Sol maxの最終独立再レビューはPASS（Critical 0 / High 0 / Medium 1 / Low 1）。過去H1/M2/L1はすべてClosed。MediumはPC29の「販売金額 必須」と「未入力でも続行」の承認文言矛盾、Lowは0039の各不整合を実DBで個別に拒否する回帰試験の追加候補で、現行SQLの不具合ではない。Draft PR #9はDraftのまま最新化可、ready化・mergeは禁止と判定した。
 - ここまでの合格はPC内の自動・実ブラウザ証拠である。実iPhone Safari、ホーム画面追加、カメラ/Code 128、圏外復帰、A4 24面ラベルの物理印刷、固定10商品の人手pilot、実Money Forward取込、P12-B/Cの2項目は未確認のまま分離する。
 
+## 2026-09-03 P14-R1 migration 0039実DB境界試験
+
+- 以前の独立レビューでLowだった0039の境界試験を補強した。登録済み注文について、原価0件、原価2件、販売額2件、手数料2件、梱包費2件、別SKU、異なる税設定の7ケースを、それぞれ独立したtransaction内で一時作成する。
+- 各ケースは金額以外の発送前提がすべて有効であることを先に確認し、0039固有メッセージとSQLSTATE 23514で発送が拒否されることを検査する。拒否後は別接続で、注文が`packed`、発送確認・送料事実・fixture残骸が0件、元の金額件数・写真・readiness・住所leaseが維持されることを確認する。
+- fresh DB `resale_p14r_fresh_20260903a`へ、存在する38 migrationファイル（0036は未承認P12-B用に予約、最終は0039）を適用し、`npm.cmd run test:postgres`をPASSした。直後の正常発送、legacy/P13互換、65-table RLSを含む全実DBフローも同じ実行で合格した。
+- upgrade DB `resale_p14r_upgrade_20260903a`は、空DBから0039までの適用、0037/0038/0039を含む注入失敗rollback・再適用、既存履歴保持を`npm.cmd run test:postgres-upgrade`でPASSした。
+- 同一差分の`npm.cmd run check`はfixture 44 PNG/hash、format、lint、typecheck、45 files / 401 tests、coverage 84.66 / 80.56 / 100 / 90.68、API/Web production build、Next 86 routesをPASSした。
+- 書込みを担当していない別Sol maxの独立レビューはPASS（Critical 0 / High 0 / Medium 0 / Low 0）。以前の0039試験不足LowはClosedとし、production SQL/API/Webと承認済みUIに変更がないため、127画面の既存視覚証拠は引き続き有効とした。
+- 残る全体gateは、PC29文言の利用者再承認、P12-B/Cの2判断、実iPhone、A4 24面物理印刷、固定10商品pilot、実Money Forward取込、GitHub Actions運用方針である。P14-R1合格をこれらの人手確認の代替にしない。
+
 ## 修正版Aの再開gate
 
 - Core回帰: P0必須AC `001、003〜008、013〜014、018〜023、025〜026、028〜034、039、042〜055` とP0必須TA `001〜004、007〜009、011〜017、019〜023、025〜027、029〜037` の既存証拠を現行branchで再実行し、修正版migrationによる退行0件を確認する。P1固有条件はflag OFFと禁止経路を確認する。

@@ -417,3 +417,14 @@
 - 書込みを担当していない別Sol maxの最終再レビューはPASS（Critical 0 / High 0 / Medium 1 / Low 1）。過去H1/M2/L1はClosed。独立full checkも45 files / 401 tests、全buildをPASSした。
 - MediumはPC29承認文言の意味矛盾で、利用者の再承認まで変更しない。Lowは0039のcost 0/2件、各未知金額2件、SKU/tax不一致を実DBで個別に拒否する回帰試験の補強候補で、現行SQLの不具合ではない。
 - Draft PR #9はDraftのまま最新化可と判定した。ready化・merge・本番公開を行わない。人手gateとP12-B/Cの2判断も未完了のまま分離する。
+
+## Iteration 40 — 2026-09-03 migration 0039実DB境界試験の独立合格
+
+- P14最終レビューでLowだった0039の個別境界試験を、金額・発送・DB制約の重大領域としてSol max専任writerへ限定し、別Sol maxを読み取り専用reviewerにした。production SQL/API/Web、承認済みUIは変更していない。
+- `postgres-integration.ts`へ、原価0/2件、販売額・手数料・梱包費各2件、別SKU、異なる税設定の7ケースを追加した。各ケースは別transactionで意図した不正形だけを作り、他の発送前提が有効な状態で0039固有の23514拒否へ到達する。
+- 各拒否後は別接続で、注文`packed`、発送確認0、送料事実0、fixture/SKU残骸0、元のsale 1/cost 1/fee 0/packaging 0、写真・readiness・住所lease有効を確認する。想定外に発送INSERTが成功した場合も試験を明示的に失敗させ、transactionをcommitしない。
+- fresh `resale_p14r_fresh_20260903a`へ存在する38 migrationファイルを適用し、`npm.cmd run test:postgres`をPASSした。初回は古いAPI/Web/Playwright検証プロセスが多数残り空きメモリ約662MBの状態でWindows異常終了したが、業務行0件を確認し、対象プロセス整理後の同一DB再実行はPASSして再発しなかった。
+- upgrade `resale_p14r_upgrade_20260903a`は空DBから0039まで、注入失敗rollback・再接続・再適用、既存履歴保持をPASSした。
+- rootの`npm.cmd run check`はfixture 44 PNG/hash、format/lint/typecheck、45 files / 401 tests、coverage 84.66 / 80.56 / 100 / 90.68、API/Web build、Next 86 routesをPASSした。
+- 独立reviewerは、7形状、0039固有message/23514、two-salesの一時snapshot/readiness、rollback残骸0、正常発送とlegacy/P13互換を確認し、Critical 0 / High 0 / Medium 0 / Low 0でPASS、以前のLowをClosedと判定した。
+- 残る全体項目はPC29文言、P12-B/C、実iPhone、物理ラベル、固定10商品pilot、実Money Forward取込、GitHub Actions方針である。Draft PRはDraftのままとし、ready化・merge・本番公開を行わない。

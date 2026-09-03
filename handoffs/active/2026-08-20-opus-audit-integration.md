@@ -1,6 +1,6 @@
 # Handoff: Opus第二次監査の統合
 
-- Status: goal-v2-draft-pr-update
+- Status: goal-v2-p14r-verified-draft-pr-update
 - Owner: Codex / ユーザー
 - Updated: 2026-09-03 JST
 - Branch: `codex/opus-audit-integration`
@@ -98,10 +98,11 @@ Claude Codeの `claude/opus-spec-audit-proposals` を現main、既存仕様、�
 
 ## 次の一手
 
-1. 最終独立レビュー済みの差分を限定commit・pushし、既存Draft PR #9の本文だけを最新証拠へ更新する。ready化、本番公開、mergeは行わない。
+1. P14-R1合格差分を限定commit・pushし、既存Draft PR #9の本文だけを最新証拠へ更新する。ready化、本番公開、mergeは行わない。
 2. PC29の販売金額を「必須」か「任意」か、利用者の再承認後に承認画像・実画面・仕様・テストを同時に揃える。
 3. 人手gateとして、利用者が`docs/specs/pilot-protocol-v1.1.md`どおり`WARMUP-01`＋固定10商品、実iPhone、物理ラベル、実Money Forward取込を確認する。
 4. P12-B/Cは`p12-product-template-proposal-v1.md`の2項目を利用者が判断した後に再開する。
+5. GitHub Actionsを自動実行のままにするか、手動実行だけにするか、利用者判断後に方針を確定する。
 
 ## 2026-09-03 最終レビュー指摘の修正と再検証
 
@@ -122,6 +123,16 @@ Claude Codeの `claude/opus-spec-audit-proposals` を現main、既存仕様、�
 - 独立`npm.cmd run check`も45 files / 401 tests、coverage 84.66 / 80.56 / 100 / 90.68、fixture、format/lint/typecheck、API/Web build、Next 86 routesをPASSした。
 - MediumはPC29承認文言の矛盾で利用者再承認待ち。Lowは0039の細かな不整合を実DBで各々拒否する回帰試験の追加候補で、現行SQLの不具合ではない。
 - Draft PR #9はDraftのまま最新化可。次は限定commit・push・本文更新だけを行い、ready化、merge、本番公開は行わない。
+
+## 2026-09-03 P14-R1追加Loop
+
+- Draft PR #9はcommit `e56953c26b4872ec51753f88017f7172dd95ed82`へ更新済みで、OPEN/Draft/MERGEABLEを確認した。ready化、merge、本番公開は未実行。
+- Goal継続では、最終レビューのLowだった0039実DB境界試験を先に解消する。対象は原価0/2件、販売額・手数料・梱包費各2件、別SKU、異なる税設定の7ケース。
+- P14-R1は金額・発送・DB制約の重大領域としてSol max専任writer、別Sol max reviewerへ割り当てる。変更可能は`apps/api/src/postgres-integration.ts`だけで、production SQL/API/Webは変更しない。
+- 7ケースを独立transaction内で一時作成し、意図した不正形、金額以外の全発送前提、0039固有message/23514拒否、別接続からの全rollbackを確認した。直後の正常発送とlegacy/P13互換も同じ実行で合格した。
+- fresh `resale_p14r_fresh_20260903a`の`test:postgres`、upgrade `resale_p14r_upgrade_20260903a`の`test:postgres-upgrade`をPASSした。初回fresh実行は古い検証プロセス多数と空きメモリ約662MBの環境でWindows異常終了したが、業務行0件を確認し、対象整理後の同一DB再実行はPASSして再発しなかった。
+- `npm.cmd run check`はfixture 44 PNG/hash、format/lint/typecheck、45 files / 401 tests、coverage 84.66 / 80.56 / 100 / 90.68、API/Web build、Next 86 routesをPASSした。変更は実DB試験と証拠文書だけで、UI差分0件。
+- 別Sol maxはCritical 0 / High 0 / Medium 0 / Low 0でPASSし、以前の0039試験不足LowをClosed、限定commit・pushとDraft PR本文更新を可とした。ready化、merge、本番公開は引き続き禁止する。
 
 ## memory候補
 
