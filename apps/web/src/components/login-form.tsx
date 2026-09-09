@@ -1,25 +1,25 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
+
+import { ApprovedLiveLogin } from "./approved-live-login";
 
 export function LoginForm() {
   const [status, setStatus] = useState<"idle" | "sending" | "error">("idle");
   const [message, setMessage] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function submit() {
     setStatus("sending");
     setMessage("");
-    const form = new FormData(event.currentTarget);
-    const email = form.get("email");
-    const password = form.get("password");
     try {
       const response = await fetch("/v1/session/login", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          email: typeof email === "string" ? email : "",
-          password: typeof password === "string" ? password : "",
+          email,
+          password,
         }),
         cache: "no-store",
       });
@@ -37,7 +37,9 @@ export function LoginForm() {
           ? "/shipping"
           : context.role === "field_worker"
             ? "/mobile"
-            : "/",
+            : context.role === "accounting"
+              ? "/accounting"
+              : "/",
       );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "ログインを確認できませんでした。");
@@ -46,38 +48,14 @@ export function LoginForm() {
   }
 
   return (
-    <form
-      action="/v1/session/login"
-      className="loginForm"
-      method="post"
-      onSubmit={(event) => void submit(event)}
-    >
-      <label>
-        メールアドレス
-        <input
-          autoComplete="username"
-          inputMode="email"
-          maxLength={254}
-          name="email"
-          required
-          type="email"
-        />
-      </label>
-      <label>
-        パスワード
-        <input
-          autoComplete="current-password"
-          maxLength={128}
-          minLength={12}
-          name="password"
-          required
-          type="password"
-        />
-      </label>
-      <button disabled={status === "sending"} type="submit">
-        {status === "sending" ? "確認中…" : "ログイン"}
-      </button>
-      {status === "error" ? <p role="alert">{message}</p> : null}
-    </form>
+    <ApprovedLiveLogin
+      email={email}
+      password={password}
+      error={status === "error" ? message : null}
+      busy={status === "sending"}
+      onEmailChange={setEmail}
+      onPasswordChange={setPassword}
+      onSubmit={() => void submit()}
+    />
   );
 }

@@ -1,0 +1,314 @@
+﻿[
+  {
+    "output": "login/logo-blue-garment.png",
+    "source": "pc-web-redesign-board-01-home-v1.png",
+    "x": 358,
+    "y": 94,
+    "width": 115,
+    "height": 104
+  },
+  {
+    "output": "inspection/shirt-blue.png",
+    "source": "pc-web-redesign-board-04-inspection-v1.png",
+    "x": 124,
+    "y": 130,
+    "width": 82,
+    "height": 106
+  },
+  {
+    "output": "inspection/knit-beige.png",
+    "source": "pc-web-redesign-board-04-inspection-v1.png",
+    "x": 335,
+    "y": 130,
+    "width": 82,
+    "height": 106
+  },
+  {
+    "output": "inspection/outer-black.png",
+    "source": "pc-web-redesign-board-04-inspection-v1.png",
+    "x": 547,
+    "y": 130,
+    "width": 86,
+    "height": 106
+  },
+  {
+    "output": "inspection/pants-beige.png",
+    "source": "pc-web-redesign-board-04-inspection-v1.png",
+    "x": 124,
+    "y": 272,
+    "width": 82,
+    "height": 103
+  },
+  {
+    "output": "inspection/dress-green.png",
+    "source": "pc-web-redesign-board-04-inspection-v1.png",
+    "x": 335,
+    "y": 272,
+    "width": 82,
+    "height": 103
+  },
+  {
+    "output": "inspection/bag-black.png",
+    "source": "pc-web-redesign-board-04-inspection-v1.png",
+    "x": 547,
+    "y": 272,
+    "width": 86,
+    "height": 103
+  },
+  {
+    "output": "product/beige-tote-front.png",
+    "source": "pc-web-redesign-board-05-photo-measure-v1.png",
+    "x": 138,
+    "y": 135,
+    "width": 104,
+    "height": 149
+  },
+  {
+    "output": "product/beige-tote-back.png",
+    "source": "pc-web-redesign-board-05-photo-measure-v1.png",
+    "x": 258,
+    "y": 135,
+    "width": 104,
+    "height": 149
+  },
+  {
+    "output": "product/beige-tote-brand-tag.png",
+    "source": "pc-web-redesign-board-05-photo-measure-v1.png",
+    "x": 379,
+    "y": 135,
+    "width": 111,
+    "height": 149
+  },
+  {
+    "output": "product/beige-tote-quality-label.png",
+    "source": "pc-web-redesign-board-05-photo-measure-v1.png",
+    "x": 509,
+    "y": 135,
+    "width": 104,
+    "height": 149
+  },
+  {
+    "output": "product/beige-tote-detail.png",
+    "source": "pc-web-redesign-board-05-photo-measure-v1.png",
+    "x": 629,
+    "y": 135,
+    "width": 112,
+    "height": 149
+  },
+  {
+    "output": "measurement/tote-height.png",
+    "source": "pc-web-redesign-board-05-photo-measure-v1.png",
+    "x": 1245,
+    "y": 653,
+    "width": 45,
+    "height": 55
+  },
+  {
+    "output": "measurement/tote-opening-width.png",
+    "source": "pc-web-redesign-board-05-photo-measure-v1.png",
+    "x": 1294,
+    "y": 653,
+    "width": 45,
+    "height": 55
+  },
+  {
+    "output": "measurement/tote-flat-width.png",
+    "source": "pc-web-redesign-board-05-photo-measure-v1.png",
+    "x": 1343,
+    "y": 653,
+    "width": 45,
+    "height": 55
+  },
+  {
+    "output": "measurement/tote-base-width.png",
+    "source": "pc-web-redesign-board-05-photo-measure-v1.png",
+    "x": 1392,
+    "y": 653,
+    "width": 45,
+    "height": 55
+  },
+  {
+    "output": "measurement/tote-gusset.png",
+    "source": "pc-web-redesign-board-05-photo-measure-v1.png",
+    "x": 1441,
+    "y": 653,
+    "width": 46,
+    "height": 55
+  },
+  {
+    "output": "measurement/tote-circumference.png",
+    "source": "pc-web-redesign-board-05-photo-measure-v1.png",
+    "x": 1245,
+    "y": 718,
+    "width": 96,
+    "height": 76
+  },
+  {
+    "output": "product/light-blue-shirt-hero.png",
+    "source": "pc-web-redesign-board-06-product-listing-v1.png",
+    "x": 923,
+    "y": 68,
+    "width": 138,
+    "height": 111
+  },
+  {
+    "output": "product/light-blue-shirt-front.png",
+    "source": "pc-web-redesign-board-06-product-listing-v1.png",
+    "x": 1048,
+    "y": 220,
+    "width": 54,
+    "height": 55
+  },
+  {
+    "output": "product/light-blue-shirt-back.png",
+    "source": "pc-web-redesign-board-06-product-listing-v1.png",
+    "x": 1103,
+    "y": 220,
+    "width": 54,
+    "height": 55
+  },
+  {
+    "output": "product/light-blue-shirt-collar.png",
+    "source": "pc-web-redesign-board-06-product-listing-v1.png",
+    "x": 1158,
+    "y": 220,
+    "width": 54,
+    "height": 55
+  },
+  {
+    "output": "product/light-blue-shirt-cuff.png",
+    "source": "pc-web-redesign-board-06-product-listing-v1.png",
+    "x": 1048,
+    "y": 277,
+    "width": 54,
+    "height": 55
+  },
+  {
+    "output": "product/light-blue-shirt-button.png",
+    "source": "pc-web-redesign-board-06-product-listing-v1.png",
+    "x": 1103,
+    "y": 277,
+    "width": 54,
+    "height": 55
+  },
+  {
+    "output": "product/light-blue-shirt-label.png",
+    "source": "pc-web-redesign-board-06-product-listing-v1.png",
+    "x": 1158,
+    "y": 277,
+    "width": 54,
+    "height": 55
+  },
+  {
+    "output": "product/light-blue-shirt-stack.png",
+    "source": "pc-web-redesign-board-06-product-listing-v1.png",
+    "x": 923,
+    "y": 688,
+    "width": 154,
+    "height": 112
+  },
+  {
+    "output": "sales/catalog-tote-gray.png",
+    "source": "pc-web-redesign-board-07-sales-support-v2.png",
+    "x": 142,
+    "y": 191,
+    "width": 68,
+    "height": 91
+  },
+  {
+    "output": "sales/catalog-passport-wallet-navy.png",
+    "source": "pc-web-redesign-board-07-sales-support-v2.png",
+    "x": 347,
+    "y": 190,
+    "width": 67,
+    "height": 92
+  },
+  {
+    "output": "sales/catalog-sneaker-white.png",
+    "source": "pc-web-redesign-board-07-sales-support-v2.png",
+    "x": 550,
+    "y": 193,
+    "width": 80,
+    "height": 86
+  },
+  {
+    "output": "sales/catalog-backpack-black.png",
+    "source": "pc-web-redesign-board-07-sales-support-v2.png",
+    "x": 142,
+    "y": 324,
+    "width": 68,
+    "height": 94
+  },
+  {
+    "output": "sales/catalog-shirt-beige.png",
+    "source": "pc-web-redesign-board-07-sales-support-v2.png",
+    "x": 345,
+    "y": 323,
+    "width": 74,
+    "height": 91
+  },
+  {
+    "output": "sales/catalog-pants-khaki.png",
+    "source": "pc-web-redesign-board-07-sales-support-v2.png",
+    "x": 550,
+    "y": 322,
+    "width": 74,
+    "height": 96
+  },
+  {
+    "output": "shipping/headphones.png",
+    "source": "pc-web-redesign-board-08-orders-shipping-v3.png",
+    "x": 143,
+    "y": 775,
+    "width": 162,
+    "height": 115
+  },
+  {
+    "output": "team/sneaker-black.png",
+    "source": "pc-web-redesign-board-10-team-v1.png",
+    "x": 915,
+    "y": 168,
+    "width": 74,
+    "height": 75
+  },
+  {
+    "output": "purchase/register-black-handbag.png",
+    "source": "pc-web-redesign-board-02-purchase-box-v3.png",
+    "x": 368,
+    "y": 684,
+    "width": 134,
+    "height": 85
+  },
+  {
+    "output": "purchase/research-beige-bag.png",
+    "source": "pc-web-redesign-board-02-purchase-box-v3.png",
+    "x": 1125,
+    "y": 681,
+    "width": 72,
+    "height": 51
+  },
+  {
+    "output": "purchase/research-watch.png",
+    "source": "pc-web-redesign-board-02-purchase-box-v3.png",
+    "x": 1125,
+    "y": 744,
+    "width": 72,
+    "height": 51
+  },
+  {
+    "output": "purchase/research-leather-detail.png",
+    "source": "pc-web-redesign-board-02-purchase-box-v3.png",
+    "x": 1125,
+    "y": 870,
+    "width": 72,
+    "height": 51
+  },
+  {
+    "output": "sales/official-screen-pants.png",
+    "source": "pc-web-redesign-board-07-sales-support-v2.png",
+    "x": 1337,
+    "y": 249,
+    "width": 145,
+    "height": 172
+  }
+]

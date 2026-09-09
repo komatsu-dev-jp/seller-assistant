@@ -20,6 +20,7 @@ export interface TransitionRequest {
   hasActiveAllocation: boolean;
   hasConfirmedPickScan: boolean;
   hasPackingEvidence: boolean;
+  addressRequired: boolean;
   addressLeaseActive: boolean;
 }
 
@@ -37,7 +38,7 @@ export function validateOrderTransition(request: TransitionRequest): string[] {
   }
   if (
     ["picking", "packed", "shipped"].includes(request.to) &&
-    request.actorRole === "shipping" &&
+    request.addressRequired &&
     !request.addressLeaseActive
   ) {
     violations.push("active_address_lease_required");

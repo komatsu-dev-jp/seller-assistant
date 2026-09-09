@@ -74,4 +74,4 @@ gh project item-add 1 --owner komatsu-dev-jp --url https://github.com/komatsu-de
 
 - Project、Issue、Pull Request、Slack、Notionに秘密情報・個人情報・実データ・生ログを残さない。
 - 自動出品、画面スクレイピング、非公開API、無人の価格変更を作業項目としても実装しない。
-- この変更ではGitHub Actionsのトリガーを追加・変更しない。現行の`.github/workflows/ci.yml`はPull Requestと`main`へのpushで自動実行するため、手動実行だけとする既存の0円運用方針と矛盾している。判断は[Issue #6](https://github.com/komatsu-dev-jp/seller-assistant/issues/6)と`inbox/2026-08-21-github-actions-policy-conflict.md`で保留中であり、利用者の決定まで新たな自動化やworkflow変更を行わない。
+- 2026-09-09の利用者承認により、公開リポジトリの標準`ubuntu-latest`に限ってPull Requestと`main`へのpushで自動検証し、`main`反映後にGitHub Pagesを公開する。larger runner、macOS runner、有料Action、private repositoryの課金枠は使わない。以前の手動限定判断は`docs/DECISIONS.md`の同日判断で置き換えた。

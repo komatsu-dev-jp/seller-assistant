@@ -9,6 +9,8 @@
 # JavaScript / TypeScript
 node_modules/
 .next/
+apps/review/public/approved-assets/
+apps/review/out/
 dist/
 build/
 coverage/
@@ -18,6 +20,8 @@ coverage/
 # Tests and runtime data
 test-results/
 playwright-report/
+.chrome*/
+output/
 .playwright-cli/
 runtime/
 tmp/

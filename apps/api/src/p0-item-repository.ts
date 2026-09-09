@@ -1,22 +1,51 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
   appendCodeCheckDigit,
+  listingPrepPilotFixtureManifestSha256,
+  listingPrepPilotFixtureProfiles,
+  listingPrepPilotFixtures,
+  listingPrepPilotItemIdentifiers,
+  listingPrepPilotMeasurementTemplates,
+  listingPrepPilotProtocolVersion,
+  pilotFixtureCategories,
   type CaptureTaskResponse,
   type ConfirmIdentityCandidateRequest,
+  type ConfirmProductAttributesRequest,
   type CreateLocationRequest,
   type CreateIdentityCandidateRequest,
   type CreateMarketplaceReferenceRequest,
   type CreateP0ItemRequest,
   type IdentityCandidateResponse,
+  type InvalidatePilotRunRequest,
   type LocationNodeResponse,
   type MarketplaceReferenceResponse,
+  type MeasurementProfileResponse,
   type P0ItemResponse,
+  type ProductAttributeConfirmationResponse,
   type ProductResearchResponse,
   type PutawayCatalogResponse,
+  type ReturnCatalogResponse,
+  type ReceiptEvidenceResponse,
+  type PilotRunResponse,
+  type RecordPilotExceptionRequest,
+  type StartPilotRunRequest,
 } from "@resale/contracts";
+import { summarizeListingPrepPilot } from "@resale/domain";
 import postgres from "postgres";
 
+import { recordActivePilotManualCorrection } from "./pilot-manual-correction.js";
 import { RepositoryError, type RequestActor } from "./repository.js";
+import type { SanitizedOriginalReadRequest } from "./local-media-store.js";
+
+export interface RegisterReceiptEvidence {
+  assetId: string;
+  storageKey: string;
+  sha256: string;
+  mimeType: "image/jpeg" | "image/png";
+  sizeBytes: number;
+  width: number;
+  height: number;
+}
 
 export interface P0ItemRepository {
   createItem(
@@ -25,6 +54,24 @@ export interface P0ItemRepository {
     input: CreateP0ItemRequest,
   ): Promise<P0ItemResponse>;
   listItems(workspaceId: string, actor: RequestActor): Promise<P0ItemResponse[]>;
+  startPilotRun(
+    workspaceId: string,
+    actor: RequestActor,
+    input: StartPilotRunRequest,
+  ): Promise<PilotRunResponse>;
+  latestPilotRun(workspaceId: string, actor: RequestActor): Promise<PilotRunResponse | null>;
+  recordPilotException(
+    workspaceId: string,
+    runId: string,
+    actor: RequestActor,
+    input: RecordPilotExceptionRequest,
+  ): Promise<PilotRunResponse>;
+  invalidatePilotRun(
+    workspaceId: string,
+    runId: string,
+    actor: RequestActor,
+    input: InvalidatePilotRunRequest,
+  ): Promise<PilotRunResponse>;
   createLocation(
     workspaceId: string,
     actor: RequestActor,
@@ -32,6 +79,24 @@ export interface P0ItemRepository {
   ): Promise<LocationNodeResponse>;
   listLocations(workspaceId: string, actor: RequestActor): Promise<LocationNodeResponse[]>;
   putawayCatalog(workspaceId: string, actor: RequestActor): Promise<PutawayCatalogResponse>;
+  returnCatalog(workspaceId: string, actor: RequestActor): Promise<ReturnCatalogResponse>;
+  productPhotoContent(
+    workspaceId: string,
+    skuId: string,
+    assetId: string,
+    actor: RequestActor,
+  ): Promise<SanitizedOriginalReadRequest>;
+  authorizeReceiptEvidence(workspaceId: string, actor: RequestActor): Promise<void>;
+  registerReceiptEvidence(
+    workspaceId: string,
+    actor: RequestActor,
+    input: RegisterReceiptEvidence,
+  ): Promise<ReceiptEvidenceResponse>;
+  receiptEvidenceContent(
+    workspaceId: string,
+    assetId: string,
+    actor: RequestActor,
+  ): Promise<SanitizedOriginalReadRequest>;
   captureTasks(workspaceId: string, actor: RequestActor): Promise<CaptureTaskResponse[]>;
   createIdentityCandidate(
     workspaceId: string,
@@ -46,6 +111,12 @@ export interface P0ItemRepository {
     actor: RequestActor,
     input: ConfirmIdentityCandidateRequest,
   ): Promise<IdentityCandidateResponse>;
+  confirmProductAttributes(
+    workspaceId: string,
+    skuId: string,
+    actor: RequestActor,
+    input: ConfirmProductAttributesRequest,
+  ): Promise<ProductAttributeConfirmationResponse>;
   addMarketplaceReference(
     workspaceId: string,
     skuId: string,
@@ -66,6 +137,21 @@ interface P0ItemRow {
   sku_code: string;
   title: string;
   category: string | null;
+  profile_category: MeasurementProfileResponse["category"] | null;
+  measurement_template_id: MeasurementProfileResponse["measurementTemplateId"] | null;
+  measurement_template_version: 1 | null;
+  measurement_profile_confirmed_by: string | null;
+  measurement_profile_confirmed_at: Date | null;
+  attribute_confirmation_id: string | null;
+  attribute_revision: number | null;
+  confirmed_brand: string | null;
+  confirmed_size_label: string | null;
+  confirmed_color: string | null;
+  attribute_evidence_asset_id: string | null;
+  attribute_source_candidate_id: string | null;
+  supersedes_confirmation_id: string | null;
+  attributes_confirmed_by: string | null;
+  attributes_confirmed_at: Date | null;
   inventory_unit_id: string;
   inventory_number: string;
   inventory_status: P0ItemResponse["inventoryStatus"];
@@ -74,6 +160,7 @@ interface P0ItemRow {
   location_label_version: number | null;
   receipt_id: string;
   receipt_reference: string;
+  receipt_evidence_asset_id: string | null;
   purchased_at: Date;
   allocated_cost_minor: number;
   photo_asset_ids: string[];
@@ -103,6 +190,7 @@ interface LocationRow {
   name: string;
   depth: number;
   can_store_inventory: boolean;
+  purpose: "general" | "return_quarantine";
   single_item_only: boolean;
   allow_mixed_sku: boolean;
   max_units: number | null;
@@ -120,8 +208,23 @@ interface CandidateRow {
   model_candidate: string | null;
   material_candidate: string | null;
   size_candidate: string | null;
+  color_candidate: string | null;
   status: IdentityCandidateResponse["status"];
   created_at: Date;
+}
+
+interface AttributeConfirmationRow {
+  id: string;
+  sku_id: string;
+  revision: number;
+  brand: string;
+  size_label: string;
+  color: string;
+  evidence_asset_id: string;
+  source_candidate_id: string | null;
+  supersedes_confirmation_id: string | null;
+  confirmed_by: string;
+  confirmed_at: Date;
 }
 
 interface ReferenceRow {
@@ -136,6 +239,45 @@ interface ReferenceRow {
   exclusion_reason: string | null;
   checked_at: Date;
   created_at: Date;
+}
+
+interface PilotRunRow {
+  id: string;
+  workspace_id: string;
+  protocol_version: PilotRunResponse["protocolVersion"];
+  fixture_manifest_sha256: string | null;
+  commit_sha: string;
+  migration_version: PilotRunResponse["migrationVersion"];
+  platform: string;
+  browser: string;
+  viewport: "390x844";
+  actor_id: string;
+  warmup_completed_at: Date;
+  state: PilotRunResponse["state"];
+  externally_invalidated: boolean;
+  external_invalidation_reason: string | null;
+  started_at: Date;
+  completed_at: Date | null;
+}
+
+interface PilotItemRow {
+  id: string;
+  sku_id: string;
+  product_fixture_id: PilotRunResponse["items"][number]["productFixtureId"];
+  category: PilotRunResponse["items"][number]["category"];
+  measurement_template_id: PilotRunResponse["items"][number]["measurementTemplateId"];
+  measurement_template_version: 1 | null;
+  started_at: Date;
+  completed_at: Date | null;
+  elapsed_seconds: number | string | null;
+  invalid_attempt_count: number;
+  missing_required_image_count: number;
+  measurement_rework_count: number;
+  label_location_mismatch_count: number;
+  misputaway_count: number;
+  network_retry_count: number;
+  manual_correction_count: number;
+  copy_ready_workflow_version: number | null;
 }
 
 export class PostgresP0ItemRepository implements P0ItemRepository {
@@ -160,6 +302,7 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
       return await this.sql.begin(async (transaction) => {
         await setWorkspace(transaction, workspaceId);
         await requireManagementRole(transaction, workspaceId, actor.identityId);
+        await transaction`select pg_advisory_xact_lock(hashtext(${workspaceId}))`;
         const replay = await transaction<
           Array<{ result_reference_id: string; payload_hash: string }>
         >`
@@ -174,7 +317,90 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
           return requireP0Item(transaction, workspaceId, replay[0].result_reference_id);
         }
 
-        await transaction`select pg_advisory_xact_lock(hashtext(${workspaceId}))`;
+        const measurementTemplate =
+          listingPrepPilotMeasurementTemplates[input.measurementTemplateId];
+        if (input.receiptEvidenceAssetId) {
+          const source = await transaction`
+            select id from receipt_media_asset where workspace_id = ${workspaceId} and id = ${input.receiptEvidenceAssetId}
+          `;
+          if (!source[0])
+            throw new RepositoryError("forbidden", "The confirmed receipt evidence is unavailable");
+        }
+        let pilotRun:
+          | {
+              protocol_version: PilotRunResponse["protocolVersion"];
+              fixture_manifest_sha256: string | null;
+            }
+          | undefined;
+        if (input.pilot) {
+          const runs = await transaction<
+            Array<{
+              actor_id: string;
+              item_count: number;
+              protocol_version: PilotRunResponse["protocolVersion"];
+              fixture_manifest_sha256: string | null;
+            }>
+          >`
+            select run.actor_id, run.protocol_version, run.fixture_manifest_sha256,
+                   count(item.id)::integer as item_count
+            from pilot_run run
+            left join pilot_item_measurement item
+              on item.workspace_id = run.workspace_id and item.pilot_run_id = run.id
+            where run.workspace_id = ${workspaceId} and run.id = ${input.pilot.runId}
+              and run.state = 'active'
+            group by run.actor_id, run.protocol_version, run.fixture_manifest_sha256
+          `;
+          const run = runs[0];
+          if (!run || run.actor_id !== actor.identityId) {
+            throw new RepositoryError(
+              "forbidden",
+              "The active pilot belongs to another actor or is unavailable",
+            );
+          }
+          const expectedFixture = listingPrepPilotFixtures[run.item_count];
+          if (!expectedFixture || input.pilot.productFixtureId !== expectedFixture) {
+            throw new RepositoryError(
+              "conflict",
+              `The next fixed pilot fixture is ${expectedFixture ?? "none"}`,
+            );
+          }
+          const category = pilotFixtureCategories[input.pilot.productFixtureId];
+          if (input.category !== pilotDisplayCategory(category)) {
+            throw new RepositoryError(
+              "conflict",
+              "The product category does not match the fixed pilot fixture",
+            );
+          }
+          if (run.protocol_version === listingPrepPilotProtocolVersion) {
+            const profile = requirePilotFixtureProfile(input.pilot.productFixtureId);
+            const expectedIdentifiers = listingPrepPilotItemIdentifiers(
+              input.pilot.runId,
+              input.pilot.productFixtureId,
+            );
+            if (
+              input.skuCode !== expectedIdentifiers.skuCode ||
+              input.receiptReference !== expectedIdentifiers.receiptReference
+            ) {
+              throw new RepositoryError(
+                "conflict",
+                "The v1.1 pilot SKU and receipt reference must exactly match the run and fixture",
+              );
+            }
+            if (
+              run.fixture_manifest_sha256 !== listingPrepPilotFixtureManifestSha256 ||
+              profile.category !== category ||
+              profile.templateId !== input.measurementTemplateId ||
+              profile.templateVersion !== measurementTemplate.version ||
+              profile.title !== input.title
+            ) {
+              throw new RepositoryError(
+                "conflict",
+                "The product does not match the generated pilot fixture profile",
+              );
+            }
+          }
+          pilotRun = run;
+        }
         const skuId = randomUUID();
         const inventoryUnitId = randomUUID();
         const purchaseBatchId = randomUUID();
@@ -197,6 +423,54 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
           insert into product_sku (id, workspace_id, sku_code, title, category, human_confirmed_at)
           values (${skuId}, ${workspaceId}, ${input.skuCode}, ${input.title}, ${input.category}, ${input.purchasedAt})
         `;
+        await transaction`
+          insert into product_measurement_profile (
+            workspace_id, sku_id, category, measurement_template_id,
+            measurement_template_version, confirmed_by, confirmed_at
+          ) values (
+            ${workspaceId}, ${skuId}, ${measurementTemplate.category},
+            ${measurementTemplate.id}, ${measurementTemplate.version},
+            ${actor.identityId}, statement_timestamp()
+          )
+        `;
+        if (input.pilot) {
+          const category = pilotFixtureCategories[input.pilot.productFixtureId];
+          const currentProtocol = pilotRun?.protocol_version === listingPrepPilotProtocolVersion;
+          const pilotRows = await transaction<Array<{ id: string }>>`
+            insert into pilot_item_measurement (
+              workspace_id, pilot_run_id, sku_id, product_fixture_id, category,
+              measurement_template_id, measurement_template_version
+            ) values (
+              ${workspaceId}, ${input.pilot.runId}, ${skuId},
+              ${input.pilot.productFixtureId}, ${category},
+              ${currentProtocol ? measurementTemplate.id : null},
+              ${currentProtocol ? measurementTemplate.version : null}
+            ) returning id
+          `;
+          const pilotItemId = pilotRows[0]?.id;
+          if (!pilotItemId) {
+            throw new RepositoryError("database_error", "Pilot item start returned no row");
+          }
+          await transaction`
+            insert into audit_event (
+              workspace_id, actor_id, action, target_type, target_id, field_names,
+              redacted_changes, reference_ids, reason_code, approved_by
+            ) values (
+              ${workspaceId}, ${actor.identityId}, 'pilot_item_started',
+              'pilot_item_measurement', ${pilotItemId},
+              ${["product_fixture_id", "category", "measurement_template_id", "started_at"]},
+              ${transaction.json({
+                after: {
+                  product_fixture_id: input.pilot.productFixtureId,
+                  category,
+                  measurement_template_id: currentProtocol ? measurementTemplate.id : null,
+                },
+              })},
+              ${[input.pilot.runId, skuId]}, 'server_accepted_product_creation',
+              ${actor.identityId}
+            )
+          `;
+        }
         await transaction`
           insert into inventory_unit (id, workspace_id, sku_id, inventory_number)
           values (${inventoryUnitId}, ${workspaceId}, ${skuId}, ${inventoryNumber})
@@ -221,10 +495,10 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
         await transaction`
           insert into receipt (
             id, workspace_id, purchase_batch_id, receipt_reference, amount_minor,
-            confirmed_by, confirmed_at
+            confirmed_by, confirmed_at, evidence_asset_id
           ) values (
             ${receiptId}, ${workspaceId}, ${purchaseBatchId}, ${input.receiptReference},
-            ${input.receiptAmountMinor}, ${actor.identityId}, ${input.purchasedAt}
+            ${input.receiptAmountMinor}, ${actor.identityId}, ${input.purchasedAt}, ${input.receiptEvidenceAssetId ?? null}
           )
         `;
         await transaction`
@@ -263,8 +537,8 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
           ) values (
             ${workspaceId}, ${actor.identityId}, 'purchase.confirmed', 'product_sku', ${skuId},
             ${["sku_code", "inventory_number", "allocated_cost_minor"]},
-            ${transaction.json({ confirmation: { by: "human" }, source: "receipt_reference" })},
-            ${[receiptId, inventoryUnitId]}, 'receipt_and_cost_human_confirmed', ${actor.identityId}
+            ${transaction.json({ confirmation: { by: "human" }, source: input.receiptEvidenceAssetId ? "private_receipt_original" : "receipt_reference" })},
+            ${[receiptId, inventoryUnitId, ...(input.receiptEvidenceAssetId ? [input.receiptEvidenceAssetId] : [])]}, 'receipt_and_cost_human_confirmed', ${actor.identityId}
           )
         `;
         await transaction`
@@ -288,6 +562,292 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
         await requireManagementRole(transaction, workspaceId, actor.identityId);
         const rows = await selectP0Items(transaction, workspaceId);
         return rows.map(toP0ItemResponse);
+      });
+    } catch (error) {
+      throw normalizeP0ItemError(error);
+    }
+  }
+
+  async startPilotRun(
+    workspaceId: string,
+    actor: RequestActor,
+    input: StartPilotRunRequest,
+  ): Promise<PilotRunResponse> {
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId);
+        await requireManagementRole(transaction, workspaceId, actor.identityId);
+        await transaction`select pg_advisory_xact_lock(hashtext(${`pilot:${workspaceId}`}))`;
+        const active = await transaction<Array<{ id: string }>>`
+          select id from pilot_run where workspace_id = ${workspaceId} and state = 'active'
+        `;
+        if (active[0]) {
+          throw new RepositoryError("conflict", "An active ten-product pilot already exists");
+        }
+        const runId = randomUUID();
+        await transaction`
+          insert into pilot_run (
+            id, workspace_id, protocol_version, fixture_manifest_sha256,
+            commit_sha, migration_version,
+            platform, browser, viewport, actor_id, warmup_completed_at
+          ) values (
+            ${runId}, ${workspaceId}, ${input.protocolVersion},
+            ${input.fixtureManifestSha256}, ${input.commitSha},
+            ${input.migrationVersion}, ${input.platform}, ${input.browser}, ${input.viewport},
+            ${actor.identityId}, statement_timestamp()
+          )
+        `;
+        await transaction`
+          insert into audit_event (
+            workspace_id, actor_id, action, target_type, target_id, field_names,
+            redacted_changes, reference_ids, reason_code, approved_by
+          ) values (
+            ${workspaceId}, ${actor.identityId}, 'pilot_run.started', 'pilot_run', ${runId},
+            ${[
+              "protocol_version",
+              "fixture_manifest_sha256",
+              "commit_sha",
+              "migration_version",
+              "viewport",
+            ]},
+            ${transaction.json({
+              after: {
+                protocol_version: input.protocolVersion,
+                fixture_manifest_sha256: input.fixtureManifestSha256,
+                commit_sha: input.commitSha,
+                migration_version: input.migrationVersion,
+                viewport: input.viewport,
+              },
+            })},
+            ${[]}, 'warmup_and_environment_human_confirmed', ${actor.identityId}
+          )
+        `;
+        return requirePilotRun(transaction, workspaceId, runId);
+      });
+    } catch (error) {
+      throw normalizeP0ItemError(error);
+    }
+  }
+
+  async latestPilotRun(workspaceId: string, actor: RequestActor): Promise<PilotRunResponse | null> {
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId);
+        await requireManagementRole(transaction, workspaceId, actor.identityId);
+        const rows = await transaction<Array<{ id: string }>>`
+          select id from pilot_run where workspace_id = ${workspaceId}
+          order by started_at desc limit 1
+        `;
+        return rows[0] ? requirePilotRun(transaction, workspaceId, rows[0].id) : null;
+      });
+    } catch (error) {
+      throw normalizeP0ItemError(error);
+    }
+  }
+
+  async recordPilotException(
+    workspaceId: string,
+    runId: string,
+    actor: RequestActor,
+    input: RecordPilotExceptionRequest,
+  ): Promise<PilotRunResponse> {
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId);
+        await requireManagementRole(transaction, workspaceId, actor.identityId);
+        await transaction`select pg_advisory_xact_lock(hashtext(${`pilot:${workspaceId}:${runId}`}))`;
+        const payloadHash = createHash("sha256")
+          .update(
+            JSON.stringify({ eventType: input.eventType, detailCode: input.detailCode }),
+            "utf8",
+          )
+          .digest("hex");
+        const prior = await transaction<Array<{ payload_hash: string }>>`
+          select payload_hash from pilot_exception_event
+          where workspace_id = ${workspaceId} and pilot_run_id = ${runId}
+            and idempotency_key = ${input.idempotencyKey}
+        `;
+        if (prior[0]) {
+          if (prior[0].payload_hash !== payloadHash) {
+            throw new RepositoryError(
+              "conflict",
+              "The pilot event idempotency key has another payload",
+            );
+          }
+          return requirePilotRun(transaction, workspaceId, runId);
+        }
+        const runs = await transaction<
+          Array<{ actor_id: string; item_id: string | null; state: PilotRunResponse["state"] }>
+        >`
+          select run.actor_id, run.state,
+            case when exists (
+              select 1 from pilot_item_measurement pending
+              where pending.workspace_id = run.workspace_id
+                and pending.pilot_run_id = run.id and pending.completed_at is null
+            ) then (
+              select item.id from pilot_item_measurement item
+              where item.workspace_id = run.workspace_id and item.pilot_run_id = run.id
+                and item.completed_at is null
+              order by item.started_at desc, item.id desc limit 1
+            ) else (
+              select item.id from pilot_item_measurement item
+              where item.workspace_id = run.workspace_id and item.pilot_run_id = run.id
+                and item.completed_at is not null
+              order by item.completed_at desc, item.started_at desc, item.id desc limit 1
+            ) end as item_id
+          from pilot_run run
+          where run.workspace_id = ${workspaceId} and run.id = ${runId}
+          for update of run
+        `;
+        const current = runs[0];
+        if (!current || !current.item_id || current.actor_id !== actor.identityId) {
+          throw new RepositoryError("conflict", "The pilot item is unavailable for this actor");
+        }
+        const eventId = randomUUID();
+        await transaction`
+          insert into pilot_exception_event (
+            id, workspace_id, pilot_run_id, pilot_item_measurement_id, event_type,
+            detail_code, idempotency_key, payload_hash, actor_id
+          ) values (
+            ${eventId}, ${workspaceId}, ${runId}, ${current.item_id}, ${input.eventType},
+            ${input.detailCode}, ${input.idempotencyKey}, ${payloadHash}, ${actor.identityId}
+          )
+        `;
+        await transaction`
+          insert into audit_event (
+            workspace_id, actor_id, action, target_type, target_id, field_names,
+            redacted_changes, reference_ids, reason_code, approved_by
+          ) values (
+            ${workspaceId}, ${actor.identityId}, 'pilot_exception.recorded',
+            'pilot_exception_event', ${eventId}, ${["event_type", "detail_code"]},
+            ${transaction.json({
+              after: { event_type: input.eventType, detail_code: input.detailCode },
+            })},
+            ${[runId, current.item_id]}, 'server_timestamped_exception', ${actor.identityId}
+          )
+        `;
+        if (input.eventType === "invalid_attempt" && current.state === "active") {
+          await transaction`
+            update pilot_run set state = 'failed', completed_at = statement_timestamp()
+            where workspace_id = ${workspaceId} and id = ${runId} and state = 'active'
+          `;
+        }
+        const invalidatesCompletedRun = [
+          "invalid_attempt",
+          "missing_required_image",
+          "label_location_mismatch",
+          "misputaway",
+        ].includes(input.eventType);
+        if (invalidatesCompletedRun && current.state === "completed") {
+          await transaction`
+            update pilot_run
+            set state = 'failed'
+            where workspace_id = ${workspaceId} and id = ${runId} and state = 'completed'
+          `;
+          await transaction`
+            insert into audit_event (
+              workspace_id, actor_id, action, target_type, target_id, field_names,
+              redacted_changes, reference_ids, reason_code, approved_by
+            ) values (
+              ${workspaceId}, ${actor.identityId}, 'pilot_run.failed_after_late_exception',
+              'pilot_run', ${runId}, ${["state"]},
+              ${transaction.json({
+                before: { state: "completed" },
+                after: { state: "failed" },
+              })},
+              ${[runId, current.item_id]}, 'late_safety_exception_sync', ${actor.identityId}
+            )
+          `;
+        }
+        return requirePilotRun(transaction, workspaceId, runId);
+      });
+    } catch (error) {
+      throw normalizeP0ItemError(error);
+    }
+  }
+
+  async invalidatePilotRun(
+    workspaceId: string,
+    runId: string,
+    actor: RequestActor,
+    input: InvalidatePilotRunRequest,
+  ): Promise<PilotRunResponse> {
+    const payloadHash = createHash("sha256")
+      .update(JSON.stringify({ runId, reasonCode: input.reasonCode }), "utf8")
+      .digest("hex");
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId);
+        await requireManagementRole(transaction, workspaceId, actor.identityId);
+        await transaction`
+          select pg_advisory_xact_lock(hashtext(${`pilot-invalidate:${workspaceId}:${runId}`}))
+        `;
+        const replay = await transaction<
+          Array<{ result_reference_id: string; payload_hash: string }>
+        >`
+          select result_reference_id, payload_hash from idempotency_record
+          where workspace_id = ${workspaceId}
+            and operation = 'invalidate_pilot_run_external'
+            and idempotency_key = ${input.idempotencyKey}
+        `;
+        if (replay[0]) {
+          if (replay[0].payload_hash !== payloadHash || replay[0].result_reference_id !== runId) {
+            throw new RepositoryError(
+              "conflict",
+              "The pilot invalidation idempotency key has another payload",
+            );
+          }
+          return requirePilotRun(transaction, workspaceId, runId);
+        }
+
+        const runs = await transaction<Array<{ state: PilotRunResponse["state"] }>>`
+          select state from pilot_run
+          where workspace_id = ${workspaceId} and id = ${runId}
+          for update
+        `;
+        if (!runs[0]) throw new RepositoryError("forbidden", "The pilot run is unavailable");
+        if (runs[0].state !== "active") {
+          throw new RepositoryError(
+            "conflict",
+            "Only an active pilot run can be externally invalidated",
+          );
+        }
+
+        await transaction`
+          update pilot_run
+          set state = 'externally_invalidated', externally_invalidated = true,
+              external_invalidation_reason = ${input.reasonCode},
+              completed_at = statement_timestamp()
+          where workspace_id = ${workspaceId} and id = ${runId} and state = 'active'
+        `;
+        await transaction`
+          insert into idempotency_record (
+            workspace_id, operation, idempotency_key, payload_hash, result_reference_id
+          ) values (
+            ${workspaceId}, 'invalidate_pilot_run_external', ${input.idempotencyKey},
+            ${payloadHash}, ${runId}
+          )
+        `;
+        await transaction`
+          insert into audit_event (
+            workspace_id, actor_id, action, target_type, target_id, field_names,
+            redacted_changes, reference_ids, reason_code, approved_by
+          ) values (
+            ${workspaceId}, ${actor.identityId}, 'pilot_run.externally_invalidated',
+            'pilot_run', ${runId},
+            ${["state", "externally_invalidated", "external_invalidation_reason"]},
+            ${transaction.json({
+              before: { state: "active", externally_invalidated: false },
+              after: {
+                state: "externally_invalidated",
+                externally_invalidated: true,
+                reason_code: input.reasonCode,
+              },
+            })},
+            ${[runId]}, ${input.reasonCode}, ${actor.identityId}
+          )
+        `;
+        return requirePilotRun(transaction, workspaceId, runId);
       });
     } catch (error) {
       throw normalizeP0ItemError(error);
@@ -320,11 +880,11 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
         await transaction`
           insert into location_node (
             id, workspace_id, parent_id, code, name, depth, can_store_inventory,
-            single_item_only, allow_mixed_sku, max_units
+            single_item_only, allow_mixed_sku, max_units, purpose
           ) values (
             ${locationId}, ${workspaceId}, ${input.parentId}, ${checkedCode}, ${input.name},
             ${depth}, ${input.canStoreInventory}, ${input.singleItemOnly},
-            ${input.allowMixedSku}, ${input.maxUnits}
+            ${input.allowMixedSku}, ${input.maxUnits}, ${input.purpose ?? "general"}
           )
         `;
         await transaction`
@@ -381,10 +941,24 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
         const role = roles[0]?.role;
         if (!role) throw new RepositoryError("forbidden", "Putaway role is required");
         const inventory = await transaction<
-          Array<{ inventory_number: string; label_version: number }>
+          Array<{
+            inventory_number: string;
+            label_version: number;
+            sku_id: string;
+            title: string;
+            photo_id: string | null;
+          }>
         >`
-          select unit.inventory_number, label.version as label_version
+          select unit.inventory_number, label.version as label_version, unit.sku_id, sku.title,
+                 photo.id as photo_id
           from inventory_unit unit
+          join product_sku sku on sku.workspace_id = unit.workspace_id and sku.id = unit.sku_id
+          left join lateral (
+            select asset.id from media_asset asset
+            where asset.workspace_id = unit.workspace_id and asset.sku_id = unit.sku_id
+              and asset.role = 'front' and asset.mime_type in ('image/jpeg','image/png')
+            order by asset.created_at desc, asset.id desc limit 1
+          ) photo on true
           join inventory_label label
             on label.workspace_id = unit.workspace_id and label.target_type = 'inventory_unit'
            and label.target_id = unit.id and label.active
@@ -398,15 +972,29 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
           order by unit.created_at, unit.inventory_number
         `;
         const locations = await transaction<
-          Array<{ code: string; name: string; label_version: number }>
+          Array<{
+            id: string;
+            code: string;
+            name: string;
+            label_version: number;
+            photo_id: string | null;
+            purpose: "general" | "return_quarantine";
+          }>
         >`
-          select location.code, location.name, label.version as label_version
+          select location.id, location.code, location.name, label.version as label_version,
+                 photo.id as photo_id, location.purpose
           from location_node location
+          left join lateral (
+            select id from location_photo
+            where workspace_id = location.workspace_id and location_id = location.id
+              and review_state = 'approved' and derivative_storage_key is not null
+            order by reviewed_at desc, id desc limit 1
+          ) photo on true
           join inventory_label label
             on label.workspace_id = location.workspace_id and label.target_type = 'location'
            and label.target_id = location.id and label.active
           where location.workspace_id = ${workspaceId} and location.state = 'active'
-            and location.can_store_inventory
+            and location.can_store_inventory and location.purpose = 'general'
             and (
               ${role} in ('owner', 'inventory_manager')
               or has_active_work_assignment(
@@ -421,13 +1009,263 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
             inventoryNumber: row.inventory_number,
             labelVersion: row.label_version,
             status: "putaway_pending" as const,
+            skuId: row.sku_id,
+            title: row.title,
+            productPhotoUrl: row.photo_id
+              ? `/v1/workspaces/${workspaceId}/skus/${row.sku_id}/product-photos/${row.photo_id}/content`
+              : null,
           })),
           locations: locations.map((row) => ({
             code: row.code,
             name: row.name,
             labelVersion: row.label_version,
+            locationId: row.id,
+            purpose: row.purpose,
+            approvedPhotoUrl: row.photo_id
+              ? `/v1/workspaces/${workspaceId}/locations/${row.id}/photos/${row.photo_id}/content`
+              : null,
           })),
           loadedAt: new Date().toISOString(),
+        };
+      });
+    } catch (error) {
+      throw normalizeP0ItemError(error);
+    }
+  }
+
+  async authorizeReceiptEvidence(workspaceId: string, actor: RequestActor): Promise<void> {
+    try {
+      await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId);
+        await requireManagementRole(transaction, workspaceId, actor.identityId);
+      });
+    } catch (error) {
+      throw normalizeP0ItemError(error);
+    }
+  }
+
+  async registerReceiptEvidence(
+    workspaceId: string,
+    actor: RequestActor,
+    input: RegisterReceiptEvidence,
+  ): Promise<ReceiptEvidenceResponse> {
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId);
+        await requireManagementRole(transaction, workspaceId, actor.identityId);
+        await transaction`select pg_advisory_xact_lock(hashtext(${workspaceId}), hashtext(${input.assetId}))`;
+        const previous = await transaction<
+          Array<{ original_sha256: string; original_storage_key: string; confirmed_at: Date }>
+        >`
+          select original_sha256, original_storage_key, confirmed_at from receipt_media_asset
+          where workspace_id = ${workspaceId} and id = ${input.assetId}
+        `;
+        let confirmedAt = previous[0]?.confirmed_at;
+        if (
+          previous[0] &&
+          (previous[0].original_sha256 !== input.sha256 ||
+            previous[0].original_storage_key !== input.storageKey)
+        ) {
+          throw new RepositoryError("conflict", "The receipt asset has different immutable bytes");
+        }
+        if (!previous[0]) {
+          const inserted = await transaction<Array<{ confirmed_at: Date }>>`
+            insert into receipt_media_asset (id, workspace_id, original_storage_key, original_sha256,
+              mime_type, size_bytes, width, height, confirmed_by)
+            values (${input.assetId}, ${workspaceId}, ${input.storageKey}, ${input.sha256},
+              ${input.mimeType}, ${input.sizeBytes}, ${input.width}, ${input.height}, ${actor.identityId})
+            returning confirmed_at
+          `;
+          confirmedAt = inserted[0]?.confirmed_at;
+          await transaction`
+            insert into audit_event(workspace_id, actor_id, action, target_type, target_id,
+              field_names, redacted_changes, reference_ids, reason_code, approved_by)
+            values (${workspaceId}, ${actor.identityId}, 'receipt.original.confirmed', 'receipt_media_asset', ${input.assetId},
+              array['private_original'], ${transaction.json({ source: "human_confirmed_private_bytes" })},
+              ${[input.assetId]}, 'receipt_original_human_confirmed', ${actor.identityId})
+          `;
+        }
+        if (!confirmedAt)
+          throw new RepositoryError("database_error", "Receipt insert returned no timestamp");
+        return {
+          assetId: input.assetId,
+          workspaceId,
+          mimeType: input.mimeType,
+          sizeBytes: input.sizeBytes,
+          width: input.width,
+          height: input.height,
+          confirmedAt: confirmedAt.toISOString(),
+          contentUrl: `/v1/workspaces/${workspaceId}/receipt-evidence/${input.assetId}/content`,
+        };
+      });
+    } catch (error) {
+      throw normalizeP0ItemError(error);
+    }
+  }
+
+  async receiptEvidenceContent(
+    workspaceId: string,
+    assetId: string,
+    actor: RequestActor,
+  ): Promise<SanitizedOriginalReadRequest> {
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId);
+        await requireManagementRole(transaction, workspaceId, actor.identityId);
+        const rows = await transaction<
+          Array<{
+            original_storage_key: string;
+            original_sha256: string;
+            mime_type: "image/jpeg" | "image/png";
+            size_bytes: number;
+            width: number;
+            height: number;
+          }>
+        >`
+          select original_storage_key, original_sha256, mime_type, size_bytes, width, height
+          from receipt_media_asset where workspace_id = ${workspaceId} and id = ${assetId}
+        `;
+        const row = rows[0];
+        if (!row) throw new RepositoryError("forbidden", "Receipt evidence is unavailable");
+        return {
+          storageKey: row.original_storage_key,
+          expectedSha256: row.original_sha256,
+          expectedMimeType: row.mime_type,
+          expectedSizeBytes: row.size_bytes,
+          expectedWidth: row.width,
+          expectedHeight: row.height,
+        };
+      });
+    } catch (error) {
+      throw normalizeP0ItemError(error);
+    }
+  }
+
+  async returnCatalog(workspaceId: string, actor: RequestActor): Promise<ReturnCatalogResponse> {
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId);
+        await requireManagementRole(transaction, workspaceId, actor.identityId);
+        const rows = await transaction<
+          Array<{
+            order_id: string;
+            order_number: string;
+            order_state: "shipped" | "returned";
+            sku_id: string;
+            title: string;
+            inventory_unit_id: string;
+            inventory_number: string;
+            inventory_status:
+              "shipped" | "quarantined" | "available" | "disposal_pending" | "putaway_pending";
+            inventory_label_version: number | null;
+            movement_seq: number;
+            location_id: string | null;
+            location_code: string | null;
+            location_label_version: number | null;
+          }>
+        >`
+          select orders.id as order_id, orders.order_number, orders.state as order_state,
+                 unit.sku_id, sku.title, unit.id as inventory_unit_id, unit.inventory_number,
+                 unit.status as inventory_status, inventory_label.version as inventory_label_version,
+                 unit.movement_seq::integer as movement_seq, unit.location_id,
+                 location.code as location_code, location_label.version as location_label_version
+          from sales_order orders
+          join order_allocation allocation on allocation.workspace_id = orders.workspace_id
+            and allocation.order_id = orders.id and allocation.active
+          join inventory_unit unit on unit.workspace_id = allocation.workspace_id and unit.id = allocation.inventory_unit_id
+          join product_sku sku on sku.workspace_id = unit.workspace_id and sku.id = unit.sku_id
+          left join location_node location on location.workspace_id = unit.workspace_id and location.id = unit.location_id
+          left join inventory_label inventory_label on inventory_label.workspace_id = unit.workspace_id
+            and inventory_label.target_type = 'inventory_unit' and inventory_label.target_id = unit.id and inventory_label.active
+          left join inventory_label location_label on location_label.workspace_id = unit.workspace_id
+            and location_label.target_type = 'location' and location_label.target_id = location.id and location_label.active
+          where orders.workspace_id = ${workspaceId} and orders.state in ('shipped','returned')
+            and unit.status in ('shipped','quarantined','available','disposal_pending','putaway_pending')
+          order by orders.order_number, orders.id
+        `;
+        return {
+          workspaceId,
+          loadedAt: new Date().toISOString(),
+          orders: rows.map((row) => ({
+            orderId: row.order_id,
+            orderNumber: row.order_number,
+            orderState: row.order_state,
+            skuId: row.sku_id,
+            title: row.title,
+            inventoryUnitId: row.inventory_unit_id,
+            inventoryNumber: row.inventory_number,
+            inventoryStatus: row.inventory_status,
+            inventoryLabelVersion: row.inventory_label_version,
+            movementSequence: row.movement_seq,
+            locationId: row.location_id,
+            locationCode: row.location_code,
+            locationLabelVersion: row.location_label_version,
+            quarantined: row.inventory_status === "quarantined",
+          })),
+        };
+      });
+    } catch (error) {
+      throw normalizeP0ItemError(error);
+    }
+  }
+
+  async productPhotoContent(
+    workspaceId: string,
+    skuId: string,
+    assetId: string,
+    actor: RequestActor,
+  ): Promise<SanitizedOriginalReadRequest> {
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId);
+        const rows = await transaction<
+          Array<{
+            original_storage_key: string;
+            original_sha256: string;
+            mime_type: "image/jpeg" | "image/png";
+            size_bytes: number;
+            width: number;
+            height: number;
+          }>
+        >`
+          select asset.original_storage_key, asset.original_sha256, asset.mime_type,
+                 asset.size_bytes, asset.width, asset.height
+          from media_asset asset
+          join workspace_membership membership on membership.workspace_id = asset.workspace_id
+            and membership.identity_id = ${actor.identityId} and membership.active
+          where asset.workspace_id = ${workspaceId} and asset.sku_id = ${skuId} and asset.id = ${assetId}
+            and asset.mime_type in ('image/jpeg','image/png')
+            and (
+              (
+                membership.role in ('owner','inventory_manager')
+                and asset.role in ('front','back','brand_tag','care_label','measurement_evidence')
+              )
+              or (
+                membership.role = 'field_worker'
+                and asset.role in ('front','measurement_evidence')
+                and (exists (
+                  select 1 from inventory_unit unit where unit.workspace_id = asset.workspace_id
+                    and unit.sku_id = asset.sku_id and unit.status = 'putaway_pending'
+                    and has_active_inventory_unit_assignment(${workspaceId}, ${actor.identityId}, 'putaway', unit.id, now())
+                ) or exists (
+                  select 1 from sku_work_assignment assignment where assignment.workspace_id = asset.workspace_id
+                    and assignment.sku_id = asset.sku_id and assignment.identity_id = ${actor.identityId}
+                    and assignment.operation = 'capture' and assignment.revoked_at is null
+                    and assignment.starts_at <= now() and assignment.expires_at > now()
+                ))
+              )
+            )
+        `;
+        const row = rows[0];
+        if (!row)
+          throw new RepositoryError("forbidden", "The product photo is outside this assignment");
+        return {
+          storageKey: row.original_storage_key,
+          expectedSha256: row.original_sha256,
+          expectedMimeType: row.mime_type,
+          expectedSizeBytes: row.size_bytes,
+          expectedWidth: row.width,
+          expectedHeight: row.height,
         };
       });
     } catch (error) {
@@ -452,6 +1290,11 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
             sku_code: string;
             title: string;
             category: string | null;
+            profile_category: MeasurementProfileResponse["category"] | null;
+            measurement_template_id: MeasurementProfileResponse["measurementTemplateId"] | null;
+            measurement_template_version: 1 | null;
+            profile_confirmed_by: string | null;
+            profile_confirmed_at: Date | null;
             photo_asset_ids: string[];
             photo_roles: CaptureTaskResponse["photoRoles"];
             measurements: CaptureTaskResponse["measurements"];
@@ -459,6 +1302,10 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
           }>
         >`
           select sku.id as sku_id, sku.sku_code, sku.title, sku.category,
+                 profile.category as profile_category,
+                 profile.measurement_template_id, profile.measurement_template_version,
+                 profile.confirmed_by as profile_confirmed_by,
+                 profile.confirmed_at as profile_confirmed_at,
                  coalesce(photos.ids, array[]::uuid[]) as photo_asset_ids,
                  coalesce(photos.roles, array[]::text[]) as photo_roles,
                  coalesce(measurements.items, '[]'::jsonb) as measurements,
@@ -466,11 +1313,14 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
           from product_sku sku
           join p0_workflow workflow
             on workflow.workspace_id = sku.workspace_id and workflow.sku_id = sku.id
+          left join product_measurement_profile profile
+            on profile.workspace_id = sku.workspace_id and profile.sku_id = sku.id
           left join lateral (
             select array_agg(asset.id order by asset.created_at) as ids,
                    array_agg(asset.role order by asset.created_at) as roles
             from media_asset asset
             where asset.workspace_id = sku.workspace_id and asset.sku_id = sku.id
+              and asset.role <> 'measurement_evidence'
           ) photos on true
           left join lateral (
             select jsonb_agg(jsonb_build_object(
@@ -510,6 +1360,13 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
           skuCode: row.sku_code,
           title: row.title,
           category: row.category,
+          measurementProfile: toMeasurementProfileResponse({
+            category: row.profile_category,
+            measurementTemplateId: row.measurement_template_id,
+            measurementTemplateVersion: row.measurement_template_version,
+            confirmedBy: row.profile_confirmed_by,
+            confirmedAt: row.profile_confirmed_at,
+          }),
           photoAssetIds: row.photo_asset_ids,
           photoRoles: row.photo_roles,
           measurements: row.measurements,
@@ -548,14 +1405,14 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
         const rows = await transaction<CandidateRow[]>`
           insert into product_identity_candidate (
             id, workspace_id, sku_id, source_asset_id, source_text_sha256,
-            brand_candidate, model_candidate, material_candidate, size_candidate,
+            brand_candidate, model_candidate, material_candidate, size_candidate, color_candidate,
             source_kind, created_by
           ) values (
             ${id}, ${workspaceId}, ${skuId}, ${input.sourceAssetId}, ${hash},
-            ${parsed.brand}, ${parsed.model}, ${parsed.material}, ${parsed.size},
+            ${parsed.brand}, ${parsed.model}, ${parsed.material}, ${parsed.size}, ${parsed.color},
             'manual_ocr_text', ${actor.identityId}
           ) returning id, sku_id, source_asset_id, brand_candidate, model_candidate,
-              material_candidate, size_candidate, status, created_at
+              material_candidate, size_candidate, color_candidate, status, created_at
         `;
         const row = rows[0];
         if (!row) throw new RepositoryError("database_error", "The OCR candidate was not stored");
@@ -597,7 +1454,7 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
           where workspace_id = ${workspaceId} and sku_id = ${skuId} and id = ${candidateId}
             and status = 'candidate'
           returning id, sku_id, source_asset_id, brand_candidate, model_candidate,
-                    material_candidate, size_candidate, status, created_at
+                    material_candidate, size_candidate, color_candidate, status, created_at
         `;
         if (!rows[0]) throw new RepositoryError("conflict", "The candidate is unavailable");
         await auditResearch(
@@ -617,6 +1474,125 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
     }
   }
 
+  async confirmProductAttributes(
+    workspaceId: string,
+    skuId: string,
+    actor: RequestActor,
+    input: ConfirmProductAttributesRequest,
+  ): Promise<ProductAttributeConfirmationResponse> {
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId);
+        await requireManagementRole(transaction, workspaceId, actor.identityId);
+        await requireResearchEditable(transaction, workspaceId, skuId, true);
+        const lockedSkus = await transaction<Array<{ id: string }>>`
+          select id from product_sku
+          where workspace_id = ${workspaceId} and id = ${skuId}
+          for update
+        `;
+        if (!lockedSkus[0]) {
+          throw new RepositoryError("forbidden", "The SKU is not available in this workspace");
+        }
+        const evidence = await transaction<Array<{ id: string }>>`
+          select id from media_asset
+          where workspace_id = ${workspaceId} and sku_id = ${skuId}
+            and id = ${input.evidenceAssetId} and role in ('brand_tag','care_label')
+        `;
+        if (!evidence[0]) {
+          throw new RepositoryError(
+            "forbidden",
+            "Product attributes require a same-SKU brand-tag or care-label photo",
+          );
+        }
+        if (input.sourceCandidateId) {
+          const candidates = await transaction<Array<{ id: string }>>`
+            select id from product_identity_candidate
+            where workspace_id = ${workspaceId} and sku_id = ${skuId}
+              and id = ${input.sourceCandidateId} and source_asset_id = ${input.evidenceAssetId}
+              and status <> 'rejected'
+          `;
+          if (!candidates[0]) {
+            throw new RepositoryError("conflict", "The source candidate is unavailable");
+          }
+        }
+        const latest = await transaction<AttributeConfirmationRow[]>`
+          select id, sku_id, revision, brand, size_label, color, evidence_asset_id,
+                 source_candidate_id, supersedes_confirmation_id, confirmed_by, confirmed_at
+          from product_attribute_confirmation
+          where workspace_id = ${workspaceId} and sku_id = ${skuId}
+          order by revision desc
+          limit 1
+        `;
+        const current = latest[0];
+        if ((input.supersedesConfirmationId ?? null) !== (current?.id ?? null)) {
+          throw new RepositoryError(
+            "conflict",
+            "Product attributes changed; reload the latest confirmation before saving",
+          );
+        }
+        if (
+          current &&
+          current.brand === input.brand &&
+          current.size_label === input.sizeLabel &&
+          current.color === input.color &&
+          current.evidence_asset_id === input.evidenceAssetId &&
+          current.source_candidate_id === (input.sourceCandidateId ?? null)
+        ) {
+          throw new RepositoryError(
+            "conflict",
+            "Product attributes are unchanged; no correction was saved",
+          );
+        }
+        const id = randomUUID();
+        const rows = await transaction<AttributeConfirmationRow[]>`
+          insert into product_attribute_confirmation (
+            id, workspace_id, sku_id, revision, brand, size_label, color,
+            evidence_asset_id, source_candidate_id, supersedes_confirmation_id,
+            confirmed_by, confirmed_at
+          ) values (
+            ${id}, ${workspaceId}, ${skuId}, ${(current?.revision ?? 0) + 1},
+            ${input.brand}, ${input.sizeLabel}, ${input.color}, ${input.evidenceAssetId},
+            ${input.sourceCandidateId ?? null}, ${current?.id ?? null},
+            ${actor.identityId}, statement_timestamp()
+          ) returning id, sku_id, revision, brand, size_label, color, evidence_asset_id,
+              source_candidate_id, supersedes_confirmation_id, confirmed_by, confirmed_at
+        `;
+        const row = rows[0];
+        if (!row) {
+          throw new RepositoryError("database_error", "Product attributes returned no row");
+        }
+        await auditResearch(
+          transaction,
+          workspaceId,
+          actor.identityId,
+          "research.product_attributes.confirmed",
+          id,
+          { revision: current?.revision ?? 0 },
+          { revision: row.revision, fields: ["brand", "size_label", "color"] },
+          "product_attributes_human_confirmed",
+        );
+        if (current) {
+          const correction = await recordActivePilotManualCorrection(transaction, {
+            workspaceId,
+            skuId,
+            actorId: actor.identityId,
+            correctionReferenceId: row.id,
+            detailCode: "product_attributes_revised",
+          });
+          if (correction === "actor_mismatch" || correction === "idempotency_conflict") {
+            throw new RepositoryError(
+              "conflict",
+              "The active pilot correction actor or evidence conflicts with the run",
+            );
+          }
+        }
+        return toAttributeConfirmation(row);
+      });
+    } catch (error) {
+      throw normalizeP0ItemError(error);
+    }
+  }
+
   async addMarketplaceReference(
     workspaceId: string,
     skuId: string,
@@ -628,6 +1604,18 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
         await setWorkspace(transaction, workspaceId);
         await requireManagementRole(transaction, workspaceId, actor.identityId);
         await requireResearchEditable(transaction, workspaceId, skuId, true);
+        const activePilotRuns = await transaction<Array<{ id: string }>>`
+          select run.id from pilot_run run
+          where run.workspace_id = ${workspaceId} and run.state = 'active'
+            and run.protocol_version = 'listing_prep_pilot_v1.1.0'
+          limit 1
+        `;
+        if (activePilotRuns[0]) {
+          throw new RepositoryError(
+            "conflict",
+            "Marketplace references are disabled during the local-only pilot",
+          );
+        }
         const id = randomUUID();
         const rows = await transaction<ReferenceRow[]>`
           insert into marketplace_reference (
@@ -670,7 +1658,7 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
         await requireManagementRole(transaction, workspaceId, actor.identityId);
         const candidateRows = await transaction<CandidateRow[]>`
           select id, sku_id, source_asset_id, brand_candidate, model_candidate,
-                 material_candidate, size_candidate, status, created_at
+                 material_candidate, size_candidate, color_candidate, status, created_at
           from product_identity_candidate
           where workspace_id = ${workspaceId} and sku_id = ${skuId}
           order by created_at desc
@@ -680,6 +1668,13 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
                  item_condition, shipping_basis, included, exclusion_reason, checked_at, created_at
           from marketplace_reference where workspace_id = ${workspaceId} and sku_id = ${skuId}
           order by checked_at desc
+        `;
+        const attributeRows = await transaction<AttributeConfirmationRow[]>`
+          select id, sku_id, revision, brand, size_label, color, evidence_asset_id,
+                 source_candidate_id, supersedes_confirmation_id, confirmed_by, confirmed_at
+          from product_attribute_confirmation
+          where workspace_id = ${workspaceId} and sku_id = ${skuId}
+          order by revision desc limit 1
         `;
         const included = referenceRows
           .filter((row) => row.included && row.sold_state)
@@ -696,6 +1691,7 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
           workspaceId,
           skuId,
           candidates: candidateRows.map(toCandidate),
+          confirmedAttributes: attributeRows[0] ? toAttributeConfirmation(attributeRows[0]) : null,
           references: referenceRows.map(toReference),
           includedSoldCount: included.length,
           displayedPriceMedianMinor: median,
@@ -724,7 +1720,7 @@ async function selectLocations(
 ): Promise<LocationRow[]> {
   return sql<LocationRow[]>`
     select location.id, location.workspace_id, location.parent_id, location.code,
-           location.name, location.depth, location.can_store_inventory,
+           location.name, location.depth, location.can_store_inventory, location.purpose,
            location.single_item_only, location.allow_mixed_sku, location.max_units,
            count(distinct unit.id) filter (
              where unit.status in ('putaway_pending', 'available', 'reserved', 'picked', 'packed', 'quarantined')
@@ -757,6 +1753,7 @@ function toLocationResponse(row: LocationRow): LocationNodeResponse {
     depth: row.depth,
     state: "active",
     canStoreInventory: row.can_store_inventory,
+    purpose: row.purpose,
     singleItemOnly: row.single_item_only,
     allowMixedSku: row.allow_mixed_sku,
     maxUnits: row.max_units,
@@ -774,10 +1771,24 @@ async function selectP0Items(
 ): Promise<P0ItemRow[]> {
   return sql<P0ItemRow[]>`
     select sku.workspace_id, sku.id as sku_id, sku.sku_code, sku.title, sku.category,
+           profile.category as profile_category,
+           profile.measurement_template_id, profile.measurement_template_version,
+           profile.confirmed_by as measurement_profile_confirmed_by,
+           profile.confirmed_at as measurement_profile_confirmed_at,
+           latest_attributes.id as attribute_confirmation_id,
+           latest_attributes.revision as attribute_revision,
+           latest_attributes.brand as confirmed_brand,
+           latest_attributes.size_label as confirmed_size_label,
+           latest_attributes.color as confirmed_color,
+           latest_attributes.evidence_asset_id as attribute_evidence_asset_id,
+           latest_attributes.source_candidate_id as attribute_source_candidate_id,
+           latest_attributes.supersedes_confirmation_id,
+           latest_attributes.confirmed_by as attributes_confirmed_by,
+           latest_attributes.confirmed_at as attributes_confirmed_at,
            unit.id as inventory_unit_id, unit.inventory_number, unit.status as inventory_status,
            location.code as location_code, item_label.version as inventory_label_version,
            location_label.version as location_label_version, receipt.id as receipt_id,
-           receipt.receipt_reference, batch.purchased_at,
+           receipt.receipt_reference, receipt.evidence_asset_id as receipt_evidence_asset_id, batch.purchased_at,
            allocation.allocated_amount_minor::integer as allocated_cost_minor,
            coalesce(capture_photos.asset_ids, array[]::uuid[]) as photo_asset_ids,
            coalesce(capture_photos.roles, array[]::text[]) as photo_roles,
@@ -808,6 +1819,8 @@ async function selectP0Items(
       on batch.workspace_id = receipt.workspace_id and batch.id = receipt.purchase_batch_id
     join p0_workflow workflow
       on workflow.workspace_id = sku.workspace_id and workflow.sku_id = sku.id
+    left join product_measurement_profile profile
+      on profile.workspace_id = sku.workspace_id and profile.sku_id = sku.id
     left join location_node location
       on location.workspace_id = unit.workspace_id and location.id = unit.location_id
     left join inventory_label location_label
@@ -819,6 +1832,7 @@ async function selectP0Items(
              array_agg(asset.role order by asset.created_at, asset.id) as roles
       from media_asset asset
       where asset.workspace_id = sku.workspace_id and asset.sku_id = sku.id
+        and asset.role <> 'measurement_evidence'
     ) capture_photos on true
     left join lateral (
       select jsonb_agg(
@@ -847,6 +1861,16 @@ async function selectP0Items(
         order by attempt.definition_id, attempt.attempt desc, attempt.created_at desc
       ) measured
     ) capture_measurements on true
+    left join lateral (
+      select confirmation.id, confirmation.revision, confirmation.brand,
+             confirmation.size_label, confirmation.color, confirmation.evidence_asset_id,
+             confirmation.source_candidate_id, confirmation.supersedes_confirmation_id,
+             confirmation.confirmed_by, confirmation.confirmed_at
+      from product_attribute_confirmation confirmation
+      where confirmation.workspace_id = sku.workspace_id and confirmation.sku_id = sku.id
+      order by confirmation.revision desc
+      limit 1
+    ) latest_attributes on true
     left join lateral (
       select action.actor_id, action.created_at
       from p0_workflow_action action
@@ -896,9 +1920,18 @@ async function requireP0Item(
 }
 
 function toP0ItemResponse(row: P0ItemRow): P0ItemResponse {
+  const measurementProfile = toMeasurementProfileResponse({
+    category: row.profile_category,
+    measurementTemplateId: row.measurement_template_id,
+    measurementTemplateVersion: row.measurement_template_version,
+    confirmedBy: row.measurement_profile_confirmed_by,
+    confirmedAt: row.measurement_profile_confirmed_at,
+  });
+  const confirmedAttributes = toAttributeConfirmationFromP0Item(row);
   const referenceIds = [
     ...row.photo_asset_ids,
     ...row.measurements.map((measurement) => measurement.id),
+    ...(confirmedAttributes ? [confirmedAttributes.confirmationId] : []),
   ];
   const listingCandidate = buildListingCandidate(
     row.title,
@@ -906,6 +1939,8 @@ function toP0ItemResponse(row: P0ItemRow): P0ItemResponse {
     referenceIds,
     row.listing_confirmed_by,
     row.listing_confirmed_at,
+    measurementProfile,
+    confirmedAttributes,
   );
   return {
     workspaceId: row.workspace_id,
@@ -913,6 +1948,8 @@ function toP0ItemResponse(row: P0ItemRow): P0ItemResponse {
     skuCode: row.sku_code,
     title: row.title,
     category: row.category,
+    measurementProfile,
+    confirmedAttributes,
     inventoryUnitId: row.inventory_unit_id,
     inventoryNumber: row.inventory_number,
     inventoryStatus: row.inventory_status,
@@ -921,6 +1958,10 @@ function toP0ItemResponse(row: P0ItemRow): P0ItemResponse {
     locationLabelVersion: row.location_label_version,
     receiptId: row.receipt_id,
     receiptReference: row.receipt_reference,
+    receiptEvidenceAssetId: row.receipt_evidence_asset_id,
+    receiptEvidenceContentUrl: row.receipt_evidence_asset_id
+      ? `/v1/workspaces/${row.workspace_id}/receipt-evidence/${row.receipt_evidence_asset_id}/content`
+      : null,
     purchasedAt: row.purchased_at.toISOString(),
     allocatedCostMinor: row.allocated_cost_minor,
     capture: {
@@ -969,39 +2010,265 @@ function accountingExportContentUrl(
   return `/v1/workspaces/${workspaceId}/orders/${orderId}/accounting-exports/${exportId}/content`;
 }
 
+function toMeasurementProfileResponse(input: {
+  category: MeasurementProfileResponse["category"] | null;
+  measurementTemplateId: MeasurementProfileResponse["measurementTemplateId"] | null;
+  measurementTemplateVersion: 1 | null;
+  confirmedBy: string | null;
+  confirmedAt: Date | null;
+}): MeasurementProfileResponse | null {
+  if (
+    !input.category ||
+    !input.measurementTemplateId ||
+    input.measurementTemplateVersion !== 1 ||
+    !input.confirmedBy ||
+    !input.confirmedAt
+  ) {
+    return null;
+  }
+  const template = listingPrepPilotMeasurementTemplates[input.measurementTemplateId];
+  return {
+    category: input.category,
+    measurementTemplateId: input.measurementTemplateId,
+    measurementTemplateVersion: input.measurementTemplateVersion,
+    definitions: template.measurements.map((definition) => ({
+      ...definition,
+      state: template.state,
+    })),
+    confirmedBy: input.confirmedBy,
+    confirmedAt: input.confirmedAt.toISOString(),
+  };
+}
+
+function toAttributeConfirmation(
+  row: AttributeConfirmationRow,
+): ProductAttributeConfirmationResponse {
+  return {
+    confirmationId: row.id,
+    skuId: row.sku_id,
+    revision: row.revision,
+    brand: row.brand,
+    sizeLabel: row.size_label,
+    color: row.color,
+    evidenceAssetId: row.evidence_asset_id,
+    sourceCandidateId: row.source_candidate_id,
+    supersedesConfirmationId: row.supersedes_confirmation_id,
+    confirmedBy: row.confirmed_by,
+    confirmedAt: row.confirmed_at.toISOString(),
+  };
+}
+
+function toAttributeConfirmationFromP0Item(
+  row: P0ItemRow,
+): ProductAttributeConfirmationResponse | null {
+  if (
+    !row.attribute_confirmation_id ||
+    row.attribute_revision === null ||
+    !row.confirmed_brand ||
+    !row.confirmed_size_label ||
+    !row.confirmed_color ||
+    !row.attribute_evidence_asset_id ||
+    !row.attributes_confirmed_by ||
+    !row.attributes_confirmed_at
+  ) {
+    return null;
+  }
+  return {
+    confirmationId: row.attribute_confirmation_id,
+    skuId: row.sku_id,
+    revision: row.attribute_revision,
+    brand: row.confirmed_brand,
+    sizeLabel: row.confirmed_size_label,
+    color: row.confirmed_color,
+    evidenceAssetId: row.attribute_evidence_asset_id,
+    sourceCandidateId: row.attribute_source_candidate_id,
+    supersedesConfirmationId: row.supersedes_confirmation_id,
+    confirmedBy: row.attributes_confirmed_by,
+    confirmedAt: row.attributes_confirmed_at.toISOString(),
+  };
+}
+
 function buildListingCandidate(
   title: string,
   measurements: P0ItemResponse["capture"]["measurements"],
   referenceIds: string[],
   confirmedBy: string | null,
   confirmedAt: Date | null,
+  measurementProfile: MeasurementProfileResponse | null,
+  confirmedAttributes: ProductAttributeConfirmationResponse | null,
 ): P0ItemResponse["listingCandidate"] {
-  const labels = [
-    ["shoulder_width", "肩幅"],
-    ["chest_width", "身幅"],
-    ["sleeve_length", "袖丈"],
-    ["body_length", "着丈"],
-  ] as const;
+  const labels: ReadonlyArray<readonly [string, string]> = measurementProfile
+    ? measurementProfile.definitions.map(
+        (definition) => [definition.definitionId, definition.label] as const,
+      )
+    : [
+        ["shoulder_width", "肩幅"],
+        ["chest_width", "身幅"],
+        ["sleeve_length", "袖丈"],
+        ["body_length", "着丈"],
+      ];
   const byDefinition = new Map(
     measurements.map((measurement) => [measurement.definitionId, measurement]),
   );
   const unconfirmedFields = labels
     .filter(([definitionId]) => !byDefinition.has(definitionId))
     .map(([, label]) => label);
+  if (measurementProfile && !confirmedAttributes) {
+    unconfirmedFields.unshift("ブランド", "サイズ", "色");
+  }
   const facts = labels
     .map(([definitionId, label]) => {
       const measurement = byDefinition.get(definitionId);
       return `${label}${measurement ? measurement.value : "未確認"}${measurement ? "cm" : ""}`;
     })
     .join("、");
+  const text = measurementProfile
+    ? `${confirmedAttributes?.brand ?? "ブランド未確認"} ${title}です。サイズは${confirmedAttributes?.sizeLabel ?? "未確認"}、色は${confirmedAttributes?.color ?? "未確認"}です。実寸は${facts}です。写真と実寸をご確認のうえ、購入をご検討ください。`
+    : `${title}です。平置き実寸は${facts}です。写真と実寸をご確認のうえ、購入をご検討ください。`;
   return {
-    text: `${title}です。平置き実寸は${facts}です。写真と実寸をご確認のうえ、購入をご検討ください。`,
+    text,
     referenceIds,
     unconfirmedFields,
     status: confirmedAt ? "human_confirmed" : "candidate",
     confirmedBy,
     confirmedAt: confirmedAt?.toISOString() ?? null,
   };
+}
+
+async function requirePilotRun(
+  sql: postgres.TransactionSql,
+  workspaceId: string,
+  runId: string,
+): Promise<PilotRunResponse> {
+  const runs = await sql<PilotRunRow[]>`
+    select id, workspace_id, protocol_version, fixture_manifest_sha256,
+           commit_sha, migration_version,
+           platform, browser, viewport, actor_id, warmup_completed_at, state,
+           externally_invalidated, external_invalidation_reason, started_at, completed_at
+    from pilot_run where workspace_id = ${workspaceId} and id = ${runId}
+  `;
+  const run = runs[0];
+  if (!run) throw new RepositoryError("forbidden", "The pilot run is unavailable");
+  const rows = await sql<PilotItemRow[]>`
+    select item.id, item.sku_id, item.product_fixture_id, item.category,
+           item.measurement_template_id, item.measurement_template_version,
+           item.started_at, item.completed_at, item.elapsed_seconds,
+           coalesce(events.invalid_attempt_count, 0)::integer as invalid_attempt_count,
+           coalesce(events.missing_required_image_count, 0)::integer
+             as missing_required_image_count,
+           coalesce(events.measurement_rework_count, 0)::integer as measurement_rework_count,
+           coalesce(events.label_location_mismatch_count, 0)::integer
+             as label_location_mismatch_count,
+           coalesce(events.misputaway_count, 0)::integer as misputaway_count,
+           coalesce(events.network_retry_count, 0)::integer as network_retry_count,
+           coalesce(events.manual_correction_count, 0)::integer as manual_correction_count,
+           item.copy_ready_workflow_version
+    from pilot_item_measurement item
+    left join lateral (
+      select
+        count(*) filter (where event_type = 'invalid_attempt') as invalid_attempt_count,
+        count(*) filter (where event_type = 'missing_required_image')
+          as missing_required_image_count,
+        count(*) filter (where event_type = 'measurement_rework') as measurement_rework_count,
+        count(*) filter (where event_type = 'label_location_mismatch')
+          as label_location_mismatch_count,
+        count(*) filter (where event_type = 'misputaway') as misputaway_count,
+        count(*) filter (where event_type = 'network_retry') as network_retry_count,
+        count(*) filter (where event_type = 'manual_correction') as manual_correction_count
+      from pilot_exception_event event
+      where event.workspace_id = item.workspace_id
+        and event.pilot_item_measurement_id = item.id
+    ) events on true
+    where item.workspace_id = ${workspaceId} and item.pilot_run_id = ${runId}
+    order by item.started_at, item.product_fixture_id
+  `;
+  const items = rows.map((row) => ({
+    measurementId: row.id,
+    skuId: row.sku_id,
+    productFixtureId: row.product_fixture_id,
+    category: row.category,
+    measurementTemplateId: row.measurement_template_id,
+    measurementTemplateVersion: row.measurement_template_version,
+    startedAt: row.started_at.toISOString(),
+    completedAt: row.completed_at?.toISOString() ?? null,
+    elapsedSeconds: row.elapsed_seconds === null ? null : Number(row.elapsed_seconds),
+    metrics: {
+      invalidAttemptCount: row.invalid_attempt_count,
+      missingRequiredImageCount: row.missing_required_image_count,
+      measurementReworkCount: row.measurement_rework_count,
+      labelLocationMismatchCount: row.label_location_mismatch_count,
+      misputawayCount: row.misputaway_count,
+      networkRetryCount: row.network_retry_count,
+      manualCorrectionCount: row.manual_correction_count,
+    },
+    copyReadyWorkflowVersion: row.copy_ready_workflow_version,
+  }));
+  const common = {
+    runId: run.id,
+    workspaceId: run.workspace_id,
+    commitSha: run.commit_sha,
+    platform: run.platform,
+    browser: run.browser,
+    viewport: run.viewport,
+    actorId: run.actor_id,
+    state: run.state,
+    externallyInvalidated: run.externally_invalidated,
+    externalInvalidationReason: run.external_invalidation_reason,
+    warmupCompletedAt: run.warmup_completed_at.toISOString(),
+    startedAt: run.started_at.toISOString(),
+    completedAt: run.completed_at?.toISOString() ?? null,
+    items,
+    summary: summarizeListingPrepPilot(items, run.state),
+  };
+  if (run.protocol_version === "listing_prep_pilot_v1.0.0") {
+    return {
+      ...common,
+      protocolVersion: run.protocol_version,
+      fixtureManifestSha256: null,
+      migrationVersion: run.migration_version as Exclude<
+        PilotRunResponse["migrationVersion"],
+        "0033"
+      >,
+      items: items.map((item) => ({
+        ...item,
+        measurementTemplateId: null,
+        measurementTemplateVersion: null,
+      })),
+    };
+  }
+  if (run.fixture_manifest_sha256 !== listingPrepPilotFixtureManifestSha256) {
+    throw new RepositoryError("database_error", "The pilot manifest evidence is invalid");
+  }
+  return {
+    ...common,
+    protocolVersion: listingPrepPilotProtocolVersion,
+    fixtureManifestSha256: listingPrepPilotFixtureManifestSha256,
+    migrationVersion: "0033",
+    items: items.map((item) => {
+      if (!item.measurementTemplateId || item.measurementTemplateVersion !== 1) {
+        throw new RepositoryError("database_error", "The pilot item template evidence is missing");
+      }
+      return {
+        ...item,
+        measurementTemplateId: item.measurementTemplateId,
+        measurementTemplateVersion: item.measurementTemplateVersion,
+      };
+    }),
+  };
+}
+
+function requirePilotFixtureProfile(
+  fixtureId: (typeof listingPrepPilotFixtures)[number],
+): (typeof listingPrepPilotFixtureProfiles)[number] {
+  const profile = listingPrepPilotFixtureProfiles.find((entry) => entry.fixtureId === fixtureId);
+  if (!profile) {
+    throw new RepositoryError("conflict", "The generated pilot fixture is unavailable");
+  }
+  return profile;
+}
+
+function pilotDisplayCategory(category: "tops" | "outer" | "pants" | "knit"): string {
+  return { tops: "トップス", outer: "アウター", pants: "パンツ", knit: "ニット" }[category];
 }
 
 async function setWorkspace(sql: postgres.TransactionSql, workspaceId: string): Promise<void> {
@@ -1070,6 +2337,7 @@ function parseOcrCandidate(rawText: string): {
   model: string | null;
   material: string | null;
   size: string | null;
+  color: string | null;
 } {
   const lines = rawText
     .split(/\r?\n/u)
@@ -1080,6 +2348,7 @@ function parseOcrCandidate(rawText: string): {
     lines.map((line) => line.match(pattern)?.[1]?.trim() ?? null).find(Boolean) ?? null;
   const model = findValue(/(?:品番|型番|model|style)\s*[:：#]?\s*([A-Z0-9][A-Z0-9._/-]{2,40})/iu);
   const size = findValue(/(?:サイズ|size)\s*[:：]?\s*([A-Z0-9][A-Z0-9._/-]{0,15})/iu);
+  const color = findValue(/(?:カラー|色|color)\s*[:：]?\s*(.{1,80})/iu);
   const material =
     findValue(/(?:素材|material|組成)\s*[:：]?\s*(.{1,80})/iu) ??
     lines.find((line) => /(綿|コットン|ポリエステル|ウール|毛|ナイロン|レーヨン|麻)/u.test(line)) ??
@@ -1087,9 +2356,10 @@ function parseOcrCandidate(rawText: string): {
   const brand =
     lines.find(
       (line) =>
-        line.length <= 80 && !/(品番|型番|model|style|サイズ|size|素材|material|組成)/iu.test(line),
+        line.length <= 80 &&
+        !/(品番|型番|model|style|サイズ|size|カラー|色|color|素材|material|組成)/iu.test(line),
     ) ?? null;
-  return { brand, model, material, size };
+  return { brand, model, material, size, color };
 }
 
 function toCandidate(row: CandidateRow): IdentityCandidateResponse {
@@ -1101,6 +2371,7 @@ function toCandidate(row: CandidateRow): IdentityCandidateResponse {
     modelCandidate: row.model_candidate,
     materialCandidate: row.material_candidate,
     sizeCandidate: row.size_candidate,
+    colorCandidate: row.color_candidate,
     status: row.status,
     createdAt: row.created_at.toISOString(),
   };

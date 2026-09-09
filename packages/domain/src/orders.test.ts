@@ -11,12 +11,28 @@ describe("order transitions", () => {
         hasActiveAllocation: false,
         hasConfirmedPickScan: false,
         hasPackingEvidence: false,
+        addressRequired: true,
         addressLeaseActive: false,
       }),
     ).toContain("active_allocation_required");
   });
 
-  it("requires a temporary address lease for shipping workers", () => {
+  it("requires every allowed role to hold its own temporary lease for stored-address orders", () => {
+    expect(
+      validateOrderTransition({
+        from: "packed",
+        to: "shipped",
+        actorRole: "inventory_manager",
+        hasActiveAllocation: true,
+        hasConfirmedPickScan: true,
+        hasPackingEvidence: true,
+        addressRequired: true,
+        addressLeaseActive: false,
+      }),
+    ).toContain("active_address_lease_required");
+  });
+
+  it("allows anonymous orders to move without creating an address lease", () => {
     expect(
       validateOrderTransition({
         from: "packed",
@@ -25,9 +41,10 @@ describe("order transitions", () => {
         hasActiveAllocation: true,
         hasConfirmedPickScan: true,
         hasPackingEvidence: true,
+        addressRequired: false,
         addressLeaseActive: false,
       }),
-    ).toContain("active_address_lease_required");
+    ).not.toContain("active_address_lease_required");
   });
 
   it("forces returned inventory through quarantine and inspection", () => {

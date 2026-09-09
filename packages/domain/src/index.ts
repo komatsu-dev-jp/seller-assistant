@@ -5,3 +5,4 @@ export * from "./product.js";
 export * from "./workflow.js";
 export * from "./orders.js";
 export * from "./accounting.js";
+export * from "./pilot.js";

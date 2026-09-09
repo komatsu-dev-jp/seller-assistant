@@ -51,6 +51,17 @@ export default async function MobileHomePage() {
         ) : null}
 
         {canViewManagement ? (
+          <a className="mobileWorkflowAction" href="/mobile/find">
+            <span aria-hidden="true">▥</span>
+            <div>
+              <strong>バーコードで商品を探す</strong>
+              <small>現在の保管場所を表示・在庫は変更しません</small>
+            </div>
+            <span aria-hidden="true">›</span>
+          </a>
+        ) : null}
+
+        {canViewManagement ? (
           <a className="mobileWorkflowAction" href="/workflow">
             <span aria-hidden="true">▤</span>
             <div>

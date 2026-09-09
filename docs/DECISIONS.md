@@ -117,6 +117,267 @@ APIキー、トークン、個人情報、生ログ、会話全文、一時的�
 - Sources: https://nodejs.org/api/crypto.html / https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html
 - Follow-up: 実PostgreSQLを無料のローカル環境へ用意し、初期owner、session、rate limit、membership/RLSを結合検証する。
 
+### 2026-08-20 — 1人運用の時間差確認と会計未設定停止を採用する
+
+- Type: decision
+- Context: Claude Code第二次監査と現行mainの照合、ユーザーによる推奨Aの承認
+- Decision or rule: 有効メンバーが1人の期間だけ、在庫差異の重要確定へ `single_actor_delayed` を自動適用する。初回申請から24時間以上、別session、証拠写真1枚以上、定型理由と自由記述がそろった場合だけ本人の再確認を許す。有効メンバーが2人以上なら新規の重要確定は `dual_actor` とする。会計設定は `unconfigured` を既定にし、申告方式、消費税区分、インボイス登録、記帳方式、勘定科目mappingを本人または税理士が確認するまで会計CSVを出力しない。
+- Why: 完全無料の1人利用で在庫差異を閉じられるようにしながら即時の自己確定を防ぎ、未確認の税務・会計前提をアプリが推測してCSVへ混入させないため。
+- Applies to: M13/W11、M14/W12、P0仕様、会計profile、在庫差異、監査、AC/TA、Goal、CSV出力前検査
+- Verification: 24時間未満、同一session、証拠なし、理由なしを全件拒否する。2人以上では同一人物の承認を拒否する。会計項目が一つでも未設定ならCSV bytesを0件にし、理由を画面と監査へ残す。
+- Follow-up: P0は機能分割せずcore縦導線とexception・差異の2検証ゲートにする。既存在庫移行、古物台帳生成、同一SKU複数個体はP1の別Goalとし、10商品pilotの出品準備中央値5分以下を当面の効率目標へ昇格する。追補モックのSlack承認後に仕様本文へ反映する。
+
+### 2026-08-20 — 1人運用は即時の可逆変更、会計CSVは候補自動入力へ変更する
+
+- Type: decision
+- Context: Slack返信TS `1787201696.138589` と、会話内のユーザー回答「修正版Aでお願いします」
+- Decision or rule: 1人運用の24時間待機を廃止する。現物ラベルと場所ラベルの再読取、証拠写真、理由、最終確認を同一sessionで満たした場合、在庫を削除せず可逆な `missing_candidate` へ即時変更できる。発見時は履歴を残して復帰する。取消不能な廃棄確定はP0対象外とする。会計出力はMoney Forward指定仕訳帳CSVと汎用CSVを分け、外部へ自動送信しない。勘定科目は取引種別とユーザー承認済みmappingから候補を自動入力し、初回・低確信・未対応・税設定未完了では確定せずCSVを停止する。専門用語にはタップ可能な `?` ヘルプを付ける。
+- Why: 1人の現場作業を24時間止めず、誤操作時に復旧できる安全性を残し、会計入力の反復作業を減らしながら個別税務判断と誤ったCSV確定を避けるため。
+- Applies to: M13/W11、M14/W12、在庫差異、棚卸、会計profile、勘定科目mapping、CSV adapter、用語ヘルプ、AC/TA、Goal
+- Verification: 再読取・写真・理由・最終確認の一つでも欠ければ変更0件。`missing_candidate` は履歴付きで復帰可能。Money Forward adapterは公式sample列・必須項目・文字コードfixtureに合格し、外部通信0件。未確認候補が1件でもあればCSV bytesは0件。ヘルプはキーボードとタップで開閉できる。
+- Supersedes: 同日決定「1人運用の時間差確認と会計未設定停止を採用する」のうち、24時間待機と別session要件。会計未設定停止、2人以上の別担当確認、P1対象外境界は維持する。
+- Follow-up: 修正版4画面をSlackで承認後、仕様本文へ反映する。
+
+### 2026-08-20 — 修正版Aの4画面を承認しP0 gateを再開する
+
+- Type: decision
+- Context: Slack `#メルカリ自動化` 親TS `1787203224.255009`、ユーザー本人の返信TS `1787203707.087749`「修正版4画面で承認」
+- Decision or rule: M13 v2/W11 v4の1人用可逆差異フローと、M14 v2/W12 v2の会計profile・承認済みmapping・Money Forward/汎用CSV分離を正式採用する。旧P0合格は基礎証拠として保持するが、AC-039、AC-056〜061、TA-038〜043を含む現行gateが合格するまでP0完成扱いにしない。
+- Why: 1人運用の行き止まりを即時かつ復元可能な方法で解消し、会計前提の推測と誤出力を防ぎながら完全無料・手動公式経路を維持するため。
+- Applies to: MVP仕様、技術設計、財務数式、Goal契約、受け入れ対応表、Notion共有ミラー、実装、独立review
+- Verification: `docs/design/revised-a-approval-v2.md`の4 hash、Slack返信、AC-056〜061、TA-038〜043、`financial_formula_v1.0.0`、外部network 0件を照合する。
+- Supersedes: 同日決定「1人運用の時間差確認と会計未設定停止を採用する」の24時間/別session要件。後続の「1人運用は即時の可逆変更、会計CSVは候補自動入力へ変更する」を承認済み状態へ確定する。
+- Follow-up: Goal再開契約v2をユーザーが1回確認した後、paused Goalを再開して実装する。P1、本番公開、PR mergeは行わない。
+
+### 2026-08-20 — Goal再開契約v2を確認し無料PWA実装を再開する
+
+- Type: decision
+- Context: `docs/specs/goal-contract-revised-a-v2.md`、ユーザー回答「この契約でGoalを再開してください」
+- Decision or rule: 修正版A、完全無料PWA、Money Forward公式A〜AA 27列と汎用19列の分離、P0必須AC/TA、Draft PRまで・merge/本番公開なしを最終契約としてP0実装と評価Loopを再開する。Goal管理機能に残るnative iOS前提の旧Objectiveは実装根拠にしない。
+- Why: Slack UI承認、独立仕様review PASS、27列訂正を含む契約v2について、ユーザーの明示確認が得られたため。
+- Applies to: migration `0020`以後、domain/contracts/API/Web/PWA、検証、独立review、Draft PR
+- Verification: 契約v2の承認状態、AC-001〜061、TA-001〜043、外部runtime通信0件、費用0円、Draft PR境界を照合する。
+- Follow-up: 現行P0の全gateが合格するまでP1を開始しない。
+
+### 2026-08-20 — Slack承認画像を実装UIの受け入れ基準に固定する
+
+- Type: decision
+- Context: ユーザー指摘「モックが承認したイメージ（デザイン）とかなり違います」「Slackで承認したイメージ通りがいい」
+- Decision or rule: `docs/design/selected-direction.md` と修正版AのSlack承認画像を、配色だけでなく情報の優先順位、PC/スマホの役割分離、1画面1目的、工程順まで含むUI受け入れ基準とする。実装都合でPC表をスマホへ縮小した画面や、全工程を1ページへ縦積みした画面を合格にしない。
+- Data exception: モック内の架空金額、件数、担当者、写真、端末外枠はコピーしない。実装はDB保存値、空状態、監査状態を表示し、事実と異なるモック値を固定しない。
+- Applies to: Home C、W10/M12、W11v4/M13v2、W12v2/M14v2、実ブラウザ証拠、UI評価表、独立レビュー。
+- Verification: 390×844、768×1024、1440×1000で承認画像と実routeを対応付け、横overflow、主要操作切断、44px未満の主要操作、console errorを0件にする。独立確認者が同じcommitの実ブラウザで再判定する。
+- Follow-up: 実際の10商品pilotと実iPhone Safari確認は別の未完了gateとして残し、視覚修正だけでP0/Draft PRを完了扱いにしない。
+
+### 2026-08-21 — cost-optimizedモデル運転へ切り替える
+
+- Type: decision
+- Context: ユーザー依頼「実装難易度に合わせてサブエージェントを適切なモデルに振り分けるようにしてコストを削減」および `app-development-orchestrator` のモデル割当契約
+- Decision or rule: 現行P0の実装運転モードを `cost-optimized` にする。固定済みの画面・CSS・テスト・文書はLuna max、限定された複数層統合はTerra high/xhigh、DB・移行・認証・権限・機微情報・金額・重要状態・同時更新・安全性・原因不明の障害・最終独立レビューはSol maxへ割り当てる。
+- Why: Solを重大判断と品質ゲートへ集中させ、低リスク作業のコストを下げながら、承認済みデザイン、安全条件、検証基準を維持するため。
+- Applies to: `docs/implementation/model-routing-plan.md`、active handoff、以後の実装パケット、独立レビュー、Draft PR gate
+- Verification: 各パケットに実装担当、確認担当、変更範囲、検証、停止・昇格条件を記録し、下位モデルの自己承認0件、別Sol maxの最終レビューを確認する。
+- Follow-up: 同じworktreeへの書き込みは直列化し、実10商品pilotとUI 8 taskをモデルで代行・補完しない。
+
+### 2026-08-24 — 固定fixtureに結び付けたpilot v1.1を採用する
+
+- Type: decision
+- Context: `docs/specs/pilot-protocol-v1.1.md`、`fixtures/listing-prep-pilot-v1.1/manifest.json`、migration `0033`
+- Decision or rule: 新しい10商品pilotは`listing_prep_pilot_v1.1.0`、migration `0033`、manifest SHA-256 `a44d25d914d721c1a62aa4330688bf64264eae54c8ddb38c833cd20b6827fa18`を一組として記録する。計測外の`WARMUP-01`と固定10商品のローカル画像・架空属性・カテゴリ別採寸templateを使い、人が画像選択と最終確認を行う。`listing_prep_pilot_v1.0.0`は過去runを読むための履歴として保持し、新しいrunには使わない。
+- Why: IDとカテゴリだけの旧fixtureでは入力素材と採寸を再現できず、商品差し替えや手動訂正の欠落によって時間指標が変わるため。
+- Applies to: pilot契約、fixture生成物、migration `0033`、API/Webのpilot計測、AC-061、P06、証拠文書
+- Verification: `npm.cmd run pilot:fixtures:check`で44 PNGとmanifestを照合し、fresh/upgrade PostgreSQL、現行commitの実ブラウザ、実利用者warm-up＋10商品の順に別gateで確認する。
+- Follow-up: root check（fixture整合、format、lint、typecheck、26 files / 192 tests、build）は合格済み。PostgreSQL実走、実ブラウザ照合、実利用者pilot、最終独立Solレビューは未実施のため、本pilotとDraft PRを開始しない。
+
+### 2026-08-24 — v1.1実走・部分UI証拠・loopback固定を分離して記録する
+
+- Type: reusable feedback
+- Context: `docs/implementation/acceptance-map.md`、`docs/implementation/design-fidelity-evidence.md`、`docs/implementation/loop-log.md`、migration `0033`、UI evaluation seed、`memory/incidents/INC-20260824-002-local-web-broad-bind.md`
+- Decision or rule: fresh/upgrade PostgreSQLはmigration `0033`までPASSとして記録する。UIはcaptureとsolo/dual棚卸の確認済み部分だけをPASSとし、seeded browser評価全体のPASS・最終点数へ拡張しない。会計、棚卸の3秒確定・復元・最終承認、200% zoom、capture全属性採否、全network捕捉、実利用者pilot、iPhone、最終Sol reviewは未確認または未実施として残す。Webはloopback `127.0.0.1`固定を維持し、full checkの合格は対象差分と実行時点を併記する。
+- Why: DB実走、部分的なUI確認、起動境界の安全修正、最終受け入れを混同せず、未確認操作をPASSへ繰り上げないため。
+- Applies to: v1.1 evidence、P04/P05/P06/P08 gate、UI評価、local-only runtime、Draft PR判定
+- Verification: fresh/upgrade PostgreSQL `0033`までPASS、最新`npm.cmd run check`は27 files / 196 tests・coverage・API/Web build PASS、seedは4独立workspace生成と再実行拒否、修正版runtime netstatは`127.0.0.1:4173`だけ、targeted 24 testsとWeb build PASS。外部request、課金、merge、公開0件。
+- Follow-up: seeded browserの未確認操作と最終採点、200% zoom、capture全属性採否、全network捕捉、実10商品pilot、実iPhone Safari、別Sol最終レビューを完了するまで、本pilotとDraft PRを開始しない。
+
+### 2026-08-24 — v1.1 seeded証拠と未確認gateを分離する
+
+- Type: reusable feedback
+- Context: v1.1 seeded browser再評価、Money Forward CSV fixture、fresh/upgrade PostgreSQL 0033実走、`npm.cmd run check`
+- Decision or rule: 会計7/7 human mapping、27列5行CSV（1649 bytes、SHA-256 `e833a060cc7fef30fa90140fd4330e5523579d34e871d2fc061aeed349dc1e01`）、solo/dual棚卸の承認・復元、capture TOPSの人確認、390px responsiveを確認済み証拠として記録する。税未設定、候補不一致、元担当者dual承認は停止する。実MF import、実利用者pilot、実iPhone、最終Sol/UI review、Draft PR readyは未確認のまま維持する。
+- Why: seeded UIの確認済み範囲を正確に残し、部分PASSやfixture CSVを実サービス取込・実利用・最終審査の代替にしないため。
+- Verification: full check 29 files / 201 tests、coverage、API/Web build、fresh/upgrade 0001〜0033、49-table RLS/immutable reason fields、runtime loopbackのみ、外部/paid/deploy/merge 0。使い捨てDBは削除済み。
+- Follow-up: 実利用者WARMUP＋10商品、実機・実MF import、独立Sol/UI最終確認後までGoalを完了扱いせず、Draft PR readyへ進めない。
+
+### 2026-08-25 — iPhone実機確認はIP限定ローカルHTTPS中継を使う
+
+- Type: decision
+- Context: ユーザー依頼「スマホからもアクセスできるように表示してください」。現在の認証Cookieは`HttpOnly; Secure; SameSite=Strict`であり、LAN上の平文HTTPでは安全なログインを成立させられない。
+- Decision or rule: PC用Web `127.0.0.1:4273`とAPI `127.0.0.1:3200`を直接公開せず維持し、実機確認時だけ別ポートのローカルHTTPS中継を使う。待受はPCの明示IPv4、接続元はiPhoneの明示IPv4各1件へ限定し、Host/Origin/Referer、危険header、redirectを検証する。Secure Cookieを外さない。公開CA証明書以外の証明書・秘密鍵・ログは`C:\tmp`だけに置き、外部サービス、Git、Slack、Notion、PRへ送らない。
+- Why: 完全無料と同一Wi-Fi内だけの利用を維持しながら、認証Cookie、CSRF防止、API loopback、P06のloopback-only証拠を弱めずiPhone Safariで確認するため。
+- Applies to: `scripts/lan-preview-proxy.mjs`、`scripts/start-lan-preview.mjs`、実iPhone gate、PWA、ローカル運用手順、Firewall一時規則
+- Verification: unit 17件、root full check、TLS署名、公開CAだけの配布、別Origin拒否、Secure Cookie、login/session/workflow/logout/失効sessionをPC自己検証する。実iPhoneのIP限定接続、CA trust、Safari、home追加、camera、offline、HEIC/WebPは人が別証拠で確認する。
+- Follow-up: iPhone確認後に中継とFirewall規則を停止・削除し、iPhoneのCA profileとPCの一時証明書を削除する。P06 Windows計測へ混ぜず、実iPhone未確認を完了へ繰り上げない。
+
+### 2026-08-25 — スマホ確認用にGitHub Pagesの静的レビュー版を公開する
+
+- Type: decision
+- Context: ユーザーはGitHub上でWebアプリを確認し、iPhoneのホーム画面から開いて修正点を伝えたいと明示した。GitHub Pagesは静的ファイルの公開機能であり、現在のログイン・API・PostgreSQLを含む業務アプリ本体をそのまま無料公開する場所ではない。
+- Decision or rule: `.github/pages`に架空データだけのレビュー専用PWAを置き、GitHub Pagesの手動workflowで公開する。ページは4画面（今日の確認、在庫現場、棚卸差異、会計候補）を切り替え、ホーム画面追加、オフライン表示、修正依頼テンプレートを提供する。ログイン、API、DB、写真保存、出品、価格更新、会計CSV出力、外部送信は実装しない。実運用版はPC内のloopback環境に残す。
+- Why: 完全無料でスマホから承認済みUIを確認できる一方、公開インターネットへ実データや認証機能を出さず、GitHub Pagesの静的公開境界を守るため。
+- Applies to: `.github/pages`、`.github/workflows/pages.yml`、README、実iPhoneのUI確認、修正依頼フロー
+- Verification: 静的ファイルの構文/機密scan、390×844とデスクトップ実ブラウザ、タブ切替、ダイアログ、manifest、Service Worker、外部URL0件を確認する。Pages有効化とworkflow成功はGitHub上で別証拠として確認する。
+- Supersedes: スマホ確認を同一Wi-Fi内のローカルHTTPS中継だけに限定していた運用手順のうち、利用者が画面を確認する入口。ローカル中継は必要時の開発用予備経路として保持し、公開レビュー版へ実データを入力しない境界は維持する。
+- Follow-up: GitHub Pages公開後、ユーザーがiPhone Safariで表示とホーム画面追加を確認する。実iPhoneでの確認結果をP06やP08の代替にしない。
+
+### 2026-08-25 — スマホ版はB現場カードへCの気になる箇所チェックを統合する
+
+- Type: decision
+- Context: Slack `#メルカリ自動化` 親TS `1787631209.774569`、ユーザー本人の返信TS `1787633592.565739`
+- Decision or rule: スマホ版の再設計はB案「iOS現場カード」を採用し、C案の「商品写真の気になる箇所をタップしてマーカーを置く」機能を統合する。フッターは `ホーム / 作業 / 商品 / 在庫 / 会計` に固定し、P0導線は1画面1目的の49ページとして9枚の高精度ボードで確認する。商品種類に応じて検品部位、写真チェック項目、採寸項目を切り替え、AIや画像認識だけで状態を確定しない。
+- Why: 反復作業の残り件数と再開位置を分かりやすくしながら、シミ・傷などの位置と証拠を現物中心で残し、初心者にも検品から採寸までの流れを追えるようにするため。
+- Applies to: `docs/design/selected-direction.md`、`mobile-ios-redesign-screen-map-v1.md`、`mobile-ios-redesign-genre-capture-v1.md`、高精度モック、後続のスマホPWA実装
+- Evidence: https://p-evidence.slack.com/archives/C0BPZCB25T3/p1787631209774569
+- Privacy boundary: 利用者提供の公開出品例は代表商品の手動閲覧に限定し、実アカウント名、URL、商品ID、実画像をGitやモックへ保存しない。
+- Implementation gate: 現行写真roleと固定pilotを勝手に増やさず、`写真チェック項目 / 検品部位 / 気になる点 / 証拠写真` の関連と既存データ互換をSolが設計してから実装する。
+- Follow-up: 9枚の高精度モックをSlackへ送り、全49ページの修正点を再確認する。実装、公開、PR mergeはこの承認だけでは行わない。
+
+### 2026-08-26 — Slack画像本文のコメントだけを修正対象にする
+
+- Type: decision
+- Context: Slack `#メルカリ自動化` 親TS `1787631209.774569`の各ファイル本文へ追記された修正コメント、およびユーザー指示「修正コメントがあるところは修正していってください。ないところは問題ないところです。」
+- Decision or rule: Board 01、02、03、06、07、10を修正し、コメントがないBoard 04、05、08、09は承認済みとして維持する。卸仕入れは請求書中心、商品ラベル読取と梱包写真は工程設定で選択、タグ文字はOCR候補、非文字ロゴは画像候補または手入力、商品種類はスーツとセットアップを追加する。ロゴは3案の再選定後にBoard 01へ固定する。
+- Safety boundary: PhotoroomのローカルブラウザをCodex SkillやRPAで自動操作する方式は採用しない。P0は `加工用ZIP書出し → 利用者がPhotoroomで編集 → 加工済みZIP再取込 → SKU照合・原本比較 → 人が承認` を維持し、Photoroomなしでも完了可能にする。
+- Why: 画像本文への直接コメントを承認・修正の根拠として正確に反映しつつ、中古品と1人運用に不要な工程を減らし、外部サービスの無人操作、契約違反、誤編集を避けるため。
+- Applies to: `docs/design/mobile-ios-redesign-slack-revisions-v2.md`、修正版モック、スマホ画面構成、後続のPWA実装。
+- Verification: 元の10ファイル本文を全件再読し、コメント有無を判定する。修正版の画像寸法、hash、画面数、安全文言を確認し、同じSlackスレッドで変更箇所だけ再承認する。
+- Follow-up: ロゴ1案と修正版をSlackで再承認してから実装へ反映する。コード変更、公開、PR、mergeは別の明示依頼まで行わない。
+
+### 2026-08-26 — Slack再コメントを無料・手動境界付きのv3モックへ反映する
+
+- Type: decision
+- Context: Slack `#メルカリ自動化` 親TS `1787631209.774569`の再コメント。ロゴは `C`、Board 10は `問題なし`、Board 02・03・06・07と販売後運用に追加要望がある。
+- Decision or rule: ロゴCをBoard 01へ固定する。請求書はiPhone Files経由のファイル選択とし、Google Driveへの直接API接続・認証情報保存・自動同期は行わない。在庫番号は無料の手書きを標準、A4印刷を追加実装案とする。販売中の価格変更と返信文はコピー後に本人が公式画面で確定する。PhotoroomはZIPをPCで展開してフォルダを手動読込し、対象契約がない場合は編集を省略する。配送方法は販売先別に利用者が設定し、外部から自動取得しない。
+- Implementation truth: 現行コードにはチェック数字付き在庫番号の生成、番号の手入力、ラベル再発行履歴がある。バーコードまたはQRの描画、A4印刷レイアウト、ブラウザ印刷は未実装であり、モックを実装済み証拠として扱わない。
+- Why: 完全無料の標準導線を残し、メール・クラウド保存・画像編集・販売サイト操作を初心者にも理解できる手順へ分けつつ、外部サービスの無人操作や有料機能の誤認を防ぐため。
+- Applies to: `mobile-ios-redesign-slack-revisions-v3.md`、v3修正版モック、後続のPWA実装、在庫ラベル、請求書、販売中サポート、画像受け渡し、配送設定。
+- Verification: 6画像を1672×941で確認し、価格変更・返信・配送・Photoroomが人の操作を残すこと、API/RPA/自動実行を示さないこと、Board 10を再生成していないことを確認する。同じSlackスレッドで再承認を受ける。
+- Follow-up: v3の6画像をSlackへ送り、コメントが付いた画像だけを次の修正対象とする。承認前にコード実装へ固定せず、コミット、push、PR、merge、公開は行わない。
+
+### 2026-08-26 — 完全無料の写真標準からPhotoroom無料版とBatchを外す
+
+- Type: decision
+- Context: ユーザーの`絶対無料`条件、PhotoroomをPCで手動利用する案、Photoroom公式の2026-08-26時点のプラン・商用利用・Batch説明。
+- Decision or rule: P0の写真標準は白背景撮影と端末内テンプレートによる向き・余白・文字位置の調整とする。Photoroom無料アカウントは商用利用不可、Batchは有料対象のため、無料の業務導線へ含めない。商用利用可能な契約済みソフトがある場合だけ、本人が任意で開く外部作業として扱う。
+- Safety boundary: 外部画像編集サービスのAPI、認証情報保存、自動ログイン、RPA、自動クリック、無人Batch処理は行わない。背景除去を実装済みまたは無料と表示しない。
+- Why: 無料という費用条件だけでなく商用利用条件も守り、外部サービスの仕様・契約・有料機能にP0を依存させないため。
+- Evidence: `docs/research/mobile-ios-slack-followup-v4.md`、Photoroom公式Help Center、`mobile-ios-redesign-b-board-06-product-info-v4.png`。
+- Applies to: 写真テンプレート、画像編集設定、Board 06、後続PWA実装、運用説明。
+- Follow-up: v4画像の承認後、端末内テンプレートの保存形式、原本／派生画像の分離、文字位置、商品種類別の型を実装仕様へ落とす。
+
+### 2026-08-26 — 仕入箱・商品URL・注文送料のv4案を再承認へ送る
+
+- Type: design proposal
+- Context: Slack `#メルカリ自動化` 親TS `1787631209.774569`のv3画像コメントと、ユーザー依頼「再度モック画像などを再構築してSlackに送ってください」。
+- Proposal: 約50着の卸箱を保管箱と別の仕入バッチとして2段階検品し、箱別の見込み／実績を分ける。商品URLは販売先ごとに1回登録して本人操作で再利用する。注文はアプリ番号、販売先、取引ID、任意表示名へ分ける。送料は2026-08-26公式確認値と確認先を持つ手動更新カタログにする。
+- Safety boundary: 見込みを確定利益にしない。URL先をサーバーから取得しない。送料をスクレイピングや非公開APIで自動更新しない。個人名・住所を主識別子にしない。
+- Evidence: `mobile-ios-redesign-b-revision-index-v4.md`の4 hash、Slack file ID `F0BSR7TH89L`、`F0BSV41CF33`、`F0BSLUEBVJ7`、`F0BSR822U86`、送信後のスレッド再読。
+- Status: 4画像とも画像コメントで再承認待ち。モックは実装済み証拠ではない。
+- Follow-up: `問題なし`の画像だけを後続実装仕様へ固定し、`修正：...`が付いた画像だけを再修正する。承認待ちの間にコード、公開、commit、push、PR、mergeは行わない。
+
+### 2026-08-26 — v4画像コメントを点数・KPI・根拠つき提案・写真処理境界へ反映する
+
+- Type: design proposal
+- Context: Slack `#メルカリ自動化` 親TS `1787631209.774569`のv4画像本文へ追記されたコメント。D注文・配送は`こちらは問題なし`、A・B・Cに修正要望がある。
+- Proposal: 仕入箱は入数不明からカウントを開始し、短い商品番号と月別の30日販売率・売上・粗利見込みを表示する。価格見直しは自分の販売履歴、利益下限、公式公開の季節・行事情報を根拠に複数候補を比較する。写真はブランド・サイズ確認後に位置・余白・文字を端末内テンプレートで整え、人が明るさ・白さ・位置を微調整する。
+- Safety boundary: 見込みを確定利益・税額にしない。販売サイトの閲覧・いいね・価格を自動取得せず、値下げやセールを自動実行しない。背景切り抜き、Photoroom連携、ZIPを実装済みまたは無料標準として表示しない。
+- Evidence: `docs/research/mobile-ios-slack-followup-v5.md`、`docs/design/mobile-ios-redesign-slack-revisions-v5.md`、`docs/design/mobile-ios-redesign-b-revision-index-v5.md`の3 hash、Slack file ID `F0BSQJC640M`、`F0BTNUB43L0`、`F0BSUH0KXM0`、送信後のスレッド再読、メルカリ公式Help・公式ニュース。
+- Status: Dは承認済み。A・B・Cの修正版を同じSlackスレッドへ送信済みで、画像コメントによる再承認待ち。モックは実装済み証拠ではない。
+- Follow-up: コメントがある3画像だけを再作成・送信する。承認までコード、公開、commit、push、PR、mergeは行わない。
+
+### 2026-08-26 — 箱KPIを次画面へ分け、全写真の保存と編集受け渡しを明示する
+
+- Type: design proposal
+- Context: Slack `#メルカリ自動化` 親TS `1787631209.774569`のv5画像コメント。Aは05・06の復元とKPIの次画面化、Cは全写真の保存先と将来自作する画像編集への連携準備、当面の一括受け渡しを求めている。Bはコメントなし、Dは承認済み。
+- Proposal: Aの05`箱の見込み`と06`販売後の実績`をv1の内容へ戻し、07`月別KPI`を別画面にする。Cは全写真を商品別の写真一覧から見られるようにし、PC内非公開MediaStoreの不変原本、編集用コピー、加工後を分ける。役割別レシピとmanifestを共通契約にして、現在は手動編集用ZIP、将来は自作画像編集へ差し替える。
+- Implementation truth: 現行コードには商品写真の役割別アップロード、PC内`LOCAL_MEDIA_ROOT`への非公開原本保存、DB上のMediaAsset管理がある。専用の商品写真一覧、編集用ZIP、加工後再取込、自作画像編集は未実装であり、モックを実装済み証拠として扱わない。
+- Safety boundary: 原本を上書きしない。GitHub、Slack、Notion、公開URLへ写真を自動保存しない。Photoroomは商用利用可能な契約がある場合だけ本人が手動利用し、API、RPA、自動ログイン、自動クリック、無料版を商用標準にしない。
+- Evidence: `docs/research/mobile-ios-slack-followup-v6.md`、`docs/design/mobile-ios-redesign-slack-revisions-v6.md`、`docs/design/mobile-ios-redesign-b-revision-index-v6.md`の2 hash、`apps/api/src/local-media-store.ts`、`apps/api/src/server.ts`、`packages/db/README.md`、Slack file ID `F0BST62CL78`、`F0BSNSJMJKV`、完了返信TS `1787751943.189469`、送信後のスレッド再読。
+- Status: A・Cの修正版を同じSlackスレッドへ送信・再読済みで、画像コメントによる再承認待ち。B・Dは変更していない。モックは実装済み証拠ではない。
+- Follow-up: A・Cの各画像へ付く`問題なし`または`修正：...`を確認する。承認までコード、公開、commit、push、PR、mergeは行わない。
+
+### 2026-08-26 — モバイル版を最終承認し、PC版Webを全画面再確認する
+
+- Type: design approval / review scope
+- Context: SlackのA・C最終修正版へ依頼者本人がそれぞれ`問題なし`と追記し、「モバイル版は全て内容いい」「PCで見るウェブ版のモックも再度全て確認したい」と依頼した。
+- Decision or rule: モバイル版は全内容承認済みとする。PC版は旧ホーム＋W01〜W12の機能範囲を保ちつつ、モバイル最終承認で確定した易しい日本語、安全境界、仕入箱、全写真保存、編集用セット、価格支援、配送、在庫、会計を反映した13ボード・52画面相当として再確認する。
+- Safety boundary: PC版も外部サイトを自動取得・操作せず、API、RPA、自動出品、自動値下げ、自動返信、自動会計確定を示さない。原本写真はPC内の非公開保管、外部編集は任意の手動受け渡し、重要操作は人が確認する。
+- Evidence: モバイルSlack親TS `1787631209.774569`、A file ID `F0BST62CL78`、C file ID `F0BSNSJMJKV`、各画像本文の`問題なし`、PC版Slack親TS `1787754933.967639`、PC01〜PC13の13 file IDとhashを記録した`docs/design/pc-web-redesign-full-mock-index-v1.md`、送信後のスレッド再読。
+- Status: モバイル版承認完了。PC版13ボード・52画面相当をSlackへ送信・再読済みで、画像コメント待ち。
+- Follow-up: PC版の各画像へ付く`問題なし`または`修正：...`を確認し、コメントがある画像だけを修正する。承認まで実装、公開、commit、push、PR、mergeは行わない。
+
+### 2026-08-27 — PC版4画像を無料・手動境界付きのv2案へ修正する
+
+- Type: design proposal
+- Context: PC版Slack親TS `1787754933.967639`の画像本文へ、PC02、PC03、PC07、PC08の修正・質問が追記された。ほか9画像にはコメントがない。
+- Proposal: PCではカメラを起動せず、OSのファイル選択と同じ業務アプリ内のスマホ写真反映を使う。在庫ラベルはA4 24面へ一括印刷する。商品ページはギャラリーでも表示し、販売状況は確認が古い順に並べ、直接入力またはスクリーンショットからの数字候補を人が確認する。注文は仮番号を自動付番し、取引IDが不明でも取り出し・梱包を続け、発送確定前に不足を確認する。
+- Official evidence: 個人版メルカリの公式ヘルプは出品中の商品詳細で閲覧数・検索数を本人が確認する方法を案内する。メルカリShopsの公式APIは別サービスで、契約とアクセストークンを前提とする。個人版統計の無料・承認済み公開連携は今回確認できなかった。
+- Safety boundary: iCloudへアプリから直接接続せず、PCに表示されるフォルダーから本人が選ぶ。販売サイトを自動取得せず、スクレイピング、RPA、Cookie共有、自動ログイン、自動値下げ・返信を行わない。スクリーンショット読取は候補で、人が原画像と比較して確定する。
+- Evidence: `docs/design/pc-web-redesign-slack-revisions-v2.md`、`docs/design/pc-web-redesign-revision-index-v2.md`、Slack回答TS `1787757617.559609`、file ID `F0BSS2EV60M`、`F0BSPQKJGCB`、`F0BSW1N1QN6`、`F0BSS2J5H61`、完了返信TS `1787757680.513539`、送信後のスレッド再読。
+- Status: v2修正版4枚を同じSlackスレッドへ送信・再読済みで、画像コメント待ち。コメントのない9枚はv1を維持する。モックは実装済み証拠ではない。
+- Follow-up: v2画像にコメントがある場合だけ再修正する。4枚の承認がそろうまでコード実装、公開、commit、push、PR、mergeへ進まない。
+
+### 2026-08-27 — PC版3画像を検索支援・中古1番号・選択式発送前写真のv3案へ修正する
+
+- Type: design proposal
+- Context: PC版Slack親TS `1787754933.967639`のv2画像へ追加されたコメント。PC02は販売予想金額の簡単な検索・Codexへの調査依頼、PC03は中古1点ものの商品番号と在庫番号、PC08は1人運用の梱包写真に修正希望があり、PC07は`問題なし`である。
+- Proposal: PC02は商品情報から検索語とCodex用質問文を作り、本人が検索を開くかコピーする。PC03は中古の商品番号＝在庫番号を一つの短い番号にし、登録商品ごとに異なるラベルを1枚作ってA4 24面へ並べる。新品の複数在庫だけ別管理を選べる。PC08は発送前写真を高額商品だけ、すべて、使わないから選び、高額の目安も設定できるようにする。
+- Safety boundary: メルカリやCodexへアプリから自動送信せず、検索結果を自動取得しない。API、スクレイピング、RPA、自動ログイン、Cookie共有を使わない。予想価格と発送前写真の扱いは人が確認し、写真を外部へ自動送信しない。
+- Evidence: `docs/design/pc-web-redesign-slack-revisions-v3.md`、`docs/design/pc-web-redesign-revision-index-v3.md`の3 hash、Slack回答TS `1787809522.481109`、file ID `F0BSZJXD2DC`、`F0BT57MCYDS`、`F0BSXGH6SH3`、完了返信TS `1787809627.514159`、送信後のスレッド再読。
+- Status: PC02・PC03・PC08のv3修正版3枚を同じSlackスレッドへ送信・再読済みで、画像コメント待ち。PC07 v2とコメントのない9枚は変更していない。モックは実装済み証拠ではない。
+- Follow-up: v3の3画像へ付く`問題なし`または`修正：...`を確認する。承認まで今回の修正内容をコードへ実装せず、公開、commit、push、PR、mergeへ進まない。
+
+### 2026-08-27 — PC03へ商品別バーコードを戻し、承認済みUI追補でGoalを継続する
+
+- Type: design approval / implementation resume
+- Context: PC03 v3へ`一括印刷からバーコードが消えた`、`スマホで読んで商品を探したい`という最後のコメントがあり、ユーザーから`修正箇所は少ないので修正後goalを実行してください`と指示された。
+- Decision or rule: PC03 v4は中古1点ものの各ラベルへ異なる短い番号と個別Code 128を表示し、スマホ読取で商品と現在の保管場所を開く。読取は検索だけで、格納・移動・出庫を確定しない。PC02 v3、PC08 v3はコメントなし、PC07 v2は`問題なし`、ほか9枚はコメントなしとしてPC版を固定する。
+- Implementation truth: 既存Webはチェック値付き在庫番号、手入力、二重確認を実装済みだが、バーコード描画、A4 24面、画像からのコード解析、検索専用スマホ画面は未実装である。52画面の画像だけを実装済み証拠にしない。
+- Safety boundary: 読取ライブラリはPWAへ同梱し、カメラ画像、番号、商品情報を外部APIやCDNへ送らない。手入力を残し、状態変更には従来どおり人の確認を要求する。本番公開、PR merge、課金は行わない。
+- Evidence: `docs/design/pc-web-redesign-board-03-putaway-v4.png`、SHA-256 `c364acdde34a7f70b1a81177758afefbdfa919f033693697ab48210c7bc12af9`、Slack file ID `F0BSM3XPRQF`、TS `1787818024.476329`、送信後のスレッド再読。
+- Applies to: `docs/specs/approved-ui-integration-addendum-v1.md`、AC-062〜068、TA-044〜048、`docs/implementation/approved-ui-packets-v1.md`、P11〜P14。
+- Follow-up: P11バーコードから順に実装し、P12/P13はSol設計後に進める。全P0差分後に自動検証、UI評価、実利用者pilot、独立Sol reviewをやり直し、P1はP0合格までOFFにする。
+
+### 2026-08-27 — 承認モック全101画面を忠実再現してから機能追加を再開する
+
+- Type: implementation fidelity gate
+- Context: 実装中の在庫ラベル画面が承認済みPC03 v4と大きく異なり、ユーザーからモバイル版とPC版の全ページを承認モックどおりに再現するよう明示された。
+- Decision or rule: モバイル49画面とPC 52画面を画面単位で再現し、承認画像との比較を通過した画面だけ完了とする。共通部品を使う場合も、承認画像の配置、文言、色、余白を変える抽象化は行わない。
+- Implementation truth: 現行WebにはP0の主要機能と一部の新しいバーコード機能があるが、承認済み全101画面のデザイン再現は未完了である。機能が動くことをデザイン一致の代わりにしない。
+- Safety boundary: 画面画像を貼るだけの偽実装にせず、HTMLの操作可能な画面にする。外部API、外部CDN、有料サービス、自動出品、自動値下げ、自動返信、自動会計確定を追加しない。公開レビューは架空データだけにする。
+- Evidence: `docs/implementation/approved-ui-fidelity-gate-v1.md`、モバイル最終承認TS `1787631209.774569`、PC最終承認TS `1787754933.967639`、ユーザーの本セッション内指示。
+- Applies to: `apps/web`、`.github/pages`、UI比較、P11〜P14、Goalの再開判定。
+- Follow-up: 全101画面の同寸法スクリーンショットを撮り、差がある画面を未完了へ戻す。デザイン比較後に実データと安全な状態変更を再接続する。
+
+### 2026-08-27 — 追加フロー26画面を含む全127画面へ忠実再現範囲を拡張する
+
+- Status: accepted
+- Context: 「モバイル版も、PC版も全ページ忠実に再現」という依頼と、承認正本一覧に基本49画面とは別キーで残している写真、仕入箱、販売支援、スーツ撮影ガイドの26画面。
+- Decision or rule: 直前の101画面ゲートを上書きせず拡張し、モバイル75画面とPC 52画面の合計127画面を比較対象にする。番号が重なる承認画像も削除せず、追加画面キーで実装する。
+- Implementation truth: 基本導線49画面だけでは「全ページ」にならない。追加26画面もWeb実装とGitHub Pages確認版の両方へ含め、各正本画像と照合する。
+- Applies to: `docs/design/approved-ui-source-manifest-v1.md`、`docs/implementation/approved-ui-fidelity-gate-v1.md`、モバイル確認画面、PC確認画面、公開レビューPWA。
+- Evidence: 本セッション内のユーザー指示と、最終承認画像 `mobile-ios-redesign-b-board-06-product-info-v6.png`、`mobile-ios-redesign-wholesale-box-inspection-v3.png`、`mobile-ios-redesign-sales-support-v3.png`、`mobile-ios-redesign-b-board-10-genre-guide-v2.png`。
+- Rejected alternatives: 基本49画面だけを再現して追加画像を参考資料扱いにする案は、承認済み内容を欠落させるため不採用。
+- Follow-up: 全127画面を実ブラウザで比較し、差異が残る画面は完了扱いにしない。
+
+### 2026-08-29 — 承認済みUI全127画面の忠実再現ゲートを合格とする
+
+- Status: accepted
+- Context: モバイル75画面とPC52画面を最終正本へ合わせ、390×844と1440×960で再撮影し、25比較シートで全画面を再監査した。
+- Decision or rule: `root-all-fidelity-final-fix23-20260829` を今回の最終画面証拠とし、独立監査のP0 0件・P1 0件をもって承認済みUI忠実再現ゲートを合格とする。端末ステータスバーとブラウザ描画差だけをP2として許容する。
+- Verification: 127/127 route、127/127 viewport、比較画像127/127、外部runtimeリソース0件、静的レビュー版766ファイル、通信遮断時の代表モバイル・PC画面cache-storage表示を確認した。
+- Safety boundary: 画面画像の貼り付けではなく操作可能なHTMLを維持する。有料サービス、外部API、公開、本番反映、PRマージは行わない。実iPhone、実利用者pilot、実Money Forward取込は別gateのまま残す。
+- Applies to: `apps/web`、`apps/review`、`.github/pages`、全127画面のUI比較、Draft PRのデザイン受け入れ判定。
+
 ### 2026-08-18 — Claude CodeへSlack MCPを接続し、既存チャンネルを承認先として使う
 
 - Type: decision
@@ -136,3 +397,148 @@ APIキー、トークン、個人情報、生ログ、会話全文、一時的�
 - Applies to: `komatsu-dev-jp/seller-assistant`、今後このProjectへ追加するアプリ、`.github/ISSUE_TEMPLATE/`、`.github/PULL_REQUEST_TEMPLATE.md`
 - Verification: Project #1に`Status`、`リスク`、`実装モデル`、`Sol ゲート`、`利用者承認`、`仕様・実装パケット`、`学び・失敗ログ`を設定し、一覧と進捗ボードを作成した。Issue/PRテンプレートと本運用書の参照先を確認する。
 - Follow-up: 各実装IssueでSolの仕様・実装パケットをリンクし、必要な作業だけをProjectへ追加する。
+
+### 2026-08-29 — 検品と気になる箇所を追記履歴・別担当者確認・最新状態完全一致で保存する
+
+- Type: decision
+- Context: 承認済みモバイル17〜24とPC13〜22を実APIへ接続する前に、写真だけでは表せない検品結果と気になる箇所の安全な保存契約が必要になった。
+- Decision or rule: `inspection_check_result`と`inspection_concern_revision`を追記専用revisionとして保存する。見える不備は同一SKUのmarker元写真と全体写真、においは説明を必須にする。提出内容を記録した本人とは別の担当者が直前revisionを確認し、review時に内容を変更しない。最新checkは全latest concernの状態と完全一致し、訂正時は同じtransactionでcheckも未確認へ戻す。dismiss済みconcernは終端とする。
+- Access rule: SKU IDだけを受ける権限helperがworkspace、identity、判定時刻をsessionから取得し、owner／inventory managerまたは有効なcapture担当だけを許可する。RLSを強制し、別workspace、別SKU、担当外、期限切れ・取消済み担当を拒否する。
+- Why: 後から気になる箇所だけを書き換えて最終確認を古いまま残すこと、自己確認、権限情報のprobe、原本履歴の破壊をDBでも防ぐため。
+- Verification: 公式PostgreSQL 18.6 fresh/upgrade、53-table RLS、2独立接続の実Lock競合、34 files / 253 tests、独立Sol Critical/High/Medium/Low 0をPASS。
+- Applies to: migration `0034`、inspection contracts、P12-B API、P12-C mobile/PC live routes
+- Follow-up: P12-Bは本決定をAPIだけで再実装せず、同じDB制約を利用する。
+
+### 2026-08-29 — 具体的な撮影項目と既存5写真分類を分け、6種類の項目確認前は初期データを書かない
+
+- Type: decision
+- Context: mobile20はシャツ8撮影、写真v6は5分類、PC13は6商品種類ごとの件数を示すが、具体的な安定keyと必須／任意を確定していない。
+- Decision or rule: 襟・袖口・裾等の具体的な撮影完了は`shot_key`、既存保存・一覧互換は`front / back / brand_tag / care_label / flaw`のroleで別管理する。パンツとスカートは承認済みの入口を共通に保ち、利用者が確認した場合だけ内部templateを分ける。
+- Why: 8撮影を5分類へ潰して撮り忘れを見逃すこと、既存pilotの4写真契約を壊すこと、件数だけを根拠に項目を推測することを避けるため。
+- Applies to: P12-Bの0036候補、商品種類template、写真完了判定、P12-Cの残り件数
+- Verification: Luna maxの棚卸しで6種類を未確認のまま安全にseedできないと判定し、Sol maxが承認用2案を`p12-product-template-proposal-v1.md`へ分離した。
+- Follow-up: 利用者が推奨A／代替Bとパンツ／スカート分岐を確認するまで、0036、seed、API、Webを書かない。
+
+### 2026-08-29 — 発送前写真を商品・梱包後各1枚とし、P13を0035へ先行割当する
+
+- Type: decision
+- Context: 承認済みPC08は`高額商品だけ撮る`を選択表示し、商品写真と梱包写真を別カードで示す。30,000円は架空例である。現行実装は販売額必須かつランダムUUIDを梱包証拠として送るため、承認仕様へ接続できない。
+- Decision or rule: 初回UIは`高額商品だけ撮る`を推奨選択するが、正の目安額を人が保存するまでDB policyを作らない。写真を使う注文は商品写真と梱包後写真を各1枚以上必要とする。写真確認、梱包確認、発送確認を別記録にし、写真だけで状態を進めない。
+- Access rule: policy変更はownerだけ。shipping担当は有効な注文割当の工程状態と写真だけを扱い、販売額、目安額、原価、利益、税務情報を取得しない。
+- Migration: 未作成・未適用の0035をP13へ割り当てる。P12-Bは未承認のまま0036候補へ移し、商品項目、seed、API、Webを実装しない。0034以前は編集しない。
+- Verification: AC-066、TA-047、PC08、selected direction、現行contracts/order/media実装をSol maxが読み取り監査し、残る利用者質問0件と判定した。
+- Applies to: `p13-shipping-photo-contract-v1.md`、P13-A/B、P12-Bの採番だけ。
+- Follow-up: P13-AをSol maxが実装し、fresh/upgrade PostgreSQL、独立接続の競合、全check、別Sol reviewを合格してからWeb接続へ進む。
+
+### 2026-08-30 — P13-Aを合格とし、旧梱包記録を保持した再確認経路でP13-Bへ進む
+
+- Type: implementation and migration gate
+- Context: 発送前写真のpolicy、販売額欠損、非公開写真、写真・梱包・発送の別確認を実装した後、並行再送の監査重複と、更新前から`packed`だった注文が発送不能になる経路を独立reviewで検出した。
+- Decision or rule: 写真upload・確認・pack・ship・decisionの同一内容再送は、DB lock後に既存結果を返し、業務行・監査・操作記録を各1件だけにする。更新前の梱包記録は`server_confirmed=false`のまま変更・自動昇格せず、`packed`かつ旧行あり・server確認なしの場合だけ、人が有効な住所表示許可と満たされた写真判定を確認して新しいserver梱包行を1件追記できる。
+- Safety boundary: 販売額を0円補完しない。shipping担当へ販売額、目安額、原価、利益、税務情報、private storage keyを返さない。写真だけで注文状態を進めず、外部送信、課金、本番公開、PR mergeを行わない。
+- Verification: 新規fresh DBへ35 migrationを適用した`test:postgres`、新規upgrade DBの0001〜0035、35 files / 271 testsのfull check、別接続の実Lock競合をPASS。別Sol maxはCritical 0 / High 0 / Medium 0 / Low 0、P13-A PASS、P13-B GOと判定した。
+- Applies to: migration `0035`、P13 contracts/API/storage、pack/ship、旧packed注文の更新互換、P13-B Web gate。
+- Follow-up: P13-BはTerra highへ限定し、静的approved review routeを変更せず、390/768/1440、keyboard、44px、loading/empty/error/retry、外部request 0を確認する。AC-066／TA-047全体はP13-Bと実iPhone確認までpartialとする。
+
+### 2026-09-03 — 匿名配送は住所を保存せず、場所写真は役割ごとに最小権限で表示する
+
+- Type: implementation, privacy and authorization decision
+- Context: 承認済みM34〜38/PC29〜32を実APIへ接続した際、匿名配送でも住所行を作る旧契約と、ownerの場所写真表示にも注文割当を要求して403になる権限差異を実ブラウザで検出した。
+- Decision or rule: 匿名配送は住所行を作らず、住所表示許可も発行しない。住所あり配送だけを暗号化した非公開行として保存し、本人・注文単位・5分の表示許可を使う。旧注文の未設定値は`NULL`で読み、架空住所や0円へ補完しない。
+- Access rule: owner/inventory managerは有効なworkspace membershipで最新承認済みの現在場所写真を読める。shipping担当は自分の有効な注文割当がある注文だけを読める。どちらも有効な現物引当、現在地、最新承認済み写真、位置情報0の派生画像だけに限定し、写真取得後も権限を再確認する。
+- Safety boundary: shipping担当へ住所の保存先、販売額、原価、利益、税務情報を返さない。外部API、外部画像保存、スクレイピング、RPA、自動出品、自動発送、本番公開、PR mergeを追加しない。
+- Verification: `0038_order_address_mode.sql`を含むfresh/upgrade PostgreSQL 0001〜0038、65-table RLS、匿名0行・住所あり暗号化1行・本人表示許可・担当解除・取得後再認証・並行操作をPASS。ローカル実ブラウザでモバイル匿名注文とPC住所あり注文を完走し、修正後のowner画面で非公開object URLの場所写真を表示、console error/warning 0を確認した。最新full checkは45 files / 396 testsをPASSした。
+- Applies to: migration `0038`、order contract/repository/API、location photo authorization、M34〜38、PC29〜32、P13-B/P14。
+- Follow-up: 別Sol maxが凍結差分を独立レビューする。実iPhoneと人手pilotは別gateとして未確認を維持し、Draft PR #9をready化またはmergeしない。
+
+### 2026-09-03 — 未入力の販売事実を0円にせず、発送・会計を欠損認識のまま安全に進める
+
+- Type: corrective financial, timing and migration decision
+- Context: P13-B/P14の最初の独立レビューで、登録時の未知の販売手数料・梱包費を0円で保存すること、商品・場所読取時刻を1ms差で合成すること、0037/0038の途中失敗rollback証拠不足を検出した。
+- Decision or rule: 注文登録では原価だけを既知事実として保存し、販売額・販売手数料・梱包費は未入力のまま保持する。未入力は0円と異なる。発送には人が未入力を認識した準備確認と選択済み送料を要求し、会計summary・新規CSV・再出力は主要事実が揃うまで停止する。
+- Time rule: 商品番号と場所番号は、それぞれ入力が一致した実時刻を保持する。自動生成した1ms差の時刻を監査事実として保存しない。注文より前の発送時刻は拒否する。
+- Migration rule: 適用済み履歴の0037/0038は書き換えず、新規forward migration 0039で登録注文の金額事実制約を追加する。0037/0038/0039は途中失敗を注入し、各migration全体のrollbackと再適用を確認する。
+- Compatibility: 登録注文の原価は正確に1件、販売額・手数料・梱包費は各0〜1件、発送送料は正確に1件とする。既存注文に複数のsale revisionがある履歴は件数1へ縮めず、最新有効値の選択を維持する。
+- UI boundary: 承認済みPC29の「販売金額 必須」と「未入力でも続行」の意味上の矛盾は、利用者の再承認なしに文言を変更しない。現実装は未入力を許可し、人の確認と会計停止で安全を守る。
+- Verification: fresh `resale_p14_final_fresh_20260903f`、upgrade `resale_p14_final_upgrade_20260903e`で0001〜0039、0037/0038/0039 rollback、45 files / 401 tests、実ブラウザの実読取間隔・不正発送時刻409・訂正後発送・未知金額0行・会計停止をPASSした。全127画面も修正後buildから再撮影・比較した。
+- Applies to: migration `0039`、注文登録、二重読取、発送、会計summary/export、M34〜38、PC29〜32、P14最終gate。
+- Follow-up: 修正後の凍結差分を別Sol maxが再レビューする。Critical/High 0まではDraft PRをready化せず、merge・本番公開を行わない。
+
+### 2026-09-03 — P13-B/P14修正後の独立レビューを合格とし、Draft PRだけを最新化する
+
+- Type: final independent review gate
+- Context: 未入力金額、実読取時刻、migration rollbackを修正し、最新のfull check、fresh/upgrade PostgreSQL、全127画面、実注文〜発送を再検証した後、書込みを担当していない別Sol maxが凍結差分を監査した。
+- Decision or rule: 最終再レビューはPASS（Critical 0 / High 0 / Medium 1 / Low 1）。過去H1/M2/L1はすべてClosedしたため、既存Draft PR #9へ差分と証拠を反映してよい。Draftのready化、merge、本番公開は行わない。
+- Non-blocking findings: MediumはPC29の「販売金額 必須」と「未入力でも続行」の承認文言矛盾で、利用者再承認待ち。Lowは0039の各不整合を実DBで個別に23514拒否する将来の回帰試験補強で、現行migration本体の不具合ではない。
+- Verification: 独立`npm.cmd run check`はfixture 44 PNG/hash、format、lint、typecheck、45 files / 401 tests、coverage 84.66 / 80.56 / 100 / 90.68、API/Web build、Next 86 routesをPASS。capture 127件、mobile 75、PC 52、overflow/clipped/external resource 0、route-map missing 0、M34〜38/PC29〜32原寸目視もPASSした。
+- Human gates: P12-B/Cの2判断、実iPhone Safari/home/camera/Code 128/offline、A4 24面物理印刷、WARMUP＋固定10商品の人手pilot、実Money Forward取込は実装不合格と分離して未確認を維持する。
+- Applies to: P13-B/P14 final gate、Draft PR #9、acceptance map、design evidence、loop log、active handoff。
+- Follow-up: 限定commit・pushとDraft PR本文更新後、上記人手gateと利用者判断を待つ。未確認を自動合格へ繰り上げない。
+
+### 2026-09-03 — migration 0039の登録注文金額境界を実DBで個別固定する
+
+- Type: database regression hardening and independent review gate
+- Context: P13-B/P14最終レビューは0039本体を正しいと判定した一方、原価件数、任意金額の重複、SKU、税設定の各条件を実PostgreSQLで個別に拒否する試験不足をLowとして残した。
+- Decision or rule: 原価0/2件、販売額・手数料・梱包費各2件、別SKU、異なる税設定の7ケースを、独立transactionの一時fixtureとして作る。金額以外の発送前提をすべて有効にした上で、0039固有メッセージとSQLSTATE 23514を要求し、拒否後は別接続で全fixtureのrollbackと元の発送準備状態を確認する。
+- Safety boundary: migration 0039本体、production contract/API/repository/Web、承認済みUIを変更しない。試験用admin接続と`session_replication_role=replica`はfixture準備中の同一rollback対象transactionだけに限定し、発送INSERT前に`origin`へ戻す。
+- Verification: fresh `resale_p14r_fresh_20260903a`の`test:postgres`、upgrade `resale_p14r_upgrade_20260903a`の`test:postgres-upgrade`、45 files / 401 testsと全buildを含む`npm.cmd run check`をPASSした。別Sol maxはCritical 0 / High 0 / Medium 0 / Low 0、以前の0039試験不足LowをClosed、Draft PR更新可と判定した。
+- Applies to: `apps/api/src/postgres-integration.ts`、migration `0039`の回帰証拠、P14-R1、acceptance map、loop log、Draft PR #9。
+- Follow-up: Draft PRはDraftのまま維持し、PC29文言、P12-B/C、人手・実機・物理・外部取込gateを未確認として残す。ready化、merge、本番公開を行わない。
+
+### 2026-09-03 — モバイル内の擬似端末ステータス表示を削除し、実端末の安全領域へ委ねる
+
+- Type: mobile UI correction
+- Context: 実iPhoneで確認した利用者画像では、iOS本体が表示する時刻・電波・電池の下に、Webアプリが固定した`9:41`、Dynamic Island、電波、Wi-Fi、電池`77`が重複し、アプリheaderと本文を圧迫していた。
+- Decision or rule: 静的75画面、live login、live shippingから擬似端末表示を削除する。通常のアプリheaderは56px、本文は残り高さを使う。ノッチ等は固定画像で再現せず、CSSの`env(safe-area-inset-top/bottom)`で実端末の安全領域へ対応する。OS/PWA自体を設定するmetadataは擬似表示ではないため維持する。
+- Safety boundary: PC表示、承認済み本文、業務状態、API、DB、権限、金額、外部接続は変更しない。GitHub Pagesは架空データだけの画面確認版とし、実運用API/DBを公開しない。
+- Verification: 対象2 files / 17 tests、root full check 45 files / 403 tests、review production build 134 pagesをPASS。390×844の本文開始位置は`y=93`から`y=56`になり37pxを回収した。全75 mobile routeは横overflow、縦overflow、clipped interactive、external resourceが各0件だった。
+- Independent review: 初回Low 1だったCSS testの範囲を`.header`と`.scrollArea`の宣言ブロックへ限定した。別Solの再確認はCritical / High / Medium / Low各0、最終PASS。
+- Human gate: 実iPhone Safariの実safe-area、ホーム画面追加後の表示は利用者確認まで未確認とする。自動検証で合格へ繰り上げない。
+- Applies to: `approved-mobile-demo`、live login、live shipping、公開レビューPWAの全モバイル画面。
+
+### 2026-09-08 — 現行P0の新規パケットをastra-centricへ移行し、完成監査からAC-067を先行する
+
+- Type: implementation process / completion audit
+- Context: 利用者から、実装難易度に合わせて担当モデルを選び総コストを抑えるよう明示され、`app-development-orchestrator`の標準運転も2026-09-07に`astra-centric`へ更新された。現HEAD `220d6266a3b0975a2af0c81fefde2b316576755b`をAC-001〜068、TA-001〜048、保留gateへ再照合した。
+- Decision or rule: 過去の`cost-optimized`割当は履歴として残し、2026-09-08以降の新規実装はAstra lowを開始候補、複雑な部分をAstra medium候補とする。作成担当と別実行の独立レビューを維持し、モデル名だけで合格にしない。軽量モデルへ分けるのは委任準備から再検証までの総消費が小さくなる場合だけとする。
+- Completion finding: 視覚確認用の127画面と実運用routeは別系統であり、全P0完成の証拠にはまだならない。利用者判断を待たずに閉じられる最大の機能差分はAC-067の検索語・Codex用質問文の生成、編集、コピー、本人クリックによる公式検索である。AC-065は商品別撮影項目の2判断までAPI/Webを開始しない。
+- Safety boundary: 検索語と質問文は端末内で候補生成し、外部検索とコピーは人のクリック時だけ行う。メルカリやCodexへの自動送信、自動取得、スクレイピング、RPA、Cookie共有、価格自動確定を行わない。P06計測中は外部操作を無効のまま維持する。
+- Reconciliation: GitHub Actionsは現HEADのCI/Pages両workflowが`workflow_dispatch`だけで、無料・手動方針と一致しているため再質問しない。未解決の製品判断はP12の2点とPC29文言、未確認の人手gateは実iPhone、A4 24面物理印刷、固定10商品pilot、実Money Forward取込である。
+- Applies to: `AGENTS.md`、`docs/implementation/model-routing-plan.md`、P16、AC-067、TA-048、P07完成監査、active handoff。
+
+### 2026-09-08 — TA-014の復元互換性はforward migrationと単一transaction復元で直す
+
+- Type: database backup / restore safety
+- Context: migration 0039までの通常custom dumpを空DBへ復元すると、0015由来のSQL関数が制限された`search_path`下で内部関数を見つけられず、`inventory_unit`のCOPYが停止した。過去migrationを書き換えると既存環境と新規環境の履歴が分岐する。
+- Decision or rule: 0015以前を変更せず、追加migration `0040_restore_safe_checked_code_helpers.sql`で3関数を同じ計算のまま再作成し、`search_path = pg_catalog, public`と内部呼出しの`public.`修飾を固定する。通常復元は`pg_dump --format=custom --no-owner`と`pg_restore --exit-on-error --single-transaction --no-owner`を使い、途中失敗時に空targetへ部分schemaを残さない。
+- Verification boundary: 復元試験は数値IPv4 loopback `127.0.0.1`、空の使い捨てtarget DB、空の実体media root、架空データだけで行う。全table集合・件数・全行SHA-256、constraint/FK、RLS、sequence、original media metadata/file hash、audit、runtime role/grant/tenant isolationを比較する。
+- Connection and secret boundary: database/user名を接続文字列へ再解釈できない形式へ限定し、query/hashを拒否する。`pg_dump`/`pg_restore`子processは継承`PG*`をすべて除去して必要なpasswordだけを明示し、生stderrを通常ログへ出さない。mediaのsymlink/junction越境を拒否する。
+- Result: PostgreSQL 18.6の正常restore、fresh/upgrade、破損・非空・権限・loopback外・junction等の拒否、root check、独立Astra medium再レビューをPASS。TA-014はPASSとする。
+- Remaining boundary: 現postgres.jsのIPv6 URL互換性は未解消Lowであり、本手順ではIPv6を案内しない。実運用providerのバックアップ頻度とRPO/RTOはTA-026の別検証として残し、TA-014合格から推定しない。
+- Applies to: migration 0040、`postgres-restore-integration.ts`、`postgres-restore-safety.ts`、TA-014、TA-026、復元運用手順。
+
+### 2026-09-09 — 非公開mediaのbackup対象を全P0参照へ統一する
+
+- Type: database and private-file restore safety
+- Context: DB全行を復元しても、`media_asset`以外のレシート、場所、棚卸差異、発送の実ファイルがmanifest外なら、ファイル欠落を検出せず復元試験が合格し得た。
+- Decision or rule: backup/restore manifestは`media_asset`、`receipt_media_asset`、`location_photo`の原本と承認済み派生、`discrepancy_evidence_media`、`shipping_photo_asset`の全storage keyを一つにまとめる。重複keyを拒否し、実体path、symlink/junction境界、保存済みsize、SHA-256を復元前・backup・復元後に照合する。
+- Verification: 6種類すべてを持つ架空sourceから空DB・空media rootへ通常復元し、73 tables / 316 rows / 253 FK / private files 23とDB・file・audit hash一致を確認。独立再レビューはCritical 0 / High 0 / P0阻害Medium 0。
+- Applies to: `postgres-restore-integration.ts`、TA-014、TA-026、無料ローカルbackup/restore手順。
+
+### 2026-09-09 — Codex側P0完了と人手gateを分離する
+
+- Type: P0 completion gate
+- Context: 実装可能な未完了と、実iPhone・物理印刷・公式サービス・利用者判断が必要な項目が同じ未完了一覧にあり、完成度と次の操作が不明瞭だった。
+- Decision or rule: 同一候補の全check、fresh/upgrade/restore、live browser、127画面比較、独立reviewを合格したため、Codex側未完了を0とする。94項目のうち83項目をPASS、残る11項目だけを`WAITING_HUMAN`として保持する。自動証拠で人手確認を代用しない。
+- Design boundary: 承認モックの業務レイアウトを受け入れ基準とし、固定時刻・Dynamic Island・電波・電池・端末枠・架空値だけは製品UIへ入れない。
+- External boundary: Notionの指定済み進捗表以外へ送信せず、commit、push、PR ready化/merge、Pages、本番公開、課金、外部runtime APIを行わない。
+- Applies to: `p0-progress-checklist.md`、`goal-closeout.md`、Draft PR更新案、active handoff。
+
+### 2026-09-09 — 公開リポジトリの無料CIとPagesを自動実行してPRをmergeする
+
+- Type: delivery, CI/CD and zero-cost decision
+- Context: Codex側P0完了後、利用者がPR作成・GitHubへのmergeを明示依頼した。既存の手動限定方針と安全なmerge手順が衝突したため、公開リポジトリの標準runnerとGitHub Pagesが無料であることを提示し、利用者が自動実行への変更を承認した。
+- Decision or rule: 既存Draft PR #9を再利用する。`.github/workflows/ci.yml`はPull Requestと`main`へのpushで`npm ci`、`npm test`、`npm run lint`、`npm run build`を自動実行する。`.github/workflows/pages.yml`は`main`へのpush後に承認画面review buildをGitHub Pagesへ公開する。両方に手動再実行用`workflow_dispatch`を残す。
+- Zero-cost boundary: 対象は公開`komatsu-dev-jp/seller-assistant`、runnerは標準`ubuntu-latest`だけとする。larger runner、macOS runner、有料Action、有料API、有料SaaS、private repositoryの課金枠を使わない。
+- Safety boundary: PR headとmerge commitに一致するCI・Pagesだけを合格証拠にする。required checkを迂回せず、force push、管理者override、無関係な変更、実データ、外部runtime APIを追加しない。
+- Applies to: PR #9、`.github/workflows/ci.yml`、`.github/workflows/pages.yml`、`AGENTS.md`、`zero-cost-guard.md`、`technical-architecture-v1.md`。

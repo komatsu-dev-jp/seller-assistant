@@ -1,5 +1,27 @@
 import { z } from "zod";
 
+import {
+  listingPrepPilotFixtureIds,
+  listingPrepPilotFixtureManifestSha256,
+  listingPrepPilotFixtureProfiles,
+  listingPrepPilotMeasurementTemplates,
+  listingPrepPilotProtocolVersion,
+  listingPrepPilotWarmupFixture,
+  type ListingPrepPilotFixtureProfile,
+  type ListingPrepPilotMeasurementTemplateId,
+} from "./pilot-fixtures.generated.js";
+
+export {
+  listingPrepPilotFixtureIds,
+  listingPrepPilotFixtureManifestSha256,
+  listingPrepPilotFixtureProfiles,
+  listingPrepPilotMeasurementTemplates,
+  listingPrepPilotProtocolVersion,
+  listingPrepPilotWarmupFixture,
+  type ListingPrepPilotFixtureProfile,
+  type ListingPrepPilotMeasurementTemplateId,
+};
+
 export const workspaceIdSchema = z.string().uuid();
 
 export function codeCheckDigit(baseCode: string): number {
@@ -77,6 +99,51 @@ export const inventorySummarySchema = z.object({
   lastSyncedAt: z.iso.datetime(),
 });
 
+export const ownerPulseResponseSchema = z.object({
+  periodStart: z.iso.datetime(),
+  periodEnd: z.iso.datetime(),
+  completedOrderCount: z.number().int().nonnegative(),
+  completedSalesMinor: z.number().int().nonnegative(),
+  refundsMinor: z.number().int().nonnegative(),
+  netSalesMinor: z.number().int(),
+  costOfGoodsMinor: z.number().int().nonnegative(),
+  grossProfitMinor: z.number().int().nullable(),
+  sellingFeesMinor: z.number().int(),
+  shippingCostMinor: z.number().int().nonnegative(),
+  packagingCostMinor: z.number().int().nonnegative(),
+  contributionProfitMinor: z.number().int().nullable(),
+  inventoryCostMinor: z.number().int().nonnegative().nullable(),
+  missingCostCount: z.number().int().nonnegative(),
+  missingShippingCount: z.number().int().nonnegative(),
+  approvalPendingCount: z.number().int().nonnegative(),
+  approvalPendingBreakdown: z.object({
+    stocktakeDiscrepancyCount: z.number().int().nonnegative(),
+    locationPhotoCount: z.number().int().nonnegative(),
+    disposalCandidateCount: z.number().int().nonnegative(),
+    listingReviewCount: z.number().int().nonnegative(),
+  }),
+  aging: z.object({
+    days0To30: z.number().int().nonnegative(),
+    days31To60: z.number().int().nonnegative(),
+    days61To90: z.number().int().nonnegative(),
+    olderThan90Days: z.number().int().nonnegative(),
+  }),
+  supplierOverview: z
+    .array(
+      z.object({
+        supplierName: z.string().trim().min(1).max(160),
+        itemCount: z.number().int().nonnegative(),
+        coreDataCompletenessPercent: z.number().int().min(0).max(100),
+      }),
+    )
+    .max(3),
+  formulaVersion: z.literal("financial_formula_v1.0.0"),
+  disclaimer: z.literal(
+    "運用分析の参考値です。会計上の売上・利益・所得・税額を示すものではありません。",
+  ),
+  lastCalculatedAt: z.iso.datetime(),
+});
+
 export const workspaceRoleSchema = z.enum([
   "owner",
   "inventory_manager",
@@ -130,6 +197,9 @@ export const putawayCatalogResponseSchema = z.object({
       inventoryNumber: inventoryNumberSchema,
       labelVersion: z.number().int().positive(),
       status: z.literal("putaway_pending"),
+      skuId: z.string().uuid().optional(),
+      title: z.string().optional(),
+      productPhotoUrl: z.string().startsWith("/v1/workspaces/").nullable().optional(),
     }),
   ),
   locations: z.array(
@@ -137,10 +207,43 @@ export const putawayCatalogResponseSchema = z.object({
       code: checkedLocationCodeSchema,
       name: z.string(),
       labelVersion: z.number().int().positive(),
+      locationId: z.string().uuid().optional(),
+      approvedPhotoUrl: z.string().startsWith("/v1/workspaces/").nullable().optional(),
+      purpose: z.enum(["general", "return_quarantine"]),
     }),
   ),
   loadedAt: z.iso.datetime(),
 });
+
+export const returnCatalogResponseSchema = z.object({
+  workspaceId: workspaceIdSchema,
+  orders: z.array(
+    z.object({
+      orderId: z.string().uuid(),
+      orderNumber: z.string(),
+      orderState: z.enum(["shipped", "returned"]),
+      skuId: z.string().uuid(),
+      title: z.string(),
+      inventoryUnitId: z.string().uuid(),
+      inventoryNumber: inventoryNumberSchema,
+      inventoryStatus: z.enum([
+        "shipped",
+        "quarantined",
+        "available",
+        "disposal_pending",
+        "putaway_pending",
+      ]),
+      inventoryLabelVersion: z.number().int().positive().nullable(),
+      movementSequence: z.number().int().nonnegative(),
+      locationId: z.string().uuid().nullable(),
+      locationCode: checkedLocationCodeSchema.nullable(),
+      locationLabelVersion: z.number().int().positive().nullable(),
+      quarantined: z.boolean(),
+    }),
+  ),
+  loadedAt: z.iso.datetime(),
+});
+export type ReturnCatalogResponse = z.infer<typeof returnCatalogResponseSchema>;
 
 export const locationPhotoKindSchema = z.enum(["room", "shelf", "exact_position"]);
 
@@ -249,6 +352,127 @@ export const p0WorkflowActionSchema = z.enum([
   "approve_journal",
 ]);
 
+export const listingPrepPilotFixtures = listingPrepPilotFixtureIds;
+
+export const pilotFixtureIdSchema = z.enum(listingPrepPilotFixtures);
+
+export function listingPrepPilotItemIdentifiers(
+  runId: string,
+  productFixtureId: z.infer<typeof pilotFixtureIdSchema>,
+): { skuCode: string; receiptReference: string } {
+  const canonicalRunId = workspaceIdSchema.parse(runId).toUpperCase();
+  const canonicalFixtureId = pilotFixtureIdSchema.parse(productFixtureId);
+  return {
+    skuCode: `PILOT-${canonicalFixtureId}-${canonicalRunId}`,
+    receiptReference: `PILOT-REC-${canonicalFixtureId}-${canonicalRunId}`,
+  };
+}
+
+export const pilotCategorySchema = z.enum(["tops", "outer", "pants", "knit"]);
+export const pilotFixtureCategories = Object.fromEntries(
+  listingPrepPilotFixtureProfiles.map((profile) => [profile.fixtureId, profile.category]),
+) as Record<(typeof listingPrepPilotFixtures)[number], z.infer<typeof pilotCategorySchema>>;
+
+const listingPrepPilotMeasurementTemplateIds = Object.keys(
+  listingPrepPilotMeasurementTemplates,
+) as [ListingPrepPilotMeasurementTemplateId, ...ListingPrepPilotMeasurementTemplateId[]];
+
+export const measurementTemplateIdSchema = z.enum(listingPrepPilotMeasurementTemplateIds);
+
+export const measurementDefinitionSchema = z
+  .object({
+    definitionId: z.string().regex(/^[a-z][a-z0-9_]{1,63}$/u),
+    label: z.string().trim().min(1).max(80),
+    definitionVersion: z.number().int().positive().max(100),
+    basis: z.enum(["flat_width", "circumference", "length"]),
+    state: z.enum(["natural", "closed", "unstretched"]),
+  })
+  .strict();
+
+export const measurementProfileResponseSchema = z
+  .object({
+    category: pilotCategorySchema,
+    measurementTemplateId: measurementTemplateIdSchema,
+    measurementTemplateVersion: z.literal(1),
+    definitions: measurementDefinitionSchema.array().min(1).max(12),
+    confirmedBy: z.string().uuid(),
+    confirmedAt: z.iso.datetime(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    const template = listingPrepPilotMeasurementTemplates[value.measurementTemplateId];
+    if (
+      template.category !== value.category ||
+      template.version !== value.measurementTemplateVersion
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Measurement template does not match its category or version",
+        path: ["measurementTemplateId"],
+      });
+    }
+    const expectedDefinitions = template.measurements.map((definition) => ({
+      ...definition,
+      state: template.state,
+    }));
+    if (JSON.stringify(value.definitions) !== JSON.stringify(expectedDefinitions)) {
+      context.addIssue({
+        code: "custom",
+        message: "Measurement profile definitions must exactly match the generated template",
+        path: ["definitions"],
+      });
+    }
+  });
+
+export const pilotExceptionMetricsSchema = z
+  .object({
+    invalidAttemptCount: z.number().int().nonnegative().max(100).default(0),
+    missingRequiredImageCount: z.number().int().nonnegative().max(100).default(0),
+    measurementReworkCount: z.number().int().nonnegative().max(100).default(0),
+    labelLocationMismatchCount: z.number().int().nonnegative().max(100).default(0),
+    misputawayCount: z.number().int().nonnegative().max(100).default(0),
+    networkRetryCount: z.number().int().nonnegative().max(100).default(0),
+    manualCorrectionCount: z.number().int().nonnegative().max(100).default(0),
+  })
+  .strict();
+
+export const pilotEventTypeSchema = z.enum([
+  "invalid_attempt",
+  "missing_required_image",
+  "measurement_rework",
+  "label_location_mismatch",
+  "misputaway",
+  "network_retry",
+]);
+
+export const recordPilotExceptionRequestSchema = z
+  .object({
+    eventType: pilotEventTypeSchema,
+    detailCode: z
+      .string()
+      .trim()
+      .min(1)
+      .max(80)
+      .regex(/^[a-z0-9_]+$/u),
+    idempotencyKey: z.string().uuid(),
+    humanConfirmed: z.literal(true),
+  })
+  .strict();
+
+export const pilotExternalInvalidationReasonSchema = z.enum([
+  "power_outage",
+  "os_forced_update",
+  "device_hardware_failure",
+]);
+
+export const invalidatePilotRunRequestSchema = z
+  .object({
+    reasonCode: pilotExternalInvalidationReasonSchema,
+    idempotencyKey: z.string().uuid(),
+    humanConfirmed: z.literal(true),
+  })
+  .strict();
+
 export const advanceP0WorkflowRequestSchema = z
   .object({
     action: p0WorkflowActionSchema,
@@ -269,11 +493,16 @@ export const p0WorkflowResponseSchema = z.object({
 });
 
 export const photoRoleSchema = z.enum(["front", "back", "brand_tag", "care_label", "flaw"]);
+export const mediaRoleSchema = z.enum([...photoRoleSchema.options, "measurement_evidence"]);
 
 export const registerMediaAssetRequestSchema = z
   .object({
     assetId: z.string().uuid(),
-    role: photoRoleSchema,
+    role: mediaRoleSchema,
+    measurementDefinitionId: z
+      .string()
+      .regex(/^[a-z][a-z0-9_]{1,63}$/u)
+      .optional(),
     originalSha256: z.string().regex(/^[a-f0-9]{64}$/u),
     originalStorageKey: z.string().trim().min(1).max(500),
     mimeType: z.enum(["image/jpeg", "image/png", "image/webp", "image/heic"]),
@@ -290,9 +519,21 @@ export const registerMediaAssetRequestSchema = z
 export const uploadProductMediaQuerySchema = z
   .object({
     assetId: z.string().uuid(),
-    role: z.enum(["front", "back", "brand_tag", "care_label", "flaw"]),
+    role: mediaRoleSchema,
+    measurementDefinitionId: z
+      .string()
+      .regex(/^[a-z][a-z0-9_]{1,63}$/u)
+      .optional(),
   })
-  .strict();
+  .strict()
+  .refine(
+    (value) =>
+      (value.role === "measurement_evidence") === (value.measurementDefinitionId !== undefined),
+    {
+      message: "Only dedicated measurement evidence requires a measurement definition",
+      path: ["measurementDefinitionId"],
+    },
+  );
 
 export const mediaAssetResponseSchema = registerMediaAssetRequestSchema.extend({
   workspaceId: workspaceIdSchema,
@@ -303,6 +544,392 @@ export const mediaAssetResponseSchema = registerMediaAssetRequestSchema.extend({
 export const productMediaUploadResponseSchema = mediaAssetResponseSchema.omit({
   originalStorageKey: true,
 });
+
+export const inspectionCheckStatusSchema = z.enum([
+  "unconfirmed",
+  "no_issue_confirmed",
+  "concern_present",
+]);
+
+export const inspectionConcernTypeSchema = z.enum([
+  "stain",
+  "scratch",
+  "pilling",
+  "fray",
+  "fade",
+  "peel",
+  "odor",
+  "other",
+]);
+
+export const inspectionConcernSeveritySchema = z.enum(["small", "noticeable", "affects_use"]);
+
+export const inspectionConcernReviewStateSchema = z
+  .enum(["draft", "pending_review", "human_confirmed", "changes_requested", "human_dismissed"])
+  .describe(
+    "Draft, pending, changes-requested, and human-confirmed remain active; only terminal human-dismissed resolves the concern",
+  );
+
+const inspectionItemKeySchema = z.string().regex(/^[a-z][a-z0-9_]{1,63}$/u);
+const inspectionProductCategorySchema = z.string().regex(/^[a-z][a-z0-9_]{1,63}$/u);
+const inspectionDefinitionVersionSchema = z.number().int().min(1).max(1000);
+const inspectionRevisionSchema = z.number().int().min(1).max(10_000);
+
+function validateInspectionRevisionLink(
+  value: { revision: number; supersedesRevisionId: string | null },
+  context: z.RefinementCtx,
+) {
+  if (value.revision === 1 && value.supersedesRevisionId !== null) {
+    context.addIssue({
+      code: "custom",
+      path: ["supersedesRevisionId"],
+      message: "The first inspection revision cannot supersede another revision",
+    });
+  }
+  if (value.revision > 1 && value.supersedesRevisionId === null) {
+    context.addIssue({
+      code: "custom",
+      path: ["supersedesRevisionId"],
+      message: "A later inspection revision must identify its predecessor",
+    });
+  }
+}
+
+function validateInspectionConcernReferences(
+  value: { status: z.infer<typeof inspectionCheckStatusSchema>; concernRevisionIds: string[] },
+  context: z.RefinementCtx,
+) {
+  const expectedCount = value.status === "concern_present" ? value.concernRevisionIds.length : 0;
+  if (
+    (value.status === "concern_present" && (expectedCount < 1 || expectedCount > 20)) ||
+    (value.status !== "concern_present" && value.concernRevisionIds.length !== 0)
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["concernRevisionIds"],
+      message: "Only concern-present checks may reference one to twenty concern revisions",
+    });
+  }
+  if (new Set(value.concernRevisionIds).size !== value.concernRevisionIds.length) {
+    context.addIssue({
+      code: "custom",
+      path: ["concernRevisionIds"],
+      message: "Concern revision IDs must not contain duplicates",
+    });
+  }
+}
+
+function validateInspectionResponsePredecessor(
+  value: {
+    revision: number;
+    supersedesRevisionId: string | null;
+    supersededRecordedBy: string | null;
+  },
+  context: z.RefinementCtx,
+) {
+  if ((value.supersedesRevisionId === null) !== (value.supersededRecordedBy === null)) {
+    context.addIssue({
+      code: "custom",
+      path: ["supersededRecordedBy"],
+      message: "The predecessor recorder must accompany the predecessor revision ID",
+    });
+  }
+}
+
+export const recordInspectionCheckResultRequestSchema = z
+  .object({
+    revisionId: z.string().uuid(),
+    inspectionItemKey: inspectionItemKeySchema,
+    productCategory: inspectionProductCategorySchema,
+    definitionVersion: inspectionDefinitionVersionSchema,
+    status: inspectionCheckStatusSchema,
+    concernRevisionIds: z
+      .array(z.string().uuid())
+      .max(20)
+      .describe(
+        "Exact complete set of latest human-confirmed concern revision IDs; never media storage keys",
+      ),
+    revision: inspectionRevisionSchema,
+    supersedesRevisionId: z.string().uuid().nullable(),
+    humanConfirmed: z.boolean(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    validateInspectionRevisionLink(value, context);
+    validateInspectionConcernReferences(value, context);
+    if (value.humanConfirmed !== (value.status !== "unconfirmed")) {
+      context.addIssue({
+        code: "custom",
+        path: ["humanConfirmed"],
+        message: "Human confirmation must match the inspection check status",
+      });
+    }
+    if (value.status !== "unconfirmed" && value.revision <= 1) {
+      context.addIssue({
+        code: "custom",
+        path: ["revision"],
+        message: "A confirmed check must supersede an unconfirmed revision",
+      });
+    }
+  });
+
+export const inspectionCheckResultRevisionResponseSchema = z
+  .object({
+    revisionId: z.string().uuid(),
+    workspaceId: workspaceIdSchema,
+    skuId: z.string().uuid(),
+    inspectionItemKey: inspectionItemKeySchema,
+    productCategory: inspectionProductCategorySchema,
+    definitionVersion: inspectionDefinitionVersionSchema,
+    status: inspectionCheckStatusSchema,
+    concernRevisionIds: z
+      .array(z.string().uuid())
+      .max(20)
+      .describe(
+        "Exact complete set of latest human-confirmed concern revision IDs; never media storage keys",
+      ),
+    revision: inspectionRevisionSchema,
+    supersedesRevisionId: z.string().uuid().nullable(),
+    supersededRecordedBy: z
+      .string()
+      .uuid()
+      .nullable()
+      .describe("Actor who recorded the immediately preceding revision"),
+    supersededStatus: inspectionCheckStatusSchema
+      .nullable()
+      .describe("Status of the immutable immediately preceding revision"),
+    createdBy: z.string().uuid().describe("Actor who created the first revision in the chain"),
+    createdAt: z.iso.datetime(),
+    recordedBy: z.string().uuid().describe("Actor who recorded this exact revision"),
+    recordedAt: z.iso.datetime(),
+    confirmedBy: z.string().uuid().nullable().describe("Actor who confirmed this exact revision"),
+    confirmedAt: z.iso.datetime().nullable(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    validateInspectionRevisionLink(value, context);
+    validateInspectionConcernReferences(value, context);
+    validateInspectionResponsePredecessor(value, context);
+    const isConfirmed = value.status !== "unconfirmed";
+    if (isConfirmed !== (value.confirmedBy !== null && value.confirmedAt !== null)) {
+      context.addIssue({
+        code: "custom",
+        path: ["confirmedBy"],
+        message: "Confirmation metadata must match the inspection check status",
+      });
+    }
+    if (isConfirmed && value.confirmedBy === value.supersededRecordedBy) {
+      context.addIssue({
+        code: "custom",
+        path: ["confirmedBy"],
+        message: "The prior revision recorder cannot confirm their own submission",
+      });
+    }
+    if (isConfirmed && value.revision <= 1) {
+      context.addIssue({
+        code: "custom",
+        path: ["revision"],
+        message: "A confirmed check must supersede an unconfirmed revision",
+      });
+    }
+    if (
+      (value.supersedesRevisionId === null) !== (value.supersededStatus === null) ||
+      (isConfirmed && value.supersededStatus !== "unconfirmed")
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["supersededStatus"],
+        message: "A confirmed check must directly supersede an unconfirmed revision",
+      });
+    }
+  });
+
+export const inspectionConcernMarkerSchema = z
+  .object({
+    sourceAssetId: z.string().uuid(),
+    x: z.number().min(0).max(1),
+    y: z.number().min(0).max(1),
+  })
+  .strict();
+
+export const recordInspectionConcernRevisionRequestSchema = z
+  .object({
+    revisionId: z.string().uuid(),
+    concernId: z.string().uuid(),
+    inspectionItemKey: inspectionItemKeySchema,
+    productCategory: inspectionProductCategorySchema,
+    definitionVersion: inspectionDefinitionVersionSchema,
+    revision: inspectionRevisionSchema,
+    supersedesRevisionId: z.string().uuid().nullable(),
+    itemLocation: z.string().trim().min(1).max(120),
+    concernType: inspectionConcernTypeSchema,
+    severity: inspectionConcernSeveritySchema,
+    marker: inspectionConcernMarkerSchema.nullable(),
+    contextEvidenceAssetId: z.string().uuid().nullable(),
+    detailEvidenceAssetId: z.string().uuid().nullable(),
+    memo: z.string().trim().min(1).max(500).nullable(),
+    reviewState: inspectionConcernReviewStateSchema,
+    humanReviewed: z
+      .boolean()
+      .describe(
+        "True only for human-confirmed, changes-requested, or human-dismissed review revisions",
+      ),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    validateInspectionRevisionLink(value, context);
+    const hasAnyPhoto =
+      value.marker !== null ||
+      value.contextEvidenceAssetId !== null ||
+      value.detailEvidenceAssetId !== null;
+    if (value.concernType !== "odor" && value.marker === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["marker"],
+        message: "A visible concern requires a marker on its source photo",
+      });
+    }
+    if (value.concernType !== "odor" && value.contextEvidenceAssetId === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["contextEvidenceAssetId"],
+        message: "A visible concern requires a context evidence photo",
+      });
+    }
+    if (value.concernType === "odor" && value.memo === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["memo"],
+        message: "An odor concern always requires an explanation",
+      });
+    } else if (!hasAnyPhoto && value.concernType !== "odor") {
+      context.addIssue({
+        code: "custom",
+        path: ["memo"],
+        message: "Only a non-visual odor concern may omit photos, and it requires an explanation",
+      });
+    }
+    const isHumanReview =
+      value.reviewState === "human_confirmed" ||
+      value.reviewState === "changes_requested" ||
+      value.reviewState === "human_dismissed";
+    if (value.humanReviewed !== isHumanReview) {
+      context.addIssue({
+        code: "custom",
+        path: ["humanReviewed"],
+        message: "Human review must match the concern review state",
+      });
+    }
+    if (isHumanReview && value.revision <= 1) {
+      context.addIssue({
+        code: "custom",
+        path: ["revision"],
+        message: "A concern review must supersede a pending-review revision",
+      });
+    }
+  });
+
+export const inspectionConcernRevisionResponseSchema = z
+  .object({
+    revisionId: z.string().uuid(),
+    concernId: z.string().uuid(),
+    workspaceId: workspaceIdSchema,
+    skuId: z.string().uuid(),
+    inspectionItemKey: inspectionItemKeySchema,
+    productCategory: inspectionProductCategorySchema,
+    definitionVersion: inspectionDefinitionVersionSchema,
+    revision: inspectionRevisionSchema,
+    supersedesRevisionId: z.string().uuid().nullable(),
+    itemLocation: z.string().trim().min(1).max(120),
+    concernType: inspectionConcernTypeSchema,
+    severity: inspectionConcernSeveritySchema,
+    marker: inspectionConcernMarkerSchema.nullable(),
+    contextEvidenceAssetId: z.string().uuid().nullable(),
+    detailEvidenceAssetId: z.string().uuid().nullable(),
+    memo: z.string().trim().min(1).max(500).nullable(),
+    reviewState: inspectionConcernReviewStateSchema,
+    supersededRecordedBy: z
+      .string()
+      .uuid()
+      .nullable()
+      .describe("Actor who recorded the immediately preceding revision"),
+    supersededReviewState: inspectionConcernReviewStateSchema
+      .nullable()
+      .describe("Review state of the immutable immediately preceding revision"),
+    createdBy: z.string().uuid().describe("Actor who created the first revision in the chain"),
+    createdAt: z.iso.datetime(),
+    recordedBy: z.string().uuid().describe("Actor who recorded this exact revision"),
+    recordedAt: z.iso.datetime(),
+    reviewedBy: z.string().uuid().nullable().describe("Actor who reviewed this exact revision"),
+    reviewedAt: z.iso.datetime().nullable(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    validateInspectionRevisionLink(value, context);
+    validateInspectionResponsePredecessor(value, context);
+    const hasAnyPhoto =
+      value.marker !== null ||
+      value.contextEvidenceAssetId !== null ||
+      value.detailEvidenceAssetId !== null;
+    if (value.concernType !== "odor" && value.marker === null) {
+      context.addIssue({ code: "custom", path: ["marker"], message: "Marker is required" });
+    }
+    if (value.concernType !== "odor" && value.contextEvidenceAssetId === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["contextEvidenceAssetId"],
+        message: "Context evidence is required",
+      });
+    }
+    if (value.concernType === "odor" && value.memo === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["memo"],
+        message: "An odor concern always requires an explanation",
+      });
+    } else if (!hasAnyPhoto && value.concernType !== "odor") {
+      context.addIssue({
+        code: "custom",
+        path: ["memo"],
+        message: "A photo-free non-visual concern requires an explanation",
+      });
+    }
+    const isReviewed =
+      value.reviewState === "human_confirmed" ||
+      value.reviewState === "changes_requested" ||
+      value.reviewState === "human_dismissed";
+    if (isReviewed !== (value.reviewedBy !== null && value.reviewedAt !== null)) {
+      context.addIssue({
+        code: "custom",
+        path: ["reviewedBy"],
+        message: "Reviewer metadata must match the concern review state",
+      });
+    }
+    if (isReviewed && value.reviewedBy === value.supersededRecordedBy) {
+      context.addIssue({
+        code: "custom",
+        path: ["reviewedBy"],
+        message: "The prior revision recorder cannot review their own submission",
+      });
+    }
+    if (isReviewed && value.revision <= 1) {
+      context.addIssue({
+        code: "custom",
+        path: ["revision"],
+        message: "A concern review must supersede a pending-review revision",
+      });
+    }
+    if (
+      (value.supersedesRevisionId === null) !== (value.supersededReviewState === null) ||
+      (isReviewed && value.supersededReviewState !== "pending_review")
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["supersededReviewState"],
+        message: "A concern review must directly supersede a pending-review revision",
+      });
+    }
+  });
 
 export const recordMeasurementRequestSchema = z
   .object({
@@ -343,6 +970,7 @@ export const measurementResponseSchema = recordMeasurementRequestSchema
 export const captureSummarySchema = z.object({
   workspaceId: workspaceIdSchema,
   skuId: z.string().uuid(),
+  measurementProfile: measurementProfileResponseSchema.nullable(),
   photoRoles: z.array(photoRoleSchema),
   measurementDefinitionIds: z.array(z.string()),
   requiredPhotoRolesComplete: z.boolean(),
@@ -352,6 +980,17 @@ export const captureSummarySchema = z.object({
   updatedAt: z.iso.datetime(),
 });
 
+export const salesChannelKeySchema = z
+  .string()
+  .trim()
+  .min(2)
+  .max(64)
+  .regex(/^[a-z0-9][a-z0-9_-]+$/u);
+
+export const salesChannelNameSchema = z.string().trim().min(1).max(80);
+
+export const orderAddressModeSchema = z.enum(["anonymous", "stored"]);
+
 export const createOrderRequestSchema = z
   .object({
     orderNumber: z
@@ -359,22 +998,121 @@ export const createOrderRequestSchema = z
       .trim()
       .min(1)
       .max(80)
-      .regex(/^[A-Z0-9-]+$/u),
+      .regex(/^[A-Z0-9-]+$/u)
+      .optional(),
+    salesChannelKey: salesChannelKeySchema.optional(),
+    salesChannelName: salesChannelNameSchema.optional(),
+    channelTransactionId: z.string().trim().min(1).max(160).nullable().optional(),
+    buyerDisplayName: z.string().trim().min(1).max(160).nullable().optional(),
     skuId: z.string().uuid(),
     inventoryUnitId: z.string().uuid(),
-    saleAmountMinor: z.number().int().positive().max(100_000_000),
+    saleAmountMinor: z.number().int().positive().max(100_000_000).nullable(),
     costAmountMinor: z.number().int().nonnegative().max(100_000_000),
-    sellingFeeMinor: z.number().int().nonnegative().max(100_000_000),
-    shippingCostMinor: z.number().int().nonnegative().max(100_000_000),
-    packagingCostMinor: z.number().int().nonnegative().max(100_000_000),
+    sellingFeeMinor: z.number().int().nonnegative().max(100_000_000).nullable(),
+    shippingCostMinor: z.number().int().nonnegative().max(100_000_000).nullable(),
+    packagingCostMinor: z.number().int().nonnegative().max(100_000_000).nullable(),
     taxBasis: z.enum(["tax_included", "tax_excluded", "unknown"]),
     sourceMeaning: z.string().trim().min(1).max(160),
     occurredAt: z.iso.datetime(),
-    shippingAddress: z.string().trim().min(1).max(1000),
+    addressMode: orderAddressModeSchema.optional(),
+    shippingAddress: z.string().trim().min(1).max(1000).nullable(),
     idempotencyKey: z.string().uuid(),
     humanConfirmed: z.literal(true),
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    const hasChannelKey = value.salesChannelKey !== undefined;
+    const hasChannelName = value.salesChannelName !== undefined;
+    const hasOrderRegistration = hasChannelKey && hasChannelName;
+    if (hasChannelKey !== hasChannelName) {
+      context.addIssue({
+        code: "custom",
+        path: hasChannelKey ? ["salesChannelName"] : ["salesChannelKey"],
+        message: "Sales channel key and name must be provided together",
+      });
+    }
+    if (value.orderNumber === undefined && (!hasChannelKey || !hasChannelName)) {
+      context.addIssue({
+        code: "custom",
+        path: ["salesChannelKey"],
+        message: "Server-numbered orders require a sales channel",
+      });
+    }
+    if (
+      (value.channelTransactionId !== undefined || value.buyerDisplayName !== undefined) &&
+      (!hasChannelKey || !hasChannelName)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["salesChannelKey"],
+        message: "Marketplace order details require a sales channel",
+      });
+    }
+    if (hasOrderRegistration && value.shippingCostMinor !== null) {
+      context.addIssue({
+        code: "custom",
+        path: ["shippingCostMinor"],
+        message: "Registered orders record shipping cost from the human-selected method",
+      });
+    }
+    if (!hasOrderRegistration && value.shippingCostMinor === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["shippingCostMinor"],
+        message: "Legacy orders require a human-entered shipping cost",
+      });
+    }
+    if (hasOrderRegistration && value.sellingFeeMinor !== null) {
+      context.addIssue({
+        code: "custom",
+        path: ["sellingFeeMinor"],
+        message: "Registered orders must leave an unconfirmed selling fee missing",
+      });
+    }
+    if (hasOrderRegistration && value.packagingCostMinor !== null) {
+      context.addIssue({
+        code: "custom",
+        path: ["packagingCostMinor"],
+        message: "Registered orders must leave an unconfirmed packaging cost missing",
+      });
+    }
+    if (!hasOrderRegistration && value.sellingFeeMinor === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["sellingFeeMinor"],
+        message: "Legacy orders require a human-entered selling fee",
+      });
+    }
+    if (!hasOrderRegistration && value.packagingCostMinor === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["packagingCostMinor"],
+        message: "Legacy orders require a human-entered packaging cost",
+      });
+    }
+    if (value.orderNumber === undefined && value.addressMode === undefined) {
+      context.addIssue({
+        code: "custom",
+        path: ["addressMode"],
+        message: "Server-numbered orders require an explicit address mode",
+      });
+    }
+    if (value.addressMode === "anonymous" && value.shippingAddress !== null) {
+      context.addIssue({
+        code: "custom",
+        path: ["shippingAddress"],
+        message: "Anonymous orders must not include an address",
+      });
+    }
+    if (value.addressMode !== "anonymous" && value.shippingAddress === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["shippingAddress"],
+        message: "Stored-address orders require an address",
+      });
+    }
+  })
+  .transform((value) => ({ ...value, addressMode: value.addressMode ?? ("stored" as const) }));
 
 export const createP0ItemRequestSchema = z
   .object({
@@ -386,19 +1124,188 @@ export const createP0ItemRequestSchema = z
       .regex(/^[A-Z0-9-]+$/u),
     title: z.string().trim().min(1).max(160),
     category: z.string().trim().min(1).max(80),
+    measurementTemplateId: measurementTemplateIdSchema,
     supplierName: z.string().trim().min(1).max(160),
     receiptReference: z.string().trim().min(1).max(120),
+    receiptEvidenceAssetId: z.string().uuid().optional(),
     purchasedAt: z.iso.datetime(),
     receiptAmountMinor: z.number().int().nonnegative().max(100_000_000),
     allocatedCostMinor: z.number().int().nonnegative().max(100_000_000),
     idempotencyKey: z.string().uuid(),
     humanConfirmed: z.literal(true),
+    pilot: z
+      .object({
+        runId: z.string().uuid(),
+        productFixtureId: pilotFixtureIdSchema,
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .refine((value) => value.allocatedCostMinor <= value.receiptAmountMinor, {
     message: "Allocated cost cannot exceed the receipt amount",
     path: ["allocatedCostMinor"],
+  })
+  .superRefine((value, context) => {
+    const template = listingPrepPilotMeasurementTemplates[value.measurementTemplateId];
+    const acceptedCategoryNames: Record<z.infer<typeof pilotCategorySchema>, readonly string[]> = {
+      tops: ["tops", "トップス"],
+      outer: ["outer", "アウター"],
+      pants: ["pants", "パンツ"],
+      knit: ["knit", "ニット"],
+    };
+    if (!acceptedCategoryNames[template.category].includes(value.category)) {
+      context.addIssue({
+        code: "custom",
+        message: "The measurement template does not match the product category",
+        path: ["measurementTemplateId"],
+      });
+    }
   });
+
+export const listingPrepPilotMigrationVersion = "0033" as const;
+
+export const uploadReceiptEvidenceQuerySchema = z
+  .object({
+    assetId: z.string().uuid(),
+    humanConfirmed: z.literal("true"),
+  })
+  .strict();
+
+export const receiptEvidenceResponseSchema = z.object({
+  assetId: z.string().uuid(),
+  workspaceId: workspaceIdSchema,
+  mimeType: z.enum(["image/jpeg", "image/png"]),
+  sizeBytes: z
+    .number()
+    .int()
+    .positive()
+    .max(25 * 1024 * 1024),
+  width: z.number().int().positive().max(12000),
+  height: z.number().int().positive().max(12000),
+  contentUrl: z.string().startsWith("/v1/workspaces/"),
+  confirmedAt: z.iso.datetime(),
+});
+export type ReceiptEvidenceResponse = z.infer<typeof receiptEvidenceResponseSchema>;
+
+export const startPilotRunRequestSchema = z
+  .object({
+    protocolVersion: z.literal(listingPrepPilotProtocolVersion),
+    fixtureManifestSha256: z.literal(listingPrepPilotFixtureManifestSha256),
+    commitSha: z.string().regex(/^[a-f0-9]{40}$/u),
+    migrationVersion: z.literal(listingPrepPilotMigrationVersion),
+    platform: z.string().trim().min(1).max(120),
+    browser: z.string().trim().min(1).max(200),
+    viewport: z.literal("390x844"),
+    warmupCompleted: z.literal(true),
+    humanConfirmed: z.literal(true),
+  })
+  .strict();
+
+export const pilotItemMeasurementSchema = z
+  .object({
+    measurementId: z.string().uuid(),
+    skuId: z.string().uuid(),
+    productFixtureId: pilotFixtureIdSchema,
+    category: pilotCategorySchema,
+    measurementTemplateId: measurementTemplateIdSchema.nullable(),
+    measurementTemplateVersion: z.literal(1).nullable(),
+    startedAt: z.iso.datetime(),
+    completedAt: z.iso.datetime().nullable(),
+    elapsedSeconds: z.number().nonnegative().nullable(),
+    metrics: pilotExceptionMetricsSchema,
+    copyReadyWorkflowVersion: z.number().int().positive().nullable(),
+  })
+  .superRefine((value, context) => {
+    if ((value.measurementTemplateId === null) !== (value.measurementTemplateVersion === null)) {
+      context.addIssue({
+        code: "custom",
+        message: "Pilot measurement template ID and version must both be present or absent",
+        path: ["measurementTemplateId"],
+      });
+      return;
+    }
+    if (value.measurementTemplateId !== null) {
+      const template = listingPrepPilotMeasurementTemplates[value.measurementTemplateId];
+      if (template.category !== value.category) {
+        context.addIssue({
+          code: "custom",
+          message: "Pilot measurement template does not match its category",
+          path: ["measurementTemplateId"],
+        });
+      }
+    }
+  });
+
+export const pilotRunSummarySchema = z.object({
+  itemCount: z.number().int().min(0).max(10),
+  completedItemCount: z.number().int().min(0).max(10),
+  p50Seconds: z.number().nonnegative().nullable(),
+  p75Seconds: z.number().nonnegative().nullable(),
+  minSeconds: z.number().nonnegative().nullable(),
+  maxSeconds: z.number().nonnegative().nullable(),
+  invalidAttemptCount: z.number().int().nonnegative(),
+  missingRequiredImageCount: z.number().int().nonnegative(),
+  measurementReworkCount: z.number().int().nonnegative(),
+  labelLocationMismatchCount: z.number().int().nonnegative(),
+  misputawayCount: z.number().int().nonnegative(),
+  networkRetryCount: z.number().int().nonnegative(),
+  manualCorrectionCount: z.number().int().nonnegative(),
+  passed: z.boolean().nullable(),
+});
+
+const pilotRunResponseBaseSchema = z.object({
+  runId: z.string().uuid(),
+  workspaceId: workspaceIdSchema,
+  commitSha: z.string().regex(/^[a-f0-9]{40}$/u),
+  platform: z.string(),
+  browser: z.string(),
+  viewport: z.literal("390x844"),
+  actorId: z.string().uuid(),
+  state: z.enum(["active", "completed", "failed", "externally_invalidated"]),
+  externallyInvalidated: z.boolean(),
+  externalInvalidationReason: z.string().nullable(),
+  warmupCompletedAt: z.iso.datetime(),
+  startedAt: z.iso.datetime(),
+  completedAt: z.iso.datetime().nullable(),
+  summary: pilotRunSummarySchema,
+});
+
+const historicalPilotItemMeasurementSchema = pilotItemMeasurementSchema.safeExtend({
+  measurementTemplateId: z.null(),
+  measurementTemplateVersion: z.null(),
+});
+
+const currentPilotItemMeasurementSchema = pilotItemMeasurementSchema.safeExtend({
+  measurementTemplateId: measurementTemplateIdSchema,
+  measurementTemplateVersion: z.literal(1),
+});
+
+export const pilotRunResponseSchema = z.discriminatedUnion("protocolVersion", [
+  pilotRunResponseBaseSchema.extend({
+    protocolVersion: z.literal("listing_prep_pilot_v1.0.0"),
+    fixtureManifestSha256: z.null(),
+    migrationVersion: z.enum([
+      "0023",
+      "0024",
+      "0025",
+      "0026",
+      "0027",
+      "0028",
+      "0029",
+      "0030",
+      "0031",
+      "0032",
+    ]),
+    items: historicalPilotItemMeasurementSchema.array().max(10),
+  }),
+  pilotRunResponseBaseSchema.extend({
+    protocolVersion: z.literal(listingPrepPilotProtocolVersion),
+    fixtureManifestSha256: z.literal(listingPrepPilotFixtureManifestSha256),
+    migrationVersion: z.literal(listingPrepPilotMigrationVersion),
+    items: currentPilotItemMeasurementSchema.array().max(10),
+  }),
+]);
 
 export const p0CaptureMeasurementSchema = z.object({
   id: z.string().uuid(),
@@ -426,6 +1333,7 @@ export const captureTaskResponseSchema = z.object({
   skuCode: z.string(),
   title: z.string(),
   category: z.string().nullable(),
+  measurementProfile: measurementProfileResponseSchema.nullable(),
   photoAssetIds: z.array(z.string().uuid()),
   photoRoles: z.array(photoRoleSchema),
   measurements: z.array(p0CaptureMeasurementSchema),
@@ -448,6 +1356,7 @@ export const identityCandidateResponseSchema = z.object({
   modelCandidate: z.string().nullable(),
   materialCandidate: z.string().nullable(),
   sizeCandidate: z.string().nullable(),
+  colorCandidate: z.string().nullable(),
   status: z.enum(["candidate", "human_confirmed", "rejected"]),
   createdAt: z.iso.datetime(),
 });
@@ -458,6 +1367,32 @@ export const confirmIdentityCandidateRequestSchema = z
     humanConfirmed: z.literal(true),
   })
   .strict();
+
+export const confirmProductAttributesRequestSchema = z
+  .object({
+    brand: z.string().trim().min(1).max(160),
+    sizeLabel: z.string().trim().min(1).max(80),
+    color: z.string().trim().min(1).max(80),
+    evidenceAssetId: z.string().uuid(),
+    sourceCandidateId: z.string().uuid().nullable().optional(),
+    supersedesConfirmationId: z.string().uuid().nullable().optional(),
+    humanConfirmed: z.literal(true),
+  })
+  .strict();
+
+export const productAttributeConfirmationResponseSchema = z.object({
+  confirmationId: z.string().uuid(),
+  skuId: z.string().uuid(),
+  revision: z.number().int().positive(),
+  brand: z.string().min(1),
+  sizeLabel: z.string().min(1),
+  color: z.string().min(1),
+  evidenceAssetId: z.string().uuid(),
+  sourceCandidateId: z.string().uuid().nullable(),
+  supersedesConfirmationId: z.string().uuid().nullable(),
+  confirmedBy: z.string().uuid(),
+  confirmedAt: z.iso.datetime(),
+});
 
 export const createMarketplaceReferenceRequestSchema = z
   .object({
@@ -495,6 +1430,7 @@ export const productResearchResponseSchema = z.object({
   workspaceId: workspaceIdSchema,
   skuId: z.string().uuid(),
   candidates: identityCandidateResponseSchema.array(),
+  confirmedAttributes: productAttributeConfirmationResponseSchema.nullable(),
   references: marketplaceReferenceResponseSchema.array(),
   includedSoldCount: z.number().int().nonnegative(),
   displayedPriceMedianMinor: z.number().int().nonnegative().nullable(),
@@ -516,6 +1452,8 @@ export const p0ItemResponseSchema = z.object({
   skuCode: z.string(),
   title: z.string(),
   category: z.string().nullable(),
+  measurementProfile: measurementProfileResponseSchema.nullable(),
+  confirmedAttributes: productAttributeConfirmationResponseSchema.nullable(),
   inventoryUnitId: z.string().uuid(),
   inventoryNumber: inventoryNumberSchema,
   inventoryStatus: z.enum([
@@ -526,6 +1464,7 @@ export const p0ItemResponseSchema = z.object({
     "packed",
     "shipped",
     "quarantined",
+    "disposal_pending",
     "lost",
     "disposed",
   ]),
@@ -534,6 +1473,8 @@ export const p0ItemResponseSchema = z.object({
   locationLabelVersion: z.number().int().positive().nullable(),
   receiptId: z.string().uuid(),
   receiptReference: z.string(),
+  receiptEvidenceAssetId: z.string().uuid().nullable().optional(),
+  receiptEvidenceContentUrl: z.string().startsWith("/v1/workspaces/").nullable().optional(),
   purchasedAt: z.iso.datetime(),
   allocatedCostMinor: z.number().int().nonnegative(),
   capture: z.object({
@@ -584,6 +1525,7 @@ export const createLocationRequestSchema = z
       .max(64)
       .regex(/^[A-Z0-9]+(?:-[A-Z0-9]+)*$/u),
     name: z.string().trim().min(1).max(120),
+    purpose: z.enum(["general", "return_quarantine"]).optional(),
     canStoreInventory: z.boolean(),
     singleItemOnly: z.boolean(),
     allowMixedSku: z.boolean(),
@@ -594,6 +1536,10 @@ export const createLocationRequestSchema = z
   .refine((value) => value.canStoreInventory || value.maxUnits === null, {
     message: "A non-storage location cannot have inventory capacity",
     path: ["maxUnits"],
+  })
+  .refine((value) => value.purpose !== "return_quarantine" || value.canStoreInventory, {
+    message: "返品隔離場所は保管可能な場所にしてください。",
+    path: ["purpose"],
   });
 
 export const locationNodeResponseSchema = z.object({
@@ -602,6 +1548,7 @@ export const locationNodeResponseSchema = z.object({
   parentId: z.string().uuid().nullable(),
   code: checkedLocationCodeSchema,
   name: z.string(),
+  purpose: z.enum(["general", "return_quarantine"]),
   depth: z.number().int().min(0).max(7),
   state: z.literal("active"),
   canStoreInventory: z.boolean(),
@@ -622,12 +1569,14 @@ export const orderOperationResponseSchema = z.object({
   inventoryUnitId: z.string().uuid(),
   state: z.enum(["confirmed", "picking", "packed", "shipped", "returned"]),
   inventoryStatus: z.enum([
+    "putaway_pending",
     "reserved",
     "picked",
     "packed",
     "shipped",
     "quarantined",
     "available",
+    "disposal_pending",
     "disposed",
   ]),
   updatedAt: z.iso.datetime(),
@@ -715,6 +1664,7 @@ export const revokeTeamAssignmentRequestSchema = z
 
 export const teamAssignmentResponseSchema = z.object({
   assignmentId: z.string().uuid(),
+  assignmentVersion: z.string().regex(/^[a-f0-9]{64}$/u),
   assignmentType: teamAssignmentTypeSchema,
   identityId: z.string().uuid(),
   assigneeEmail: z.string().email(),
@@ -730,6 +1680,90 @@ export const teamStateResponseSchema = z.object({
   members: teamMemberResponseSchema.array(),
   assignments: teamAssignmentResponseSchema.array(),
 });
+
+export const teamChangeReasonSchema = z.enum([
+  "assignment_error",
+  "assignment_changed",
+  "device_lost",
+  "worker_unavailable",
+]);
+export const teamChangeCommentSchema = z.enum([
+  "target_checked",
+  "dates_checked",
+  "check_target_again",
+  "check_dates_again",
+  "clarify_reason",
+]);
+export const createTeamChangeRequestSchema = z
+  .object({
+    assignmentId: z.string().uuid(),
+    assignmentType: teamAssignmentTypeSchema,
+    expectedAssignmentVersion: z.string().regex(/^[a-f0-9]{64}$/u),
+    reasonCode: teamChangeReasonSchema,
+    idempotencyKey: z.string().uuid(),
+    humanConfirmed: z.literal(true),
+  })
+  .strict();
+export const recordTeamChangeEventSchema = z
+  .object({
+    action: z.enum(["approve", "reject", "request_changes", "comment"]),
+    expectedRevision: z.number().int().positive(),
+    commentCode: teamChangeCommentSchema,
+    idempotencyKey: z.string().uuid(),
+    humanConfirmed: z.literal(true),
+  })
+  .strict();
+export const teamChangeSnapshotSchema = z
+  .object({
+    assignmentId: z.string().uuid(),
+    assignmentType: teamAssignmentTypeSchema,
+    assigneeId: z.string().uuid(),
+    targetId: z.string().uuid(),
+    targetLabel: z.string(),
+    startsAt: z.iso.datetime(),
+    expiresAt: z.iso.datetime(),
+    access: z.enum(["active", "revoked"]),
+  })
+  .strict();
+export const teamChangeEventResponseSchema = z
+  .object({
+    eventId: z.string().uuid(),
+    revision: z.number().int().positive(),
+    actorId: z.string().uuid(),
+    actorName: z.string(),
+    action: z.enum(["requested", "approve", "reject", "request_changes", "comment"]),
+    commentCode: teamChangeCommentSchema.nullable(),
+    occurredAt: z.iso.datetime(),
+  })
+  .strict();
+export const teamChangeResponseSchema = z
+  .object({
+    requestId: z.string().uuid(),
+    workspaceId: workspaceIdSchema,
+    action: z.literal("revoke_assignment"),
+    state: z.enum(["pending", "approved", "rejected", "changes_requested"]),
+    revision: z.number().int().positive(),
+    targetVersion: z.string().regex(/^[a-f0-9]{64}$/u),
+    requesterId: z.string().uuid(),
+    requesterName: z.string(),
+    approverId: z.string().uuid().nullable(),
+    approverName: z.string().nullable(),
+    reasonCode: teamChangeReasonSchema,
+    requestedAt: z.iso.datetime(),
+    decidedAt: z.iso.datetime().nullable(),
+    before: teamChangeSnapshotSchema,
+    after: teamChangeSnapshotSchema,
+    evidence: z.null(),
+    events: teamChangeEventResponseSchema.array(),
+  })
+  .strict();
+export const teamChangeListResponseSchema = z
+  .object({ workspaceId: workspaceIdSchema, changes: teamChangeResponseSchema.array() })
+  .strict();
+export type CreateTeamChangeRequest = z.infer<typeof createTeamChangeRequestSchema>;
+export type RecordTeamChangeEvent = z.infer<typeof recordTeamChangeEventSchema>;
+export type TeamChangeResponse = z.infer<typeof teamChangeResponseSchema>;
+export type TeamChangeListResponse = z.infer<typeof teamChangeListResponseSchema>;
 
 export const startStocktakeRequestSchema = z
   .object({ locationId: z.string().uuid(), humanConfirmed: z.literal(true) })
@@ -769,9 +1803,22 @@ export const stocktakeDiscrepancySchema = z.object({
   discrepancyId: z.string().uuid(),
   inventoryUnitId: z.string().uuid().nullable(),
   inventoryNumber: inventoryNumberSchema.nullable(),
+  expectedLocationId: z.string().uuid().nullable(),
+  expectedLocationCode: checkedLocationCodeSchema.nullable(),
+  currentLocationId: z.string().uuid().nullable(),
+  currentLocationCode: checkedLocationCodeSchema.nullable(),
   kind: z.enum(["missing_candidate", "misplaced", "unexpected", "duplicate", "unreadable"]),
-  state: z.enum(["open", "reconfirmation_required", "approval_required", "resolved"]),
+  state: z.enum(["reconfirmation_required", "candidate_confirmed", "restored", "resolved"]),
   resolution: z.string().nullable(),
+  confirmationMode: z.enum(["solo_reversible", "dual_actor"]),
+  activeMembershipCountAtSelection: z.number().int().positive(),
+  membershipRevisionAtSelection: z.number().int().nonnegative(),
+  evidenceCount: z.number().int().nonnegative(),
+  reasonCode: z.string().nullable(),
+  confirmedReasonCode: z.string().nullable(),
+  restoredReasonCode: z.string().nullable(),
+  confirmedAt: z.iso.datetime().nullable(),
+  restoredAt: z.iso.datetime().nullable(),
 });
 
 export const stocktakePostStartMovementSchema = z.object({
@@ -793,6 +1840,9 @@ export const stocktakeResponseSchema = z.object({
   locationCode: checkedLocationCodeSchema,
   state: z.enum(["counting", "reconciliation", "approved"]),
   initialCounterId: z.string().uuid(),
+  confirmationMode: z.enum(["solo_reversible", "dual_actor"]),
+  activeMembershipCountAtSelection: z.number().int().positive(),
+  membershipRevisionAtSelection: z.number().int().nonnegative(),
   observationCount: z.number().int().nonnegative(),
   observations: stocktakeObservationRecordSchema.array(),
   discrepancies: stocktakeDiscrepancySchema.array(),
@@ -804,6 +1854,105 @@ export const stocktakeResponseSchema = z.object({
 export const resolveStocktakeDiscrepancyRequestSchema = z
   .object({
     resolution: z.enum(["found_in_place", "moved_to_correct_place", "no_inventory_adjustment"]),
+    humanConfirmed: z.literal(true),
+  })
+  .strict();
+
+export const uploadDiscrepancyEvidenceQuerySchema = z
+  .object({ mimeType: z.enum(["image/jpeg", "image/png"]) })
+  .strict();
+
+export const discrepancyEvidenceResponseSchema = z.object({
+  evidenceId: z.string().uuid(),
+  discrepancyId: z.string().uuid(),
+  mimeType: z.enum(["image/jpeg", "image/png"]),
+  width: z.number().int().positive(),
+  height: z.number().int().positive(),
+  sizeBytes: z.number().int().positive(),
+  sha256: z.string().regex(/^[a-f0-9]{64}$/u),
+  serverInspected: z.literal(true),
+  createdAt: z.iso.datetime(),
+});
+
+export const discrepancyEvidenceListItemSchema = z.object({
+  evidenceId: z.string().uuid(),
+  discrepancyId: z.string().uuid(),
+  mimeType: z.enum(["image/jpeg", "image/png"]),
+  width: z.number().int().positive().max(12_000),
+  height: z.number().int().positive().max(12_000),
+  sizeBytes: z
+    .number()
+    .int()
+    .positive()
+    .max(25 * 1024 * 1024),
+  contentUrl: z.string().startsWith("/v1/workspaces/"),
+  createdAt: z.iso.datetime(),
+});
+
+export const createDiscrepancyChallengeRequestSchema = z
+  .object({
+    action: z.enum(["confirm", "restore"]),
+    inventoryNumber: inventoryNumberSchema,
+    locationCode: checkedLocationCodeSchema,
+    inventoryLabelVersion: z.number().int().positive(),
+    locationLabelVersion: z.number().int().positive(),
+    inventoryScannedAt: z.iso.datetime(),
+    locationScannedAt: z.iso.datetime(),
+    humanInitiated: z.literal(true),
+  })
+  .strict();
+
+export const discrepancyChallengeResponseSchema = z.object({
+  challengeId: z.string().uuid(),
+  discrepancyId: z.string().uuid(),
+  action: z.enum(["confirm", "restore"]),
+  notBefore: z.iso.datetime(),
+  expiresAt: z.iso.datetime(),
+  consumedAt: z.iso.datetime().nullable(),
+});
+
+const discrepancyScanEvidenceSchema = z.object({
+  inventoryNumber: inventoryNumberSchema,
+  locationCode: checkedLocationCodeSchema,
+  inventoryLabelVersion: z.number().int().positive(),
+  locationLabelVersion: z.number().int().positive(),
+  inventoryScannedAt: z.iso.datetime(),
+  locationScannedAt: z.iso.datetime(),
+});
+
+export const confirmMissingCandidateRequestSchema = discrepancyScanEvidenceSchema
+  .omit({
+    inventoryNumber: true,
+    locationCode: true,
+    inventoryLabelVersion: true,
+    locationLabelVersion: true,
+    inventoryScannedAt: true,
+    locationScannedAt: true,
+  })
+  .extend({
+    challengeId: z.string().uuid(),
+    evidenceId: z.string().uuid(),
+    reasonCode: z.enum(["not_seen_during_count", "label_unreadable", "location_mismatch"]),
+    reasonNote: z.string().trim().min(1).max(500),
+    confirmedAt: z.iso.datetime(),
+    humanConfirmed: z.literal(true),
+  })
+  .strict();
+
+export const restoreMissingCandidateRequestSchema = discrepancyScanEvidenceSchema
+  .omit({
+    inventoryNumber: true,
+    locationCode: true,
+    inventoryLabelVersion: true,
+    locationLabelVersion: true,
+    inventoryScannedAt: true,
+    locationScannedAt: true,
+  })
+  .extend({
+    challengeId: z.string().uuid(),
+    reasonCode: z.enum(["found_in_place", "found_after_move", "counting_error"]),
+    reasonNote: z.string().trim().min(1).max(500),
+    confirmedAt: z.iso.datetime(),
     humanConfirmed: z.literal(true),
   })
   .strict();
@@ -838,18 +1987,386 @@ export const orderAssignmentResponseSchema = z.object({
   revokedAt: z.iso.datetime().nullable(),
 });
 
-export const shippingTaskResponseSchema = z.object({
-  orderId: z.string().uuid(),
-  orderNumber: z.string(),
-  state: z.enum(["confirmed", "picking", "packed"]),
-  inventoryNumber: inventoryNumberSchema,
-  inventoryUnitId: z.string().uuid(),
-  skuId: z.string().uuid(),
-  locationCode: checkedLocationCodeSchema,
-  inventoryLabelVersion: z.number().int().positive(),
-  locationLabelVersion: z.number().int().positive(),
-  assignmentExpiresAt: z.iso.datetime(),
+const assignedLocationPhotoContentUrlPattern =
+  /^\/v1\/workspaces\/[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}\/orders\/([a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})\/pick-location-photo\/content\?inventoryUnitId=([a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})&movementSequence=(?:0|[1-9][0-9]*)$/u;
+
+const assignedLocationPhotoContentUrlSchema = z
+  .string()
+  .max(512)
+  .regex(assignedLocationPhotoContentUrlPattern);
+
+export const assignedLocationPhotoContentQuerySchema = z
+  .object({
+    inventoryUnitId: z.string().uuid(),
+    movementSequence: z
+      .string()
+      .regex(/^(?:0|[1-9][0-9]*)$/u)
+      .transform(Number)
+      .pipe(z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)),
+  })
+  .strict();
+
+export const shippingTaskResponseSchema = z
+  .object({
+    orderId: z.string().uuid(),
+    orderNumber: z.string(),
+    productTitle: z.string(),
+    state: z.enum(["confirmed", "picking", "packed"]),
+    inventoryNumber: inventoryNumberSchema,
+    inventoryUnitId: z.string().uuid(),
+    skuId: z.string().uuid(),
+    locationCode: checkedLocationCodeSchema,
+    locationPhotoUrl: assignedLocationPhotoContentUrlSchema.nullable(),
+    addressMode: orderAddressModeSchema,
+    inventoryLabelVersion: z.number().int().positive(),
+    locationLabelVersion: z.number().int().positive(),
+    assignmentExpiresAt: z.iso.datetime().nullable(),
+  })
+  .strict()
+  .superRefine((task, context) => {
+    if (!task.locationPhotoUrl) return;
+    const match = assignedLocationPhotoContentUrlPattern.exec(task.locationPhotoUrl);
+    if (match?.[1] !== task.orderId || match?.[2] !== task.inventoryUnitId) {
+      context.addIssue({
+        code: "custom",
+        path: ["locationPhotoUrl"],
+        message: "The location photo URL must match the task order and inventory unit",
+      });
+    }
+  });
+
+export const updateOrderRegistrationRequestSchema = z
+  .object({
+    salesChannelKey: salesChannelKeySchema,
+    salesChannelName: salesChannelNameSchema,
+    channelTransactionId: z.string().trim().min(1).max(160).nullable(),
+    buyerDisplayName: z.string().trim().min(1).max(160).nullable(),
+    expectedRevision: z.number().int().positive().max(10_000),
+    idempotencyKey: z.string().uuid(),
+    humanConfirmed: z.literal(true),
+  })
+  .strict();
+
+export const orderRegistrationResponseSchema = z
+  .object({
+    orderId: z.string().uuid(),
+    orderNumber: z.string().trim().min(1).max(80),
+    registrationRevisionId: z.string().uuid(),
+    salesChannelKey: salesChannelKeySchema,
+    salesChannelName: salesChannelNameSchema,
+    channelTransactionId: z.string().trim().min(1).max(160).nullable(),
+    buyerDisplayName: z.string().trim().min(1).max(160).nullable(),
+    revision: z.number().int().positive().max(10_000),
+    supersedesRevisionId: z.string().uuid().nullable(),
+    changedAt: z.iso.datetime(),
+  })
+  .strict();
+
+const shippingMethodFieldsSchema = z
+  .object({
+    salesChannelKey: salesChannelKeySchema,
+    salesChannelName: salesChannelNameSchema,
+    methodName: z.string().trim().min(1).max(120),
+    trackingAvailable: z.boolean(),
+    feeMinor: z.number().int().nonnegative().max(100_000_000),
+    deliveryEstimate: z.string().trim().min(1).max(80).nullable(),
+    officialCheckedOn: z.iso.date(),
+    officialReferenceUrl: z.string().url().startsWith("https://").max(2048).nullable(),
+    officialReferenceNote: z.string().trim().min(1).max(500).nullable(),
+    active: z.boolean(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (value.officialReferenceUrl === null && value.officialReferenceNote === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["officialReferenceUrl"],
+        message: "An official reference URL or note is required",
+      });
+    }
+  });
+
+export const saveShippingMethodRequestSchema = shippingMethodFieldsSchema
+  .safeExtend({
+    methodId: z.string().uuid().nullable(),
+    expectedRevision: z.number().int().positive().max(10_000).nullable(),
+    idempotencyKey: z.string().uuid(),
+    humanConfirmed: z.literal(true),
+  })
+  .superRefine((value, context) => {
+    if ((value.methodId === null) !== (value.expectedRevision === null)) {
+      context.addIssue({
+        code: "custom",
+        path: value.methodId === null ? ["expectedRevision"] : ["methodId"],
+        message: "A catalog update requires both method ID and expected revision",
+      });
+    }
+  });
+
+export const shippingMethodCatalogResponseSchema = shippingMethodFieldsSchema.safeExtend({
+  methodId: z.string().uuid(),
+  catalogRevisionId: z.string().uuid(),
+  revision: z.number().int().positive().max(10_000),
+  supersedesRevisionId: z.string().uuid().nullable(),
+  changedAt: z.iso.datetime(),
 });
+
+export const shippingMethodOptionResponseSchema = z
+  .object({
+    methodId: z.string().uuid(),
+    catalogRevisionId: z.string().uuid(),
+    salesChannelKey: salesChannelKeySchema,
+    salesChannelName: salesChannelNameSchema,
+    methodName: z.string().trim().min(1).max(120),
+    trackingAvailable: z.boolean(),
+    feeMinor: z.number().int().nonnegative().max(100_000_000),
+    deliveryEstimate: z.string().trim().min(1).max(80).nullable(),
+    officialCheckedOn: z.iso.date(),
+  })
+  .strict();
+
+export const selectOrderShippingMethodRequestSchema = z
+  .object({
+    methodId: z.string().uuid(),
+    expectedSelectionRevision: z.number().int().positive().max(10_000).nullable(),
+    idempotencyKey: z.string().uuid(),
+    humanConfirmed: z.literal(true),
+  })
+  .strict();
+
+export const orderShippingMethodSelectionResponseSchema = z
+  .object({
+    selectionId: z.string().uuid(),
+    orderId: z.string().uuid(),
+    revision: z.number().int().positive().max(10_000),
+    supersedesSelectionId: z.string().uuid().nullable(),
+    method: shippingMethodOptionResponseSchema,
+    selectedAt: z.iso.datetime(),
+  })
+  .strict();
+
+export const orderShippingMissingInformationSchema = z.enum([
+  "channel_transaction_id",
+  "sale_amount",
+]);
+export const orderShippingBlockingIssueSchema = z.enum(["order_registration", "shipping_method"]);
+
+export const confirmOrderShippingReadinessRequestSchema = z
+  .object({
+    expectedRegistrationRevision: z.number().int().positive().max(10_000),
+    expectedSelectionRevision: z.number().int().positive().max(10_000),
+    acknowledgedMissingInformation: z.array(orderShippingMissingInformationSchema).max(2),
+    idempotencyKey: z.string().uuid(),
+    humanConfirmed: z.literal(true),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (
+      new Set(value.acknowledgedMissingInformation).size !==
+      value.acknowledgedMissingInformation.length
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["acknowledgedMissingInformation"],
+        message: "Missing-information acknowledgements must be unique",
+      });
+    }
+  });
+
+export const orderShippingReadinessResponseSchema = z
+  .object({
+    orderId: z.string().uuid(),
+    orderNumber: z.string().trim().min(1).max(80),
+    registrationRevision: z.number().int().positive().max(10_000).nullable(),
+    salesChannel: z
+      .object({
+        key: salesChannelKeySchema,
+        name: salesChannelNameSchema,
+      })
+      .strict()
+      .nullable(),
+    channelTransactionIdStatus: z.enum(["present", "missing", "unregistered"]),
+    saleAmountStatus: z.enum(["present", "missing"]),
+    selectedMethod: orderShippingMethodSelectionResponseSchema.nullable(),
+    missingInformation: z.array(orderShippingMissingInformationSchema).max(2),
+    blockingIssues: z.array(orderShippingBlockingIssueSchema).max(2),
+    humanConfirmation: z
+      .object({
+        state: z.enum(["required", "confirmed", "stale"]),
+        confirmationId: z.string().uuid().nullable(),
+        confirmedAt: z.iso.datetime().nullable(),
+      })
+      .strict(),
+  })
+  .strict();
+
+export const shippingPhotoPolicyModeSchema = z.enum(["high_value_only", "all", "disabled"]);
+export const shippingPhotoRoleSchema = z.enum(["product", "packed_package"]);
+export const shippingPhotoDecisionReasonSchema = z.enum([
+  "policy_missing",
+  "policy_all",
+  "policy_disabled",
+  "threshold_met",
+  "threshold_below",
+  "sale_amount_missing",
+  "manual_use",
+  "manual_skip",
+]);
+export const shippingPhotoPreflightStateSchema = z.enum([
+  "choice_required",
+  "capture_required",
+  "awaiting_confirmation",
+  "confirmed",
+  "satisfied_without_photo",
+]);
+
+export const updateShippingPhotoPolicyRequestSchema = z
+  .object({
+    mode: shippingPhotoPolicyModeSchema,
+    highValueThresholdMinor: z.number().int().positive().max(100_000_000).nullable(),
+    expectedRevision: z.number().int().positive().max(10_000).nullable(),
+    idempotencyKey: z.string().uuid(),
+    humanConfirmed: z.literal(true),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (value.mode === "high_value_only" && value.highValueThresholdMinor === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["highValueThresholdMinor"],
+        message: "High-value-only policy requires a positive threshold",
+      });
+    }
+    if (value.mode !== "high_value_only" && value.highValueThresholdMinor !== null) {
+      context.addIssue({
+        code: "custom",
+        path: ["highValueThresholdMinor"],
+        message: "Only high-value-only policy accepts a threshold",
+      });
+    }
+  });
+
+export const shippingPhotoPolicyResponseSchema = z
+  .object({
+    policyRevisionId: z.string().uuid(),
+    mode: shippingPhotoPolicyModeSchema,
+    highValueThresholdMinor: z.number().int().positive().max(100_000_000).nullable(),
+    revision: z.number().int().positive().max(10_000),
+    supersedesRevisionId: z.string().uuid().nullable(),
+    changedBy: z.string().uuid(),
+    changedAt: z.iso.datetime(),
+  })
+  .strict();
+
+export const evaluateShippingPhotoPreflightRequestSchema = z
+  .object({
+    expectedDecisionRevision: z.number().int().positive().max(10_000).nullable(),
+    idempotencyKey: z.string().uuid(),
+    humanConfirmed: z.literal(true),
+  })
+  .strict();
+
+export const overrideShippingPhotoDecisionRequestSchema = z
+  .object({
+    choice: z.enum(["use_photos", "skip_photos"]),
+    expectedDecisionRevision: z.number().int().positive().max(10_000).nullable(),
+    idempotencyKey: z.string().uuid(),
+    humanConfirmed: z.literal(true),
+  })
+  .strict();
+
+export const uploadShippingPhotoQuerySchema = z
+  .object({
+    role: shippingPhotoRoleSchema,
+    idempotencyKey: z.string().uuid(),
+    humanConfirmed: z.enum(["true"]).transform(() => true as const),
+  })
+  .strict();
+
+export const shippingPhotoAssetResponseSchema = z
+  .object({
+    assetId: z.string().uuid(),
+    orderId: z.string().uuid(),
+    role: shippingPhotoRoleSchema,
+    mimeType: z.enum(["image/jpeg", "image/png"]),
+    sizeBytes: z
+      .number()
+      .int()
+      .positive()
+      .max(25 * 1024 * 1024),
+    width: z.number().int().positive().max(12_000),
+    height: z.number().int().positive().max(12_000),
+    capturedBy: z.string().uuid(),
+    capturedAt: z.iso.datetime(),
+  })
+  .strict();
+
+export const confirmShippingPhotosRequestSchema = z
+  .object({
+    assetIds: z.array(z.string().uuid()).min(2).max(100),
+    idempotencyKey: z.string().uuid(),
+    humanConfirmed: z.literal(true),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (new Set(value.assetIds).size !== value.assetIds.length) {
+      context.addIssue({
+        code: "custom",
+        path: ["assetIds"],
+        message: "Shipping photo confirmation asset IDs must be unique",
+      });
+    }
+  });
+
+export const shippingPhotoConfirmationResponseSchema = z
+  .object({
+    confirmationId: z.string().uuid(),
+    orderId: z.string().uuid(),
+    decisionRevisionId: z.string().uuid(),
+    assetIds: z.array(z.string().uuid()).min(2).max(100),
+    confirmedBy: z.string().uuid(),
+    confirmedAt: z.iso.datetime(),
+  })
+  .strict();
+
+export const shippingPhotoPreflightResponseSchema = z
+  .object({
+    orderId: z.string().uuid(),
+    decisionRevisionId: z.string().uuid().nullable(),
+    decisionRevision: z.number().int().positive().max(10_000).nullable(),
+    state: shippingPhotoPreflightStateSchema,
+    photoRequired: z.boolean().nullable(),
+    decisionReason: shippingPhotoDecisionReasonSchema.nullable(),
+    saleAmountStatus: z.enum(["present", "missing"]),
+    assets: z.array(shippingPhotoAssetResponseSchema),
+    confirmedAssetIds: z.array(z.string().uuid()),
+    photoConfirmationId: z.string().uuid().nullable(),
+    packingHumanConfirmed: z.boolean(),
+    shipmentHumanConfirmed: z.boolean(),
+    updatedAt: z.iso.datetime(),
+  })
+  .strict();
+
+export const recordOrderSaleAmountRequestSchema = z
+  .object({
+    saleAmountMinor: z.number().int().positive().max(100_000_000),
+    taxBasis: z.enum(["tax_included", "tax_excluded", "unknown"]),
+    sourceMeaning: z.string().trim().min(1).max(160),
+    occurredAt: z.iso.datetime(),
+    idempotencyKey: z.string().uuid(),
+    humanConfirmed: z.literal(true),
+  })
+  .strict();
+
+export const recordOrderSaleAmountResponseSchema = z
+  .object({
+    orderId: z.string().uuid(),
+    financialEventId: z.string().uuid(),
+    saleAmountMinor: z.number().int().positive().max(100_000_000),
+    recordedBy: z.string().uuid(),
+    recordedAt: z.iso.datetime(),
+  })
+  .strict();
 
 export const createAddressLeaseRequestSchema = z
   .object({ purpose: z.literal("shipping_label"), humanConfirmed: z.literal(true) })
@@ -878,9 +2395,7 @@ export const pickOrderRequestSchema = putawayInventoryRequestSchema
 
 export const packOrderRequestSchema = z
   .object({
-    packingEvidenceReferenceId: z.string().uuid(),
     addressLeaseId: z.string().uuid().nullable(),
-    confirmedAt: z.iso.datetime(),
     idempotencyKey: z.string().uuid(),
     humanConfirmed: z.literal(true),
   })
@@ -889,11 +2404,27 @@ export const packOrderRequestSchema = z
 export const shipOrderRequestSchema = z
   .object({
     addressLeaseId: z.string().uuid().nullable(),
-    shippedAt: z.iso.datetime(),
+    shippingMethodSelectionId: z.string().uuid().optional(),
+    readinessConfirmationId: z.string().uuid().optional(),
+    shippedAt: z.iso.datetime().optional(),
     idempotencyKey: z.string().uuid(),
     humanConfirmed: z.literal(true),
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    const present = [
+      value.shippingMethodSelectionId,
+      value.readinessConfirmationId,
+      value.shippedAt,
+    ].filter((entry) => entry !== undefined).length;
+    if (present !== 0 && present !== 3) {
+      context.addIssue({
+        code: "custom",
+        path: ["shippingMethodSelectionId"],
+        message: "P14 shipment fields must be provided together",
+      });
+    }
+  });
 
 export const returnOrderRequestSchema = z
   .object({
@@ -927,6 +2458,24 @@ export const financialSummaryResponseSchema = z.object({
   packagingCostMinor: z.number().int(),
   netRevenueMinor: z.number().int(),
   contributionProfitMinor: z.number().int().nullable(),
+  formulaVersion: z.literal("financial_formula_v1.0.0"),
+  missingInputs: z
+    .enum([
+      "orderPrice",
+      "sellerDiscount",
+      "channelCoupon",
+      "successfulRefund",
+      "sellingFeeCharged",
+      "sellingFeeRefund",
+      "promotionCost",
+      "sellerShipping",
+      "packagingCost",
+      "returnDirectCost",
+      "costOfGoods",
+      "costReturnedToInventory",
+      "taxBasis",
+    ])
+    .array(),
   currency: z.literal("JPY"),
   disclaimer: z.literal(
     "運用分析の参考値です。会計上の売上・利益・所得・税額を示すものではありません。",
@@ -951,9 +2500,253 @@ export const accountingExportResponseSchema = z.object({
   createdAt: z.iso.datetime(),
 });
 
+export const accountingProfileSchema = z.object({
+  workspaceId: workspaceIdSchema,
+  businessContext: z.enum(["unconfigured", "individual_business", "company"]),
+  filingContext: z.enum(["unconfigured", "blue_return", "white_return", "corporate_return"]),
+  consumptionTaxTreatment: z.enum([
+    "unconfigured",
+    "tax_exempt",
+    "general_taxation",
+    "simplified_taxation",
+  ]),
+  invoiceRegistrationStatus: z.enum(["unconfigured", "not_registered", "registered"]),
+  bookkeepingMethod: z.enum(["unconfigured", "single_entry", "double_entry"]),
+  revision: z.number().int().positive(),
+  humanConfirmedBy: z.string().uuid().nullable(),
+  humanConfirmedAt: z.iso.datetime().nullable(),
+  updatedAt: z.iso.datetime(),
+});
+
+export const accountingOrderOptionSchema = z.object({
+  orderId: z.string().uuid(),
+  orderNumber: z.string().min(1),
+  orderState: z.enum(["confirmed", "picking", "packed", "shipped", "returned"]),
+  skuCode: z.string().min(1),
+  title: z.string().min(1),
+  financialEventCount: z.number().int().nonnegative(),
+});
+
+export const updateAccountingProfileRequestSchema = accountingProfileSchema
+  .pick({
+    businessContext: true,
+    filingContext: true,
+    consumptionTaxTreatment: true,
+    invoiceRegistrationStatus: true,
+    bookkeepingMethod: true,
+  })
+  .extend({ expectedRevision: z.number().int().positive(), humanConfirmed: z.literal(true) })
+  .strict();
+
+export const accountMappingChangeReasonSchema = z.enum([
+  "account_review",
+  "tax_review",
+  "bookkeeping_policy_update",
+  "correction",
+  "other_reviewed_change",
+]);
+
+export const accountMappingRuleSchema = z
+  .object({
+    ruleId: z.string().uuid(),
+    eventType: z.enum(["sale", "refund", "fee", "fee_reversal", "shipping", "packaging", "cost"]),
+    version: z.string().min(1).max(80),
+    debitAccount: z.string().min(1).max(30),
+    debitSubaccount: z.string().max(30),
+    debitTaxCategory: z.string().min(1).max(50),
+    debitInvoiceCategory: z.enum([
+      "適格",
+      "80％控除",
+      "70％控除",
+      "50％控除",
+      "30％控除",
+      "控除なし",
+    ]),
+    creditAccount: z.string().min(1).max(30),
+    creditSubaccount: z.string().max(30),
+    creditTaxCategory: z.string().min(1).max(50),
+    creditInvoiceCategory: z.enum([
+      "適格",
+      "80％控除",
+      "70％控除",
+      "50％控除",
+      "30％控除",
+      "控除なし",
+    ]),
+    effectiveFrom: z.iso.datetime(),
+    effectiveUntil: z.iso.datetime().nullable(),
+    status: z.enum(["draft", "active", "retired"]),
+    approvedBy: z.string().uuid().nullable(),
+    approvedAt: z.iso.datetime().nullable(),
+    replacesRuleId: z.string().uuid().nullable(),
+    changeReasonCode: accountMappingChangeReasonSchema.nullable(),
+    confirmationStatus: z.enum(["candidate", "human_confirmed"]),
+  })
+  .strict();
+
+export const createAccountMappingRuleRequestSchema = accountMappingRuleSchema
+  .omit({
+    ruleId: true,
+    approvedBy: true,
+    approvedAt: true,
+    status: true,
+    replacesRuleId: true,
+    changeReasonCode: true,
+    confirmationStatus: true,
+  })
+  .extend({ humanApproved: z.literal(true) })
+  .strict();
+
+export const replaceAccountMappingRuleRequestSchema = accountMappingRuleSchema
+  .pick({
+    debitAccount: true,
+    debitSubaccount: true,
+    debitTaxCategory: true,
+    debitInvoiceCategory: true,
+    creditAccount: true,
+    creditSubaccount: true,
+    creditTaxCategory: true,
+    creditInvoiceCategory: true,
+    effectiveFrom: true,
+  })
+  .extend({
+    expectedVersion: z.string().min(1).max(80),
+    expectedStatus: z.literal("active"),
+    changeReasonCode: accountMappingChangeReasonSchema,
+    humanConfirmed: z.literal(true),
+  })
+  .strict();
+
+export const replaceAccountMappingRuleResponseSchema = z
+  .object({
+    retiredRule: accountMappingRuleSchema,
+    activeRule: accountMappingRuleSchema,
+    changeReasonCode: accountMappingChangeReasonSchema,
+    humanConfirmed: z.literal(true),
+  })
+  .strict();
+
+export const createVersionedAccountingExportRequestSchema = z
+  .object({
+    format: z.enum(["money_forward_journal_v1", "generic_journal_v1"]),
+    orderId: z.string().uuid(),
+    idempotencyKey: z.string().uuid(),
+    approvedAt: z.iso.datetime(),
+    humanApproved: z.literal(true),
+    duplicateOverrideConfirmed: z.boolean().default(false),
+    supersedesBatchId: z.string().uuid().nullable().default(null),
+  })
+  .strict();
+
+export const versionedAccountingExportResponseSchema = z.object({
+  batchId: z.string().uuid(),
+  orderId: z.string().uuid(),
+  format: z.enum(["money_forward_journal_v1", "generic_journal_v1"]),
+  formatVersion: z.enum(["money_forward_journal_v1.0.0", "generic_journal_v1.0.0"]),
+  filename: z.enum(["money-forward-journal-v1.csv", "generic-journal-v1.csv"]),
+  sha256: z.string().regex(/^[a-f0-9]{64}$/u),
+  sourceSetSha256: z.string().regex(/^[a-f0-9]{64}$/u),
+  schemaSha256: z.string().regex(/^[a-f0-9]{64}$/u),
+  fixtureSha256: z.string().regex(/^[a-f0-9]{64}$/u),
+  rowCount: z.number().int().positive(),
+  columnCount: z.union([z.literal(27), z.literal(19)]),
+  state: z.enum(["ready", "downloaded", "import_confirmed", "voided", "superseded"]),
+  supersedesBatchId: z.string().uuid().nullable(),
+  contentUrl: z.string().startsWith("/v1/workspaces/"),
+  createdAt: z.iso.datetime(),
+});
+
+const accountingExportDuplicateReferenceSchema = z.object({
+  batchId: z.string().uuid(),
+  format: z.enum(["money_forward_journal_v1", "generic_journal_v1"]),
+  filename: z.enum(["money-forward-journal-v1.csv", "generic-journal-v1.csv"]),
+  sourceSetSha256: z.string().regex(/^[a-f0-9]{64}$/u),
+  state: z.enum(["ready", "downloaded", "import_confirmed", "superseded"]),
+});
+
+export const accountingExportPreflightResponseSchema = z
+  .object({
+    orderId: z.string().uuid(),
+    currentSourceSetSha256: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/u)
+      .nullable(),
+    exactPriorDuplicate: accountingExportDuplicateReferenceSchema.nullable(),
+    canCreateFresh: z.boolean(),
+    canSupersede: z.boolean(),
+  })
+  .superRefine((value, context) => {
+    const hasCurrentSources = value.currentSourceSetSha256 !== null;
+    const hasExactPrior = value.exactPriorDuplicate !== null;
+    if (value.canCreateFresh && (!hasCurrentSources || hasExactPrior)) {
+      context.addIssue({
+        code: "custom",
+        path: ["canCreateFresh"],
+        message: "Fresh export permission requires current sources without an exact duplicate",
+      });
+    }
+    if (value.canSupersede && (!hasCurrentSources || !hasExactPrior)) {
+      context.addIssue({
+        code: "custom",
+        path: ["canSupersede"],
+        message: "Supersession permission requires an exact current-source duplicate",
+      });
+    }
+    if (
+      value.exactPriorDuplicate &&
+      value.exactPriorDuplicate.sourceSetSha256 !== value.currentSourceSetSha256
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["exactPriorDuplicate", "sourceSetSha256"],
+        message: "Prior duplicate must match the current source set",
+      });
+    }
+  });
+
+export const accountingExportPreviewResponseSchema = z
+  .object({
+    batchId: z.string().uuid(),
+    formatVersion: z.enum(["money_forward_journal_v1.0.0", "generic_journal_v1.0.0"]),
+    filename: z.enum(["money-forward-journal-v1.csv", "generic-journal-v1.csv"]),
+    sha256: z.string().regex(/^[a-f0-9]{64}$/u),
+    columnCount: z.union([z.literal(27), z.literal(19)]),
+    totalRowCount: z.number().int().positive(),
+    previewRowCount: z.number().int().min(0).max(10),
+    truncated: z.boolean(),
+    headers: z.string().max(100).array().min(19).max(27),
+    rows: z.string().max(500).array().max(27).array().max(10),
+  })
+  .superRefine((value, context) => {
+    if (value.headers.length !== value.columnCount) {
+      context.addIssue({ code: "custom", message: "Preview header count does not match format" });
+    }
+    if (value.rows.some((row) => row.length !== value.columnCount)) {
+      context.addIssue({ code: "custom", message: "Preview row count does not match format" });
+    }
+    if (value.previewRowCount !== value.rows.length) {
+      context.addIssue({ code: "custom", message: "Preview row count does not match rows" });
+    }
+    if (value.truncated !== value.totalRowCount > value.previewRowCount) {
+      context.addIssue({ code: "custom", message: "Preview truncation flag is inconsistent" });
+    }
+  });
+
+export const confirmAccountingImportRequestSchema = z
+  .object({
+    idempotencyKey: z.string().uuid(),
+    result: z.enum(["success", "failed"]),
+    importedRowCount: z.number().int().nonnegative(),
+    note: z.string().trim().max(500).nullable(),
+    confirmedAt: z.iso.datetime(),
+    humanConfirmed: z.literal(true),
+  })
+  .strict();
+
 export type CreateSkuRequest = z.infer<typeof createSkuRequestSchema>;
 export type SkuResponse = z.infer<typeof skuResponseSchema>;
 export type InventorySummary = z.infer<typeof inventorySummarySchema>;
+export type OwnerPulseResponse = z.infer<typeof ownerPulseResponseSchema>;
 export type PutawayCatalogResponse = z.infer<typeof putawayCatalogResponseSchema>;
 export type WorkspaceRole = z.infer<typeof workspaceRoleSchema>;
 export type SessionContextResponse = z.infer<typeof sessionContextResponseSchema>;
@@ -970,12 +2763,29 @@ export type AdvanceP0WorkflowRequest = z.infer<typeof advanceP0WorkflowRequestSc
 export type P0WorkflowResponse = z.infer<typeof p0WorkflowResponseSchema>;
 export type RegisterMediaAssetRequest = z.infer<typeof registerMediaAssetRequestSchema>;
 export type MediaAssetResponse = z.infer<typeof mediaAssetResponseSchema>;
+export type RecordInspectionCheckResultRequest = z.infer<
+  typeof recordInspectionCheckResultRequestSchema
+>;
+export type InspectionCheckResultRevisionResponse = z.infer<
+  typeof inspectionCheckResultRevisionResponseSchema
+>;
+export type RecordInspectionConcernRevisionRequest = z.infer<
+  typeof recordInspectionConcernRevisionRequestSchema
+>;
+export type InspectionConcernRevisionResponse = z.infer<
+  typeof inspectionConcernRevisionResponseSchema
+>;
 export type RecordMeasurementRequest = z.infer<typeof recordMeasurementRequestSchema>;
 export type MeasurementResponse = z.infer<typeof measurementResponseSchema>;
 export type CaptureTaskResponse = z.infer<typeof captureTaskResponseSchema>;
 export type CreateIdentityCandidateRequest = z.infer<typeof createIdentityCandidateRequestSchema>;
 export type ConfirmIdentityCandidateRequest = z.infer<typeof confirmIdentityCandidateRequestSchema>;
 export type IdentityCandidateResponse = z.infer<typeof identityCandidateResponseSchema>;
+export type ConfirmProductAttributesRequest = z.infer<typeof confirmProductAttributesRequestSchema>;
+export type ProductAttributeConfirmationResponse = z.infer<
+  typeof productAttributeConfirmationResponseSchema
+>;
+export type MeasurementProfileResponse = z.infer<typeof measurementProfileResponseSchema>;
 export type CreateMarketplaceReferenceRequest = z.infer<
   typeof createMarketplaceReferenceRequestSchema
 >;
@@ -985,6 +2795,12 @@ export type CaptureSummary = z.infer<typeof captureSummarySchema>;
 export type CreateOrderRequest = z.infer<typeof createOrderRequestSchema>;
 export type CreateP0ItemRequest = z.infer<typeof createP0ItemRequestSchema>;
 export type P0ItemResponse = z.infer<typeof p0ItemResponseSchema>;
+export type StartPilotRunRequest = z.infer<typeof startPilotRunRequestSchema>;
+export type RecordPilotExceptionRequest = z.infer<typeof recordPilotExceptionRequestSchema>;
+export type InvalidatePilotRunRequest = z.infer<typeof invalidatePilotRunRequestSchema>;
+export type PilotExceptionMetrics = z.infer<typeof pilotExceptionMetricsSchema>;
+export type PilotItemMeasurement = z.infer<typeof pilotItemMeasurementSchema>;
+export type PilotRunResponse = z.infer<typeof pilotRunResponseSchema>;
 export type CreateLocationRequest = z.infer<typeof createLocationRequestSchema>;
 export type LocationNodeResponse = z.infer<typeof locationNodeResponseSchema>;
 export type OrderOperationResponse = z.infer<typeof orderOperationResponseSchema>;
@@ -1003,10 +2819,59 @@ export type StocktakeResponse = z.infer<typeof stocktakeResponseSchema>;
 export type ResolveStocktakeDiscrepancyRequest = z.infer<
   typeof resolveStocktakeDiscrepancyRequestSchema
 >;
+export type UploadDiscrepancyEvidenceQuery = z.infer<typeof uploadDiscrepancyEvidenceQuerySchema>;
+export type DiscrepancyEvidenceResponse = z.infer<typeof discrepancyEvidenceResponseSchema>;
+export type DiscrepancyEvidenceListItem = z.infer<typeof discrepancyEvidenceListItemSchema>;
+export type CreateDiscrepancyChallengeRequest = z.infer<
+  typeof createDiscrepancyChallengeRequestSchema
+>;
+export type DiscrepancyChallengeResponse = z.infer<typeof discrepancyChallengeResponseSchema>;
+export type ConfirmMissingCandidateRequest = z.infer<typeof confirmMissingCandidateRequestSchema>;
+export type RestoreMissingCandidateRequest = z.infer<typeof restoreMissingCandidateRequestSchema>;
 export type ApproveStocktakeRequest = z.infer<typeof approveStocktakeRequestSchema>;
 export type ReissueInventoryLabelRequest = z.infer<typeof reissueInventoryLabelRequestSchema>;
 export type ReissuedInventoryLabelResponse = z.infer<typeof reissuedInventoryLabelResponseSchema>;
+export type AssignedLocationPhotoContentQuery = z.infer<
+  typeof assignedLocationPhotoContentQuerySchema
+>;
 export type ShippingTaskResponse = z.infer<typeof shippingTaskResponseSchema>;
+export type UpdateOrderRegistrationRequest = z.infer<typeof updateOrderRegistrationRequestSchema>;
+export type OrderRegistrationResponse = z.infer<typeof orderRegistrationResponseSchema>;
+export type SaveShippingMethodRequest = z.infer<typeof saveShippingMethodRequestSchema>;
+export type ShippingMethodCatalogResponse = z.infer<typeof shippingMethodCatalogResponseSchema>;
+export type ShippingMethodOptionResponse = z.infer<typeof shippingMethodOptionResponseSchema>;
+export type SelectOrderShippingMethodRequest = z.infer<
+  typeof selectOrderShippingMethodRequestSchema
+>;
+export type OrderShippingMethodSelectionResponse = z.infer<
+  typeof orderShippingMethodSelectionResponseSchema
+>;
+export type OrderShippingMissingInformation = z.infer<typeof orderShippingMissingInformationSchema>;
+export type ConfirmOrderShippingReadinessRequest = z.infer<
+  typeof confirmOrderShippingReadinessRequestSchema
+>;
+export type OrderShippingReadinessResponse = z.infer<typeof orderShippingReadinessResponseSchema>;
+export type ShippingPhotoPolicyMode = z.infer<typeof shippingPhotoPolicyModeSchema>;
+export type ShippingPhotoRole = z.infer<typeof shippingPhotoRoleSchema>;
+export type UpdateShippingPhotoPolicyRequest = z.infer<
+  typeof updateShippingPhotoPolicyRequestSchema
+>;
+export type ShippingPhotoPolicyResponse = z.infer<typeof shippingPhotoPolicyResponseSchema>;
+export type EvaluateShippingPhotoPreflightRequest = z.infer<
+  typeof evaluateShippingPhotoPreflightRequestSchema
+>;
+export type OverrideShippingPhotoDecisionRequest = z.infer<
+  typeof overrideShippingPhotoDecisionRequestSchema
+>;
+export type UploadShippingPhotoQuery = z.infer<typeof uploadShippingPhotoQuerySchema>;
+export type ShippingPhotoAssetResponse = z.infer<typeof shippingPhotoAssetResponseSchema>;
+export type ConfirmShippingPhotosRequest = z.infer<typeof confirmShippingPhotosRequestSchema>;
+export type ShippingPhotoConfirmationResponse = z.infer<
+  typeof shippingPhotoConfirmationResponseSchema
+>;
+export type ShippingPhotoPreflightResponse = z.infer<typeof shippingPhotoPreflightResponseSchema>;
+export type RecordOrderSaleAmountRequest = z.infer<typeof recordOrderSaleAmountRequestSchema>;
+export type RecordOrderSaleAmountResponse = z.infer<typeof recordOrderSaleAmountResponseSchema>;
 export type CreateAddressLeaseRequest = z.infer<typeof createAddressLeaseRequestSchema>;
 export type AddressLeaseResponse = z.infer<typeof addressLeaseResponseSchema>;
 export type ShippingAddressResponse = z.infer<typeof shippingAddressResponseSchema>;
@@ -1019,3 +2884,26 @@ export type InspectReturnRequest = z.infer<typeof inspectReturnRequestSchema>;
 export type FinancialSummaryResponse = z.infer<typeof financialSummaryResponseSchema>;
 export type CreateAccountingExportRequest = z.infer<typeof createAccountingExportRequestSchema>;
 export type AccountingExportResponse = z.infer<typeof accountingExportResponseSchema>;
+export type AccountingProfileResponse = z.infer<typeof accountingProfileSchema>;
+export type AccountingOrderOptionResponse = z.infer<typeof accountingOrderOptionSchema>;
+export type UpdateAccountingProfileRequest = z.infer<typeof updateAccountingProfileRequestSchema>;
+export type AccountMappingRuleResponse = z.infer<typeof accountMappingRuleSchema>;
+export type CreateAccountMappingRuleRequest = z.infer<typeof createAccountMappingRuleRequestSchema>;
+export type AccountMappingChangeReason = z.infer<typeof accountMappingChangeReasonSchema>;
+export type ReplaceAccountMappingRuleRequest = z.infer<
+  typeof replaceAccountMappingRuleRequestSchema
+>;
+export type ReplaceAccountMappingRuleResponse = z.infer<
+  typeof replaceAccountMappingRuleResponseSchema
+>;
+export type CreateVersionedAccountingExportRequest = z.infer<
+  typeof createVersionedAccountingExportRequestSchema
+>;
+export type VersionedAccountingExportResponse = z.infer<
+  typeof versionedAccountingExportResponseSchema
+>;
+export type AccountingExportPreflightResponse = z.infer<
+  typeof accountingExportPreflightResponseSchema
+>;
+export type AccountingExportPreviewResponse = z.infer<typeof accountingExportPreviewResponseSchema>;
+export type ConfirmAccountingImportRequest = z.infer<typeof confirmAccountingImportRequestSchema>;

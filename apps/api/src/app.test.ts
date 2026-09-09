@@ -1,14 +1,21 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { healthResponseSchema } from "@resale/contracts";
+import { healthResponseSchema, type ConfirmOrderShippingReadinessRequest } from "@resale/contracts";
 import { buildApp } from "./app.js";
 import { InMemoryWorkflowRepository, RepositoryError } from "./repository.js";
 import { createWriteOriginValidator } from "./security.js";
 import { createCookieAuthenticator, createSignedSession } from "./session.js";
 import type { LoginService } from "./auth.js";
+import type { AddressCipher } from "./address-crypto.js";
 import { LocalPrivateMediaStore, type PrivateMediaStore } from "./local-media-store.js";
+import type {
+  CreateOrderRecord,
+  OrderRepository,
+  RegisterShippingPhotoRecord,
+} from "./order-repository.js";
 
 const apps: ReturnType<typeof buildApp>[] = [];
 const mediaRoots: string[] = [];
@@ -31,6 +38,196 @@ function buildTestApp(
     ...(mediaStore ? { mediaStore } : {}),
   });
 }
+
+function buildOrderTestApp(
+  orderRepository: OrderRepository,
+  mediaStore?: PrivateMediaStore,
+  addressCipher?: AddressCipher,
+) {
+  const app = buildApp({
+    orderRepository,
+    authenticate: (headers) => {
+      const identityId = headers["x-actor-id"];
+      const activeWorkspaceId = headers["x-workspace-id"];
+      if (typeof identityId !== "string") return null;
+      return typeof activeWorkspaceId === "string"
+        ? { identityId, workspaceId: activeWorkspaceId }
+        : { identityId };
+    },
+    validateWriteOrigin: () => true,
+    ...(mediaStore ? { mediaStore } : {}),
+    ...(addressCipher ? { addressCipher } : {}),
+  });
+  apps.push(app);
+  return app;
+}
+
+describe("POST /v1/workspaces/:workspaceId/orders address modes", () => {
+  const workspaceId = "51111111-1111-4111-8111-111111111111";
+  const actorId = "52222222-2222-4222-8222-222222222222";
+  const headers = { "x-actor-id": actorId, "x-workspace-id": workspaceId };
+  const baseRequest = {
+    salesChannelKey: "mercari",
+    salesChannelName: "メルカリ",
+    channelTransactionId: null,
+    buyerDisplayName: null,
+    skuId: "53333333-3333-4333-8333-333333333333",
+    inventoryUnitId: "54444444-4444-4444-8444-444444444444",
+    saleAmountMinor: null,
+    costAmountMinor: 1_000,
+    sellingFeeMinor: null,
+    shippingCostMinor: null,
+    packagingCostMinor: null,
+    taxBasis: "unknown" as const,
+    sourceMeaning: "本人が注文情報を確認",
+    occurredAt: "2026-08-31T00:00:00.000Z",
+    humanConfirmed: true as const,
+  };
+
+  function repositoryThatCaptures(records: CreateOrderRecord[]): OrderRepository {
+    return {
+      close: () => Promise.resolve(),
+      createOrder: (_workspaceId: string, _actor: unknown, record: CreateOrderRecord) => {
+        records.push(record);
+        return Promise.resolve({
+          workspaceId,
+          orderId: record.orderId,
+          orderNumber: "ORD-20260831-000001",
+          skuId: record.input.skuId,
+          inventoryUnitId: record.input.inventoryUnitId,
+          state: "confirmed" as const,
+          inventoryStatus: "reserved" as const,
+          updatedAt: "2026-08-31T00:00:01.000Z",
+        });
+      },
+    } as unknown as OrderRepository;
+  }
+
+  it("creates anonymous orders without an address cipher or dummy encrypted value", async () => {
+    const records: CreateOrderRecord[] = [];
+    const app = buildOrderTestApp(repositoryThatCaptures(records));
+    const response = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceId}/orders`,
+      headers,
+      payload: {
+        ...baseRequest,
+        addressMode: "anonymous",
+        shippingAddress: null,
+        idempotencyKey: "55555555-5555-4555-8555-555555555555",
+      },
+    });
+
+    expect(response.statusCode, response.body).toBe(201);
+    expect(records).toHaveLength(1);
+    expect(records[0]?.input).not.toHaveProperty("orderNumber");
+    expect(records[0]).toMatchObject({ encryptedAddress: null, addressFingerprint: null });
+  });
+
+  it("encrypts exactly one real address for explicit stored-address orders", async () => {
+    const records: CreateOrderRecord[] = [];
+    const encryptedAddresses: string[] = [];
+    const fingerprintedAddresses: string[] = [];
+    const cipher: AddressCipher = {
+      encrypt: (_workspaceId, _orderId, address) => {
+        encryptedAddresses.push(address);
+        return {
+          ciphertext: Buffer.from("encrypted"),
+          nonce: Buffer.alloc(12),
+          authTag: Buffer.alloc(16),
+          keyVersion: "test-v1",
+        };
+      },
+      decrypt: () => "not used",
+      fingerprint: (_workspaceId, _idempotencyKey, address) => {
+        fingerprintedAddresses.push(address);
+        return "a".repeat(64);
+      },
+    };
+    const app = buildOrderTestApp(repositoryThatCaptures(records), undefined, cipher);
+    const response = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceId}/orders`,
+      headers,
+      payload: {
+        ...baseRequest,
+        addressMode: "stored",
+        shippingAddress: "架空の配送先",
+        idempotencyKey: "56666666-6666-4666-8666-666666666666",
+      },
+    });
+
+    expect(response.statusCode, response.body).toBe(201);
+    expect(encryptedAddresses).toEqual(["架空の配送先"]);
+    expect(fingerprintedAddresses).toEqual(["架空の配送先"]);
+    expect(records[0]?.encryptedAddress).not.toBeNull();
+    expect(records[0]?.addressFingerprint).toBe("a".repeat(64));
+  });
+
+  it("rejects hidden zero fee facts for registered orders before repository dispatch", async () => {
+    const records: CreateOrderRecord[] = [];
+    const app = buildOrderTestApp(repositoryThatCaptures(records));
+    const response = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceId}/orders`,
+      headers,
+      payload: {
+        ...baseRequest,
+        sellingFeeMinor: 0,
+        packagingCostMinor: 0,
+        addressMode: "anonymous",
+        shippingAddress: null,
+        idempotencyKey: "57777777-7777-4777-8777-777777777777",
+      },
+    });
+
+    expect(response.statusCode, response.body).toBe(400);
+    expect(records).toHaveLength(0);
+  });
+
+  it("keeps explicit legacy fee and packaging values in client-numbered requests", async () => {
+    const records: CreateOrderRecord[] = [];
+    const cipher: AddressCipher = {
+      encrypt: () => ({
+        ciphertext: Buffer.from("encrypted"),
+        nonce: Buffer.alloc(12),
+        authTag: Buffer.alloc(16),
+        keyVersion: "test-v1",
+      }),
+      decrypt: () => "not used",
+      fingerprint: () => "b".repeat(64),
+    };
+    const app = buildOrderTestApp(repositoryThatCaptures(records), undefined, cipher);
+    const legacyRequest = { ...baseRequest } as Record<string, unknown>;
+    delete legacyRequest.salesChannelKey;
+    delete legacyRequest.salesChannelName;
+    delete legacyRequest.channelTransactionId;
+    delete legacyRequest.buyerDisplayName;
+    const response = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceId}/orders`,
+      headers,
+      payload: {
+        ...legacyRequest,
+        orderNumber: "ORDER-LEGACY-API-1",
+        sellingFeeMinor: 500,
+        shippingCostMinor: 750,
+        packagingCostMinor: 100,
+        shippingAddress: "架空の配送先",
+        idempotencyKey: "58888888-8888-4888-8888-888888888888",
+      },
+    });
+
+    expect(response.statusCode, response.body).toBe(201);
+    expect(records[0]?.input).toMatchObject({
+      orderNumber: "ORDER-LEGACY-API-1",
+      addressMode: "stored",
+      sellingFeeMinor: 500,
+      shippingCostMinor: 750,
+      packagingCostMinor: 100,
+    });
+  });
+});
 
 afterEach(async () => {
   await Promise.all(apps.splice(0).map(async (app) => app.close()));
@@ -419,6 +616,13 @@ describe("P0 workspace API", () => {
     ] as const;
     const measurementIds: string[] = [];
     for (const [definitionId, value] of definitions) {
+      const measurementAssetId = await registerTestMeasurementEvidence(
+        repository,
+        workspaceId,
+        skuId,
+        actorId,
+        definitionId,
+      );
       const measurement = await repository.recordMeasurement(
         workspaceId,
         skuId,
@@ -431,7 +635,7 @@ describe("P0 workspace API", () => {
           basis: definitionId === "chest_width" ? "flat_width" : "length",
           state: "natural",
           measuredAt: "2026-08-15T00:00:00.000Z",
-          evidenceAssetId: assetIds[0]!,
+          evidenceAssetId: measurementAssetId,
           attempt: 1,
           humanConfirmed: true,
         },
@@ -529,7 +733,8 @@ describe("P0 workspace API", () => {
   it("registers immutable photo evidence and human measurements for capture readiness", async () => {
     const mediaRoot = await mkdtemp(join(tmpdir(), "resale-app-media-"));
     mediaRoots.push(mediaRoot);
-    const app = buildTestApp(new LocalPrivateMediaStore(mediaRoot));
+    const repository = new InMemoryWorkflowRepository();
+    const app = buildTestApp(new LocalPrivateMediaStore(mediaRoot), repository);
     apps.push(app);
     const created = await app.inject({
       method: "POST",
@@ -580,6 +785,13 @@ describe("P0 workspace API", () => {
       ["body_length", 70],
     ] as const;
     for (const [definitionId, value] of definitions) {
+      const measurementAssetId = await registerTestMeasurementEvidence(
+        repository,
+        workspaceId,
+        skuId,
+        actorId,
+        definitionId,
+      );
       const response = await app.inject({
         method: "POST",
         url: `/v1/workspaces/${workspaceId}/skus/${skuId}/measurements`,
@@ -592,7 +804,7 @@ describe("P0 workspace API", () => {
           basis: definitionId === "chest_width" ? "flat_width" : "length",
           state: "natural",
           measuredAt: "2026-08-15T00:00:00.000Z",
-          evidenceAssetId: assetIds[0],
+          evidenceAssetId: measurementAssetId,
           attempt: 1,
           humanConfirmed: true,
         },
@@ -614,6 +826,13 @@ describe("P0 workspace API", () => {
       readyForHumanReview: true,
     });
 
+    const repeatEvidence = await registerTestMeasurementEvidence(
+      repository,
+      workspaceId,
+      skuId,
+      actorId,
+      "chest_width",
+    );
     const repeat = await app.inject({
       method: "POST",
       url: `/v1/workspaces/${workspaceId}/skus/${skuId}/measurements`,
@@ -626,7 +845,7 @@ describe("P0 workspace API", () => {
         basis: "flat_width",
         state: "natural",
         measuredAt: "2026-08-15T00:05:00.000Z",
-        evidenceAssetId: assetIds[0],
+        evidenceAssetId: repeatEvidence,
         attempt: 2,
         humanConfirmed: true,
       },
@@ -825,6 +1044,833 @@ describe("P0 workspace API", () => {
   });
 });
 
+describe("P14 order registration and shipping method API", () => {
+  const workspaceId = "61111111-1111-4111-8111-111111111111";
+  const actorId = "62222222-2222-4222-8222-222222222222";
+  const orderId = "63333333-3333-4333-8333-333333333333";
+  const methodId = "64444444-4444-4444-8444-444444444444";
+  const catalogRevisionId = "65555555-5555-4555-8555-555555555555";
+  const selectionId = "66666666-6666-4666-8666-666666666666";
+  const registrationRevisionId = "67777777-7777-4777-8777-777777777777";
+  const confirmationId = "68888888-8888-4888-8888-888888888888";
+  const headers = { "x-actor-id": actorId, "x-workspace-id": workspaceId };
+  const registration = {
+    orderId,
+    orderNumber: "ORD-20260831-000001",
+    registrationRevisionId,
+    salesChannelKey: "mercari",
+    salesChannelName: "メルカリ",
+    channelTransactionId: null,
+    buyerDisplayName: null,
+    revision: 3,
+    supersedesRevisionId: null,
+    changedAt: "2026-08-31T01:00:00.000Z",
+  };
+  const catalogMethod = {
+    methodId,
+    catalogRevisionId,
+    salesChannelKey: "mercari",
+    salesChannelName: "メルカリ",
+    methodName: "ネコポス",
+    trackingAvailable: true,
+    feeMinor: 210,
+    deliveryEstimate: "1〜2日",
+    officialCheckedOn: "2026-08-26",
+    officialReferenceUrl: "https://help.jp.mercari.com/guide/articles/134/",
+    officialReferenceNote: null,
+    active: true,
+    revision: 1,
+    supersedesRevisionId: null,
+    changedAt: "2026-08-31T01:01:00.000Z",
+  };
+  const shippingOption = {
+    methodId,
+    catalogRevisionId,
+    salesChannelKey: "mercari",
+    salesChannelName: "メルカリ",
+    methodName: "ネコポス",
+    trackingAvailable: true,
+    feeMinor: 210,
+    deliveryEstimate: "1〜2日",
+    officialCheckedOn: "2026-08-26",
+  };
+  const selection = {
+    selectionId,
+    orderId,
+    revision: 2,
+    supersedesSelectionId: null,
+    method: shippingOption,
+    selectedAt: "2026-08-31T01:02:00.000Z",
+  };
+  const readiness = {
+    orderId,
+    orderNumber: registration.orderNumber,
+    registrationRevision: registration.revision,
+    salesChannel: { key: "mercari", name: "メルカリ" },
+    channelTransactionIdStatus: "missing" as const,
+    saleAmountStatus: "missing" as const,
+    selectedMethod: selection,
+    missingInformation: ["channel_transaction_id", "sale_amount"] as const,
+    blockingIssues: [],
+    humanConfirmation: {
+      state: "confirmed" as const,
+      confirmationId,
+      confirmedAt: "2026-08-31T01:03:00.000Z",
+    },
+  };
+
+  it("serves only the current assigned location derivative and rechecks after reading bytes", async () => {
+    const inventoryUnitId = "69999999-9999-4999-8999-999999999991";
+    const locationPhotoUrl =
+      `/v1/workspaces/${workspaceId}/orders/${orderId}/pick-location-photo/content` +
+      `?inventoryUnitId=${inventoryUnitId}&movementSequence=7`;
+    const task = {
+      orderId,
+      orderNumber: registration.orderNumber,
+      productTitle: "架空の発送商品",
+      state: "confirmed" as const,
+      inventoryNumber: "INV-000123-8",
+      inventoryUnitId,
+      skuId: "69999999-9999-4999-8999-999999999992",
+      locationCode: "BX-014-3-2",
+      locationPhotoUrl,
+      addressMode: "stored" as const,
+      inventoryLabelVersion: 1,
+      locationLabelVersion: 1,
+      assignmentExpiresAt: "2099-08-31T01:00:00.000Z",
+    };
+    const source = {
+      displayStorageKey: `workspaces/${workspaceId}/location-display/assigned.jpg`,
+      displaySha256: "c".repeat(64),
+      mimeType: "image/jpeg" as const,
+    };
+    const authorizationCalls: unknown[][] = [];
+    let mode: "success" | "missing" | "post_read_revoke" | "media_failure" = "success";
+    let callsInRequest = 0;
+    const repository = {
+      close: () => Promise.resolve(),
+      shippingTasks: () => Promise.resolve([task]),
+      readAssignedLocationPhoto: (...args: unknown[]) => {
+        authorizationCalls.push(args);
+        callsInRequest += 1;
+        if (mode === "missing" || (mode === "post_read_revoke" && callsInRequest === 2)) {
+          return Promise.reject(
+            new RepositoryError("forbidden", "different internal reason must stay hidden"),
+          );
+        }
+        return Promise.resolve(source);
+      },
+    } as unknown as OrderRepository;
+    const mediaStore: PrivateMediaStore = {
+      saveOriginal: () => Promise.reject(new Error("not used")),
+      removeOriginal: () => Promise.reject(new Error("not used")),
+      createSanitizedDisplay: () => Promise.reject(new Error("not used")),
+      readDisplay: (storageKey, sha256) => {
+        expect({ storageKey, sha256 }).toEqual({
+          storageKey: source.displayStorageKey,
+          sha256: source.displaySha256,
+        });
+        if (mode === "media_failure") return Promise.reject(new Error("missing or hash mismatch"));
+        return Promise.resolve(Buffer.from("zero-gps-derivative"));
+      },
+      readSanitizedOriginal: () => Promise.reject(new Error("not used")),
+      removeDisplay: () => Promise.reject(new Error("not used")),
+    };
+    const app = buildOrderTestApp(repository, mediaStore);
+
+    const tasks = await app.inject({
+      method: "GET",
+      url: `/v1/workspaces/${workspaceId}/shipping-tasks`,
+      headers,
+    });
+    expect(tasks.statusCode).toBe(200);
+    expect(tasks.json()).toEqual([task]);
+    expect(tasks.body).not.toContain("location-display");
+
+    callsInRequest = 0;
+    const content = await app.inject({ method: "GET", url: locationPhotoUrl, headers });
+    expect(content.statusCode).toBe(200);
+    expect(content.rawPayload).toEqual(Buffer.from("zero-gps-derivative"));
+    expect(content.headers["content-type"]).toBe("image/jpeg");
+    expect(content.headers["cache-control"]).toBe("private, no-store");
+    expect(content.headers.pragma).toBe("no-cache");
+    expect(content.headers["x-content-type-options"]).toBe("nosniff");
+    expect(callsInRequest).toBe(2);
+    expect(authorizationCalls.at(-1)).toEqual([
+      workspaceId,
+      orderId,
+      inventoryUnitId,
+      7,
+      { identityId: actorId, workspaceId },
+    ]);
+
+    mode = "missing";
+    callsInRequest = 0;
+    const unavailable = await app.inject({ method: "GET", url: locationPhotoUrl, headers });
+    expect(unavailable.statusCode).toBe(403);
+    expect(unavailable.json()).toMatchObject({
+      code: "forbidden",
+      message: "現在の担当注文に結び付く保管場所写真を確認できません。",
+    });
+    expect(unavailable.headers["cache-control"]).toBe("private, no-store");
+    expect(unavailable.headers["x-content-type-options"]).toBe("nosniff");
+
+    mode = "post_read_revoke";
+    callsInRequest = 0;
+    const revokedDuringRead = await app.inject({ method: "GET", url: locationPhotoUrl, headers });
+    expect(revokedDuringRead.statusCode).toBe(403);
+    expect(revokedDuringRead.json()).toMatchObject({
+      code: unavailable.json<{ code: string }>().code,
+      message: unavailable.json<{ message: string }>().message,
+    });
+    expect(callsInRequest).toBe(2);
+
+    mode = "media_failure";
+    callsInRequest = 0;
+    const missingOrTampered = await app.inject({ method: "GET", url: locationPhotoUrl, headers });
+    expect(missingOrTampered.statusCode).toBe(503);
+    expect(missingOrTampered.json()).toMatchObject({ code: "media_store_unavailable" });
+    expect(missingOrTampered.headers["cache-control"]).toBe("private, no-store");
+    expect(missingOrTampered.headers["x-content-type-options"]).toBe("nosniff");
+    expect(callsInRequest).toBe(1);
+
+    const invalidQuery = await app.inject({
+      method: "GET",
+      url: `${locationPhotoUrl}&locationId=69999999-9999-4999-8999-999999999993`,
+      headers,
+    });
+    expect(invalidQuery.statusCode).toBe(400);
+  });
+
+  it("exposes strict management writes and only the minimal assigned-shipping response", async () => {
+    let registrationUpdates = 0;
+    let methodSaves = 0;
+    let methodSelections = 0;
+    let readinessConfirmations = 0;
+    let readinessConfirmationInput: ConfirmOrderShippingReadinessRequest | null = null;
+    const repository = {
+      close: () => Promise.resolve(),
+      orderRegistration: () => Promise.resolve(registration),
+      updateOrderRegistration: () => {
+        registrationUpdates += 1;
+        return Promise.resolve(registration);
+      },
+      shippingMethods: () => Promise.resolve([catalogMethod]),
+      saveShippingMethod: () => {
+        methodSaves += 1;
+        return Promise.resolve(catalogMethod);
+      },
+      shippingMethodOptions: () => Promise.resolve([shippingOption]),
+      selectShippingMethod: () => {
+        methodSelections += 1;
+        return Promise.resolve(selection);
+      },
+      shippingReadiness: () => Promise.resolve(readiness),
+      confirmShippingReadiness: (
+        ...args: Parameters<OrderRepository["confirmShippingReadiness"]>
+      ) => {
+        readinessConfirmations += 1;
+        readinessConfirmationInput = args[3];
+        return Promise.resolve(readiness);
+      },
+    } as unknown as OrderRepository;
+    const app = buildOrderTestApp(repository);
+
+    const readRegistration = await app.inject({
+      method: "GET",
+      url: `/v1/workspaces/${workspaceId}/orders/${orderId}/registration`,
+      headers,
+    });
+    expect(readRegistration.statusCode).toBe(200);
+    expect(readRegistration.json()).toEqual(registration);
+    expect(readRegistration.headers["cache-control"]).toBe("private, no-store");
+    expect(readRegistration.headers.pragma).toBe("no-cache");
+
+    const rejectedRegistration = await app.inject({
+      method: "PATCH",
+      url: `/v1/workspaces/${workspaceId}/orders/${orderId}/registration`,
+      headers,
+      payload: {
+        salesChannelKey: "mercari",
+        salesChannelName: "メルカリ",
+        channelTransactionId: null,
+        buyerDisplayName: null,
+        expectedRevision: registration.revision,
+        idempotencyKey: "69999999-9999-4999-8999-999999999999",
+        humanConfirmed: true,
+        externalFetch: true,
+      },
+    });
+    expect(rejectedRegistration.statusCode).toBe(400);
+    expect(registrationUpdates).toBe(0);
+
+    const updatedRegistration = await app.inject({
+      method: "PATCH",
+      url: `/v1/workspaces/${workspaceId}/orders/${orderId}/registration`,
+      headers,
+      payload: {
+        salesChannelKey: "mercari",
+        salesChannelName: "メルカリ",
+        channelTransactionId: null,
+        buyerDisplayName: null,
+        expectedRevision: registration.revision,
+        idempotencyKey: "69999999-9999-4999-8999-999999999999",
+        humanConfirmed: true,
+      },
+    });
+    expect(updatedRegistration.statusCode).toBe(200);
+    expect(updatedRegistration.headers["cache-control"]).toBe("private, no-store");
+    expect(updatedRegistration.headers.pragma).toBe("no-cache");
+
+    const listedMethods = await app.inject({
+      method: "GET",
+      url: `/v1/workspaces/${workspaceId}/shipping-methods`,
+      headers,
+    });
+    expect(listedMethods.statusCode).toBe(200);
+    expect(listedMethods.json()).toEqual([catalogMethod]);
+
+    const savedMethod = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceId}/shipping-methods`,
+      headers,
+      payload: {
+        methodId: null,
+        expectedRevision: null,
+        salesChannelKey: "mercari",
+        salesChannelName: "メルカリ",
+        methodName: "ネコポス",
+        trackingAvailable: true,
+        feeMinor: 210,
+        deliveryEstimate: "1〜2日",
+        officialCheckedOn: "2026-08-26",
+        officialReferenceUrl: "https://help.jp.mercari.com/guide/articles/134/",
+        officialReferenceNote: null,
+        active: true,
+        idempotencyKey: "6aaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        humanConfirmed: true,
+      },
+    });
+    expect(savedMethod.statusCode).toBe(201);
+
+    const options = await app.inject({
+      method: "GET",
+      url: `/v1/workspaces/${workspaceId}/orders/${orderId}/shipping-method-options`,
+      headers,
+    });
+    expect(options.statusCode).toBe(200);
+    expect(options.json()).toEqual([shippingOption]);
+    expect(options.json()[0]).not.toHaveProperty("officialReferenceUrl");
+    expect(options.json()[0]).not.toHaveProperty("officialReferenceNote");
+
+    const selected = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceId}/orders/${orderId}/shipping-method-selections`,
+      headers,
+      payload: {
+        methodId,
+        expectedSelectionRevision: null,
+        idempotencyKey: "6bbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        humanConfirmed: true,
+      },
+    });
+    expect(selected.statusCode).toBe(201);
+
+    const readReadiness = await app.inject({
+      method: "GET",
+      url: `/v1/workspaces/${workspaceId}/orders/${orderId}/shipping-readiness`,
+      headers,
+    });
+    expect(readReadiness.statusCode).toBe(200);
+    expect(readReadiness.headers["cache-control"]).toBe("private, no-store");
+    const readinessSnapshot = readReadiness.json<{
+      registrationRevision: number;
+      selectedMethod: { revision: number };
+      missingInformation: Array<"channel_transaction_id" | "sale_amount">;
+    }>();
+    expect(readinessSnapshot.registrationRevision).toBe(registration.revision);
+    for (const forbidden of [
+      "buyerDisplayName",
+      "saleAmountMinor",
+      "costAmountMinor",
+      "profitMinor",
+      "taxBasis",
+      "changedBy",
+    ]) {
+      expect(readReadiness.json()).not.toHaveProperty(forbidden);
+    }
+
+    const confirmed = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceId}/orders/${orderId}/shipping-readiness-confirmations`,
+      headers,
+      payload: {
+        expectedRegistrationRevision: readinessSnapshot.registrationRevision,
+        expectedSelectionRevision: readinessSnapshot.selectedMethod.revision,
+        acknowledgedMissingInformation: readinessSnapshot.missingInformation,
+        idempotencyKey: "6ccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        humanConfirmed: true,
+      },
+    });
+    expect(confirmed.statusCode).toBe(201);
+    expect(confirmed.headers["cache-control"]).toBe("private, no-store");
+    expect(registrationUpdates).toBe(1);
+    expect(methodSaves).toBe(1);
+    expect(methodSelections).toBe(1);
+    expect(readinessConfirmations).toBe(1);
+    expect(readinessConfirmationInput).toMatchObject({
+      expectedRegistrationRevision: registration.revision,
+      expectedSelectionRevision: selection.revision,
+    });
+
+    const wrongWorkspace = await app.inject({
+      method: "GET",
+      url: `/v1/workspaces/60000000-0000-4000-8000-000000000001/orders/${orderId}/shipping-readiness`,
+      headers,
+    });
+    expect(wrongWorkspace.statusCode).toBe(403);
+  });
+});
+
+describe("P13 shipping photo API", () => {
+  const workspaceId = "71111111-1111-4111-8111-111111111111";
+  const actorId = "72222222-2222-4222-8222-222222222222";
+  const orderId = "73333333-3333-4333-8333-333333333333";
+  const policyRevisionId = "74444444-4444-4444-8444-444444444444";
+  const decisionRevisionId = "75555555-5555-4555-8555-555555555555";
+  const productAssetId = "76666666-6666-4666-8666-666666666666";
+  const packedAssetId = "77777777-7777-4777-8777-777777777777";
+  const confirmationId = "78888888-8888-4888-8888-888888888888";
+  const headers = { "x-actor-id": actorId, "x-workspace-id": workspaceId };
+  const policy = {
+    policyRevisionId,
+    mode: "high_value_only" as const,
+    highValueThresholdMinor: 50_000,
+    revision: 1,
+    supersedesRevisionId: null,
+    changedBy: actorId,
+    changedAt: "2026-08-30T01:00:00.000Z",
+  };
+  const preflight = {
+    orderId,
+    decisionRevisionId,
+    decisionRevision: 1,
+    state: "capture_required" as const,
+    photoRequired: true,
+    decisionReason: "threshold_met" as const,
+    saleAmountStatus: "present" as const,
+    assets: [],
+    confirmedAssetIds: [],
+    photoConfirmationId: null,
+    packingHumanConfirmed: false,
+    shipmentHumanConfirmed: false,
+    updatedAt: "2026-08-30T01:01:00.000Z",
+  };
+
+  it("keeps policy, decision, override and late sale inputs strict and sanitized", async () => {
+    let policyUpdates = 0;
+    let evaluations = 0;
+    let overrides = 0;
+    let saleRecords = 0;
+    const repository = {
+      close: () => Promise.resolve(),
+      shippingPhotoPolicy: () => Promise.resolve(null),
+      updateShippingPhotoPolicy: () => {
+        policyUpdates += 1;
+        return Promise.resolve(policy);
+      },
+      shippingPhotoPreflight: () => Promise.resolve(preflight),
+      evaluateShippingPhotoPreflight: () => {
+        evaluations += 1;
+        return Promise.resolve(preflight);
+      },
+      overrideShippingPhotoDecision: () => {
+        overrides += 1;
+        return Promise.resolve({
+          ...preflight,
+          state: "satisfied_without_photo" as const,
+          photoRequired: false,
+          decisionReason: "manual_skip" as const,
+        });
+      },
+      recordSaleAmount: () => {
+        saleRecords += 1;
+        return Promise.resolve({
+          orderId,
+          financialEventId: "79999999-9999-4999-8999-999999999999",
+          saleAmountMinor: 50_000,
+          recordedBy: actorId,
+          recordedAt: "2026-08-30T01:02:00.000Z",
+        });
+      },
+    } as unknown as OrderRepository;
+    const app = buildOrderTestApp(repository);
+
+    const missingPolicy = await app.inject({
+      method: "GET",
+      url: `/v1/workspaces/${workspaceId}/shipping-photo-policy`,
+      headers,
+    });
+    expect(missingPolicy.statusCode).toBe(204);
+    expect(missingPolicy.headers["cache-control"]).toBe("private, no-store");
+
+    const privatePolicyInput = await app.inject({
+      method: "PUT",
+      url: `/v1/workspaces/${workspaceId}/shipping-photo-policy`,
+      headers,
+      payload: {
+        mode: "high_value_only",
+        highValueThresholdMinor: 50_000,
+        expectedRevision: null,
+        idempotencyKey: "7aaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        humanConfirmed: true,
+        actorId,
+      },
+    });
+    expect(privatePolicyInput.statusCode).toBe(400);
+    expect(policyUpdates).toBe(0);
+
+    const savedPolicy = await app.inject({
+      method: "PUT",
+      url: `/v1/workspaces/${workspaceId}/shipping-photo-policy`,
+      headers,
+      payload: {
+        mode: "high_value_only",
+        highValueThresholdMinor: 50_000,
+        expectedRevision: null,
+        idempotencyKey: "7aaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        humanConfirmed: true,
+      },
+    });
+    expect(savedPolicy.statusCode).toBe(200);
+    expect(savedPolicy.json()).toEqual(policy);
+
+    const privateDecisionInput = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceId}/orders/${orderId}/shipping-photo-preflight`,
+      headers,
+      payload: {
+        expectedDecisionRevision: null,
+        idempotencyKey: "7bbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        humanConfirmed: true,
+        confirmedAt: "2026-08-30T01:01:00.000Z",
+      },
+    });
+    expect(privateDecisionInput.statusCode).toBe(400);
+    expect(evaluations).toBe(0);
+
+    const evaluated = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceId}/orders/${orderId}/shipping-photo-preflight`,
+      headers,
+      payload: {
+        expectedDecisionRevision: null,
+        idempotencyKey: "7bbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        humanConfirmed: true,
+      },
+    });
+    expect(evaluated.statusCode).toBe(200);
+    expect(evaluated.json()).not.toHaveProperty("saleAmountMinor");
+    expect(evaluated.json()).not.toHaveProperty("highValueThresholdMinor");
+    expect(evaluated.json()).not.toHaveProperty("storageKey");
+
+    const overridden = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceId}/orders/${orderId}/shipping-photo-override`,
+      headers,
+      payload: {
+        choice: "skip_photos",
+        expectedDecisionRevision: 1,
+        idempotencyKey: "7ccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        humanConfirmed: true,
+      },
+    });
+    expect(overridden.statusCode).toBe(200);
+    expect(overridden.json()).toMatchObject({
+      state: "satisfied_without_photo",
+      photoRequired: false,
+      decisionReason: "manual_skip",
+    });
+
+    const zeroSale = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceId}/orders/${orderId}/sale-amount`,
+      headers,
+      payload: {
+        saleAmountMinor: 0,
+        taxBasis: "unknown",
+        sourceMeaning: "販売額を本人確認",
+        occurredAt: "2026-08-30T01:02:00.000Z",
+        idempotencyKey: "7ddddddd-dddd-4ddd-8ddd-dddddddddddd",
+        humanConfirmed: true,
+      },
+    });
+    expect(zeroSale.statusCode).toBe(400);
+    expect(saleRecords).toBe(0);
+
+    const recordedSale = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceId}/orders/${orderId}/sale-amount`,
+      headers,
+      payload: {
+        saleAmountMinor: 50_000,
+        taxBasis: "unknown",
+        sourceMeaning: "販売額を本人確認",
+        occurredAt: "2026-08-30T01:02:00.000Z",
+        idempotencyKey: "7ddddddd-dddd-4ddd-8ddd-dddddddddddd",
+        humanConfirmed: true,
+      },
+    });
+    expect(recordedSale.statusCode).toBe(201);
+    expect(recordedSale.json()).toMatchObject({ saleAmountMinor: 50_000, recordedBy: actorId });
+    expect(policyUpdates).toBe(1);
+    expect(evaluations).toBe(1);
+    expect(overrides).toBe(1);
+    expect(saleRecords).toBe(1);
+  });
+
+  it("stores private photo bytes outside public responses and serves only sanitized no-store content", async () => {
+    const sha256 = "a".repeat(64);
+    const removed: Array<{ storageKey: string; sha256: string }> = [];
+    const saved: string[] = [];
+    const privateReads: unknown[] = [];
+    let authorizationReads = 0;
+    let registered: RegisterShippingPhotoRecord | undefined;
+    const mediaStore: PrivateMediaStore = {
+      saveOriginal: (storageKey, bytes) => {
+        saved.push(storageKey);
+        return Promise.resolve({ storageKey, sha256, sizeBytes: bytes.length, created: true });
+      },
+      readSanitizedOriginal: (input) => {
+        privateReads.push(input);
+        return Promise.resolve(Buffer.from("sanitized-image"));
+      },
+      removeOriginal: (storageKey, expectedSha256) => {
+        removed.push({ storageKey, sha256: expectedSha256 });
+        return Promise.resolve();
+      },
+      createSanitizedDisplay: () => Promise.reject(new Error("not used")),
+      readDisplay: () => Promise.reject(new Error("not used")),
+      removeDisplay: () => Promise.reject(new Error("not used")),
+    };
+    const assetResponse = {
+      assetId: productAssetId,
+      orderId,
+      role: "product" as const,
+      mimeType: "image/jpeg" as const,
+      sizeBytes: jpegWithGpsMetadata().length,
+      width: 2000,
+      height: 1500,
+      capturedBy: actorId,
+      capturedAt: "2026-08-30T01:03:00.000Z",
+    };
+    const repository = {
+      close: () => Promise.resolve(),
+      registerShippingPhoto: (
+        _workspaceId: string,
+        _orderId: string,
+        _actor: unknown,
+        record: RegisterShippingPhotoRecord,
+      ) => {
+        registered = record;
+        return Promise.resolve(assetResponse);
+      },
+      readShippingPhoto: () => {
+        authorizationReads += 1;
+        return Promise.resolve({
+          assetId: productAssetId,
+          orderId,
+          skuId: "73333333-3333-4333-8333-333333333333",
+          photoRole: "product" as const,
+          storageKey: `workspaces/${workspaceId}/originals/shipping-${orderId}-${productAssetId}.jpg`,
+          sha256,
+          mimeType: "image/jpeg" as const,
+          sizeBytes: assetResponse.sizeBytes,
+          width: 2000,
+          height: 1500,
+          authorizedIdentityId: actorId,
+          authorizedRole: "shipping" as const,
+          assignmentId: "74444444-4444-4444-8444-444444444444",
+          assignmentExpiresAt: "2099-08-30T02:00:00.000Z",
+        });
+      },
+      confirmShippingPhotos: () =>
+        Promise.resolve({
+          confirmationId,
+          orderId,
+          decisionRevisionId,
+          assetIds: [productAssetId, packedAssetId],
+          confirmedBy: actorId,
+          confirmedAt: "2026-08-30T01:04:00.000Z",
+        }),
+    } as unknown as OrderRepository;
+    const app = buildOrderTestApp(repository, mediaStore);
+
+    const privateQuery = new URLSearchParams({
+      role: "product",
+      idempotencyKey: "7eeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+      humanConfirmed: "true",
+      storageKey: "client-controlled",
+    });
+    const rejected = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceId}/orders/${orderId}/shipping-photos?${privateQuery.toString()}`,
+      headers: { ...headers, "content-type": "image/jpeg" },
+      payload: jpegWithGpsMetadata(),
+    });
+    expect(rejected.statusCode).toBe(400);
+    expect(saved).toHaveLength(0);
+
+    const query = new URLSearchParams({
+      role: "product",
+      idempotencyKey: "7eeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+      humanConfirmed: "true",
+    });
+    const uploaded = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceId}/orders/${orderId}/shipping-photos?${query.toString()}`,
+      headers: { ...headers, "content-type": "image/jpeg" },
+      payload: jpegWithGpsMetadata(),
+    });
+    expect(uploaded.statusCode, uploaded.body).toBe(201);
+    expect(uploaded.json()).toEqual(assetResponse);
+    expect(uploaded.json()).not.toHaveProperty("storageKey");
+    expect(uploaded.json()).not.toHaveProperty("sha256");
+    expect(registered).toMatchObject({
+      role: "product",
+      mimeType: "image/jpeg",
+      width: 2000,
+      height: 1500,
+      sha256,
+    });
+    expect(registered?.storageKey).toMatch(
+      new RegExp(`^workspaces/${workspaceId}/originals/shipping-${orderId}-[0-9a-f-]{36}\\.jpg$`),
+    );
+    expect(removed).toEqual([{ storageKey: saved[0], sha256 }]);
+
+    const content = await app.inject({
+      method: "GET",
+      url: `/v1/workspaces/${workspaceId}/orders/${orderId}/shipping-photos/${productAssetId}/content`,
+      headers,
+    });
+    expect(content.statusCode).toBe(200);
+    expect(content.rawPayload).toEqual(Buffer.from("sanitized-image"));
+    expect(content.headers["cache-control"]).toBe("private, no-store");
+    expect(content.headers.pragma).toBe("no-cache");
+    expect(content.headers["x-content-type-options"]).toBe("nosniff");
+    expect(privateReads).toHaveLength(1);
+    expect(authorizationReads).toBe(2);
+
+    const confirmed = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceId}/orders/${orderId}/shipping-photo-confirmations`,
+      headers,
+      payload: {
+        assetIds: [productAssetId, packedAssetId],
+        idempotencyKey: "7fffffff-ffff-4fff-8fff-ffffffffffff",
+        humanConfirmed: true,
+      },
+    });
+    expect(confirmed.statusCode).toBe(201);
+    expect(confirmed.json()).toMatchObject({
+      confirmationId,
+      assetIds: [productAssetId, packedAssetId],
+      confirmedBy: actorId,
+    });
+  });
+
+  it("returns 403 when private shipping-photo access is revoked during the file read", async () => {
+    const sha256 = "c".repeat(64);
+    let authorizationReads = 0;
+    let fileReads = 0;
+    const content = {
+      assetId: productAssetId,
+      orderId,
+      skuId: "73333333-3333-4333-8333-333333333333",
+      photoRole: "product" as const,
+      storageKey: `workspaces/${workspaceId}/originals/shipping-${orderId}-${productAssetId}.jpg`,
+      sha256,
+      mimeType: "image/jpeg" as const,
+      sizeBytes: 15,
+      width: 20,
+      height: 10,
+      authorizedIdentityId: actorId,
+      authorizedRole: "shipping" as const,
+      assignmentId: "74444444-4444-4444-8444-444444444444",
+      assignmentExpiresAt: "2099-08-30T02:00:00.000Z",
+    };
+    const repository = {
+      close: () => Promise.resolve(),
+      readShippingPhoto: () => {
+        authorizationReads += 1;
+        return authorizationReads === 1
+          ? Promise.resolve(content)
+          : Promise.reject(new RepositoryError("forbidden", "assignment revoked"));
+      },
+    } as unknown as OrderRepository;
+    const mediaStore: PrivateMediaStore = {
+      saveOriginal: () => Promise.reject(new Error("not used")),
+      removeOriginal: () => Promise.reject(new Error("not used")),
+      createSanitizedDisplay: () => Promise.reject(new Error("not used")),
+      readDisplay: () => Promise.reject(new Error("not used")),
+      readSanitizedOriginal: () => {
+        fileReads += 1;
+        return Promise.resolve(Buffer.from("private-content"));
+      },
+      removeDisplay: () => Promise.reject(new Error("not used")),
+    };
+    const app = buildOrderTestApp(repository, mediaStore);
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/v1/workspaces/${workspaceId}/orders/${orderId}/shipping-photos/${productAssetId}/content`,
+      headers,
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({ code: "forbidden" });
+    expect(response.body).not.toContain("private-content");
+    expect(fileReads).toBe(1);
+    expect(authorizationReads).toBe(2);
+  });
+
+  it("removes newly saved bytes when photo registration is rejected", async () => {
+    const sha256 = "b".repeat(64);
+    const removed: string[] = [];
+    const mediaStore: PrivateMediaStore = {
+      saveOriginal: (storageKey, bytes) =>
+        Promise.resolve({ storageKey, sha256, sizeBytes: bytes.length, created: true }),
+      removeOriginal: (storageKey) => {
+        removed.push(storageKey);
+        return Promise.resolve();
+      },
+      createSanitizedDisplay: () => Promise.reject(new Error("not used")),
+      readDisplay: () => Promise.reject(new Error("not used")),
+      readSanitizedOriginal: () => Promise.reject(new Error("not used")),
+      removeDisplay: () => Promise.reject(new Error("not used")),
+    };
+    const repository = {
+      close: () => Promise.resolve(),
+      registerShippingPhoto: () =>
+        Promise.reject(new RepositoryError("conflict", "simulated stale decision")),
+    } as unknown as OrderRepository;
+    const app = buildOrderTestApp(repository, mediaStore);
+    const query = new URLSearchParams({
+      role: "packed_package",
+      idempotencyKey: "7aaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      humanConfirmed: "true",
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceId}/orders/${orderId}/shipping-photos?${query.toString()}`,
+      headers: { ...headers, "content-type": "image/jpeg" },
+      payload: jpegWithGpsMetadata(),
+    });
+    expect(response.statusCode).toBe(409);
+    expect(removed).toHaveLength(1);
+  });
+});
+
 function jpegWithGpsMetadata(): Buffer {
   const exif = Buffer.from("Exif\0\0GPSLatitude=35.0;GPSLongitude=139.0", "utf8");
   const app1Length = Buffer.alloc(2);
@@ -835,4 +1881,31 @@ function jpegWithGpsMetadata(): Buffer {
   ]);
   const scan = Buffer.from([0xff, 0xda, 0x00, 0x02, 0x11, 0x22, 0xff, 0xd9]);
   return Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe1]), app1Length, exif, dimensions, scan]);
+}
+
+async function registerTestMeasurementEvidence(
+  repository: InMemoryWorkflowRepository,
+  workspaceId: string,
+  skuId: string,
+  identityId: string,
+  definitionId: string,
+): Promise<string> {
+  const assetId = randomUUID();
+  await repository.registerMediaAsset(
+    workspaceId,
+    skuId,
+    { identityId },
+    {
+      assetId,
+      role: "measurement_evidence",
+      measurementDefinitionId: definitionId,
+      originalSha256: createHash("sha256").update(assetId).digest("hex"),
+      originalStorageKey: `workspaces/${workspaceId}/originals/${assetId}.jpg`,
+      mimeType: "image/jpeg",
+      sizeBytes: 128,
+      width: 16,
+      height: 16,
+    },
+  );
+  return assetId;
 }

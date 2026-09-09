@@ -1,0 +1,15 @@
+{
+  "fixtureVersion": "generic_journal_fixture_v1.0.0",
+  "purpose": "serializer_contract_only_not_tax_advice",
+  "headers": ["export_batch_id", "source_event_id", "transaction_date", "debit_account", "debit_subaccount", "debit_tax_category", "debit_invoice_category", "debit_amount_jpy", "credit_account", "credit_subaccount", "credit_tax_category", "credit_invoice_category", "credit_amount_jpy", "description", "evidence_reference_id", "mapping_rule_version", "financial_formula_version", "human_confirmed_by", "human_confirmed_at"],
+  "rows": [
+    ["batch_fixture_001", "event_fixture_001", "2026-08-20", "検証用借方", "", "not_applicable", "not_applicable", "1000", "検証用貸方", "", "not_applicable", "not_applicable", "1000", "架空データ", "evidence_fixture_001", "mapping_fixture_v1", "financial_formula_v1.0.0", "actor_fixture_001", "2026-08-20T12:00:00+09:00"]
+  ],
+  "expected": {
+    "rowCountExcludingHeader": 1,
+    "debitTotalJpy": 1000,
+    "creditTotalJpy": 1000,
+    "columnCount": 19,
+    "containsRealPersonalData": false
+  }
+}

@@ -2,7 +2,7 @@
 
 - レビュー日: 2026-08-13、在庫追補再レビュー 2026-08-14（JST）
 - レビュー方式: 実装担当と分離した読み取り専用レビュー → 仕様修正 → 再レビュー
-- 最終判定: PASS
+- 前回最終判定（AC-001〜055/TA-001〜037）: PASS。現行の修正版A判定は末尾の2026-08-20追補を参照
 - Critical（重大）: 0
 - High（高）: 0
 - Medium（中）: 0（再レビューで見つかった2件も反映済み）
@@ -63,6 +63,17 @@ M12/W10のSlack承認後、AC-042〜AC-055、TA-029〜TA-037と関連するP0/P1
 初回修正後の再レビューで、前回High 1とMedium 4は解消した一方、AC-050の2人確認条件をTA-032が直接検証していないMedium 1が残った。TA-032へ `initial_counter_id != reconfirmer_id`、`requester_id != approver_id`、`distinct human actor >= 2` の監査/DB/domain testを追加した。
 
 最終独立再レビューは **PASS**。Critical 0 / High 0 / Medium 0 / Low 0。AC-050とTA-032は識別子、監査、DB制約またはdomain testの測定条件まで対応し、AC-001〜AC-055とTA-001〜TA-037に欠番・重複はない。これは仕様の測定可能性と相互整合の判定であり、実装またはテスト実行済みという意味ではない。
+
+## 2026-08-20 修正版A・独立仕様レビュー
+
+- 方式: 実装担当と分離した読み取り専用review → 文書修正 → 2回の再review。
+- 初回: Critical 1 / High 4 / Medium 4 / Low 0。
+- 最終: **PASS — Critical 0 / High 0 / Medium 0 / Low 0**。
+- Critical解消: P0必須AC/TAを明示し、P1固有条件をP0完成条件から除外した。
+- High解消: `missing_candidate`を`restored`だけで閉じる、同一batch/過去batch重複を分離、月次貢献利益を取引式の合計へ統一、Money Forward 27列/汎用19列のschema/fixture/hashを固定した。
+- Medium解消: server 3秒確認とkeyboard同等手段、membership競合lock、製品起因invalid 1件で不合格のpilot、再現可能な100点UI採点、solo証拠写真の安全検査表現を固定した。
+- 外部停止gate: Money Forwardを当初25列と理解していたが、2026-08-20の公式ページ再確認でA〜AA 27列と判明した。Goal再開前にユーザーへ明示し、最終契約の承認を得る。これは仕様欠陥ではなく未完了の承認工程である。
+- 注意: 本判定は仕様の整合性・測定可能性のPASSであり、修正版Aのコード実装・test実行済みを意味しない。
 
 ## 4. Goal開始判定
 

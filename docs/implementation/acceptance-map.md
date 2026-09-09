@@ -1,31 +1,280 @@
 # 受け入れ条件・実装対応表
 
-- 状態: P0実装・ローカル検証完了、最終独立レビュー待ち
-- 更新日: 2026-08-16（JST）
-- 正本: `docs/specs/mvp-product-spec-v1.md`、`docs/specs/technical-architecture-v1.md`
+- 状態: 承認済みUI全127画面の同一ビルド再撮影・比較、P13-B/P14の注文・取出し・梱包・発送の実運用Web接続、住所・場所写真・未入力金額の安全gateは自動検証とローカル実ブラウザで合格。最終独立Sol再レビューもCritical 0 / High 0でPASS。P12-B/Cの具体項目と実iPhone・物理印刷・実利用者pilot・実Money Forward取込は未確認
+- 更新日: 2026-09-03（JST）
+- 正本: `docs/specs/mvp-product-spec-v1.md`、`docs/specs/technical-architecture-v1.md`、`docs/specs/approved-ui-integration-addendum-v1.md`
 
 ## P0ゲート
 
-P0の必須ACは AC-001、003〜008、013〜014、018〜023、025〜026、028〜034、042〜055。各行へ実装、テスト、実画面証拠を追加し、すべて合格するまでP1へ進まない。
+P0の必須ACは AC-001、003〜008、013〜014、018〜023、025〜026、028〜034、039、042〜068。各行へ実装、テスト、実画面証拠を追加し、すべて合格するまでP1へ進まない。2026-08-27以前のP05/P06証拠は承認済みUI追補前の履歴であり、新しいP0の最終合格証拠にはしない。
 
-| 範囲        | 実装先                         | 自動検証                      | 手動・画面証拠       | 状態                      |
-| ----------- | ------------------------------ | ----------------------------- | -------------------- | ------------------------- |
-| AC-001〜009 | domain/contracts、API、Web/PWA | unit/API                      | P0仕入・撮影・採寸   | P0対象合格、P1 AIは無効   |
-| AC-010〜017 | media/listing/price adapters   | unit/contract                 | 原本比較・本人引渡し | AC-013/014合格、P1は無効  |
-| AC-018〜020 | inventory/order/shipping       | concurrency/API               | 二重読取・発送・返品 | 合格                      |
-| AC-021〜024 | finance/accounting/Notion      | fixture/schema                | 収益・CSV・同期確認  | AC-021〜023合格、P1は無効 |
-| AC-025〜028 | UI/監査/品質                   | a11y/security/all suites      | PC/PWA実画面         | 合格                      |
-| AC-029〜041 | 財務・冪等・機密・CSV・旧資産  | fixture/contract/security     | 出力内容確認         | P0対象合格、P1は無効      |
-| AC-042〜055 | inventory/location/count       | DB/domain/concurrency         | M12/W10導線          | 合格                      |
-| TA-001〜037 | architecture/CI/security       | type/lint/test/build/contract | platform checklist   | P0対象合格                |
+| 範囲        | 実装先                                                     | 自動検証                      | 手動・画面証拠       | 状態                                                       |
+| ----------- | ---------------------------------------------------------- | ----------------------------- | -------------------- | ---------------------------------------------------------- |
+| AC-001〜009 | domain/contracts、API、Web/PWA                             | unit/API                      | P0仕入・撮影・採寸   | P0対象合格、P1 AIは無効                                    |
+| AC-010〜017 | media/listing/price adapters                               | unit/contract                 | 原本比較・本人引渡し | AC-013/014合格、P1は無効                                   |
+| AC-018〜020 | inventory/order/shipping                                   | concurrency/API               | 二重読取・発送・返品 | 合格                                                       |
+| AC-021〜024 | finance/accounting/Notion                                  | fixture/schema                | 収益・CSV・同期確認  | AC-021〜023合格、P1は無効                                  |
+| AC-025〜028 | UI/監査/品質                                               | a11y/security/all suites      | PC/PWA実画面         | P05独立100/100、Critical/High/Medium 0                     |
+| AC-029〜041 | 財務・冪等・機密・CSV・旧資産                              | fixture/contract/security     | 出力内容確認         | P0対象合格、P1は無効                                       |
+| AC-042〜055 | inventory/location/count                                   | DB/domain/concurrency         | M12/W10導線          | 合格                                                       |
+| AC-056〜057 | solo/team discrepancy                                      | DB/domain/API/concurrency     | M13/W11導線          | 実装・DB・solo/dual・P05安全確認合格                       |
+| AC-058〜060 | accounting/formulas/export                                 | fixture/contract/API          | M14/W12導線          | 実装・DB・会計7/7 UI/CSV・P05確認合格、実MF import未確認   |
+| AC-061      | pilot/irreversible guards                                  | E2E/DB/API/UI                 | 10商品実測           | 計測基盤合格、10商品実測待ち                               |
+| AC-062      | 承認済みモバイル/PCの用語・導線                            | route/UI contract             | 75/52画面対応表      | 視覚127/127合格。注文系M34〜38/PC29〜32は実APIへ接続済み   |
+| AC-063〜064 | 商品別Code 128/A4印刷/スマホ商品検索                       | Web unit/contract             | PC印刷/iPhone幅      | P11コード・unit/full check合格。実iPhone読取は未確認       |
+| AC-065      | 気になる箇所・全写真                                       | contracts/API/DB/Web          | 検品・写真導線       | P12-A最終PASS。P12-B/C未実装、商品別項目案は利用者確認待ち |
+| AC-066      | 選択式の発送前写真                                         | contracts/API/DB/Storage/Web  | 注文・発送導線       | P13-A/Bの自動・実ブラウザPASS。実iPhoneのみ未確認          |
+| AC-067〜068 | 本人操作の調査/任意取引ID                                  | contract/Web/network          | PC/スマホ導線        | P14の自動・実ブラウザPASS。実利用者確認のみ未確認          |
+| P0必須TA    | 001〜004、007〜009、011〜017、019〜023、025〜027、029〜048 | type/lint/test/build/contract | platform checklist   | 最新同一差分のfull checkとfresh/upgrade DBはPASS           |
+| P1固有TA    | 005〜006、010、018、024、028                               | flag-off/禁止経路             | P1画面を公開しない   | P0では実装完了を要求しない                                 |
+| TA-038〜043 | revised A architecture                                     | DB/domain/API/a11y/fixture    | M13/W11/M14/W12      | 実装・DB・P05独立100/100合格                               |
+| TA-044〜045 | local Code 128/印刷/読取UI                                 | Web unit/contract/network     | PC03 v4              | P11自動検証合格。実iPhone camera/読取は未確認              |
+| TA-046〜048 | 写真・発送・本人操作追補                                   | DB/API/Storage/Web            | 承認済み最新画面     | TA-046のP12-A、TA-047/048の自動・実ブラウザPASS            |
+
+## ID別の実装・証拠対応（P07）
+
+2026-08-29の現HEAD棚卸し。各IDを1行にし、範囲行だけでは分からなかった未実装、人手待ち、旧SHA証拠を分離した。`PASS`は代表実装と自動検証が存在することを示すが、残るgap欄に同一HEAD再実行または実機確認がある場合は最終Goal合格ではない。
+
+代表証拠の略記:
+
+- `A/C/DB`: `apps/api/src/app.test.ts`、`packages/contracts/src/index.test.ts`、`packages/db/src/schema.test.ts`
+- `PG`: `apps/api/src/postgres-integration.ts`、`apps/api/src/postgres-upgrade-integration.ts`
+- `AUTH`: `auth.test.ts`、`session.test.ts`、`security.test.ts`、`db-security.test.ts`
+- `MEDIA`: `apps/api/src/local-media-store.test.ts`、`packages/domain/src/product.test.ts`
+- `INV`: `packages/domain/src/inventory.test.ts`、`apps/web/src/lib/stocktake-audit.test.ts`
+- `ORD`: `packages/domain/src/orders.test.ts`、`apps/api/src/order-repository.ts`
+- `FIN`: `packages/domain/src/finance.test.ts`、`packages/domain/src/accounting.test.ts`、`apps/web/src/components/accounting-workspace.test.ts`
+- `PWA`: `apps/web/src/pwa-contract.test.ts`、`capture-outbox.test.ts`、`offline-outbox.test.ts`
+- `CODE`: `apps/web/src/lib/inventory-label.test.ts`、`code128.ts`、`local-barcode-scanner.tsx`
+- `PILOT`: `packages/domain/src/pilot.test.ts`、`pilot-category.test.ts`、`pilot-correction.test.ts`、`pilot-stage.test.ts`
+- `UI127`: `approved-ui-fidelity-audit-2026-08-27.md`、`root-all-fidelity-final-fix23-20260829/capture-report.json`、`review-offline-fix23-20260829/offline-report.json`
+- `P12A`: `0034_inspection_concern_contract.sql`、`C`、`DB`、`PG`
+- `P13A`: `0035_shipping_preflight_photo.sql`、`C`、`DB`、`A`、`PG`、private local storage
+- `P13B/P14`: `0037_order_registration_shipping_method.sql`、`0038_order_address_mode.sql`、`0039_registered_order_missing_financial_facts.sql`、`shipping-workspace.tsx`、`shipping-approved-live-layout-v3.tsx`、`A/C/DB/PG`
+- `UI127-20260903`: `root-all-fidelity-p14-final-finance-20260903/capture-report.json`、`approved-ui-comparison/p14-final-finance-20260903`
+
+| ID     | 状態            | 代表実装・検証                      | 残るgap                                               |
+| ------ | --------------- | ----------------------------------- | ----------------------------------------------------- |
+| AC-001 | partial         | workflow/domain、A、DB              | 承認UIから実APIへの同一SKU一気通貫なし                |
+| AC-002 | partial         | home/Web、AUTH、PWA                 | ホームの承認UIは実API未接続                           |
+| AC-003 | PASS            | AUTH、team/order、A、DB             | 現HEAD同一SHA再実行待ち                               |
+| AC-004 | PASS            | MEDIA、PWA、A                       | 現HEAD runtime再確認待ち                              |
+| AC-005 | PASS            | workflow、MEDIA、A                  | 承認UI経由の最新runtimeなし                           |
+| AC-006 | PASS            | MEDIA、C                            | 同一HEADの画面保存証拠なし                            |
+| AC-007 | PASS            | MEDIA、C                            | 独立runtime証拠なし                                   |
+| AC-008 | PASS            | workflow、PILOT、DB                 | 現HEAD再検証待ち                                      |
+| AC-009 | PASS            | PILOT、C、DB                        | 現HEAD再検証待ち                                      |
+| AC-010 | not implemented | —                                   | 加工ZIP検査なし                                       |
+| AC-011 | not implemented | —                                   | 原本／加工画像の承認処理なし                          |
+| AC-012 | not implemented | —                                   | ProcessingJob/providerなし                            |
+| AC-013 | PASS            | workflow/product、A                 | 承認UIからの同一SKU表示なし                           |
+| AC-014 | PASS            | AUTH、PWA、security                 | 現HEAD runtime再確認待ち                              |
+| AC-015 | not implemented | —                                   | Shops CSV adapterなし                                 |
+| AC-016 | not evidenced   | —                                   | 未確認時API OFFの専用証拠なし                         |
+| AC-017 | partial         | FIN、Web                            | 価格案の最新承認UI接続なし                            |
+| AC-018 | PASS            | ORD、INV、A                         | 現HEAD同時引当再検証待ち                              |
+| AC-019 | PASS            | ORD、AUTH、DB                       | 現HEAD runtime再確認待ち                              |
+| AC-020 | PASS            | ORD、DB                             | 現HEAD runtime再確認待ち                              |
+| AC-021 | PASS            | FIN、ORD                            | 現HEAD画面/E2E再実行待ち                              |
+| AC-022 | PASS            | FIN、accounting Web                 | 現HEAD runtime再確認待ち                              |
+| AC-023 | PASS            | FIN、A                              | 現HEAD CSV再出力待ち                                  |
+| AC-024 | not implemented | —                                   | Notion adapterなし                                    |
+| AC-025 | partial         | Web、PWA、UI127                     | 実運用画面の完全a11y未確認                            |
+| AC-026 | PASS            | audit/domain、DB、PG                | 現HEAD監査再確認待ち                                  |
+| AC-027 | PASS            | AUTH、team、DB                      | 現HEAD再検証待ち                                      |
+| AC-028 | partial         | UI127、PWA                          | 見た目127/127のみで実API未接続                        |
+| AC-029 | PASS            | FIN、DB                             | 現HEAD再検証待ち                                      |
+| AC-030 | PASS            | workflow、INV、ORD、A               | 現HEAD再検証待ち                                      |
+| AC-031 | PASS            | audit、DB、PG                       | 現HEAD再検証待ち                                      |
+| AC-032 | PASS            | AUTH、PWA                           | 実iPhone保存領域未確認                                |
+| AC-033 | PASS            | AUTH、PWA                           | 実端末logout/cache消去未確認                          |
+| AC-034 | PASS            | MEDIA、A、DB                        | 現HEAD実ファイル再確認待ち                            |
+| AC-035 | not implemented | —                                   | Notion allowlist/upsertなし                           |
+| AC-036 | not implemented | —                                   | Shops署名URLなし                                      |
+| AC-037 | not evidenced   | PWA                                 | 専用P1 feature flag証拠なし                           |
+| AC-038 | not evidenced   | MEDIA、PWA                          | ZIP/性能/backup/URL境界値不足                         |
+| AC-039 | not evidenced   | `docs/specs/legacy-asset-audit.md`  | allowlist scan実装証拠なし                            |
+| AC-040 | partial         | `package.json`、`vitest.config.ts`  | 現HEAD full check再実行待ち                           |
+| AC-041 | not implemented | —                                   | Shops更新CSVなし                                      |
+| AC-042 | PASS            | INV、DB、PG                         | 現HEAD再検証待ち                                      |
+| AC-043 | PASS            | INV、CODE、DB                       | 実物ラベル運用未確認                                  |
+| AC-044 | PASS            | INV、DB、PG                         | 現HEAD再検証待ち                                      |
+| AC-045 | PASS            | INV、CODE、PWA                      | 実端末scan session未確認                              |
+| AC-046 | PASS            | INV、ORD、A                         | 現HEAD再検証待ち                                      |
+| AC-047 | PASS            | MEDIA、inventory API、DB            | 実端末撮影と人手写真確認なし                          |
+| AC-048 | PASS            | team/order、AUTH、DB                | 現HEAD再検証待ち                                      |
+| AC-049 | PASS            | INV、DB、PG                         | 現HEAD再検証待ち                                      |
+| AC-050 | PASS            | INV、audit、DB                      | 実運用2人確認なし                                     |
+| AC-051 | PASS            | ORD、DB                             | 現HEAD再検証待ち                                      |
+| AC-052 | PASS            | CODE、INV、DB                       | 実ラベル読取未確認                                    |
+| AC-053 | PASS            | CODE、PWA、DB                       | 実iPhone camera拒否/手入力未確認                      |
+| AC-054 | PASS            | PWA、INV                            | 実端末offline競合未確認                               |
+| AC-055 | not evidenced   | CODE                                | GS1非生成の専用negative testなし                      |
+| AC-056 | partial         | INV、audit、DB                      | 現HEAD同一SHA再検証待ち                               |
+| AC-057 | partial         | INV、audit、DB                      | 現HEAD同一SHA再検証待ち                               |
+| AC-058 | PASS            | FIN、C、DB                          | 現HEAD再検証待ち                                      |
+| AC-059 | human pending   | FIN、DB                             | 実Money Forward取込未実施                             |
+| AC-060 | PASS            | FIN                                 | 現HEAD再検証待ち                                      |
+| AC-061 | human pending   | PILOT、DB、`p06-human-run-guide.md` | 人の固定10商品pilot未実施                             |
+| AC-062 | partial         | UI127-20260903、PWA、P13B/P14       | 注文系以外の全静的画面を同一SKUで実走する人手証拠なし |
+| AC-063 | partial         | CODE、UI127                         | 物理A4印刷と現HEAD再確認なし                          |
+| AC-064 | human pending   | CODE、PWA                           | 実iPhone読取未確認                                    |
+| AC-065 | partial         | P12A                                | P12-B/CのAPI・Web・写真接続なし                       |
+| AC-066 | partial         | P13A、P13B/P14                      | 実iPhoneでの写真・取出し・梱包確認待ち                |
+| AC-067 | partial         | workflow、Web、PILOT、P13B/P14      | 実利用者による公式画面の手動調査確認待ち              |
+| AC-068 | partial         | ORD、Web、A、P13B/P14               | 実利用者による任意取引ID運用確認待ち                  |
+
+| ID     | 状態            | 代表実装・検証                     | 残るgap                              |
+| ------ | --------------- | ---------------------------------- | ------------------------------------ |
+| TA-001 | PASS            | RLS、DB、PG                        | 現HEAD再実行待ち                     |
+| TA-002 | PASS            | AUTH、team、ORD、DB                | 現HEAD再検証待ち                     |
+| TA-003 | PASS            | MEDIA、DB                          | 現HEAD再検証待ち                     |
+| TA-004 | PASS            | MEDIA、PWA、A                      | 現HEAD再検証待ち                     |
+| TA-005 | not implemented | —                                  | ProcessingJob/provider契約なし       |
+| TA-006 | not implemented | —                                  | ZIP検査なし                          |
+| TA-007 | PASS            | workflow、MEDIA、C                 | 現HEAD再検証待ち                     |
+| TA-008 | partial         | workflow、ORD、INV、A              | 承認UIからの状態遷移runtimeなし      |
+| TA-009 | partial         | workflow、FIN、A                   | Notion/CSV adapter再試行なし         |
+| TA-010 | not implemented | —                                  | Notion payloadなし                   |
+| TA-011 | PASS            | ORD、AUTH、A、DB                   | 現HEAD再検証待ち                     |
+| TA-012 | PASS            | FIN                                | 現HEAD再検証待ち                     |
+| TA-013 | PASS            | audit、DB                          | 現HEAD再検証待ち                     |
+| TA-014 | PASS            | PG-RESTORE、0040、CHECK、REVIEW    | —                                    |
+| TA-015 | partial         | Web、PWA、UI127                    | 実運用UI未接続                       |
+| TA-016 | human pending   | CODE、PWA                          | 実iPhone Safari/home/camera未確認    |
+| TA-017 | not evidenced   | AUTH、DB                           | 専用secret scan結果なし              |
+| TA-018 | not evidenced   | —                                  | 10,000 SKU等の性能測定なし           |
+| TA-019 | PASS            | RLS、DB、PG                        | 現HEAD再実行待ち                     |
+| TA-020 | PASS            | audit、RLS、DB                     | 現HEAD再実行待ち                     |
+| TA-021 | PASS            | AUTH、PWA                          | 実端末logout/cache消去未確認         |
+| TA-022 | PASS            | FIN、DB                            | 現HEAD再検証待ち                     |
+| TA-023 | PASS            | workflow、INV、ORD、A              | 現HEAD再検証待ち                     |
+| TA-024 | not implemented | —                                  | Notion schema/upsertなし             |
+| TA-025 | PASS            | MEDIA、DB                          | 現HEAD再検証待ち                     |
+| TA-026 | partial         | PG-RESTORE、MEDIA、PWA             | providerの頻度・RPO/RTO実測なし      |
+| TA-027 | partial         | `package.json`、`vitest.config.ts` | 現HEAD coverage再実行待ち            |
+| TA-028 | not implemented | —                                  | Shops create/update CSVなし          |
+| TA-029 | PASS            | INV、RLS、DB                       | 現HEAD再検証待ち                     |
+| TA-030 | PASS            | CODE、INV、DB                      | 実ラベル読取未確認                   |
+| TA-031 | PASS            | INV、DB                            | 現HEAD再検証待ち                     |
+| TA-032 | PASS            | INV、audit、DB                     | 現HEAD再検証待ち                     |
+| TA-033 | PASS            | MEDIA、INV、A、DB                  | 実端末/実人物写真確認なし            |
+| TA-034 | PASS            | team、INV、A、DB                   | 現HEAD再検証待ち                     |
+| TA-035 | PASS            | ORD、DB                            | 現HEAD再検証待ち                     |
+| TA-036 | partial         | PWA、INV、UI127                    | 承認UIは静的で実API未接続            |
+| TA-037 | human pending   | CODE、DB                           | DataScanner/実iPhone/GS1未確認       |
+| TA-038 | partial         | INV、audit、PWA、DB                | 現HEAD再検証待ち                     |
+| TA-039 | PASS            | FIN、DB                            | 現HEAD再検証待ち                     |
+| TA-040 | PASS            | FIN、DB                            | 実Money Forward取込未確認            |
+| TA-041 | PASS            | FIN                                | 現HEAD再検証待ち                     |
+| TA-042 | PASS            | INV、ORD、A                        | 現HEAD再検証待ち                     |
+| TA-043 | human pending   | Web、PILOT、PWA                    | 人の10商品pilotと実機a11y未確認      |
+| TA-044 | partial         | CODE、UI127、PWA                   | 実iPhone camera/読取未確認           |
+| TA-045 | partial         | CODE、UI127、PWA                   | 物理印刷と現HEAD再確認なし           |
+| TA-046 | partial         | P12A                               | P12-Aのみ。P12-B/C API・Webなし      |
+| TA-047 | partial         | P13A、P13B/P14                     | Web・ブラウザPASS、実iPhone確認待ち  |
+| TA-048 | partial         | workflow、ORD、PILOT、P13B/P14     | 自動・ブラウザPASS、実利用者確認待ち |
 
 ## 合格条件
 
 - 必須テスト100%合格。
 - domain/security line coverage 80%以上、branch 75%以上。
-- UI評価90点以上。
+- `docs/specs/ui-evaluation-rubric-v1.md`のUI評価90点以上かつ重大項目0点なし。
 - Critical/High 0件。
 - 独立レビュー後に影響範囲を再検証。
+
+## 2026-08-29 runtime接続再監査
+
+- 独立Sol max監査はCritical 0、High級ブロッカー8群。Draft PR #9をGoal全体の合格とは判定しない。
+- `mobile/screens/[screen]`と`pc/[screen]`は承認UIの静的review routeであり、`ApprovedMobileDemo` / `ApprovedPcDemo`から`/v1` API・workspace・server actionへの接続は0件だった。
+- 127/127の視覚合格は維持するが、保存・権限・状態遷移の合格を意味しない。静的review画面と認証済み実運用画面を区別する。
+- 現HEAD `a42db0fdd67735857c130af1f58b73d883fcd460`と最新fresh/upgrade PostgreSQL証拠SHAが異なるため、P12〜P14後に同一SHAで全検証をやり直す。
+- 詳細と再発防止候補は`memory/incidents/INC-20260829-012-approved-ui-static-runtime-gap.md`を参照する。
+
+## 2026-08-29 P12-A最終結果
+
+- 新規`0034_inspection_concern_contract.sql`で、検品結果と気になる箇所を更新・削除しない追記履歴として追加した。見える不備は同一SKUの位置・全体写真を要求し、においは説明を必須にする。
+- 最終確認は別の直前記録者が行い、最新の気になる箇所を完全一致で参照する。後から内容を訂正した場合は、同じ処理内で検品結果も未確認へ戻さない限りDBが拒否する。
+- owner／inventory manager、または有効なcapture担当者だけを許可し、別workspace、別SKU、期限切れ・取消済み担当、shipping/accounting担当をDBのRLSでも拒否する。秘密の写真保存先は公開contractへ含めない。
+- 公式PostgreSQL 18.6の新規導入試験は34 migration、53-table RLS、権限攻撃、自己確認、最新状態、2接続の同時訂正をPASS。同時訂正は別PIDと実Lock待ちを確認し、成功1件・23505拒否1件、履歴の枝分かれ0件だった。
+- 既存データ更新試験は0001〜0034をPASSし、SKU、写真、pilot、財務、CSV bytes/hash、監査履歴が更新前後で不変だった。
+- 最終`npm.cmd run check`は34 files / 253 tests、coverage statements 84.66%、branches 80.56%、functions 100%、lines 90.68%、format/lint/typecheck、API/Web build 86 routesをPASSした。
+- 実装していない別Sol maxの最終判定はCritical 0 / High 0 / Medium 0 / Low 0。P12-AはPASS、P12-Bの技術gateはGO。
+- P12-Bの商品別初期データは、承認済み画面が件数だけを固定し項目名・必須範囲を固定していないため、`p12-product-template-proposal-v1.md`の2点を利用者が確認するまで書き込まない。
+
+## 2026-08-30 P13-A最終結果
+
+- 新規`0035_shipping_preflight_photo.sql`、strict contract、order API、private local storageで、発送前写真の3設定、販売額欠損、注文単位の人の選択、商品写真・梱包後写真、写真確認・梱包確認・発送確認を別記録として実装した。
+- shipping担当には有効な注文割当の工程状態だけを返し、販売額、目安額、原価、利益、税務情報、private storage keyを返さない。写真contentは`private, no-store`、`nosniff`で、外部送信を追加していない。
+- 写真保存・写真確認・梱包・発送・判断の同時再送を別接続の実Lock待ちで攻撃し、同一内容は同じ結果、異なる内容は拒否、業務行・監査・操作記録は各1件だけになることを確認した。
+- 更新前から`packed`だった注文は、旧梱包記録を自動昇格または変更せず、人の再確認を新しいserver記録として1件だけ追記した後に発送できる。通常の再梱包や確認済み注文への追加記録は拒否する。
+- 公式PostgreSQL 18.6のfreshは新規DB`resale_p13_fresh_20260830f`へ35 migrationを適用し、64 table、59-table RLS matrix、権限・金額・写真・同時操作・旧梱包回復をPASSした。
+- upgradeは新規空DB`resale_p13_upgrade_20260830d`で0001〜0035をPASSし、既存SKU、写真、pilot、finance、CSV bytes/hash、audit、旧梱包記録を保持した。途中のB/Cは0035適用前のfixture作成ミスで停止し、修正後は使い回さず新しいDで最初から合格した。
+- 最終`npm.cmd run check`は35 files / 271 tests、format/lint/typecheck、API/Web build、Next 86 routesをPASSした。実装していない別Sol maxはCritical 0 / High 0 / Medium 0 / Low 0、P13-A PASS、P13-B gate GOと判定した。
+- AC-066／TA-047全体はP13-Bの承認済み実運用Web、390/768/1440px、キーボード、外部通信0、実iPhone確認が残るため`partial`を維持する。
+
+## 2026-09-03 P13-B/P14実運用接続と全127画面の再検証
+
+- モバイルM34〜38とPC29〜32を、承認済み画面構成のまま認証済み`/shipping`実運用画面へ接続した。注文登録はサーバー採番の`POST /orders`を使用し、作成後は重複確認更新を挟まず次工程へ進む。
+- 匿名配送は住所行を0件のまま扱い、住所あり配送だけを暗号化行として保存する。住所表示許可は本人・5分・注文単位で、shipping担当へ原価、利益、販売額、税務情報、保存先keyを返さない。旧注文の未設定値は互換上`NULL`として保持する。
+- モバイルは匿名配送の注文登録から商品取出しまで、PCは住所あり配送の注文登録、商品・場所の二重読取、梱包確認、発送記録までをローカル実ブラウザで完走した。修正後のPC再走では匿名配送かつ取引ID・販売額・手数料・梱包費が未入力でも、人が未入力を確認した場合だけ発送できることを確認した。
+- 場所写真取得でownerにも注文割当を要求して403になる不具合を検出し、owner/inventory managerは有効membership、shipping担当は自分の有効な注文割当を要求する権限へ修正した。修正後は最新承認済みの場所写真を非公開object URLとして実表示し、console error/warning 0を確認した。
+- 最初の独立レビューが、登録時の未知の手数料・梱包費を0円で保存するHigh、実読取時刻を合成するMedium、migration 0037/0038の失敗時rollback証拠不足Lowを検出した。登録時は原価だけを保存し、販売額・手数料・梱包費は未入力のまま保持するよう修正した。会計summaryは主要事実が揃うまで409で停止し、新規CSVも再出力も不可とする。
+- 実ブラウザの修正後再走では、商品読取から場所読取まで17.962秒、場所読取から人の確定まで21.614秒の実時刻をDBへ保持した。注文日時より前の発送時刻は409で拒否し、正しい時刻への訂正後だけ発送済みになった。最終DBは原価1件・送料1件だけで、販売額・手数料・梱包費の0円行、匿名住所行、住所表示許可はいずれも0件だった。
+- 最新同一差分の`npm.cmd run check`はfixture 44 PNG/hash、format、lint、typecheck、45 files / 401 tests、coverage statements 84.66%、branches 80.56%、functions 100%、lines 90.68%、API/Web buildをPASSした。
+- fresh DB `resale_p14_final_fresh_20260903f`とupgrade DB `resale_p14_final_upgrade_20260903e`はmigration 0001〜0039、restricted role、65-table RLS、注文番号・配送方法・住所・場所写真権限・金額欠損・並行操作・既存データ保持をPASSした。0037/0038/0039は注入した途中失敗で全変更がrollbackされ、その後の再適用もPASSした。
+- route検証はモバイル75/75、PC52/52、合計127/127 PASS。`output/playwright/root-all-fidelity-p14-final-finance-20260903`はviewport 127/127、外部runtime resource 0件、`output/playwright/approved-ui-comparison/p14-final-finance-20260903`は127画面・欠落0件・25比較シートを記録した。M34〜38とPC29〜32の比較シートも目視した。
+- 書込みを担当していない別Sol maxの最終独立再レビューはPASS（Critical 0 / High 0 / Medium 1 / Low 1）。過去H1/M2/L1はすべてClosed。MediumはPC29の「販売金額 必須」と「未入力でも続行」の承認文言矛盾、Lowは0039の各不整合を実DBで個別に拒否する回帰試験の追加候補で、現行SQLの不具合ではない。Draft PR #9はDraftのまま最新化可、ready化・mergeは禁止と判定した。
+- ここまでの合格はPC内の自動・実ブラウザ証拠である。実iPhone Safari、ホーム画面追加、カメラ/Code 128、圏外復帰、A4 24面ラベルの物理印刷、固定10商品の人手pilot、実Money Forward取込、P12-B/Cの2項目は未確認のまま分離する。
+
+## 2026-09-03 P14-R1 migration 0039実DB境界試験
+
+- 以前の独立レビューでLowだった0039の境界試験を補強した。登録済み注文について、原価0件、原価2件、販売額2件、手数料2件、梱包費2件、別SKU、異なる税設定の7ケースを、それぞれ独立したtransaction内で一時作成する。
+- 各ケースは金額以外の発送前提がすべて有効であることを先に確認し、0039固有メッセージとSQLSTATE 23514で発送が拒否されることを検査する。拒否後は別接続で、注文が`packed`、発送確認・送料事実・fixture残骸が0件、元の金額件数・写真・readiness・住所leaseが維持されることを確認する。
+- fresh DB `resale_p14r_fresh_20260903a`へ、存在する38 migrationファイル（0036は未承認P12-B用に予約、最終は0039）を適用し、`npm.cmd run test:postgres`をPASSした。直後の正常発送、legacy/P13互換、65-table RLSを含む全実DBフローも同じ実行で合格した。
+- upgrade DB `resale_p14r_upgrade_20260903a`は、空DBから0039までの適用、0037/0038/0039を含む注入失敗rollback・再適用、既存履歴保持を`npm.cmd run test:postgres-upgrade`でPASSした。
+- 同一差分の`npm.cmd run check`はfixture 44 PNG/hash、format、lint、typecheck、45 files / 401 tests、coverage 84.66 / 80.56 / 100 / 90.68、API/Web production build、Next 86 routesをPASSした。
+- 書込みを担当していない別Sol maxの独立レビューはPASS（Critical 0 / High 0 / Medium 0 / Low 0）。以前の0039試験不足LowはClosedとし、production SQL/API/Webと承認済みUIに変更がないため、127画面の既存視覚証拠は引き続き有効とした。
+- 残る全体gateは、PC29文言の利用者再承認、P12-B/Cの2判断、実iPhone、A4 24面物理印刷、固定10商品pilot、実Money Forward取込、GitHub Actions運用方針である。P14-R1合格をこれらの人手確認の代替にしない。
+
+## 修正版Aの再開gate
+
+- Core回帰: P0必須AC `001、003〜008、013〜014、018〜023、025〜026、028〜034、039、042〜055` とP0必須TA `001〜004、007〜009、011〜017、019〜023、025〜027、029〜037` の既存証拠を現行branchで再実行し、修正版migrationによる退行0件を確認する。P1固有条件はflag OFFと禁止経路を確認する。
+- 差異: AC-056/057、TA-038、TA-042を実装し、1人可逆、2人別担当、復元、引当停止、offline停止、不可逆経路0件を確認する。
+- 会計: AC-058〜060、TA-039〜041/043を実装し、未設定block、承認済みmapping、Money Forward 27列、汎用19列、schema/fixture hash、財務fixture、`?`のaccessibilityを確認する。
+- Pilot: AC-061の新規runは`docs/specs/pilot-protocol-v1.1.md`の固定manifest、対象、環境、開始/終了、中断、wall-clock規則で10点を測り、中央値、欠損、差戻し、manual correction、誤格納を記録する。v1.0は履歴だけに使い、実機がない項目は未確認として分離する。
+- 上記が全合格するまで、P1機能flag、Draft PRのready化、本番/mergeへ進まない。
+
+## 2026-08-24 v1.1現行状態
+
+- fixture kitは`listing_prep_pilot_v1.1.0`、migration `0033`、manifest SHA `a44d25d914d721c1a62aa4330688bf64264eae54c8ddb38c833cd20b6827fa18`へ固定し、`WARMUP-01`＋10商品×4 PNGの生成・整合確認を実装した。
+- UI評価seedは4つの独立workspaceを作成し、同じDB/media rootへの再実行を空状態ゲートで安全に拒否する。captureではTOP/OUTER 4項目、PANTS 5項目、KNIT `unstretched` 4項目、候補自動確定なしの文言、390/768/1440のoverflow 0、console error/warn 0を確認した。
+- solo/dual棚卸は写真、二重読取、3秒keyboard確認、欠損候補DB停止、同一場所復元、不可変理由、最終承認まで確認した。dualのAPI hard blockは元担当者を409で拒否し、最終P05の画面は元担当者の確認formを非表示、承認buttonをdisabled、日本語handoff表示として409送信を防いだ。別manager経路は`approved dual_actor`まで完走した。会計seeded UIは7/7 human mappingとCSV出力確認まで完了した。
+- CSS/JSX修正後は390pxでheader back 44x44、save 327x48、measurement input 303x44、bottom nav各122x49、overflow 0を確認し、200%相当の390×720でもoverflow 0、主要button 44px以上、console 0/warn 0、request loopbackのみを確認した。
+- 最新のfull `npm.cmd run check`はfixture 44 PNG/hash一致、format、lint、typecheck、29 files / 202 tests、coverage（statements 84.66%、branches 80.56%、functions 100%、lines 90.68%）、API/Web production buildまでPASSした。fresh/upgrade PostgreSQLもmigration `0033`までPASSした。
+- target SHA `02c4641599eb6885bca3256f7792cf0a08c464bb`のP05独立Terra最終評価は100/100（Critical/High/Medium 0）。`c63eb5b`の96/100は履歴であり、現行結果は14 PNGの最終報告を正本とする。
+- Web broad bind incident後、`apps/web/package.json`のdev/startと契約testへ`127.0.0.1`固定を追加した。修正版runtime netstatは`127.0.0.1:4173`だけ、targeted 24 testsとWeb buildはPASS。外部request、課金、merge、公開は0件。
+- 実利用者の`WARMUP-01`＋固定10商品pilot、実iPhone Safari、最終独立Solレビューは未実施。Draft PR、merge、本番公開も未実行。
+
+## 2026-08-24 v1.1最終証拠追補
+
+- 会計seeded UIは正常経路を7/7件で人がmapping確認した。Money Forward 27列・5行CSVはローカルdownload済みで、1649 bytes、SHA-256 `e833a060cc7fef30fa90140fd4330e5523579d34e871d2fc061aeed349dc1e01`。未設定税項目はUI/APIともblockし、mapping差し替え前の旧CSVは不変。実際のMoney Forward取込は未実施。
+- 会計responsiveは1440/768/390/720（200%相当）でoverflow 0、主要button 44px以上、console error/warn 0、通信はloopbackのみ。
+- solo棚卸は架空800×800・12KB写真、二重読取、3秒keyboard確認、候補欠損時のDB停止、同一場所復元を確認した。UI/API修正後の不可変な理由は`not_seen_during_count`と`found_in_place`を区別し、最終承認までPASS。dualはAPIで元担当者を409拒否しつつ、最終画面では元担当者の確認・承認操作を事前に無効化した。別managerの写真・二重読取・3秒確認・承認を経て`approved dual_actor`となった。
+- capture TOPSは4写真・4採寸、OCR候補の自動確定なし、候補不一致を拒否。matching UIの`TEST BRAND`候補を人が`human_confirmed`し、brand/size/colorとbrand-tag根拠を保存した。出品文は未確認のまま出さず、人のcopy確認を要求した。全requestは`127.0.0.1`の2xx/201、console 0。
+- workflow 390pxのresponsive不具合を修正し、summary childrenは334/111/111/111px、selectとnext linkは44px、overflow 0、表示文言は「格納待ち」とした。
+- 最新full `npm.cmd run check`はPASS。fixture 44 PNG/hash `a44d25d...`、29 files / 202 tests、coverage statements 84.66%、branches 80.56%、functions 100%、lines 90.68%、lint/typecheck/API/Web buildを確認した。fresh PGは0033まで、49-table RLS等とimmutable reason fieldsを含む結合確認がPASS。upgrade integrationも0001〜0033 rollback/preservationがPASSした。使い捨てDBは削除済み。
+- runtimeはloopbackのみ。外部通信、課金、deploy、mergeは0件。
+- 未確認: 人の`WARMUP-01`＋固定10商品pilot、実iPhone、実際のMoney Forward取込、P08最終独立Sol review、Draft PR ready。P05はPASSだがGoalは完了扱いにしない。
+
+## 2026-08-25 P06R安全preflight現行証拠
+
+- 対象SHA: `a976d614819a662cca3be36c23989aecd9ca968e`。root `npm.cmd run check`はfixture 44/hash、format/lint/typecheck、31 files / 209 tests、coverage statements 84.66%、branches 80.56%、functions 100%、lines 90.68%、API/Web buildまでPASSした。
+- 同SHAのfresh PostgreSQL 33 migrations、restricted LOGIN、49-table RLS、rerun tests、upgrade 0001〜0033 rollback/preservationはPASS。合成preflightのterminal failed案内/WARMUP、active run `917e2178-1c1c-4717-999b-0613f8b534a9`、一意readonly SKU/receipt、old summary 0、capture/listing disabled、未登録表示を確認した。
+- category `tops` mismatch初回409を修正後、同run TOP-01は201（`INV-910006-4`）。console error/warn 0、全18 requestsはloopbackのみ、390/768/1440 overflow 0。証拠PNGは`output/playwright/p06r-preflight/final-a976-active-390x844.png`、`final-a976-active-768x1024.png`、`final-a976-active-1440x1000.png`。
+- 独立Terra最終GOはa976限定、Critical/High/Medium/Low 0、H-P06R-02 preflight Closed。合成preflightは人P06の代替ではなく、人P06・実iPhoneは未確認。P08 Sol、Draft PRも未実施。
+
+> 以下のIteration 4〜24は各時点の履歴であり、現行P0の最終合格証拠ではない。現行判定は本節と、同一実装commitのUI/pilot証拠を使用する。
 
 ## Iteration 4の実証範囲
 
@@ -215,3 +464,44 @@ P0の必須ACは AC-001、003〜008、013〜014、018〜023、025〜026、028〜
 - 実DB: 新規DBへ0001〜0018を適用し、37業務テーブルRLS、棚卸snapshot、開始後移動の非混入、古いラベル拒否監査、主要P0一気通貫を含む結合テストPASS。
 - 実画面: `output/playwright/iteration-24-team-assignments.png`、`iteration-24-inventory-stocktake.png`。console error 0件。PC内`127.0.0.1`以外への通信0件。
 - 未確認: 実iPhone Safari、ホーム画面追加、実カメラ、圏外復帰、HEIC/WebP。外部push、Draft PR、公開、Slack/Notion追加送信は未実行。
+
+## 2026-09-08 P0終了監査による現行判定
+
+過去の`PASS`、`partial`、`human pending`は当時の履歴として保持し、現行の厳格な判定は[`goal-closeout.md`](./goal-closeout.md)を正本とする。基準SHAは`220d6266a3b0975a2af0c81fefde2b316576755b`、検証候補は同SHA+限定3修正である。
+
+- P0 AC 52件: PASS 40 / NOT_RUN 2 / NOT_IMPLEMENTED 3 / WAITING_HUMAN 7。
+- P0 TA 42件: PASS 34 / NOT_RUN 1 / FAIL 2 / NOT_IMPLEMENTED 1 / WAITING_HUMAN 4。
+- 修正3件: Pages base path二重化、Windows fresh checkoutのfixture byte不一致、security coverage不足。限定差分の独立レビューはCritical 0 / High 0。
+- 未解消P0影響Medium: 通常`pg_restore`が管理番号検査関数の未固定`search_path`で停止する。段階復元は70 table / 856 row / hash mismatch 0だが、TA-014/026をPASSへ繰り上げない。
+- モバイル擬似status表示は基準SHAですでに削除済み。実iPhone safe areaはWAITING_HUMAN。
+- 基準SHAのAC-067/TA-048検索支援は未実装。正本worktreeにある先行draftを検証済み実装へ数えない。
+- GitHubがPUBLICでprivate限定条件と不一致のため、push、PR/Pages/Slack/Notion更新はBLOCKED。P1、ready化、merge、本番API公開は行わない。
+
+## 2026-09-08 P17 TA-014通常復元の現行訂正
+
+Iteration 43は修正前の履歴として保持する。現行の厳格な判定は[`goal-closeout.md`](./goal-closeout.md)と次のP17証拠を正本とする。
+
+- 必須P0 ACは、`1 + 6 + 2 + 6 + 2 + 7 + 1 + 27 = 52`件。現行集計はPASS 40 / NOT_RUN 2 / NOT_IMPLEMENTED 3 / WAITING_HUMAN 7。
+- 必須P0 TAは、`4 + 3 + 7 + 5 + 3 + 20 = 42`件。現行集計はPASS 35 / NOT_RUN 2 / FAIL 0 / NOT_IMPLEMENTED 1 / WAITING_HUMAN 4。
+- 修正前: PostgreSQL 18.6の隔離環境で70 public tablesを持つdumpを空DBへ通常復元すると、`inventory_unit`のCOPY中に`app_code_check_digit(text) does not exist`で終了コード1となった。
+- 再発防止: `restore-safe-code-helpers.test.ts`は0040追加前にFAILし、追加後PASS。既存`0015`は変更せず、`0040_restore_safe_checked_code_helpers.sql`で3関数の`search_path`を固定し、内部呼出しを`public.`修飾した。
+- 正常復元: `pg_dump --format=custom --no-owner`から`pg_restore --exit-on-error --single-transaction --no-owner`をPASS。70 tables / 48 rows、全行SHA-256 `3570429b1b2780eaaef40068cf56ea9dc3b53841fed9f0af4a4595f3b28ca9c8`、244 foreign keys、原本写真manifest SHA-256 `6b69dd2eadaa20d06cac61e97c6321994e95ec27894b9586790d7c64eecd5858`、監査SHA-256 `c8446a645a97016171dcbeb2e29ce98991a62dd3663175d6a1aaeea4a3c0edcc`が一致した。
+- 安全境界: 同一DB、非空target、権限不足、loopback外、破損dump、写真junctionを拒否。子processから継承`PG*`を除去し、接続文字列へ拡張できるDB名、query/hash、stderrの生行値を拒否・秘匿する回帰testをPASSした。
+- 回帰: fresh 39 migration、upgrade 0001〜0040と0040注入失敗rollback・再接続・再適用、root `npm.cmd run check` 50 files / 431 testsをPASS。coverageはlines 89.06%、branches 80.93%。
+- 独立再レビュー: Astra mediumはCritical 0 / High 0 / Medium 0 / Low 1でPASS。Lowは未検証IPv6形式が安全側に接続失敗する互換性で、正式手順は実証済みのIPv4 `127.0.0.1`に限定する。
+- 現行判定: TA-014はPASS。TA-026はDBとprivate Storage原本の復元・hashまで証明したが、実運用providerのバックアップ頻度とRPO/RTOを未計測のためNOT_RUN/partialのままとする。
+- モバイル上部の固定`9:41`、Dynamic Island、電波、Wi-Fi、電池は基準SHA `220d626`ですでに削除済み。古い公開画像へは今回反映しておらず、実iPhone safe areaはWAITING_HUMAN。
+- 外部書込みは0件。push、Draft PR、Pages、Slack、Notionは更新していない。
+
+## 2026-09-09 P20最終候補による現行訂正
+
+2026-09-08の判定は当時の履歴として保持する。現在の正本は[`p0-progress-checklist.md`](./p0-progress-checklist.md)と[`goal-closeout.md`](./goal-closeout.md)である。
+
+- P0 AC 52件: PASS 45 / WAITING_HUMAN 7。Codex側のNOT_RUN / NOT_IMPLEMENTED / FAILは0。
+- P0 TA 42件: PASS 38 / WAITING_HUMAN 4。Codex側のNOT_RUN / NOT_IMPLEMENTED / FAILは0。
+- `npm.cmd run check`: 63 files / 580 tests、format/lint/typecheck/security/build、Next 86 routesをPASS。
+- fresh: 45 migrations through 0046。upgrade: 0001→0046。通常restore: 73 tables / 316 rows / 253 FK / private files 23、全行・file・audit hash一致。
+- 承認UI: mobile 75＋PC52の127/127を最終buildから撮影し、missing 0、external resource 0、比較25シート。live 10 route×3幅の30/30もoverflow/console/page error/external request各0。
+- 独立レビュー: PASS。Critical 0 / High 0 / P0阻害Medium 0 / Low 2。Lowは正式手順外IPv6と、未公開0043単独運用時だけのpending互換。
+- 実iPhone、物理A4/Code 128、固定10商品pilot、実Money Forward、商品別写真項目の最終判断は11件の`WAITING_HUMAN`として成功扱いにしない。
+- commit、push、PR/Pages/Slack、本番公開、課金、外部runtime APIは行わない。指定済みNotion進捗表だけを同期する。

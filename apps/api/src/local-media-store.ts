@@ -23,8 +23,18 @@ export interface PrivateMediaStore {
     mimeType: "image/jpeg" | "image/png",
   ): Promise<StoredMediaResult>;
   readDisplay(storageKey: string, expectedSha256: string): Promise<Buffer>;
+  readSanitizedOriginal(input: SanitizedOriginalReadRequest): Promise<Buffer>;
   removeOriginal(storageKey: string, expectedSha256: string): Promise<void>;
   removeDisplay(storageKey: string, expectedSha256: string): Promise<void>;
+}
+
+export interface SanitizedOriginalReadRequest {
+  storageKey: string;
+  expectedSha256: string;
+  expectedMimeType: "image/jpeg" | "image/png";
+  expectedSizeBytes: number;
+  expectedWidth: number;
+  expectedHeight: number;
 }
 
 export class LocalPrivateMediaStore {
@@ -113,6 +123,38 @@ export class LocalPrivateMediaStore {
       throw new Error("The display file hash no longer matches the approved database record");
     }
     return bytes;
+  }
+
+  async readSanitizedOriginal(input: SanitizedOriginalReadRequest): Promise<Buffer> {
+    const original = await readFile(this.safePath(input.storageKey, "originals"));
+    if (
+      original.length !== input.expectedSizeBytes ||
+      original.length < 1 ||
+      original.length > 25 * 1024 * 1024 ||
+      sha256(original) !== input.expectedSha256
+    ) {
+      throw new Error("The private original no longer matches its database record");
+    }
+    const inspectedOriginal = inspectImage(original);
+    if (
+      inspectedOriginal.mimeType !== input.expectedMimeType ||
+      inspectedOriginal.width !== input.expectedWidth ||
+      inspectedOriginal.height !== input.expectedHeight
+    ) {
+      throw new Error("The private original image metadata no longer matches its database record");
+    }
+    const sanitized = stripLocationMetadata(original, input.expectedMimeType);
+    const inspectedSanitized = inspectImage(sanitized);
+    if (
+      sanitized.length < 1 ||
+      sanitized.length > 25 * 1024 * 1024 ||
+      inspectedSanitized.mimeType !== input.expectedMimeType ||
+      inspectedSanitized.width !== input.expectedWidth ||
+      inspectedSanitized.height !== input.expectedHeight
+    ) {
+      throw new Error("The private original could not be sanitized safely");
+    }
+    return sanitized;
   }
 
   async removeDisplay(storageKey: string, expectedSha256: string): Promise<void> {
@@ -240,33 +282,64 @@ function stripJpegMetadata(bytes: Buffer): Buffer {
   let offset = 2;
   let foundScan = false;
   while (offset < bytes.length) {
-    if (bytes[offset] !== 0xff || offset + 1 >= bytes.length)
-      throw new Error("Invalid JPEG segment");
-    const marker = bytes[offset + 1] ?? 0;
-    if (marker === 0xda) {
-      chunks.push(bytes.subarray(offset));
-      foundScan = true;
-      break;
-    }
+    if (bytes[offset] !== 0xff) throw new Error("Invalid JPEG segment");
+    const markerStart = offset;
+    let markerOffset = markerStart + 1;
+    while (markerOffset < bytes.length && bytes[markerOffset] === 0xff) markerOffset += 1;
+    if (markerOffset >= bytes.length) throw new Error("Truncated JPEG marker");
+    const marker = bytes[markerOffset] ?? 0;
+    const markerEnd = markerOffset + 1;
+    if (marker === 0x00) throw new Error("Invalid stuffed JPEG byte outside scan data");
     if (marker === 0xd9) {
-      chunks.push(bytes.subarray(offset, offset + 2));
-      foundScan = true;
-      break;
+      if (!foundScan) throw new Error("JPEG has no scan before end marker");
+      chunks.push(bytes.subarray(markerStart, markerEnd));
+      return Buffer.concat(chunks);
     }
-    if ((marker >= 0xd0 && marker <= 0xd7) || marker === 0x01) {
-      chunks.push(bytes.subarray(offset, offset + 2));
-      offset += 2;
+    if (marker === 0xd8 || (marker >= 0xd0 && marker <= 0xd7)) {
+      throw new Error("Invalid standalone JPEG marker outside scan data");
+    }
+    if (marker === 0x01) {
+      chunks.push(bytes.subarray(markerStart, markerEnd));
+      offset = markerEnd;
       continue;
     }
-    if (offset + 4 > bytes.length) throw new Error("Truncated JPEG segment");
-    const length = bytes.readUInt16BE(offset + 2);
-    const end = offset + 2 + length;
+    if (markerEnd + 2 > bytes.length) throw new Error("Truncated JPEG segment");
+    const length = bytes.readUInt16BE(markerEnd);
+    const end = markerEnd + length;
     if (length < 2 || end > bytes.length) throw new Error("Invalid JPEG segment length");
-    if (![0xe1, 0xed, 0xfe].includes(marker)) chunks.push(bytes.subarray(offset, end));
+    if (![0xe1, 0xed, 0xfe].includes(marker)) {
+      chunks.push(bytes.subarray(markerStart, end));
+    }
     offset = end;
+    if (marker === 0xda) {
+      foundScan = true;
+      const nextMarker = findJpegMarkerAfterScan(bytes, offset);
+      chunks.push(bytes.subarray(offset, nextMarker));
+      offset = nextMarker;
+    }
   }
-  if (!foundScan) throw new Error("JPEG has no scan or end marker");
-  return Buffer.concat(chunks);
+  throw new Error(foundScan ? "JPEG has no end marker" : "JPEG has no scan or end marker");
+}
+
+function findJpegMarkerAfterScan(bytes: Buffer, scanOffset: number): number {
+  let offset = scanOffset;
+  while (offset < bytes.length) {
+    if (bytes[offset] !== 0xff) {
+      offset += 1;
+      continue;
+    }
+    const markerStart = offset;
+    let markerOffset = markerStart + 1;
+    while (markerOffset < bytes.length && bytes[markerOffset] === 0xff) markerOffset += 1;
+    if (markerOffset >= bytes.length) throw new Error("Truncated JPEG scan marker");
+    const marker = bytes[markerOffset] ?? 0;
+    if (marker === 0x00 || (marker >= 0xd0 && marker <= 0xd7)) {
+      offset = markerOffset + 1;
+      continue;
+    }
+    return markerStart;
+  }
+  throw new Error("JPEG has no end marker");
 }
 
 function stripPngMetadata(bytes: Buffer): Buffer {

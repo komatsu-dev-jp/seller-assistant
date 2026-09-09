@@ -1,0 +1,16 @@
+{
+  "name": "Resale Ops 承認済みUIレビュー",
+  "short_name": "Resale Ops",
+  "description": "フリマ物販業務アプリの承認済みUIを架空データで確認するPWA",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f5f7fa",
+  "theme_color": "#13213a",
+  "orientation": "any",
+  "lang": "ja",
+  "categories": ["business", "productivity"],
+  "icons": [
+    { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

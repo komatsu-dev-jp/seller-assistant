@@ -1,0 +1,254 @@
+.page {
+  color: #17243c;
+}
+
+.workspace {
+  min-width: 0;
+}
+.returnFlow {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  max-width: 900px;
+  margin-inline: auto;
+  overflow-wrap: anywhere;
+}
+.returnFlow :is(input, select, button) {
+  max-width: 100%;
+}
+.returnFlow h2:focus {
+  outline: 3px solid #3576ce;
+  outline-offset: 4px;
+}
+.returnFlow form {
+  display: grid;
+  gap: 16px;
+  margin-block: 20px;
+}
+.returnFlow label {
+  display: block;
+  min-height: 44px;
+  line-height: 1.7;
+}
+.returnFlow :is(input:not([type="checkbox"]), select) {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  font-size: 16px;
+}
+.returnFlow button {
+  min-height: 44px;
+  white-space: normal;
+  margin: 6px 4px 6px 0;
+}
+.stages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0 24px;
+}
+.stages button {
+  min-height: 44px;
+  padding: 10px 18px;
+  border: 1px solid #d6dfe9;
+  border-radius: 12px;
+  background: white;
+  color: #42516a;
+}
+.stages button[aria-pressed="true"] {
+  background: #e8f1ff;
+  color: #1853ab;
+  border-color: #82ade8;
+  font-weight: 700;
+}
+.workspace[data-stage="items"] :global(.inventoryWorkbenchGrid),
+.workspace:not([data-stage="items"]) :global(.inventoryTablePanel),
+.workspace:not([data-stage="create"]) :global(.inventoryCreatePanel),
+.workspace:not([data-stage="photos"]) :global(.locationPhotoWorkbench),
+.workspace[data-stage="create"] :global(.locationTree) {
+  display: none;
+}
+.workspace :global(.inventoryWorkbenchGrid) {
+  grid-template-columns: minmax(0, 1fr);
+}
+.workspace[data-stage="photos"] :global(.inventoryWorkbenchGrid) {
+  grid-template-columns: minmax(220px, 1fr) minmax(0, 2fr);
+}
+.workspace :global(.inventoryTablePanel) {
+  margin-top: 0;
+}
+.page :is(button, select, input:not([type="checkbox"]), a) {
+  min-height: 44px;
+}
+.page :is(button, a, input, select, textarea):focus-visible {
+  outline: 3px solid #3576ce;
+  outline-offset: 3px;
+}
+.page :global(.stocktakeMobileStages) {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 18px 0;
+}
+.page :global(.stocktakeMobileStages) button {
+  padding: 10px 16px;
+}
+.page :global(.stocktakeMobileStages) button[aria-pressed="true"] {
+  background: #1853ab;
+  color: white;
+}
+.page :global(.stocktakeMobilePanel):not(:global(.isActive)) {
+  display: none;
+}
+.page
+  :global(.stocktakeControl):not([data-mobile-stage="difference"])
+  :global(.stocktakeDesktopBoard) {
+  grid-template-columns: minmax(0, 1fr);
+}
+.manualNote {
+  padding: 20px;
+  margin: 16px 0;
+  background: #eff6ff;
+  border: 1px solid #c7dcf8;
+  border-radius: 16px;
+  line-height: 1.7;
+}
+.manualLabels {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.manualLabels article {
+  background: white;
+  border: 1px solid #dbe2ec;
+  border-radius: 12px;
+  padding: 20px;
+  overflow-wrap: anywhere;
+}
+.manualLabels strong {
+  display: block;
+  font-size: 22px;
+  margin-bottom: 8px;
+}
+.footer {
+  display: none;
+}
+.scanFooter {
+  position: fixed;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  padding: 8px 4px max(8px, env(safe-area-inset-bottom));
+  background: white;
+  border-top: 1px solid #dde4ee;
+}
+.scanFooter :is(a, span) {
+  display: grid;
+  place-content: center;
+  min-height: 48px;
+  text-align: center;
+  font-size: 12px;
+  text-decoration: none;
+}
+.scanFooter [aria-disabled="true"] {
+  color: #788394;
+}
+.workspace :global(.inventoryTable) small {
+  display: block;
+  font-size: 11px;
+  color: #67758b;
+}
+.scan {
+  padding-top: max(16px, env(safe-area-inset-top));
+  padding-bottom: calc(100px + env(safe-area-inset-bottom));
+}
+.scan details {
+  margin-top: 20px;
+  border-top: 1px solid #dbe2ec;
+  padding-top: 12px;
+}
+.scan summary {
+  min-height: 44px;
+  cursor: pointer;
+  color: #315c97;
+}
+.scan :global(.scanInput) input {
+  font-size: 18px;
+}
+@media (max-width: 767px) {
+  .page:global(.shell) {
+    display: block;
+  }
+  .page :global(.content) {
+    padding: max(16px, env(safe-area-inset-top)) 16px calc(100px + env(safe-area-inset-bottom));
+  }
+  .page :global(.topbar) {
+    display: block;
+  }
+  .page :global(.topbar) h1 {
+    font-size: 23px;
+  }
+  .page :global(.actionGroup) {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    margin-top: 16px;
+  }
+  .workspace[data-stage="photos"] :global(.inventoryWorkbenchGrid) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .workspace :global(.inventoryKpis) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .workspace :global(.inventoryTableHead) {
+    display: none;
+  }
+  .workspace :global(.inventoryTable) > [role="row"]:not(:global(.inventoryTableHead)) {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    padding: 16px;
+  }
+  .workspace :global(.inventoryTable) > [role="row"] > * {
+    overflow-wrap: anywhere;
+  }
+  .manualLabels {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .footer {
+    position: fixed;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 40;
+    padding: 8px 4px max(8px, env(safe-area-inset-bottom));
+    background: white;
+    border-top: 1px solid #dde4ee;
+  }
+  .footer a {
+    display: grid;
+    place-content: center;
+    min-height: 48px;
+    text-align: center;
+    color: #59677d;
+    text-decoration: none;
+    font-size: 12px;
+  }
+  .footer a[aria-current="page"] {
+    color: #1853ab;
+    background: #eff6ff;
+    border-radius: 10px;
+    font-weight: 700;
+  }
+}
+@media print {
+  .footer,
+  .stages,
+  .manualNote {
+    display: none !important;
+  }
+}

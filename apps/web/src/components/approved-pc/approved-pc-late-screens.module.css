@@ -1,0 +1,4249 @@
+.app {
+  width: 768px;
+  min-width: 768px;
+  height: 512px;
+  min-height: 512px;
+  overflow: hidden;
+  background: #fafbfd;
+  color: #162746;
+  display: flex;
+  font:
+    13px Arial,
+    "Hiragino Kaku Gothic ProN",
+    Meiryo,
+    sans-serif;
+}
+.app > aside {
+  width: 112px;
+  box-sizing: border-box;
+  flex: none;
+  background: #fff;
+  border-right: 1px solid #e0e6ef;
+  padding: 12px;
+}
+.app > aside a {
+  display: flex;
+  gap: 12px;
+  padding: 10px 8px;
+  text-decoration: none;
+  color: #1d2d4a;
+  font-weight: bold;
+  border-radius: 5px;
+}
+.app > aside i {
+  font-style: normal;
+}
+.app > aside .active {
+  background: #ebf4ff;
+  color: #075de4;
+}
+.frame {
+  flex: 1;
+}
+.frame > header {
+  height: 56px;
+  background: #fff;
+  border-bottom: 1px solid #e0e6ef;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 22px;
+}
+.frame > header > b {
+  background: #071a49;
+  color: #fff;
+  font-size: 20px;
+  padding: 8px;
+  border-radius: 3px;
+}
+.frame > header h1 {
+  font-size: 19px;
+  margin: 0;
+}
+.scopeBadge {
+  flex: none;
+  margin-left: auto;
+  padding: 5px 8px;
+  color: #805600;
+  background: #fff5d9;
+  border: 1px solid #e8c871;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.frame > header .scopeBadge + .frameTools {
+  margin-left: 0;
+}
+.frame > header span {
+  margin-left: auto;
+}
+.pad {
+  max-width: 1380px;
+  margin: auto;
+  padding: 13px 24px;
+}
+.pad h2 {
+  font-size: 19px;
+  margin: 0 0 6px;
+}
+.pad h2 .btn {
+  float: right;
+}
+.card {
+  background: #fff;
+  border: 1px solid #e0e7ef;
+  border-radius: 6px;
+  padding: 12px;
+  box-sizing: border-box;
+}
+.card h3 {
+  margin: 0 0 9px;
+}
+.btn {
+  display: inline-block;
+  background: linear-gradient(90deg, #0755da, #0870ef);
+  color: #fff !important;
+  padding: 11px 20px;
+  border-radius: 5px;
+  text-decoration: none;
+  font-weight: bold;
+}
+.playAction::before {
+  content: "▶";
+  margin-right: 8px;
+}
+.memberAction::before {
+  content: "♙";
+  margin-right: 8px;
+}
+.notice {
+  background: #f1f8ff;
+  border: 1px solid #b9d8ff;
+  color: #315384;
+  padding: 10px;
+  border-radius: 5px;
+  line-height: 1.6;
+}
+.warn {
+  background: #fff4dd;
+  border: 1px solid #efb650;
+  color: #be7200;
+  padding: 9px;
+  border-radius: 5px;
+}
+.danger {
+  background: #fff0f0;
+  border: 1px solid #f69898;
+  color: #d93232;
+  padding: 10px;
+  border-radius: 5px;
+}
+.ok {
+  color: #178747;
+}
+.bad {
+  color: #d94137;
+}
+.selected {
+  background: #e8f3ff;
+  padding: 5px;
+  border-radius: 4px;
+}
+.inventoryTop {
+  display: grid;
+  grid-template-columns: 1fr 2.25fr 0.8fr;
+  gap: 9px;
+}
+.inventoryTop p {
+  margin: 7px;
+}
+.photos {
+  display: flex;
+  gap: 8px;
+}
+.photos .shelf {
+  width: 33%;
+}
+.shelf {
+  height: 104px;
+  background: linear-gradient(135deg, #4b3b2d, #b9966c, #4d3b2c);
+  display: grid;
+  place-items: end center;
+  color: #fff;
+  font-weight: bold;
+  padding: 8px;
+  box-sizing: border-box;
+  border-radius: 3px;
+}
+.donut {
+  width: 96px;
+  height: 96px;
+  border: 9px solid #62bd9b;
+  border-left-color: #cfe8df;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+  font-weight: bold;
+  margin: 12px auto;
+}
+.inventoryBottom {
+  display: grid;
+  grid-template-columns: 1fr 2.25fr;
+  gap: 9px;
+  margin-top: 9px;
+}
+.tableCard p {
+  border-bottom: 1px solid #e5eaf1;
+  padding: 8px;
+  margin: 0;
+}
+.stockTop,
+.stockStats,
+.stockBottom {
+  display: grid;
+  gap: 9px;
+}
+.stockTop {
+  grid-template-columns: 1fr 1.5fr;
+}
+.stockStats {
+  grid-template-columns: repeat(3, 1fr);
+  margin: 9px 0;
+}
+.stockStats strong {
+  display: block;
+  font-size: 30px;
+  text-align: center;
+  margin-top: 13px;
+}
+.stockBottom {
+  grid-template-columns: 2fr 1fr;
+}
+.stockBottom p {
+  border-bottom: 1px solid #e7ebf1;
+  padding: 7px;
+}
+.screen34 .stockBottom p {
+  margin: 0;
+  padding: 6px;
+  line-height: 1.25;
+}
+.tabs {
+  border-bottom: 1px solid #e0e6ef;
+  padding: 10px;
+  color: #075de4;
+  margin: 10px 0;
+}
+.tabs b {
+  background: #075de4;
+  color: #fff;
+  border-radius: 11px;
+  padding: 3px 7px;
+}
+.mismatch {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 9px;
+}
+.mismatch p {
+  border-bottom: 1px solid #e7ebf1;
+  padding: 5px;
+}
+.mismatch label {
+  display: block;
+  margin: 9px 0;
+}
+.mismatch select,
+.mismatch textarea,
+.assignment select,
+.assignment input,
+.settings input,
+.storage input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #d9e1ec;
+  border-radius: 4px;
+  padding: 8px;
+  margin-top: 4px;
+}
+.mismatch textarea {
+  height: 90px;
+}
+.gridPhotos {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 5px;
+}
+.gridPhotos .shelf {
+  height: 75px;
+}
+.statuses {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 9px;
+}
+.statuses .card {
+  min-height: 260px;
+}
+.greenbox,
+.redbox {
+  margin: 18px 0;
+  padding: 10px;
+  border-radius: 5px;
+  background: #ecf8ef;
+  color: #23733d;
+}
+.redbox {
+  background: #fff0f0;
+  color: #b53a3a;
+}
+.greenBtn,
+.redBtn {
+  display: block;
+  text-align: center;
+  background: #29935a;
+  color: #fff;
+  padding: 10px;
+  text-decoration: none;
+  border-radius: 4px;
+  font-weight: bold;
+}
+.redBtn {
+  background: #d64a44;
+}
+.flow {
+  margin-top: 9px;
+  background: #f5f3ff;
+}
+.confirmFlow {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto 1fr;
+  align-items: center;
+  gap: 14px;
+  margin-top: 13px;
+}
+.confirmFlow > div {
+  background: #fff;
+  border: 1px solid #d8d4fb;
+  border-radius: 7px;
+  padding: 10px;
+  min-height: 66px;
+}
+.confirmFlow strong {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #5548c7;
+  color: #fff;
+  margin-right: 7px;
+}
+.confirmFlow b,
+.confirmFlow span {
+  display: inline-block;
+}
+.confirmFlow span {
+  display: block;
+  color: #65718b;
+  margin: 6px 0 0 32px;
+  font-size: 11px;
+}
+.confirmFlow > i {
+  color: #8278d4;
+  font-size: 22px;
+  font-style: normal;
+}
+.savedAreas {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+  margin-top: 9px;
+}
+.savedAreas p {
+  line-height: 1.6;
+}
+.savedAreas ul {
+  margin: 6px 0 0;
+  padding-left: 20px;
+  color: #55657e;
+}
+.savedBadge {
+  display: inline-block;
+  background: #e4f6e8;
+  color: #19783e;
+  padding: 5px 10px;
+  border-radius: 12px;
+}
+.memberTable table,
+.history table,
+.supplier table,
+.mapTable table,
+.backHistory table,
+.settings table,
+.approval table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.memberTable th,
+.memberTable td,
+.history th,
+.history td,
+.supplier th,
+.supplier td,
+.mapTable th,
+.mapTable td,
+.backHistory th,
+.backHistory td,
+.settings th,
+.settings td,
+.approval td {
+  border-bottom: 1px solid #e3e8ef;
+  padding: 10px;
+  text-align: left;
+  font-size: 11px;
+}
+.memberTable a,
+.mapTable a {
+  border: 1px solid #a8c6fa;
+  color: #075de4;
+  padding: 4px 8px;
+  text-decoration: none;
+  border-radius: 4px;
+}
+.assignment {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr;
+  gap: 10px;
+}
+.assignment section {
+  display: grid;
+  gap: 9px;
+}
+.pickItem .shelf {
+  width: 90px;
+  float: left;
+  margin-right: 12px;
+}
+.preview {
+  background: #f9fcff;
+}
+.preview p {
+  color: #0b64d9;
+}
+.preview div {
+  background: #f1f3f6;
+  color: #536174;
+  padding: 10px;
+}
+.preview .btn {
+  float: right;
+  margin-top: 15px;
+}
+.pending {
+  background: #fff9ed;
+  border: 1px solid #f4d29b;
+  padding: 9px;
+  border-radius: 5px;
+}
+.approval {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr;
+  gap: 9px;
+}
+.approval section {
+  display: grid;
+  gap: 9px;
+}
+.approval table {
+  width: 100%;
+}
+.filters {
+  padding: 10px;
+  border-bottom: 1px solid #e1e7ef;
+}
+.filters select {
+  border: 1px solid #d9e2ec;
+  padding: 7px;
+  margin: 0 6px;
+}
+.filterSearch {
+  width: 245px;
+  border: 1px solid #d9e2ec;
+  border-radius: 5px;
+  padding: 7px 10px;
+}
+.history td {
+  font-size: 10px;
+}
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+  margin-top: 12px;
+  color: #6b7890;
+}
+.pagination span {
+  margin-right: auto;
+}
+.pagination button {
+  min-width: 32px;
+  height: 32px;
+  border: 1px solid #d7e0eb;
+  background: #fff;
+  border-radius: 5px;
+  color: #284266;
+  cursor: pointer;
+}
+.pagination .pageCurrent {
+  border-color: #075de4;
+  color: #fff;
+  background: #075de4;
+  font-weight: 700;
+}
+.metric {
+  min-height: 98px;
+}
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 9px;
+}
+.metric i {
+  float: left;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: #eaf3ff;
+  color: #0a6ae6;
+  font-style: normal;
+  font-size: 24px;
+  display: grid;
+  place-items: center;
+  margin-right: 10px;
+}
+.metric b {
+  display: block;
+  padding-top: 6px;
+}
+.metric strong {
+  display: block;
+  font-size: 23px;
+  margin-top: 8px;
+}
+.breakEven {
+  margin-top: 10px;
+  text-align: center;
+  font-size: 17px;
+}
+.breakEven b {
+  font-size: 26px;
+  margin-left: 70px;
+}
+.yellow,
+.greenNotice,
+.blueNote {
+  display: inline-block;
+  padding: 9px;
+  border-radius: 5px;
+}
+.yellow {
+  background: #fff2d5;
+  color: #d17a00;
+}
+.greenNotice {
+  background: #edf9f0;
+  color: #197b3c;
+}
+.blueNote {
+  background: #edf6ff;
+  color: #0a61d7;
+}
+.period {
+  display: flex;
+  justify-content: space-around;
+  margin: 8px 0;
+}
+.period > * {
+  border: 1px solid #dde5ef;
+  border-radius: 5px;
+  padding: 10px;
+}
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.kpis .card strong,
+.kpis .card small {
+  display: block;
+  text-align: center;
+  margin: 8px;
+}
+.kpis .card strong {
+  font-size: 23px;
+}
+.line {
+  margin-top: 9px;
+}
+.line > div {
+  height: 170px;
+  border-bottom: 1px solid #9ca9b9;
+  display: flex;
+  align-items: end;
+  gap: 5%;
+  padding: 0 6%;
+}
+.line i {
+  width: 10%;
+  height: var(--h, 40%);
+  background: #0a66dc;
+  clip-path: polygon(0 72%, 100% 0, 100% 100%, 0 100%);
+}
+.line i:nth-child(2) {
+  height: 53%;
+}
+.line i:nth-child(3) {
+  height: 48%;
+}
+.line i:nth-child(4) {
+  height: 67%;
+}
+.line i:nth-child(5) {
+  height: 63%;
+}
+.line i:nth-child(6) {
+  height: 78%;
+}
+.line i:nth-child(7) {
+  height: 70%;
+}
+.line i:nth-child(8) {
+  height: 88%;
+}
+.chartGrid {
+  height: auto !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) 190px;
+  align-items: start;
+  gap: 18px;
+  border: 0 !important;
+  padding: 8px 0 0 !important;
+}
+.chartPlot {
+  min-width: 0;
+}
+.chartPlot svg {
+  display: block;
+  width: 100%;
+  height: 220px;
+  background: linear-gradient(#fff, #fbfcfe);
+  border: 1px solid #e3e8ef;
+  border-radius: 5px;
+}
+.chartGridline {
+  fill: none;
+  stroke: #e2e8f0;
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+}
+.chartBlue,
+.chartGreen,
+.chartOrange {
+  fill: none;
+  stroke-width: 4;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.chartBlue {
+  stroke: #1769df;
+}
+.chartGreen {
+  stroke: #2e9e57;
+}
+.chartOrange {
+  stroke: #ed8215;
+}
+.chartPointBlue {
+  fill: #1769df;
+}
+.chartAxis {
+  display: flex;
+  justify-content: space-between;
+  color: #6e7c91;
+  font-size: 10px;
+  padding: 6px 4px 0 30px;
+}
+.chartLegend {
+  padding: 10px;
+  border: 1px solid #e3e8ef;
+  background: #fafcff;
+  border-radius: 6px;
+}
+.chartLegend p {
+  margin: 8px 0;
+  font-size: 11px;
+}
+.chartLegend i {
+  display: inline-block;
+  width: 23px;
+  border-top: 3px solid;
+  margin: 0 7px 3px 0;
+}
+.chartLegend .legendBlue {
+  border-color: #1769df;
+}
+.chartLegend .legendGreen {
+  border-color: #2e9e57;
+}
+.chartLegend .legendOrange {
+  border-color: #ed8215;
+}
+.previous {
+  margin-top: 9px;
+  margin-left: auto;
+  width: 340px;
+  background: #fafcff;
+}
+.previous p {
+  display: flex;
+  justify-content: space-between;
+  border-bottom: 1px solid #e7ebf2;
+  padding: 6px;
+  margin: 0;
+}
+.previous b {
+  color: #238548;
+}
+.previous em {
+  color: #db473b;
+  font-style: normal;
+}
+.supplier th,
+.supplier td {
+  border: 1px solid #e2e7ee;
+  text-align: center;
+}
+.factStats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  margin: 14px 0;
+}
+.facts p {
+  display: grid;
+  grid-template-columns: 1fr 1.1fr 1.7fr 0.7fr;
+  border-bottom: 1px solid #e3e8ef;
+  padding: 12px;
+  margin: 0;
+}
+.facts strong {
+  color: #075de4;
+}
+.facts em {
+  color: #277d40;
+  font-style: normal;
+}
+.accounting {
+  display: grid;
+  grid-template-columns: 2.2fr 1fr;
+  gap: 10px;
+}
+.accounting section {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 9px;
+}
+.accounting h3 a {
+  float: right;
+  border: 1px solid #bdd3ff;
+  padding: 4px;
+  text-decoration: none;
+  color: #075de4;
+}
+.helpBox {
+  line-height: 1.6;
+}
+.fileTop,
+.fileBottom {
+  display: grid;
+  gap: 9px;
+}
+.fileTop {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+.fileBottom {
+  grid-template-columns: 2.3fr 1fr;
+  margin: 9px 0;
+}
+.fileTop p {
+  border-bottom: 1px solid #e4e9ef;
+  padding-bottom: 6px;
+}
+.settings {
+  max-width: 900px;
+}
+.settings input {
+  width: 80px;
+}
+.settings td,
+.settings th {
+  border: 0;
+  padding: 5px;
+}
+.storage {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 16px;
+}
+.storage a {
+  border: 1px solid #9bc0ff;
+  color: #075de4;
+  padding: 7px;
+  text-decoration: none;
+  display: inline-block;
+  margin: 4px;
+}
+.noSend {
+  border: 1px solid #edb756;
+  background: #fffaf0;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  color: #9c6209;
+  font-size: 19px;
+  font-weight: bold;
+  line-height: 1.7;
+}
+.backup {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.backup .card {
+  min-height: 160px;
+}
+.backup .btn {
+  display: block;
+  text-align: center;
+  margin-top: 25px;
+}
+.backHistory {
+  margin-top: 10px;
+}
+.banner {
+  border: 2px solid #19803e;
+  background: #f5fff7;
+  color: #167333;
+  font-size: 25px;
+  font-weight: bold;
+  text-align: center;
+  padding: 36px;
+}
+.connections {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin: 20px 0;
+}
+.connections .card {
+  text-align: center;
+  height: 100px;
+}
+.connections span {
+  background: #eee;
+  border-radius: 12px;
+  padding: 5px 13px;
+}
+.protect {
+  background: #f0f7ff;
+  border-color: #b9d8ff;
+  text-align: center;
+  color: #0c4fa4;
+  font-size: 19px;
+  padding: 25px;
+}
+.protect p {
+  font-size: 13px;
+}
+
+/* Final late-board density: authored on the approved 768 x 512 canvas. */
+.utilityApp {
+  font-size: 10px;
+  grid-template-rows: 36px minmax(0, 1fr);
+}
+.utilityApp > .frame {
+  height: 476px;
+}
+.utilityHeader {
+  padding: 0 14px;
+  gap: 8px;
+}
+.utilityScreenNo {
+  width: 48px;
+  margin-left: -14px;
+  font-size: 15px;
+}
+.utilityHeader > button {
+  width: 28px;
+  height: 28px;
+}
+.utilityWorkspace {
+  padding: 5px 8px;
+  font-size: 10px;
+}
+.utilityTools {
+  gap: 7px;
+  font-size: 10px;
+}
+.utilityTools > span:not(.utilityUser) {
+  width: 24px;
+  height: 24px;
+}
+.utilityUser {
+  padding: 5px 8px;
+}
+.utilityApp .pad {
+  padding: 7px 18px;
+  font-size: 10px;
+}
+.utilityApp .pad h2 {
+  font-size: 16px;
+  margin-bottom: 3px;
+}
+.utilityApp .pad > p {
+  margin: 4px 0;
+}
+.utilityApp .card {
+  padding: 8px;
+}
+.utilityApp .card h3 {
+  margin-bottom: 5px;
+  font-size: 12px;
+}
+.utilityApp .btn {
+  padding: 7px 11px;
+  font-size: 10px;
+}
+.utilityApp .notice,
+.utilityApp .warn,
+.utilityApp .danger {
+  padding: 6px;
+  line-height: 1.3;
+  margin: 6px 0;
+}
+.utilityApp .tabs {
+  padding: 6px;
+  margin: 6px 0;
+}
+
+.gridPhotos .shelf span {
+  display: none;
+}
+.mismatch {
+  gap: 6px;
+}
+.mismatch p {
+  padding: 3px;
+  margin: 3px;
+}
+.mismatch label {
+  margin: 4px 0;
+}
+.mismatch select,
+.mismatch textarea {
+  padding: 5px;
+}
+.mismatch textarea {
+  height: 52px;
+}
+.gridPhotos .shelf {
+  height: 62px;
+}
+
+.statuses {
+  gap: 6px;
+}
+.statuses .card {
+  min-height: 190px;
+}
+.greenbox,
+.redbox {
+  margin: 8px 0;
+  padding: 7px;
+}
+.greenBtn,
+.redBtn,
+.provisionalBtn {
+  display: block;
+  text-align: center;
+  color: #fff;
+  padding: 7px;
+  text-decoration: none;
+  border-radius: 4px;
+  font-weight: 700;
+}
+.greenBtn {
+  background: #29935a;
+}
+.redBtn {
+  background: #d64a44;
+}
+.provisionalBtn {
+  background: #0866e8;
+}
+.flow,
+.savedAreas {
+  margin-top: 6px;
+}
+.confirmFlow {
+  gap: 7px;
+  margin-top: 6px;
+}
+.confirmFlow > div {
+  min-height: 42px;
+  padding: 6px;
+}
+.savedAreas p {
+  line-height: 1.3;
+}
+
+.memberTable th,
+.memberTable td,
+.history th,
+.history td,
+.supplier th,
+.supplier td,
+.mapTable th,
+.mapTable td,
+.backHistory th,
+.backHistory td,
+.settings th,
+.settings td,
+.approval td {
+  padding: 5px;
+  font-size: 9px;
+}
+.avatar {
+  transform: scale(0.82);
+  transform-origin: left center;
+}
+.pagination {
+  margin-top: 6px;
+}
+.pagination button {
+  min-width: 24px;
+  height: 24px;
+}
+
+.assignment {
+  gap: 6px;
+}
+.assignment section {
+  gap: 6px;
+}
+.assignment select,
+.assignment input {
+  padding: 5px;
+}
+.pickItem .shelf {
+  width: 78px;
+  height: 78px;
+}
+.preview p {
+  margin: 5px 0;
+}
+.preview div {
+  padding: 6px;
+}
+.preview .btn {
+  margin-top: 6px;
+}
+.approval {
+  gap: 6px;
+}
+.approval section {
+  gap: 6px;
+}
+.filters {
+  padding: 6px;
+}
+.filters select {
+  padding: 4px;
+}
+.filterSearch {
+  padding: 4px 7px;
+}
+
+.statuses .card {
+  min-height: 160px;
+}
+.statuses .card p {
+  margin: 4px 0;
+  line-height: 1.25;
+}
+.flow {
+  padding: 6px;
+}
+.savedAreas {
+  font-size: 9px;
+}
+.savedAreas .card {
+  padding: 6px;
+}
+
+.assignment {
+  font-size: 9px;
+}
+.assignment .card {
+  padding: 6px;
+}
+.assignment h3 {
+  margin: 2px 0;
+}
+.assignment select,
+.assignment input {
+  padding: 3px;
+  margin-top: 2px;
+}
+.assignment label {
+  display: block;
+  margin: 2px 0;
+}
+.pickItem .shelf {
+  width: 64px;
+  height: 64px;
+}
+.preview .btn {
+  float: none;
+  display: block;
+  margin-top: 5px;
+  text-align: center;
+}
+
+.history th,
+.history td {
+  padding: 3px;
+  font-size: 8px;
+  line-height: 1.15;
+}
+.history .pagination {
+  margin-top: 4px;
+}
+
+.settingsApp {
+  font-size: 10px;
+}
+.settingsApp .pad {
+  padding: 10px 18px;
+}
+.settingsApp .pad h2 {
+  margin-bottom: 5px;
+  font-size: 18px;
+}
+.settingsApp .settings {
+  padding: 8px;
+}
+.settingsApp .settings h3 {
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+.settingsApp .settings table {
+  margin-bottom: 6px;
+}
+.settingsApp .settings th,
+.settingsApp .settings td {
+  padding: 4px;
+  font-size: 9px;
+}
+.settingsApp .settings input {
+  height: 23px;
+  padding: 3px 5px;
+}
+.settingsApp .notice {
+  margin: 5px 0;
+  padding: 6px;
+}
+.settingsApp .btn {
+  padding: 7px 12px;
+}
+
+.statuses .card {
+  min-height: 145px;
+}
+.greenbox,
+.redbox {
+  margin: 4px 0;
+  padding: 5px;
+}
+.confirmFlow > div {
+  min-height: 32px;
+  padding: 4px;
+}
+.confirmFlow span {
+  margin-top: 2px;
+}
+.savedAreas p,
+.savedAreas ul {
+  margin: 3px 0;
+  line-height: 1.15;
+}
+
+.assignment {
+  line-height: 1.1;
+}
+.assignment .tabs {
+  padding: 3px;
+  margin: 3px 0;
+}
+.assignment section {
+  gap: 3px;
+}
+.assignment .pickItem p {
+  margin: 2px 0;
+}
+.assignment input {
+  height: 20px;
+}
+.preview p {
+  margin: 3px 0;
+}
+.preview div {
+  padding: 4px;
+}
+.preview .btn {
+  padding: 5px;
+}
+
+.settingsApp .pad {
+  padding-top: 6px;
+}
+.settingsApp .settings table {
+  margin-bottom: 3px;
+}
+.settingsApp .settings input {
+  height: 20px;
+}
+.settingsApp .settings th,
+.settingsApp .settings td {
+  padding: 3px;
+}
+.settingsApp .btn {
+  padding: 5px 10px;
+}
+
+.sneakerEvidence {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 5px;
+}
+.sneakerEvidence figure {
+  margin: 0;
+  height: 72px;
+  position: relative;
+  overflow: hidden;
+  border: 1px solid #dfe5ed;
+  border-radius: 4px;
+  background: #eee;
+}
+.sneakerEvidence img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.sneakerEvidence figcaption {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  padding: 2px 4px;
+  background: #ffffffe8;
+  font-size: 8px;
+}
+.sneakerView2 img {
+  transform: scaleX(-1) scale(1.16);
+}
+.sneakerView3 img {
+  transform: rotate(180deg) scale(1.22);
+}
+.sneakerView4 img {
+  transform: scale(1.35);
+  object-position: 72% center;
+}
+
+.chartPlot svg {
+  height: 105px;
+}
+.chartGrid {
+  grid-template-columns: minmax(0, 1fr) 125px;
+  gap: 8px;
+  padding-top: 3px !important;
+}
+.chartLegend {
+  padding: 5px;
+}
+.chartLegend p {
+  margin: 4px 0;
+  font-size: 9px;
+}
+.chartAxis {
+  padding-top: 2px;
+}
+.previous {
+  width: 240px;
+  margin-top: 5px;
+  padding: 7px;
+}
+.previous p {
+  padding: 3px;
+}
+.line {
+  margin-top: 5px;
+}
+
+.mappingFooter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+.mappingLegend {
+  display: flex;
+  flex: 1;
+  gap: 12px;
+  padding: 6px 8px;
+  border: 1px solid #e1e7ef;
+  border-radius: 5px;
+  background: #fff;
+  font-size: 8px;
+}
+.mappingLegend span {
+  white-space: nowrap;
+}
+.mappingLegend i {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 4px;
+  border-radius: 50%;
+}
+.legendHigh {
+  background: #249555;
+}
+.legendMedium {
+  background: #efa51c;
+}
+.legendLow {
+  background: #dc4a42;
+}
+.mappingFooter .btn {
+  min-width: 190px;
+  text-align: center;
+  padding: 9px 14px;
+}
+
+.fileTop {
+  gap: 5px;
+}
+.fileTop .card {
+  padding: 6px;
+}
+.fileTop p {
+  padding-bottom: 3px;
+  margin: 3px 0;
+}
+.fileBottom {
+  gap: 5px;
+  margin: 5px 0;
+}
+.fileBottom .card {
+  padding: 6px;
+}
+.fileBottom p {
+  margin: 4px 0;
+}
+.exportPreview th,
+.exportPreview td,
+.exportHistory th,
+.exportHistory td {
+  padding: 3px;
+  font-size: 8px;
+}
+.formatChoice {
+  padding: 4px;
+  margin: 3px 0;
+}
+
+.settingsApp .backup .card {
+  min-height: 125px;
+}
+.settingsApp .backup .btn {
+  margin-top: 8px;
+}
+.settingsApp .backHistory {
+  margin-top: 5px;
+  padding: 7px;
+}
+.settingsApp .backHistory th,
+.settingsApp .backHistory td {
+  padding: 3px;
+  font-size: 8px;
+}
+.settingsApp .connections {
+  margin: 8px 0;
+  gap: 8px;
+}
+.settingsApp .connections .card {
+  height: 72px;
+}
+.settingsApp .banner {
+  padding: 18px;
+  font-size: 19px;
+}
+.settingsApp .protect {
+  padding: 14px;
+  font-size: 15px;
+  margin-bottom: 8px;
+}
+.settingsApp .protect p {
+  margin: 5px 0;
+  font-size: 10px;
+}
+.inventoryTop .shelf span,
+.pickItem .shelf span {
+  display: none;
+}
+
+.period {
+  margin: 4px 0;
+}
+.period > * {
+  padding: 5px;
+}
+.kpis .card {
+  min-height: 68px;
+  padding: 5px;
+}
+.kpis .card strong,
+.kpis .card small {
+  margin: 2px;
+}
+.kpis .card strong {
+  font-size: 16px;
+}
+.chartPlot svg {
+  height: 65px;
+}
+.chartLegend {
+  padding: 3px;
+}
+.chartLegend p {
+  margin: 2px 0;
+  font-size: 8px;
+}
+.previous {
+  width: 220px;
+  padding: 5px;
+}
+.previous h3 {
+  margin-bottom: 2px;
+}
+.previous p {
+  padding: 2px;
+}
+
+.fileTop {
+  height: 115px;
+}
+.fileTop .card {
+  height: 115px;
+  overflow: hidden;
+  font-size: 8px;
+}
+.fileTop .card h3 {
+  font-size: 10px;
+}
+.fileBottom {
+  height: 125px;
+}
+.fileBottom .card {
+  height: 125px;
+  overflow: hidden;
+  font-size: 8px;
+}
+.fileBottom .card h3 {
+  font-size: 10px;
+}
+.exportPreview th,
+.exportPreview td {
+  padding: 1px 2px;
+  font-size: 7px;
+}
+.exportHistory th,
+.exportHistory td {
+  padding: 2px;
+  font-size: 7px;
+}
+/* PcCanvas owns the proportional review scale; the app remains a fixed desktop board. */
+/* The supplier view keeps the decision signal visible in every row. */
+.supplier tr.good td:first-child,
+.supplier tr.watch td:first-child,
+.supplier tr.action td:first-child,
+.supplier tr.hold td:first-child {
+  font-weight: 700;
+}
+.stateDot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: #1b9a4a;
+}
+.supplier tr.watch .stateDot {
+  background: #f5b51b;
+}
+.supplier tr.action .stateDot {
+  background: #ed8215;
+}
+.supplier tr.hold .stateDot {
+  background: #d93842;
+}
+.supplierLegend {
+  display: flex;
+  gap: 26px;
+  align-items: center;
+  margin: 10px 0;
+  padding: 12px 16px;
+  border: 1px solid #e2e7ee;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 12px;
+  font-weight: 600;
+}
+.supplierLegend span {
+  white-space: nowrap;
+}
+.supplierLegend i {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: #1b9a4a;
+}
+.supplierLegend .watch i {
+  background: #f5b51b;
+}
+.supplierLegend .action i {
+  background: #ed8215;
+}
+.supplierLegend .hold i {
+  background: #d93842;
+}
+
+/* Inventory, team, analytics and accounting boards share the approved
+   utility row above the navigation. */
+.utilityApp {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  grid-template-rows: 52px minmax(0, 1fr);
+}
+.utilityApp > .utilityHeader {
+  grid-column: 1 / -1;
+  grid-row: 1;
+}
+.utilityApp > aside {
+  grid-column: 1;
+  grid-row: 2;
+  width: auto;
+  min-height: 0;
+  box-sizing: border-box;
+  padding-top: 18px;
+}
+.utilityApp > .frame {
+  grid-column: 2;
+  grid-row: 2;
+  min-width: 0;
+  min-height: 0;
+  height: 460px;
+  overflow: hidden;
+}
+.utilityHeader {
+  min-width: 0;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 22px;
+  background: #fff;
+  border-bottom: 1px solid #dfe5ee;
+  color: #152442;
+}
+.utilityHeader > button {
+  width: 32px;
+  height: 32px;
+  border: 1px solid #d9e1ec;
+  border-radius: 6px;
+  background: #fff;
+  color: #2c4770;
+  font-size: 18px;
+  line-height: 1;
+}
+.utilityHeader > strong {
+  font-size: 16px;
+  white-space: nowrap;
+}
+.utilityScreenNo {
+  display: grid;
+  place-items: center;
+  align-self: stretch;
+  width: 50px;
+  margin-left: -22px;
+  margin-right: 4px;
+  padding: 0;
+  border-radius: 4px;
+  background: #071a49;
+  color: #fff;
+  font-size: 16px;
+}
+.utilityWorkspace {
+  padding: 8px 12px;
+  border: 1px solid #dbe4f0;
+  border-radius: 6px;
+  color: #526580;
+  font-size: 12px;
+}
+.utilityTools {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-left: auto;
+  color: #5a6b83;
+  font-size: 12px;
+}
+.utilityTools > span:not(.utilityUser) {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid #dbe4f0;
+  border-radius: 50%;
+}
+.utilityUser {
+  padding: 8px 11px;
+  border-radius: 18px;
+  background: #f3f6fa;
+  color: #243a5f;
+  font-weight: 700;
+}
+.utilityApp .frame > header {
+  display: none;
+}
+.utilityApp .frame > header > b {
+  min-width: 33px;
+  text-align: center;
+}
+.utilityApp .frame > header > span {
+  display: none;
+}
+.utilityApp .pad > h2:first-child {
+  display: block;
+}
+.forecastPad {
+  padding: 9px 20px;
+}
+.forecastActions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.forecastActions .yellow {
+  margin: 0;
+  padding: 7px 10px;
+}
+.forecastActions .btn {
+  padding: 8px 13px;
+  font-size: 11px;
+}
+.forecastPad .metrics {
+  gap: 7px;
+}
+.forecastPad .metric {
+  min-height: 88px;
+  padding: 10px;
+}
+.forecastPad .metric i {
+  width: 44px;
+  height: 44px;
+  font-size: 20px;
+}
+.forecastPad .metric strong {
+  font-size: 19px;
+  margin-top: 6px;
+}
+.forecastPad .breakEven {
+  margin-top: 8px;
+  padding: 10px;
+}
+.screenActions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 7px;
+}
+.screenActions p {
+  margin: 0;
+}
+.screenActions .btn {
+  flex: 0 0 auto;
+  padding: 7px 12px;
+  font-size: 10px;
+}
+.inventoryPad,
+.factsPad {
+  padding: 8px 20px;
+}
+.inventoryPad .inventoryTop {
+  gap: 7px;
+}
+.inventoryPad .inventoryTop > .card {
+  height: 206px;
+  padding: 9px;
+}
+.inventoryPad .inventoryTop p {
+  margin: 3px 5px;
+  font-size: 10px;
+}
+.inventoryPad .photos {
+  gap: 5px;
+}
+.inventoryPad .shelf {
+  height: 82px;
+}
+.inventoryPad .donut {
+  width: 68px;
+  height: 68px;
+  border-width: 7px;
+  margin: 4px auto;
+  font-size: 14px;
+}
+.inventoryPad .inventoryBottom {
+  height: 111px;
+  margin-top: 7px;
+  gap: 7px;
+}
+.inventoryPad .inventoryBottom .card {
+  overflow: hidden;
+  padding: 8px;
+}
+.inventoryPad .inventoryBottom h3 {
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+.inventoryPad .inventoryBottom p {
+  padding: 3px 4px;
+  margin: 0;
+  font-size: 9px;
+  line-height: 1.25;
+}
+.factsPad .factStats {
+  margin: 6px 0 8px;
+  padding: 8px;
+  font-size: 10px;
+}
+.factsPad .facts {
+  padding: 7px 10px;
+}
+.factsPad .factsHeader,
+.factsPad .facts p {
+  display: grid;
+  grid-template-columns: 0.8fr 1.05fr 1.65fr 0.75fr 0.85fr;
+  align-items: center;
+  gap: 5px;
+}
+.factsPad .factsHeader {
+  padding: 4px 5px 6px 34px;
+  border-bottom: 1px solid #dbe3ed;
+  font-size: 9px;
+}
+.factsPad .facts p {
+  padding: 4px 4px 4px 30px;
+  font-size: 9px;
+}
+.factDescription {
+  display: block;
+  margin-top: 2px;
+  color: #53647b !important;
+  font-size: 7px !important;
+  font-weight: 400;
+}
+.factsPad .facts p:nth-of-type(2) strong,
+.factsPad .facts p:nth-of-type(3) strong {
+  color: #d83b3b;
+}
+.factsPad .facts p::before {
+  top: 4px;
+  left: 2px;
+  width: 21px;
+  height: 21px;
+}
+.factsPad .facts em {
+  display: inline-block;
+  width: max-content;
+  padding: 3px 6px;
+  border-radius: 9px;
+  background: #e8f7ec;
+  font-size: 8px;
+}
+.factsPad .facts small {
+  color: #64738a;
+  font-size: 8px;
+}
+.factsPad .notice {
+  margin: 7px 0;
+  padding: 7px;
+  line-height: 1.3;
+  font-size: 9px;
+}
+.factsPad > .btn {
+  float: right;
+  padding: 7px 12px;
+  font-size: 10px;
+}
+.shelf {
+  position: relative;
+  overflow: hidden;
+}
+.shelf > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+.shelf > span {
+  position: absolute;
+  right: 7px;
+  bottom: 7px;
+  padding: 4px 7px;
+  border-radius: 3px;
+  background: rgb(247 235 204 / 92%);
+  color: #23334c;
+  font-size: 10px;
+  line-height: 1.2;
+}
+.memberTable td:first-child {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.avatar {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  border-radius: 50%;
+  color: #fff;
+  font-weight: 700;
+}
+.avatar1 {
+  background: #3776d5;
+}
+.avatar2 {
+  background: #d26b55;
+}
+.avatar3 {
+  background: #52a06a;
+}
+.avatar4 {
+  background: #9a73c6;
+}
+.statusActive,
+.statusInvite {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 700;
+}
+.statusActive {
+  background: #e5f7ea;
+  color: #1c7f42;
+}
+.statusInvite {
+  background: #fff2d7;
+  color: #a96806;
+}
+.facts p {
+  position: relative;
+  padding-left: 44px;
+}
+.facts p::before {
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  display: grid;
+  place-items: center;
+  width: 23px;
+  height: 23px;
+  border-radius: 50%;
+  background: #eaf3ff;
+  color: #1769df;
+  content: "✓";
+  font-weight: 700;
+}
+.facts p:nth-child(2)::before {
+  background: #fff1ef;
+  color: #d94a3b;
+  content: "↩";
+}
+.facts p:nth-child(3)::before {
+  background: #fff7dc;
+  color: #bd7900;
+  content: "%";
+}
+.facts p:nth-child(4)::before {
+  background: #edf9f0;
+  color: #198247;
+  content: "¥";
+}
+.facts p:nth-child(5)::before {
+  background: #f1edff;
+  color: #694fc3;
+  content: "□";
+}
+.shield {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 34px;
+  clip-path: polygon(50% 0, 92% 15%, 86% 70%, 50% 100%, 14% 70%, 8% 15%);
+  background: #2876dd;
+  color: #fff;
+  font-weight: 800;
+}
+.noSend .shield {
+  width: 36px;
+  height: 42px;
+  background: #d18a13;
+}
+.banner .shield,
+.protect .shield {
+  vertical-align: middle;
+}
+
+/* PC50/52 approved mocks use an outline shield rather than a filled badge. */
+.noSend .shield {
+  background: transparent;
+  border: 2px solid #d18a13;
+  box-sizing: border-box;
+  color: #d18a13;
+}
+.banner .shield {
+  background: transparent;
+  border: 2px solid #19803e;
+  box-sizing: border-box;
+  color: #19803e;
+}
+
+/* Export readiness is intentionally table-dense, matching the approved PC12 board. */
+.fileTop .card {
+  min-height: 122px;
+}
+.formatChoice {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 8px;
+  width: 100%;
+  margin: 2px 0;
+  padding: 7px 9px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: #fff;
+  color: #162746;
+  text-align: left;
+  cursor: pointer;
+}
+.formatChoice:hover {
+  background: #f7fbff;
+}
+.formatChoice b {
+  grid-column: 1;
+}
+.formatChoice small {
+  grid-column: 1;
+  color: #65718b;
+}
+.formatChoice a {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  border: 1px solid #9abcf7;
+  border-radius: 4px;
+  padding: 5px 8px;
+  color: #075de4;
+  text-decoration: none;
+  font-weight: 700;
+}
+.formatSelected {
+  border-color: #1b69e4;
+  background: #f3f8ff;
+}
+.exportPreview,
+.exportHistory {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.exportPreview th,
+.exportPreview td,
+.exportHistory th,
+.exportHistory td {
+  padding: 5px 6px;
+  border-bottom: 1px solid #e5e9ef;
+  text-align: left;
+  font-size: 10px;
+  white-space: nowrap;
+}
+.exportPreview th,
+.exportHistory th {
+  background: #f8fafc;
+  color: #56657c;
+  font-weight: 700;
+}
+.exportPreview td:nth-child(3),
+.exportPreview td:nth-child(5),
+.exportHistory td:nth-child(5) {
+  text-align: right;
+}
+.importSuccess {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 8px;
+  background: #e4f6e8;
+  color: #19783e;
+  font-weight: 700;
+}
+.exportHistory td {
+  font-size: 9px;
+}
+
+/* PC13 is a Mac-like, fixed-size settings window inside the approved canvas. */
+.settingsApp {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid #c9ced7;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgb(24 35 52 / 12%);
+}
+.settingsApp > aside {
+  position: relative;
+  width: 136px;
+  box-sizing: border-box;
+  padding: 64px 12px 16px;
+  background: #fbfcfe;
+  border-right: 1px solid #dfe4eb;
+}
+.settingsApp > aside::before {
+  position: absolute;
+  top: 17px;
+  left: 16px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ed5b55;
+  box-shadow:
+    21px 0 #f2b63f,
+    42px 0 #36b34a;
+  content: "";
+}
+.settingsApp > aside::after {
+  position: absolute;
+  top: 54px;
+  right: 0;
+  left: 0;
+  border-top: 1px solid #dfe4eb;
+  content: "";
+}
+.settingsApp > aside a {
+  gap: 12px;
+  padding: 11px 9px;
+  border-radius: 7px;
+  font-weight: 500;
+}
+.settingsApp > aside .active {
+  background: #eaf3ff;
+  color: #075de4;
+  font-weight: 700;
+}
+.settingsApp .frame {
+  background: #fff;
+}
+.settingsApp .frame > header {
+  height: 54px;
+  padding: 0 24px;
+  background: #fff;
+  border-bottom: 1px solid #dfe4eb;
+}
+.settingsApp .frame > header > b,
+.settingsApp .frame > header > h1 {
+  display: none;
+}
+.settingsApp .frame > header span {
+  color: #4f5d72;
+  font-size: 12px;
+}
+.settingsApp .pad {
+  max-width: none;
+  padding: 20px 27px;
+}
+.settingsApp .pad h2 {
+  margin-bottom: 10px;
+  font-size: 24px;
+  color: #101c31;
+}
+.settingsApp .settings {
+  max-width: 900px;
+  border-radius: 8px;
+  padding: 15px;
+}
+.settingsApp .settings h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+.settingsApp .settings table {
+  margin-bottom: 12px;
+}
+.settingsApp .settings input {
+  height: 30px;
+  width: 86px;
+  padding: 5px 7px;
+  text-align: right;
+}
+.settingsApp .settings th {
+  color: #56657c;
+  font-size: 11px;
+}
+.settingsApp .settings td {
+  vertical-align: middle;
+}
+.editIcon {
+  width: 30px;
+  height: 30px;
+  border: 1px solid #d7e0eb;
+  border-radius: 5px;
+  background: #fff;
+  color: #36506f;
+  cursor: pointer;
+}
+.settingsApp .storage {
+  min-height: 320px;
+  border-radius: 8px;
+}
+.settingsApp .storage input {
+  width: 250px;
+}
+.radioOption {
+  display: block;
+  margin: 12px 0;
+  font-weight: 600;
+}
+.radioOption input {
+  width: auto !important;
+  margin: 0 8px 0 0;
+  accent-color: #1769df;
+}
+.formatButtons {
+  display: flex;
+  gap: 8px;
+  margin: 5px 0 9px;
+}
+.formatButtons button {
+  min-width: 82px;
+  padding: 7px 14px;
+  border: 1px solid #d4ddea;
+  border-radius: 5px;
+  background: #fff;
+  color: #233754;
+  cursor: pointer;
+}
+.formatButtons .formatButtonActive {
+  border-color: #1769df;
+  background: #edf5ff;
+  color: #075de4;
+  font-weight: 700;
+}
+.settingsApp .backup {
+  max-width: 900px;
+}
+.settingsApp .backup .card {
+  min-height: 165px;
+  border-radius: 8px;
+}
+.settingsApp .backHistory {
+  max-width: 900px;
+  border-radius: 8px;
+}
+.settingsApp .connections {
+  max-width: 900px;
+  margin-top: 20px;
+}
+.settingsApp .connections .card {
+  height: 106px;
+  border-radius: 8px;
+}
+.settingsApp .banner {
+  max-width: 900px;
+  border-radius: 8px;
+}
+.settingsApp .protect {
+  max-width: 900px;
+  border-radius: 8px;
+}
+
+/* PC49-52: approved Mac-style settings board geometry. */
+.settingsApp .settingsBoard,
+.settingsApp .storageBoard,
+.settingsApp .backupBoard,
+.settingsApp .connectionsBoard {
+  height: 458px;
+  box-sizing: border-box;
+  padding: 17px 22px 14px;
+  overflow: hidden;
+}
+.settingsApp .settingsBoard h2,
+.settingsApp .storageBoard h2,
+.settingsApp .backupBoard h2,
+.settingsApp .connectionsBoard h2 {
+  margin: 0 0 9px;
+  font-size: 21px;
+  line-height: 1.15;
+}
+.settingsApp .settingsBoard .settings {
+  width: 100%;
+  max-width: none;
+  height: 386px;
+  padding: 10px 13px;
+}
+.settingsApp .settingsBoard .settings h3 {
+  margin: 0 0 4px;
+  font-size: 13px;
+}
+.settingsApp .settingsBoard .settings table {
+  width: 100%;
+  margin: 0 0 7px;
+  table-layout: fixed;
+}
+.settingsApp .settingsBoard .settings th,
+.settingsApp .settingsBoard .settings td {
+  padding: 3px 5px;
+  font-size: 10px;
+}
+.settingsApp .settingsBoard .settings th:first-child,
+.settingsApp .settingsBoard .settings td:first-child {
+  width: 22%;
+}
+.settingsApp .settingsBoard .settings input {
+  width: 100%;
+  height: 24px;
+  box-sizing: border-box;
+  padding: 3px 6px;
+  font-size: 11px;
+}
+.settingsApp .settingsBoard .editIcon {
+  width: 25px;
+  height: 25px;
+}
+.settingsFooter {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 142px;
+  gap: 10px;
+  align-items: center;
+  margin-top: 4px;
+}
+.settingsApp .settingsFooter .notice {
+  margin: 0;
+  padding: 7px 9px;
+}
+.settingsApp .settingsFooter .btn {
+  padding: 8px 10px;
+  text-align: center;
+}
+.settingsApp .storageBoard .storage {
+  grid-template-columns: 1.35fr 0.9fr;
+  gap: 14px;
+  min-height: 0;
+  height: 292px;
+  padding: 12px;
+}
+.settingsApp .storageBoard .storage section h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+}
+.settingsApp .storageBoard .radioOption {
+  margin: 9px 0;
+}
+.storagePathRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 112px;
+  gap: 7px;
+  align-items: start;
+}
+.settingsApp .storagePathRow input {
+  width: 100%;
+  height: 29px;
+  box-sizing: border-box;
+}
+.storagePathRow > span {
+  display: grid;
+  gap: 5px;
+}
+.settingsApp .storagePathRow a {
+  margin: 0;
+  padding: 6px;
+  text-align: center;
+}
+.settingsApp .storageBoard .noSend {
+  font-size: 17px;
+  line-height: 1.6;
+}
+.settingsApp .storageBoard > .notice {
+  margin: 10px 0 0;
+  padding: 9px 11px;
+}
+.settingsApp .backupBoard .backup {
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  max-width: none;
+}
+.settingsApp .backupBoard .backup .card {
+  min-height: 0;
+  height: 151px;
+  padding: 10px 12px;
+}
+.settingsApp .backupBoard .backup h3,
+.settingsApp .backupBoard .backHistory h3 {
+  margin-bottom: 5px;
+  font-size: 13px;
+}
+.settingsApp .backupBoard .backup p {
+  margin: 4px 0;
+}
+.settingsApp .backupBoard .formatButtons {
+  margin: 3px 0 6px;
+}
+.settingsApp .backupBoard .formatButtons button {
+  min-width: 70px;
+  padding: 5px 10px;
+}
+.settingsApp .backupBoard .backup .btn {
+  margin-top: 5px;
+  padding: 7px 12px;
+}
+.settingsApp .backupBoard .backHistory {
+  width: 100%;
+  max-width: none;
+  margin-top: 8px;
+  padding: 8px 12px;
+}
+.settingsApp .backupBoard .backHistory table {
+  width: 100%;
+  table-layout: fixed;
+}
+.settingsApp .backupBoard .backHistory th,
+.settingsApp .backupBoard .backHistory td {
+  padding: 4px 6px;
+  font-size: 9px;
+}
+.settingsApp .backupBoard .backHistory .notice {
+  margin: 5px 0 0;
+  padding: 6px 8px;
+}
+.settingsApp .connectionsBoard .banner {
+  max-width: none;
+  height: 100px;
+  box-sizing: border-box;
+  padding: 28px 20px;
+  font-size: 21px;
+}
+.settingsApp .connectionsBoard .connections {
+  max-width: none;
+  margin: 12px 0;
+  gap: 12px;
+}
+.settingsApp .connectionsBoard .connections .card {
+  height: 88px;
+  padding: 13px;
+}
+.settingsApp .connectionsBoard .connections h3 {
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+.settingsApp .connectionsBoard .connections span {
+  padding: 4px 12px;
+}
+.settingsApp .connectionsBoard .protect {
+  max-width: none;
+  height: 92px;
+  box-sizing: border-box;
+  padding: 18px 20px;
+  font-size: 17px;
+}
+.settingsApp .connectionsBoard .protect p {
+  margin: 6px 0 0;
+  font-size: 11px;
+}
+
+/* Final fidelity pass: match the approved desktop chrome instead of using
+   placeholder Unicode symbols and an extra workspace selector. */
+.app svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+.app:not(.settingsApp) > aside {
+  width: 118px;
+  padding: 9px 8px;
+}
+.app > aside a {
+  gap: 8px;
+  min-height: 32px;
+  box-sizing: border-box;
+  padding: 7px 8px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.app > aside i {
+  display: grid;
+  width: 18px;
+  flex: 0 0 18px;
+  place-items: center;
+  color: #40516c;
+}
+.app > aside .active i {
+  color: #075de4;
+}
+.utilityApp {
+  grid-template-columns: 118px minmax(0, 1fr);
+  grid-template-rows: 48px minmax(0, 1fr);
+  font-size: 11px;
+}
+.utilityApp > .frame {
+  height: 464px;
+}
+.utilityHeader {
+  gap: 10px;
+  height: 48px;
+  padding: 0 16px;
+}
+.utilityScreenNo {
+  align-self: center;
+  width: 36px;
+  height: 34px;
+  margin: 0;
+  border-radius: 3px;
+  font-size: 16px;
+}
+.utilityHeader > button {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  background: transparent;
+  font-size: 17px;
+}
+.utilityWorkspace {
+  display: none;
+}
+.utilityTools {
+  gap: 12px;
+  font-size: 11px;
+}
+.utilityTools > span:not(.utilityUser) {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  color: #52617a;
+}
+.utilityTools .notificationIcon::after {
+  position: absolute;
+  top: -2px;
+  right: -1px;
+  display: grid;
+  width: 8px;
+  height: 8px;
+  place-items: center;
+  border: 1px solid #fff;
+  border-radius: 50%;
+  background: #e22b2b;
+  color: #fff;
+  content: "";
+}
+.utilityUser {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  background: transparent;
+  color: #293951;
+}
+.utilityUser svg {
+  width: 19px;
+  height: 19px;
+  color: #637086;
+}
+.utilityUser small {
+  font-size: 10px;
+}
+.frameTools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.frameTools svg {
+  width: 15px;
+  height: 15px;
+  color: #657188;
+}
+
+/* The approved boards use larger, denser content than the earlier draft. */
+.utilityApp .pad {
+  padding: 9px 12px;
+  font-size: 11px;
+}
+.utilityApp .pad h2 {
+  margin-bottom: 5px;
+  font-size: 18px;
+}
+.utilityApp .card {
+  padding: 9px;
+}
+.utilityApp .card h3 {
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+.utilityApp .btn {
+  padding: 8px 13px;
+  font-size: 10px;
+}
+.utilityApp .notice,
+.utilityApp .warn,
+.utilityApp .danger {
+  padding: 8px;
+  line-height: 1.4;
+  margin: 7px 0;
+}
+.utilityApp .tabs {
+  padding: 8px;
+  margin: 7px 0;
+}
+
+/* PC33 follows the approved two-level inventory composition: the inventory
+   table begins directly under the photo cards while movement history remains
+   aligned to the lower part of the left column. */
+.screen33 .inventoryPad {
+  position: relative;
+  padding: 8px 10px;
+}
+.screen33 .screenActions {
+  display: block;
+  margin-bottom: 7px;
+}
+.screen33 .screenActions .btn {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+}
+.screen33 .inventoryTop {
+  grid-template-columns: 154px 334px 120px;
+  gap: 8px;
+}
+.screen33 .inventoryTop > .card {
+  height: 190px;
+  padding: 9px;
+}
+.screen33 .inventoryTop p {
+  margin: 3px 4px;
+  font-size: 10px;
+}
+.screen33 .photos {
+  gap: 5px;
+}
+.screen33 .shelf {
+  height: 104px;
+}
+.screen33 .inventoryBottom {
+  grid-template-columns: 154px minmax(0, 1fr);
+  gap: 8px;
+  height: 173px;
+  margin-top: 7px;
+}
+.screen33 .inventoryBottom > .card:first-child {
+  width: 154px;
+  height: 173px;
+}
+.screen33 .inventoryBottom > .card:last-child {
+  height: 173px;
+}
+.screen33 .inventoryBottom p {
+  padding: 5px 4px;
+  font-size: 9px;
+  line-height: 1.25;
+}
+
+/* Per-board density corrections measured against the approved 768 x 512
+   quadrants. These keep every approved row inside the first viewport. */
+.screen37 .memberTable th,
+.screen37 .memberTable td {
+  padding: 7px 8px;
+  font-size: 10px;
+}
+.screen37 .avatar {
+  width: 26px;
+  height: 26px;
+  flex-basis: 26px;
+  transform: none;
+}
+.screen37 .pagination {
+  margin-top: 8px;
+}
+.screen38 .assignment {
+  gap: 8px;
+  font-size: 10px;
+  line-height: 1.25;
+}
+.screen38 .assignment .card {
+  padding: 8px;
+}
+.screen38 .assignment section {
+  gap: 6px;
+}
+.screen38 .assignment select,
+.screen38 .assignment input {
+  height: 25px;
+  padding: 4px 6px;
+}
+.screen38 .pickItem .shelf {
+  width: 74px;
+  height: 74px;
+}
+.screen38 .preview div {
+  padding: 7px;
+}
+.screen38 .assignmentForm {
+  display: block;
+}
+.screen38 .assignmentForm > h3 {
+  margin: 5px 0 4px;
+  font-size: 11px;
+}
+.screen38 .assignmentForm > h3:first-child {
+  margin-top: 0;
+}
+.screen38 .assignmentItem {
+  height: 127px;
+  padding: 6px;
+  overflow: hidden;
+}
+.screen38 .assignmentItem .tabs {
+  margin: 0 0 5px;
+  padding: 4px 7px;
+}
+.screen38 .assignmentItem .pickItem p {
+  margin: 1px 0;
+  font-size: 8px;
+}
+.screen38 .assignmentItem .pickItem .shelf {
+  width: 74px;
+  height: 74px;
+}
+.screen38 .assignmentForm > select,
+.screen38 .assignmentForm > input,
+.screen38 .dateField > input {
+  height: 25px;
+  margin: 0 0 3px;
+  padding: 3px 6px;
+}
+.screen38 .dateField {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: center;
+  margin: 2px 0;
+}
+.screen38 .assignmentForm > label:not(.dateField) {
+  margin: 3px 0;
+  font-size: 9px;
+}
+.screen38 .preview {
+  height: 339px;
+}
+.screen38 .preview .btn {
+  margin-top: 12px;
+  padding: 8px;
+}
+.screen39 .approval {
+  gap: 8px;
+}
+.screen39 .approval section {
+  gap: 7px;
+}
+.screen39 .approval td {
+  padding: 6px;
+  font-size: 9px;
+}
+.screen39 .sneakerEvidence figure {
+  height: 80px;
+}
+.screen40 .filters {
+  padding: 8px;
+}
+.screen40 .history th,
+.screen40 .history td {
+  padding: 5px 4px;
+  font-size: 8px;
+  line-height: 1.25;
+}
+.screen40 .history .pagination {
+  margin-top: 7px;
+}
+
+.metric i svg {
+  width: 27px;
+  height: 27px;
+}
+.metricChecklist i,
+.metricChart i,
+.metricCoins i,
+.metricYen i {
+  background: #ecf8ef;
+  color: #23884b;
+}
+.metricBag i {
+  background: #f1ecff;
+  color: #714ad0;
+}
+.metricTruck i,
+.metricTag i {
+  background: #fff2df;
+  color: #e27d12;
+}
+.metricBox i {
+  background: #eef1f4;
+  color: #707a89;
+}
+.screen41 .metrics,
+.screen42 .metrics {
+  gap: 8px;
+}
+.screen41 .metric,
+.screen42 .metric {
+  min-height: 91px;
+  padding: 10px;
+}
+.screen41 .metric i,
+.screen42 .metric i {
+  width: 45px;
+  height: 45px;
+  margin-right: 9px;
+}
+.screen41 .metric strong,
+.screen42 .metric strong {
+  margin-top: 6px;
+  font-size: 17px;
+}
+.screen41 .breakEven {
+  min-height: 52px;
+  padding: 13px;
+  font-size: 14px;
+}
+.screen42 .greenNotice {
+  margin: 4px 0 7px;
+}
+.screen43 .period {
+  margin: 6px 0;
+}
+.screen43 .period > * {
+  padding: 7px;
+}
+.screen43 .kpis .card {
+  min-height: 76px;
+  padding: 7px;
+}
+.screen43 .kpis .card strong {
+  margin: 4px;
+  font-size: 17px;
+}
+.screen43 .kpis .card small {
+  margin: 3px;
+}
+.screen43 .chartPlot svg {
+  height: 102px;
+}
+.screen43 .chartGrid {
+  grid-template-columns: minmax(0, 1fr) 130px;
+  gap: 9px;
+  padding-top: 5px !important;
+}
+.screen43 .chartLegend {
+  display: flex;
+  align-items: center;
+  width: auto;
+  height: auto !important;
+  gap: 14px;
+  margin: 0 0 2px;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent;
+}
+.screen43 .chartLegend p {
+  margin: 0;
+  font-size: 9px;
+}
+.screen43 .previous {
+  width: auto;
+  height: 128px;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 7px;
+}
+.screen43 .previous p {
+  padding: 3px;
+}
+.screen44 .supplier th,
+.screen44 .supplier td {
+  padding: 6px 5px;
+  font-size: 9px;
+}
+.screen44 .supplierLegend {
+  margin: 8px 0;
+  padding: 9px 12px;
+  font-size: 10px;
+}
+.screen45 .factStats {
+  margin: 8px 0;
+  padding: 9px;
+  font-size: 11px;
+}
+.screen45 .factsHeader {
+  padding: 6px 6px 7px 38px;
+  font-size: 9px;
+}
+.screen45 .facts p {
+  padding: 7px 5px 7px 36px;
+  font-size: 9px;
+}
+.screen45 .facts p::before {
+  top: 7px;
+  left: 5px;
+  width: 23px;
+  height: 23px;
+}
+.screen45 .notice {
+  margin: 8px 0;
+}
+.screen46 .accounting {
+  gap: 8px;
+}
+.screen46 .accounting section {
+  gap: 7px;
+}
+.screen46 .accounting .card {
+  min-height: 136px;
+  padding: 9px;
+}
+.screen46 .helpBox {
+  min-height: 280px;
+}
+.screen47 .mapTable th,
+.screen47 .mapTable td {
+  padding: 5px 6px;
+  font-size: 9px;
+}
+.screen47 .mappingLegend {
+  padding: 8px 10px;
+  font-size: 9px;
+}
+.screen47 .mappingFooter .btn {
+  min-width: 205px;
+  padding: 10px 14px;
+}
+.screen48 .fileTop {
+  height: 128px;
+  gap: 7px;
+}
+.screen48 .fileTop .card {
+  height: 128px;
+  padding: 7px;
+  font-size: 8px;
+}
+.screen48 .fileBottom {
+  height: 140px;
+  gap: 7px;
+  margin: 7px 0;
+}
+.screen48 .fileBottom .card {
+  height: 140px;
+  padding: 7px;
+  font-size: 8px;
+}
+.screen48 .exportPreview th,
+.screen48 .exportPreview td,
+.screen48 .exportHistory th,
+.screen48 .exportHistory td {
+  padding: 3px;
+  font-size: 7px;
+}
+
+/* Approved-board alignment pass (PC33-48). The final Slack boards use a
+   36px utility bar; keeping it at 48px pushed every page downward and clipped
+   the lower actions. */
+.utilityApp {
+  grid-template-rows: 36px minmax(0, 1fr);
+}
+.utilityApp > .frame {
+  height: 476px;
+}
+.utilityHeader {
+  height: 36px;
+  padding: 0 14px;
+}
+.utilityScreenNo {
+  width: 36px;
+  height: 34px;
+  margin-left: -14px;
+  margin-right: 2px;
+  font-size: 15px;
+}
+.utilityApp > aside {
+  padding-top: 12px;
+}
+
+.screen35 .pad > .btn {
+  float: right;
+  min-width: 140px;
+  margin-top: 8px;
+  text-align: center;
+}
+
+.screen36 .statuses .card {
+  min-height: 0;
+  height: 198px;
+}
+.screen36 .greenbox,
+.screen36 .redbox {
+  min-height: 68px;
+  box-sizing: border-box;
+}
+.screen36 .statusBottom {
+  display: grid;
+  grid-template-columns: minmax(0, 2.3fr) minmax(0, 0.9fr);
+  gap: 8px;
+  margin-top: 8px;
+}
+.screen36 .statusBottom .flow {
+  margin: 0;
+  padding: 9px;
+}
+.screen36 .statusBottom .flow > p {
+  margin: 3px 0;
+}
+.screen36 .confirmFlow {
+  gap: 6px;
+  margin-top: 7px;
+}
+.screen36 .confirmFlow > div {
+  min-height: 54px;
+  padding: 6px;
+}
+.screen36 .deleteGuard {
+  display: flex;
+  min-height: 126px;
+  flex-direction: column;
+}
+.screen36 .deleteGuard p {
+  margin: 3px 0 8px;
+  line-height: 1.45;
+}
+.screen36 .deleteGuard .btn {
+  margin-top: auto;
+  text-align: center;
+}
+
+.screen39 .pad > footer {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+.screen39 .pad > footer > a {
+  display: grid;
+  min-height: 42px;
+  box-sizing: border-box;
+  place-items: center;
+  border: 1px solid #9fc3f8;
+  border-radius: 5px;
+  background: #fff;
+  color: #075de4;
+  text-decoration: none;
+  font-weight: 700;
+}
+.screen39 .pad > footer > a:nth-child(2) {
+  border-color: #efbc68;
+  color: #db7b00;
+}
+.screen39 .pad > footer > .btn {
+  border-color: #19884b;
+  background: #219653;
+  color: #fff;
+}
+
+.screen43 .chartPlot svg {
+  width: 100%;
+}
+
+.screen45 .factsHeader {
+  padding: 4px 5px 5px 34px;
+}
+.screen45 .facts p {
+  padding: 4px 5px 4px 32px;
+}
+.screen45 .facts p::before {
+  top: 4px;
+  left: 4px;
+  width: 21px;
+  height: 21px;
+}
+.screen45 .factStats,
+.screen45 .notice {
+  margin: 6px 0;
+}
+
+.screen46 .accounting {
+  grid-template-columns: minmax(0, 2.2fr) minmax(0, 1fr);
+  align-items: stretch;
+}
+.screen46 .accounting > section {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: 128px;
+}
+.screen46 .accounting > section > .card {
+  display: block;
+  height: 128px;
+  min-height: 0;
+  overflow: hidden;
+}
+.screen46 .accounting > .helpBox {
+  display: block;
+  height: 264px;
+  min-height: 0;
+  overflow: hidden;
+}
+.screen46 .pad > .btn {
+  min-width: 210px;
+  margin: 8px 0 0 188px;
+  text-align: center;
+}
+.screen38 .assignment > .assignmentForm,
+.screen38 .assignment > .assignmentForm > .assignmentItem {
+  display: block;
+}
+
+/* Screen 38: the approved board uses two equal columns.  The preview and
+   final action are separate blocks, while the left-hand form keeps the
+   original, comfortably spaced four-step rhythm. */
+.screen38 .assignment {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+.screen38 .assignmentForm > h3 {
+  margin: 10px 0 6px;
+  font-size: 10px;
+  line-height: 14px;
+}
+.screen38 .assignmentForm > h3:first-child {
+  margin-top: 0;
+}
+.screen38 .assignmentItem {
+  height: 126px;
+  box-sizing: border-box;
+}
+.screen38 .assignmentForm > select {
+  width: 100%;
+  height: 28px;
+  margin: 0;
+}
+.screen38 .dateField {
+  grid-template-columns: 76px minmax(0, 1fr);
+  min-height: 29px;
+  margin: 0;
+}
+.screen38 .dateField > input {
+  width: 100%;
+  height: 28px;
+  box-sizing: border-box;
+  margin: 0;
+}
+.screen38 .assignmentForm > label:not(.dateField) {
+  display: flex;
+  align-items: center;
+  min-height: 19px;
+  margin: 1px 0;
+  font-size: 9px;
+  line-height: 17px;
+}
+.screen38 .assignmentForm > label:not(.dateField) > input[type="radio"] {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+  margin: 0 6px 0 0;
+  padding: 0;
+}
+.screen38 .assignmentSide {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.screen38 .assignmentSide .preview {
+  height: 262px;
+  box-sizing: border-box;
+  padding: 0;
+  overflow: hidden;
+}
+.screen38 .assignmentSide .preview > h3 {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #b8d7fa;
+  background: #edf6ff;
+  font-size: 10px;
+}
+.screen38 .assignmentSide .preview > b,
+.screen38 .assignmentSide .preview > p {
+  margin-right: 12px;
+  margin-left: 12px;
+}
+.screen38 .assignmentSide .preview > p {
+  margin-top: 6px;
+  margin-bottom: 6px;
+  font-size: 8px;
+  line-height: 1.35;
+}
+.screen38 .assignmentSide .preview > div {
+  margin: 10px 12px 0;
+  padding: 8px;
+  font-size: 8px;
+}
+.screen38 .assignmentSide .preview > div p {
+  margin: 5px 0;
+}
+.screen38 .assignmentSide > .btn {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 42px;
+  padding: 11px 12px;
+  text-align: center;
+}
+
+/* PC33-36: restore the approved inventory boards' information density and
+   the missing review controls while keeping the screens fully interactive. */
+.screen33 .inventoryPad {
+  padding: 8px 18px;
+}
+.screen33 .inventoryTop {
+  grid-template-columns: 154px minmax(0, 1fr) 120px;
+}
+.screen33 .inventoryTop > .card:first-child {
+  height: 248px;
+}
+.screen33 .inventoryTop > .card:nth-child(2),
+.screen33 .inventoryTop > .card:nth-child(3) {
+  height: 190px;
+}
+.screen33 .inventoryTop > .card:first-child p {
+  line-height: 1.2;
+}
+.screen33 .inventoryTop .photos .shelf {
+  display: flex;
+  height: auto;
+  min-width: 0;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 0;
+  overflow: visible;
+  background: transparent;
+}
+.screen33 .inventoryTop .photos .shelf > img {
+  width: 100%;
+  height: 104px;
+  flex: 0 0 104px;
+  border-radius: 3px;
+}
+.screen33 .inventoryTop .photos .shelf > span {
+  position: static;
+  display: block;
+  margin-top: 4px;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #23334c;
+  font-size: 8px;
+  line-height: 1.2;
+  text-align: center;
+}
+.screen33 .inventoryBottom {
+  grid-template-columns: 154px minmax(0, 1fr);
+  height: 111px;
+}
+.screen33 .inventoryBottom > .card:first-child,
+.screen33 .inventoryBottom > .card:last-child {
+  height: 111px;
+}
+.screen33 .historyLink {
+  display: block;
+  margin-top: 7px;
+  color: #075de4;
+  font-size: 9px;
+  font-weight: 700;
+  text-decoration: none;
+}
+.screen33 .tableCard h3 small {
+  color: #53647b;
+  font-size: 8px;
+  font-weight: 400;
+}
+.screen33 .inventoryTable,
+.screen34 .scanHistoryTable {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+.screen33 .inventoryTable th,
+.screen33 .inventoryTable td,
+.screen34 .scanHistoryTable th,
+.screen34 .scanHistoryTable td {
+  padding: 4px 3px;
+  border-bottom: 1px solid #e3e8ef;
+  font-size: 8px;
+  line-height: 1.2;
+  text-align: left;
+  white-space: nowrap;
+}
+.screen33 .inventoryTable th:first-child,
+.screen33 .inventoryTable td:first-child {
+  width: 18%;
+}
+.screen33 .inventoryTable th:nth-child(2),
+.screen33 .inventoryTable td:nth-child(2) {
+  width: 31%;
+}
+.screen33 .inventoryTable th:nth-child(3),
+.screen33 .inventoryTable td:nth-child(3) {
+  width: 9%;
+}
+.screen33 .inventoryTable th:nth-child(4),
+.screen33 .inventoryTable td:nth-child(4) {
+  width: 8%;
+}
+.screen33 .inventoryTable th:nth-child(5),
+.screen33 .inventoryTable td:nth-child(5) {
+  width: 13%;
+}
+.screen33 .inventoryTable th:nth-child(6),
+.screen33 .inventoryTable td:nth-child(6) {
+  width: 21%;
+}
+
+.screen34 .stockTop > .card {
+  min-height: 78px;
+}
+.screen34 .stockTop h3 {
+  margin-bottom: 6px;
+}
+.screen34 .stockTop p {
+  margin: 5px 0;
+}
+.screen34 .stockStats > .card {
+  min-height: 95px;
+}
+.screen34 .stockStats strong {
+  margin-top: 13px;
+  font-size: 28px;
+}
+.screen34 .progressDonut {
+  position: relative;
+  display: grid;
+  width: 58px;
+  height: 58px;
+  margin: 5px auto 0;
+  place-items: center;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, #fff 0 21px, transparent 22px),
+    conic-gradient(#1769df 0 64%, #d7e4f3 64% 100%);
+  color: #162746;
+  font-size: 14px;
+  font-weight: 700;
+}
+.screen34 .stockBottom {
+  grid-template-columns: 2fr 1fr;
+  height: 140px;
+}
+.screen34 .stockBottom > .card {
+  height: 140px;
+}
+.screen34 .scanHistoryTable th,
+.screen34 .scanHistoryTable td {
+  padding: 4px 3px;
+  font-size: 8px;
+}
+.screen34 .scanHistoryTable th:first-child,
+.screen34 .scanHistoryTable td:first-child {
+  width: 10%;
+}
+.screen34 .scanHistoryTable th:nth-child(2),
+.screen34 .scanHistoryTable td:nth-child(2) {
+  width: 20%;
+}
+.screen34 .scanHistoryTable th:nth-child(3),
+.screen34 .scanHistoryTable td:nth-child(3) {
+  width: 35%;
+}
+.screen34 .scanHistoryTable th:nth-child(4),
+.screen34 .scanHistoryTable td:nth-child(4) {
+  width: 9%;
+}
+.screen34 .scanHistoryTable th:nth-child(5),
+.screen34 .scanHistoryTable td:nth-child(5) {
+  width: 15%;
+}
+.screen34 .scanHistoryTable th:nth-child(6),
+.screen34 .scanHistoryTable td:nth-child(6) {
+  width: 11%;
+}
+
+.screen35 .pad > p:not(.danger) {
+  margin: 4px 0;
+  color: #53647b;
+}
+.selectActionRow {
+  display: flex;
+  align-items: end;
+  gap: 6px;
+}
+.selectActionRow select {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.selectActionRow .secondaryAction {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.secondaryAction {
+  display: inline-block;
+  border: 1px solid #cbd5e2;
+  border-radius: 4px;
+  background: #fff;
+  color: #233754;
+  padding: 6px 9px;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.screen35 .notesLabel {
+  display: block;
+  margin: 4px 0 0;
+  font-weight: 700;
+}
+.screen35 .photoAdd {
+  display: grid;
+  width: calc(50% - 3px);
+  height: 62px;
+  margin-top: 5px;
+  place-items: center;
+  box-sizing: border-box;
+  border: 1px dashed #cbd5e2;
+  border-radius: 5px;
+  color: #5e6e86;
+  font-size: 9px;
+  line-height: 1.2;
+  text-align: center;
+  text-decoration: none;
+}
+.screen35 .photoAdd b {
+  display: block;
+  font-size: 18px;
+  font-weight: 400;
+}
+.screen35 .mismatchFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 12px;
+}
+.screen35 .mismatchFooter .btn {
+  min-width: 146px;
+  padding: 8px 12px;
+  text-align: center;
+}
+
+.operationBox {
+  margin: 6px 0;
+  padding: 7px;
+  border: 1px solid #f0c96a;
+  border-radius: 5px;
+  background: #fff7dc;
+  color: #a86706;
+}
+.operationBox b {
+  font-size: 9px;
+}
+.operationBox p {
+  margin: 3px 0;
+  color: #77520e;
+  line-height: 1.25;
+}
+.holdTimer {
+  display: block;
+  margin-top: 4px;
+  color: #596984;
+  font-size: 9px;
+  text-align: center;
+}
+.screen36 .statuses {
+  gap: 8px;
+}
+.screen36 .statuses .card {
+  height: 286px;
+  min-height: 0;
+  overflow: hidden;
+}
+.screen36 .statuses .card h3 {
+  margin-bottom: 7px;
+  font-size: 11px;
+  line-height: 1.3;
+}
+.screen36 .statuses .card > p {
+  margin: 4px 0;
+  line-height: 1.35;
+}
+.screen36 .greenbox,
+.screen36 .redbox {
+  margin: 8px 0;
+  padding: 7px;
+}
+.screen36 .greenbox p,
+.screen36 .redbox p,
+.screen36 .operationBox p {
+  margin: 3px 0;
+  line-height: 1.25;
+}
+.screen36 .operationBox {
+  margin: 6px 0;
+  padding: 7px;
+}
+.screen36 .statuses .provisionalBtn,
+.screen36 .statuses .greenBtn,
+.screen36 .statuses .redBtn {
+  padding: 8px 7px;
+}
+.screen36 .statusBottom {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 8px;
+  margin-top: 8px;
+}
+.screen36 .statusBottom .flow,
+.screen36 .deleteGuard {
+  height: 136px;
+  box-sizing: border-box;
+}
+.screen36 .statusBottom .flow {
+  padding: 9px;
+}
+.screen36 .statusBottom .flow h3 {
+  margin-bottom: 5px;
+  font-size: 11px;
+}
+.screen36 .statusBottom .flow > p {
+  margin: 3px 0;
+  line-height: 1.25;
+}
+.screen36 .confirmFlow {
+  gap: 6px;
+  margin-top: 7px;
+}
+.screen36 .confirmFlow > div {
+  min-height: 86px;
+  padding: 6px;
+}
+.screen36 .confirmFlow strong {
+  width: 20px;
+  height: 20px;
+  margin-right: 4px;
+  font-size: 10px;
+}
+.screen36 .confirmFlow b {
+  font-size: 9px;
+}
+.screen36 .confirmFlow span {
+  margin-top: 4px;
+  margin-left: 24px;
+  font-size: 8px;
+  line-height: 1.25;
+}
+.screen36 .confirmFlow > i {
+  font-size: 18px;
+}
+.screen36 .deleteGuard {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  padding: 9px;
+}
+.screen36 .deleteGuard h3 {
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+.screen36 .deleteGuard p {
+  margin: 3px 0 8px;
+  line-height: 1.4;
+}
+.screen36 .deleteGuard .btn {
+  margin-top: auto;
+  padding: 8px 10px;
+  text-align: center;
+}
+
+/* PC51: compact status pills in the backup history table. */
+.settingsApp .backupBoard .backHistory tbody tr:first-child td:last-child {
+  border: 1px solid #8ccaa0;
+  border-radius: 999px;
+  background: #e5f7ea;
+  color: #1c7f42;
+  font-weight: 700;
+  text-align: center;
+}
+.settingsApp .backupBoard .backHistory tbody tr:nth-child(2) td:last-child {
+  border: 1px solid #cfd4db;
+  border-radius: 999px;
+  background: #f1f3f5;
+  color: #566273;
+  font-weight: 700;
+  text-align: center;
+}
+
+/* PC37-40: close the remaining member, assignment, approval and history
+   boards to the approved reference crops while keeping the content native
+   HTML so each action remains usable. */
+.screen37 .avatar5 {
+  background: #687382;
+}
+.screen37 .avatar2 {
+  background: #259b67;
+}
+.screen37 .avatar3 {
+  background: #7562d5;
+}
+.screen37 .avatar4 {
+  background: #e58a16;
+}
+.screen37 .memberStop {
+  border-color: #f2a4a4;
+  background: #fff1f1;
+  color: #d93232;
+  font-weight: 700;
+}
+.screen37 .memberTable td:last-child {
+  white-space: nowrap;
+}
+
+.screen38 .previewCheckIcon,
+.screen38 .previewLockIcon {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  flex: 0 0 13px;
+  margin-right: 5px;
+  vertical-align: -2px;
+}
+.screen38 .previewCheckIcon {
+  color: #075de4;
+}
+.screen38 .previewLockIcon {
+  color: #59677d;
+}
+.screen38 .assignmentSide .preview > p,
+.screen38 .assignmentSide .preview > div p {
+  display: flex;
+  align-items: center;
+}
+.screen38 .assignmentSide .preview > p svg,
+.screen38 .assignmentSide .preview > div p svg {
+  flex: 0 0 auto;
+}
+.screen38 .assignmentItem .pickItem .shelf {
+  padding: 0;
+  border-radius: 5px;
+  background: #f4f5f6;
+}
+.screen38 .assignmentItem .pickItem .shelf > img {
+  object-fit: contain;
+  object-position: center;
+}
+
+.screen39 .sneakerEvidence figcaption {
+  display: none;
+}
+.screen39 .sneakerView1 img {
+  transform: scale(1.15);
+  object-position: 50% 52%;
+}
+.screen39 .sneakerView2 img {
+  transform: scaleX(-1) scale(1.35);
+  object-position: 72% 45%;
+}
+.screen39 .sneakerView3 img {
+  transform: rotate(180deg) scale(1.42);
+  object-position: 50% 65%;
+}
+.screen39 .sneakerView4 img {
+  transform: rotate(-12deg) scale(1.55);
+  object-position: 72% 25%;
+}
+
+.screen40 .filters {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 0;
+  white-space: nowrap;
+}
+.screen40 .filters select {
+  height: 26px;
+  margin: 0;
+  padding: 3px 6px;
+  font-size: 8px;
+}
+.screen40 .filterSearch {
+  width: auto;
+  min-width: 0;
+  flex: 1 1 160px;
+  height: 26px;
+  box-sizing: border-box;
+  padding: 4px 7px;
+  font-size: 8px;
+}
+.screen40 .history {
+  overflow: hidden;
+}
+.screen40 .history table {
+  table-layout: fixed;
+}
+.screen40 .history th,
+.screen40 .history td {
+  padding: 4px 3px;
+  font-size: 7px;
+  line-height: 1.2;
+  vertical-align: middle;
+  white-space: pre-line;
+}
+.screen40 .history th:nth-child(1),
+.screen40 .history td:nth-child(1) {
+  width: 9%;
+}
+.screen40 .history th:nth-child(2),
+.screen40 .history td:nth-child(2) {
+  width: 13%;
+}
+.screen40 .history th:nth-child(3),
+.screen40 .history td:nth-child(3) {
+  width: 16%;
+}
+.screen40 .history th:nth-child(4),
+.screen40 .history td:nth-child(4) {
+  width: 10%;
+}
+.screen40 .history th:nth-child(5),
+.screen40 .history td:nth-child(5) {
+  width: 8%;
+}
+.screen40 .history th:nth-child(6),
+.screen40 .history td:nth-child(6) {
+  width: 10%;
+}
+.screen40 .history th:nth-child(7),
+.screen40 .history td:nth-child(7) {
+  width: 12%;
+}
+.screen40 .history th:nth-child(8),
+.screen40 .history td:nth-child(8) {
+  width: 12%;
+}
+.screen40 .history th:nth-child(9),
+.screen40 .history td:nth-child(9) {
+  width: 10%;
+}
+.screen40 .historyPending,
+.screen40 .historyApproved {
+  display: inline-block;
+  min-width: 42px;
+  box-sizing: border-box;
+  padding: 2px 4px;
+  border: 1px solid;
+  border-radius: 999px;
+  font-size: 7px;
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+}
+.screen40 .historyPending {
+  border-color: #f1c56b;
+  background: #fff2d7;
+  color: #a96806;
+}
+.screen40 .historyApproved {
+  border-color: #9dd4af;
+  background: #e5f7ea;
+  color: #1c7f42;
+}
+.screen40 .history td:nth-child(2) a {
+  color: #075de4;
+  text-decoration: none;
+}
+
+/* PC43-48: restore the explanatory labels and review affordances that are
+   part of the approved accounting boards. */
+.screen43 .chartAxisTitles {
+  display: flex;
+  height: auto !important;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0;
+  margin: 1px 36px 2px;
+  padding: 0;
+  border: 0;
+  color: #41516a;
+  font-size: 8px;
+  font-weight: 700;
+}
+.screen43 .chartFrame {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) 28px;
+  align-items: stretch;
+}
+.screen43 .chartSvgWrap {
+  min-width: 0;
+}
+.screen43 .chartScale {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 2px 0 1px;
+  color: #52617a;
+  font-size: 8px;
+  line-height: 1;
+}
+.screen43 .chartScaleLeft {
+  align-items: flex-end;
+  padding-right: 4px;
+}
+.screen43 .chartScaleRight {
+  align-items: flex-start;
+  padding-left: 4px;
+}
+.screen43 .chartAxisLine,
+.screen43 .chartAxisTick {
+  fill: none;
+  stroke: #697991;
+  stroke-width: 1.4;
+  vector-effect: non-scaling-stroke;
+}
+.screen43 .chartAxisTick {
+  stroke-width: 1.1;
+}
+.screen44 .supplier th {
+  min-height: 34px;
+  padding: 5px 4px;
+  font-size: 8px;
+  line-height: 1.25;
+  vertical-align: middle;
+  white-space: pre-line;
+}
+.screen44 .supplier td {
+  padding: 7px 5px;
+  font-size: 9px;
+  white-space: nowrap;
+}
+.screen44 .notice {
+  margin-top: 9px;
+  padding: 8px 10px;
+  font-size: 9px;
+  line-height: 1.45;
+}
+.screen45 .facts p:nth-of-type(1)::before {
+  background: #e8f7ec;
+  color: #299b5b;
+  content: "↗";
+}
+.screen45 .facts p:nth-of-type(2)::before {
+  background: #fff1ef;
+  color: #d94a3b;
+  content: "↩";
+}
+.screen45 .facts p:nth-of-type(3)::before {
+  background: #fff7dc;
+  color: #bd7900;
+  content: "%";
+}
+.screen45 .facts p:nth-of-type(4)::before {
+  background: #edf4ff;
+  color: #1769df;
+  content: "▣";
+}
+.screen45 .facts p:nth-of-type(5)::before {
+  background: #f1edff;
+  color: #694fc3;
+  content: "□";
+}
+.screen45 .factConfirmed em {
+  border: 1px solid #9dd4af;
+  background: #e5f7ea;
+  color: #1c7f42;
+  font-weight: 700;
+}
+.screen45 .factReview em {
+  border: 1px solid #f1c56b;
+  background: #fff2d7;
+  color: #a96806;
+  font-weight: 700;
+}
+
+.screen46 .accountingHeading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 7px;
+}
+.screen46 .accountingHeading h2 {
+  margin: 0;
+}
+.screen46 .accountingHeading p {
+  margin: 3px 0 0;
+}
+.screen46 .accountingActions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+}
+.screen46 .accountingActions a,
+.screen46 .accountingActions button {
+  display: inline-grid;
+  min-height: 28px;
+  box-sizing: border-box;
+  place-items: center;
+  border: 1px solid #bed3f3;
+  border-radius: 5px;
+  background: #fff;
+  color: #075de4;
+  font-size: 9px;
+  font-weight: 700;
+  text-decoration: none;
+}
+.screen46 .accountingActions a {
+  padding: 6px 10px;
+}
+.screen46 .accountingActions button {
+  width: 29px;
+  padding: 0;
+  cursor: pointer;
+}
+.screen46 .accounting > section > .card {
+  padding: 8px;
+}
+.screen46 .accounting .card h3 {
+  margin-bottom: 5px;
+  font-size: 10px;
+  line-height: 1.2;
+}
+.screen46 .accounting .card > b {
+  display: block;
+  font-size: 9px;
+  line-height: 1.25;
+}
+.screen46 .accounting .card > p {
+  margin: 4px 0 0;
+  font-size: 8px;
+  line-height: 1.25;
+}
+.screen46 .accounting .card > p strong {
+  color: #1769df;
+  font-size: 8px;
+}
+.screen46 .infoMark {
+  display: inline-grid;
+  width: 13px;
+  height: 13px;
+  place-items: center;
+  border: 1px solid #9cb7da;
+  border-radius: 50%;
+  color: #1769df;
+  font-size: 8px;
+  font-weight: 700;
+  vertical-align: 1px;
+}
+.screen46 .accounting h3 a {
+  padding: 3px 6px;
+  font-size: 8px;
+}
+.screen46 .helpBox {
+  padding: 9px;
+  line-height: 1.35;
+}
+.screen46 .helpBox h3 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.screen46 .helpBox h3 button {
+  border: 0;
+  background: transparent;
+  color: #26344b;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+.screen46 .helpBox h4 {
+  margin: 8px 0 3px;
+  color: #075de4;
+  font-size: 9px;
+}
+.screen46 .helpBox p {
+  margin: 3px 0;
+  font-size: 8px;
+  line-height: 1.45;
+}
+.screen46 .pad > .notice {
+  margin: 6px 0 0;
+  padding: 7px 9px;
+  font-size: 8px;
+  line-height: 1.3;
+}
+.screen46 .pad > .btn {
+  display: block;
+  width: 240px;
+  box-sizing: border-box;
+  margin: 6px auto 0;
+  padding: 8px 12px;
+  text-align: center;
+}
+
+.screen47 .mappingRuleSet {
+  margin: -19px 0 5px;
+  color: #53647b;
+  font-size: 8px;
+  text-align: right;
+}
+.screen47 .mappingRuleSet span {
+  display: inline-grid;
+  width: 12px;
+  height: 12px;
+  place-items: center;
+  border: 1px solid #9cb7da;
+  border-radius: 50%;
+  color: #53647b;
+  font-size: 8px;
+}
+.screen47 .mapTable table {
+  table-layout: fixed;
+}
+.screen47 .mapTable th,
+.screen47 .mapTable td {
+  padding: 4px 5px;
+  font-size: 8px;
+  line-height: 1.2;
+  vertical-align: top;
+  white-space: normal;
+}
+.screen47 .mapTable th:nth-child(1),
+.screen47 .mapTable td:nth-child(1) {
+  width: 14%;
+}
+.screen47 .mapTable th:nth-child(2),
+.screen47 .mapTable td:nth-child(2),
+.screen47 .mapTable th:nth-child(3),
+.screen47 .mapTable td:nth-child(3) {
+  width: 14%;
+}
+.screen47 .mapTable th:nth-child(4),
+.screen47 .mapTable td:nth-child(4) {
+  width: 20%;
+}
+.screen47 .mapTable th:nth-child(5),
+.screen47 .mapTable td:nth-child(5) {
+  width: 12%;
+}
+.screen47 .mapTable th:nth-child(6),
+.screen47 .mapTable td:nth-child(6) {
+  width: 12%;
+}
+.screen47 .mapTable th:nth-child(7),
+.screen47 .mapTable td:nth-child(7) {
+  width: 14%;
+}
+.screen47 .mapTable td b,
+.screen47 .mapTable td small {
+  display: block;
+}
+.screen47 .mapTable td small {
+  margin-top: 2px;
+  color: #53647b;
+  font-size: 7px;
+  line-height: 1.25;
+}
+.screen47 .confidence {
+  display: grid;
+  justify-items: start;
+  gap: 2px;
+}
+.screen47 .confidence > b {
+  font-size: 8px;
+}
+.screen47 .confidence > i {
+  display: flex;
+  gap: 2px;
+  font-style: normal;
+}
+.screen47 .confidence > i > i {
+  display: block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #d7dde5;
+}
+.screen47 .confidenceHigh > i > i:nth-child(-n + 3) {
+  background: #329452;
+}
+.screen47 .confidenceMedium > i > i:nth-child(-n + 2) {
+  background: #eda51a;
+}
+.screen47 .confidenceLow > i > i:first-child {
+  background: #d63d48;
+}
+.screen47 .mappingStatus {
+  display: inline-block;
+  padding: 3px 5px;
+  border: 1px solid;
+  border-radius: 4px;
+  font-size: 7px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.screen47 .mappingStatusReady {
+  border-color: #9dd4af;
+  background: #e5f7ea;
+  color: #1c7f42;
+}
+.screen47 .mappingStatusReview {
+  border-color: #f1c56b;
+  background: #fff2d7;
+  color: #a96806;
+}
+.screen47 .mappingStatusBlocked {
+  border-color: #f1a4a4;
+  background: #fff0f0;
+  color: #d93232;
+}
+.screen47 .mapTable td:last-child {
+  display: flex;
+  align-items: flex-start;
+  gap: 3px;
+}
+.screen47 .mapTable td:last-child a {
+  padding: 3px 5px;
+  font-size: 7px;
+  white-space: nowrap;
+}
+.screen47 .mappingBlockedAction {
+  display: inline-block;
+  min-width: 20px;
+  padding: 3px 5px;
+  color: #6d7786;
+  text-align: center;
+}
+
+.screen48 .fileHeading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.screen48 .fileHeading h2 {
+  margin: 0;
+}
+.screen48 .fileHeading p {
+  margin: 3px 0 0;
+}
+.screen48 .fileActions {
+  display: flex;
+  gap: 5px;
+  flex: 0 0 auto;
+}
+.screen48 .fileActions a {
+  display: inline-block;
+  padding: 6px 9px;
+  border: 1px solid #cbd9eb;
+  border-radius: 5px;
+  color: #243a5f;
+  font-size: 8px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.screen48 .fileTop .card {
+  padding: 7px;
+}
+.screen48 .fileTop .card p {
+  margin: 5px 0;
+  line-height: 1.25;
+}
+.screen48 .downloadColumn {
+  display: grid;
+  grid-template-rows: 60px minmax(0, 1fr);
+  gap: 6px;
+  min-height: 0;
+  height: 140px;
+}
+.screen48 .downloadColumn > .card {
+  min-height: 0;
+  height: auto;
+  overflow: hidden;
+  padding: 7px;
+}
+.screen48 .downloadCard h3,
+.screen48 .importCard h3 {
+  margin-bottom: 3px;
+  font-size: 9px;
+}
+.screen48 .downloadCard p {
+  margin: 2px 0;
+  font-size: 7px;
+}
+.screen48 .downloadCard .btn {
+  display: block;
+  margin-top: 4px;
+  padding: 5px 7px;
+  text-align: center;
+  font-size: 8px;
+}
+.screen48 .importCard p {
+  margin: 2px 0;
+  font-size: 7px;
+  line-height: 1.15;
+}
+.screen48 .importCard > a {
+  display: inline-block;
+  margin-top: 2px;
+  color: #075de4;
+  font-size: 7px;
+  font-weight: 700;
+}
+.screen48 .importSuccess {
+  display: inline-block;
+  padding: 1px 5px;
+  border: 1px solid #9dd4af;
+  border-radius: 8px;
+  background: #e5f7ea;
+  color: #1c7f42;
+  font-weight: 700;
+}
+
+/* Final viewport guard: preserve every PC33/PC36 control inside the approved
+   768 x 512 board without relying on scrolling. */
+.screen33 .inventoryBottom p {
+  margin: 0;
+  padding: 3px 4px;
+}
+
+.screen33 .inventoryBottom,
+.screen33 .inventoryBottom > .card:first-child,
+.screen33 .inventoryBottom > .card:last-child {
+  height: 140px;
+}
+
+.screen33 .historyLink {
+  margin-top: 3px;
+}
+
+.screen36 .statuses .card {
+  height: 272px;
+}
+
+.screen36 .statuses .card h3 {
+  margin-bottom: 4px;
+  font-size: 10px;
+}
+
+.screen36 .statuses .card > p {
+  margin: 2px 0;
+  font-size: 9px;
+  line-height: 1.25;
+}
+
+.screen36 .greenbox,
+.screen36 .redbox {
+  margin: 5px 0;
+  padding: 6px;
+}
+
+.screen36 .greenbox p,
+.screen36 .redbox p,
+.screen36 .operationBox p {
+  margin: 2px 0;
+  font-size: 8px;
+  line-height: 1.2;
+}
+
+.screen36 .operationBox {
+  margin: 4px 0;
+  padding: 6px;
+}
+
+.screen36 .statuses .provisionalBtn,
+.screen36 .statuses .greenBtn,
+.screen36 .statuses .redBtn {
+  padding: 6px;
+  font-size: 9px;
+}
+
+.screen36 .holdTimer {
+  margin-top: 2px;
+  font-size: 8px;
+}
+
+.screen36 .statusBottom .flow,
+.screen36 .deleteGuard {
+  height: 124px;
+}
+
+.screen36 .confirmFlow > div {
+  min-height: 74px;
+}
+
+.screen36 .deleteGuard .btn {
+  position: relative;
+  top: -4px;
+}

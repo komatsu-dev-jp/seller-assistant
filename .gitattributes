@@ -1,0 +1,2 @@
+* text=auto eol=lf
+fixtures/listing-prep-pilot-v1.1/CHECKLIST.csv -text

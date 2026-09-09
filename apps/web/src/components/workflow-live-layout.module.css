@@ -1,0 +1,447 @@
+.layout {
+  --ink: #17233b;
+  --muted: #738096;
+  --line: #e5e9f0;
+  --blue: #246bfd;
+  min-height: 100dvh;
+  display: grid;
+  grid-template-columns: 238px minmax(0, 1fr);
+  color: var(--ink);
+  background: #f7f8fb;
+  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
+}
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  padding: 26px 16px;
+  background: white;
+  border-right: 1px solid var(--line);
+}
+.brand {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--blue);
+  text-decoration: none;
+  min-height: 44px;
+}
+.sidebar nav {
+  display: grid;
+  gap: 4px;
+}
+.sidebar nav a,
+.sidebar nav > span {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  color: #52627f;
+  text-decoration: none;
+  border-radius: 9px;
+}
+.sidebar nav a[aria-current] {
+  background: #edf3ff;
+  color: var(--blue);
+  font-weight: 700;
+}
+.sidebar > p {
+  margin-top: auto;
+  font-size: 12px;
+  color: var(--muted);
+}
+.workspace {
+  min-width: 0;
+}
+.layout[data-capture-only="true"] {
+  display: block;
+}
+.layout [hidden] {
+  display: none !important;
+}
+.footer > span {
+  display: grid;
+  gap: 4px;
+  text-align: center;
+  place-content: center;
+  color: var(--muted);
+  font-size: 11px;
+}
+.header {
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 30px;
+  background: white;
+  border-bottom: 1px solid var(--line);
+}
+.header a {
+  color: var(--blue);
+  text-decoration: none;
+  min-width: 44px;
+  min-height: 44px;
+  display: grid;
+  place-items: center;
+}
+.content {
+  max-width: 1200px;
+  margin: auto;
+  padding: 28px;
+}
+.content :global(.workflowBoard) {
+  display: grid;
+  gap: 18px;
+}
+.content :global(.panel) {
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: white;
+  box-shadow: none;
+}
+.content :global(.eyebrow) {
+  display: none;
+}
+.content :global(.workflowStages) {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+.content :global(.workflowStages) button {
+  flex: 1 0 auto;
+  padding: 10px 14px;
+  background: white;
+  color: #52627f;
+  border: 1px solid var(--line);
+}
+.content :global(.workflowStages) :global(.active) {
+  background: #edf3ff;
+  color: var(--blue);
+  border-color: var(--blue);
+}
+.content :global(.workflowItemSummary) {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.content :global(.workflowItemSummary) label {
+  flex: 1 1 260px;
+}
+.content :global(.workflowItemSummary) > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.content :global(.workflowItemSummary) strong {
+  overflow-wrap: anywhere;
+}
+.content label {
+  display: grid;
+  gap: 8px;
+  color: #425472;
+  font-size: 14px;
+}
+.content input,
+.content select,
+.content textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  border: 1px solid #d8e0eb;
+  border-radius: 10px;
+  background: #fff;
+  color: var(--ink);
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 16px;
+}
+.content button {
+  min-height: 44px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  padding: 10px 18px;
+  background: var(--blue);
+  color: white;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.content input[type="checkbox"],
+.content input[type="radio"] {
+  width: 22px;
+  min-height: 22px;
+  accent-color: var(--blue);
+}
+.content button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.content button:focus-visible,
+.layout a:focus-visible,
+.content input:focus-visible,
+.content select:focus-visible,
+.content summary:focus-visible {
+  outline: 3px solid #bd720b;
+  outline-offset: 3px;
+}
+.content [hidden] {
+  display: none !important;
+}
+.content :global(.measurementGrid) {
+  border: 0;
+  padding: 0;
+  margin: 18px 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+.content :global(.humanGate),
+.content :global(.workflowNext) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+.content p {
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.content :global(.candidateNotice) {
+  padding: 16px;
+  border-radius: 12px;
+  background: #edf3ff;
+  margin: 16px 0;
+}
+.content :global(.accountingDisclaimer) {
+  padding: 16px;
+  background: #fff7e8;
+  border: 1px solid #f0d9b2;
+  border-radius: 12px;
+}
+.content summary {
+  min-height: 44px;
+  padding: 12px;
+  cursor: pointer;
+  color: #52627f;
+}
+.content h2 {
+  font-size: 24px;
+  margin: 0;
+}
+.footer {
+  display: none;
+}
+.stepHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.stepHeading p {
+  color: var(--muted);
+  margin: 0 0 6px;
+  font-size: 12px;
+}
+.stepHeading > span {
+  flex: none;
+  color: #168465;
+  background: #ecfaf3;
+  border-radius: 20px;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+.capture > button {
+  margin: 12px 8px 0 0;
+}
+.cards {
+  display: grid;
+  gap: 10px;
+}
+.cards button {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  text-align: left;
+  color: var(--ink);
+  background: white;
+  border: 1px solid var(--line);
+  min-height: 64px;
+}
+.cards strong {
+  color: var(--blue);
+  font-size: 13px;
+}
+.photoPreview {
+  min-height: 240px;
+  max-height: 420px;
+  display: grid;
+  place-items: center;
+  background: #f0f3f8;
+  border: 1px dashed #b8c9df;
+  border-radius: 16px;
+  padding: 16px;
+  text-align: center;
+  overflow: hidden;
+}
+.photoPreview img {
+  display: block;
+  max-width: 100%;
+  max-height: 380px;
+  object-fit: contain;
+}
+.fileLabel {
+  margin-top: 16px;
+}
+.measureInput {
+  max-width: 420px;
+  margin: 28px 0;
+}
+.measureInput input {
+  min-height: 84px;
+  font-size: 36px;
+  text-align: center;
+}
+.measureEvidence {
+  display: grid;
+  gap: 8px;
+  margin: 20px 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #f8fbff;
+}
+.offlineNotice,
+.measureGuide,
+.measureComparison {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fff7e8;
+  color: #72500d;
+  font-size: 13px;
+}
+.measureGuide,
+.measureComparison {
+  background: #f5f8ff;
+  color: #425472;
+}
+.measureEvidence p {
+  margin: 0;
+  font-size: 13px;
+  color: #52627f;
+}
+.evidencePreview {
+  min-height: 150px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  padding: 8px;
+  background: white;
+  border: 1px dashed #b8c9df;
+  border-radius: 10px;
+  text-align: center;
+}
+.evidencePreview img {
+  display: block;
+  max-width: 100%;
+  max-height: 240px;
+  object-fit: contain;
+}
+.summary {
+  margin: 22px 0;
+}
+.summary > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line);
+}
+.summary dd {
+  margin: 0;
+  font-weight: 700;
+}
+.content .back {
+  color: var(--blue);
+  border: 1px solid #d8e0eb;
+  background: white;
+}
+@media (max-width: 767px) {
+  .layout {
+    display: block;
+    padding-bottom: calc(80px + env(safe-area-inset-bottom));
+  }
+  .sidebar {
+    display: none;
+  }
+  .header {
+    padding: env(safe-area-inset-top) 16px 0;
+    min-height: 56px;
+    position: sticky;
+    top: 0;
+    z-index: 5;
+  }
+  .content {
+    padding: 16px;
+  }
+  .content :global(.panel) {
+    padding: 18px;
+    border-radius: 16px;
+  }
+  .content :global(.measurementGrid) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .content :global(.workflowItemSummary) {
+    gap: 12px;
+    font-size: 12px;
+  }
+  .content :global(.humanGate) button,
+  .content :global(.workflowNext) button {
+    width: 100%;
+  }
+  .content h2 {
+    font-size: 22px;
+  }
+  .content :global(.workflowStages) button {
+    font-size: 12px;
+  }
+  .footer {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 10;
+    padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+    background: white;
+    border-top: 1px solid var(--line);
+  }
+  .footer a {
+    min-height: 48px;
+    display: grid;
+    gap: 4px;
+    place-content: center;
+    text-align: center;
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 11px;
+  }
+  .footer a > span {
+    font-size: 22px;
+  }
+  .footer a[aria-current] {
+    color: var(--blue);
+    font-weight: 700;
+  }
+}

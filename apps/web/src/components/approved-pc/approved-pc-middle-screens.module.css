@@ -1,0 +1,4587 @@
+.app {
+  width: 768px;
+  min-width: 768px;
+  height: 512px;
+  min-height: 512px;
+  overflow: hidden;
+  display: flex;
+  background: #f8fafc;
+  color: #142343;
+  font:
+    13px Arial,
+    "Hiragino Kaku Gothic ProN",
+    Meiryo,
+    sans-serif;
+}
+.app > aside {
+  width: 112px;
+  box-sizing: border-box;
+  background: #fff;
+  border-right: 1px solid #e0e6ef;
+  padding: 11px;
+  flex: none;
+}
+.app > aside a {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 8px;
+  color: #1b2b48;
+  text-decoration: none;
+  font-weight: bold;
+  border-radius: 6px;
+}
+.app > aside i {
+  font-style: normal;
+  font-size: 16px;
+}
+.app > aside .active {
+  background: #edf4ff;
+  color: #075be6;
+}
+.frame {
+  flex: 1;
+  min-width: 0;
+}
+.frame > header {
+  height: 56px;
+  background: #fff;
+  border-bottom: 1px solid #e0e6ef;
+  display: flex;
+  align-items: center;
+  gap: 25px;
+  padding: 0 22px;
+}
+.frame > header div {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-right: auto;
+}
+.frame > header b {
+  background: #071b49;
+  color: #fff;
+  font-size: 20px;
+  padding: 8px;
+  border-radius: 3px;
+}
+.frame > header h1 {
+  margin: 0;
+  font-size: 19px;
+}
+.scopeBadge {
+  flex: none;
+  padding: 5px 8px;
+  color: #805600;
+  background: #fff5d9;
+  border: 1px solid #e8c871;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.frame > header label {
+  border: 1px solid #dce3ed;
+  border-radius: 5px;
+  padding: 8px 14px;
+  color: #99a4b5;
+  width: 235px;
+}
+.pad {
+  max-width: 1380px;
+  margin: auto;
+  padding: 13px 24px;
+}
+.card {
+  background: #fff;
+  border: 1px solid #dfe6ef;
+  border-radius: 6px;
+  padding: 12px;
+  box-sizing: border-box;
+}
+.card h2,
+.card h3 {
+  margin: 0 0 10px;
+}
+.card a,
+.outline {
+  color: #075be6;
+  text-decoration: none;
+  border: 1px solid #a9c8ff;
+  border-radius: 4px;
+  padding: 8px 12px;
+  display: inline-block;
+  font-weight: bold;
+}
+.primary {
+  background: linear-gradient(90deg, #0755d9, #0870ed);
+  color: #fff !important;
+  border-radius: 5px;
+  padding: 12px 24px;
+  text-decoration: none;
+  display: inline-block;
+  font-weight: bold;
+  border: 0;
+}
+.crumb {
+  margin: 3px 0 15px;
+  color: #334b6d;
+}
+.notice {
+  border: 1px solid #b9d5ff;
+  background: #f0f7ff;
+  border-radius: 5px;
+  padding: 12px;
+  color: #264b82;
+  line-height: 1.6;
+}
+.selected {
+  border: 1px solid #075be6 !important;
+  background: #f8fbff;
+}
+.photoFive {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+}
+.photoFive .card {
+  text-align: center;
+  padding: 8px;
+}
+.photoFive h3 {
+  font-size: 13px;
+}
+.photoFive > b {
+  display: inline-block;
+  color: #075be6;
+  background: #eaf2ff;
+  border: 1px solid #bdd6ff;
+  border-radius: 13px;
+  padding: 4px 10px;
+  margin-top: 9px;
+  font-size: 11px;
+}
+.photoFive .edited {
+  color: #d68100;
+  background: #fff4d7;
+  border-color: #f0d28f;
+}
+.photo {
+  height: 140px;
+  background: linear-gradient(145deg, #e9e1d5, #d8d0c4);
+  position: relative;
+  overflow: hidden;
+  border-radius: 3px;
+}
+.photoBag {
+  background: linear-gradient(145deg, #e5d9c9, #cdbda8);
+}
+.photoShirt {
+  background: linear-gradient(145deg, #dfeaf4, #b9ccdb);
+}
+.photoTag,
+.photoCare,
+.photoSize,
+.photoMaterial {
+  background: linear-gradient(145deg, #d7e4ef, #9bb2c6);
+}
+.photoDetail {
+  background: linear-gradient(145deg, #dae8f0, #adc8d7);
+}
+.tagArt {
+  position: relative;
+  width: 78%;
+  height: 76%;
+  margin: 16px auto;
+  border: 4px solid #f8f8f0;
+  border-radius: 2px;
+  background: #f2eddb;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 2px 8px #30486728;
+  transform: rotate(-2deg);
+}
+.tagArt::before {
+  content: "";
+  position: absolute;
+  inset: 7px;
+  border: 1px dashed #c4b999;
+}
+.tagArt span {
+  white-space: pre-line;
+  position: relative;
+  z-index: 1;
+  color: #2c3340;
+  font-size: 11px;
+  line-height: 1.5;
+  font-weight: 700;
+  text-align: center;
+}
+.tagCare .tagArt span {
+  font-size: 9px;
+}
+.tagSize .tagArt span {
+  font-size: 36px;
+}
+.tagMaterial .tagArt span {
+  font-size: 10px;
+}
+.tagArt i {
+  position: absolute;
+  right: -6px;
+  top: 8px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #31567a;
+}
+.detailArt {
+  position: relative;
+  height: 100%;
+  display: grid;
+  place-items: center;
+}
+.detailArt .shirt {
+  transform: scale(0.75);
+  filter: saturate(0.8);
+}
+.detailArt > b {
+  position: absolute;
+  right: 21%;
+  top: 28%;
+  width: 25px;
+  height: 25px;
+  display: grid;
+  place-items: center;
+  border: 2px dashed #e07b25;
+  border-radius: 50%;
+  color: #d36817;
+  background: #fff8;
+}
+.photoAdd {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr;
+  gap: 28px;
+  margin-top: 30px;
+}
+.uploadCard {
+  border: 1px dashed #aebccd;
+  border-radius: 5px;
+  text-align: center;
+  padding: 25px;
+}
+.uploadCard a {
+  color: #075be6;
+  text-decoration: none;
+  font-size: 16px;
+}
+.uploadCard a::before {
+  content: "▣";
+  margin-right: 8px;
+}
+.uploadCard small {
+  display: block;
+  color: #66758b;
+  font-size: 11px;
+  margin-top: 9px;
+}
+.bag {
+  position: relative;
+  background: #e8dccb;
+  width: 75px;
+  height: 100px;
+  margin: 28px auto 0;
+  border-radius: 4px;
+}
+.bag:before {
+  content: "";
+  position: absolute;
+  width: 36px;
+  height: 48px;
+  border: 4px solid #c6b49e;
+  border-bottom: 0;
+  border-radius: 24px 24px 0 0;
+  left: 16px;
+  top: -36px;
+}
+.bag i {
+  position: absolute;
+  width: 100%;
+  height: 1px;
+  background: #c6b49e;
+  top: 63px;
+}
+.shirt {
+  position: relative;
+  background: #acd2ea;
+  width: 70px;
+  height: 94px;
+  clip-path: polygon(
+    22% 8%,
+    39% 0,
+    61% 0,
+    78% 8%,
+    100% 26%,
+    82% 44%,
+    76% 100%,
+    24% 100%,
+    18% 44%,
+    0 26%
+  );
+  margin: 20px auto;
+}
+.shirt:before {
+  content: "";
+  position: absolute;
+  left: 26px;
+  top: 0;
+  width: 18px;
+  height: 10px;
+  border-radius: 0 0 15px 15px;
+  background: #eaf6ff;
+}
+.shirt i,
+.shirt b,
+.shirt em {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  border: 1px solid #6295b6;
+  border-radius: 50%;
+  left: 34px;
+  top: 30px;
+}
+.shirt b {
+  top: 48px;
+}
+.shirt em {
+  top: 66px;
+}
+.lock {
+  background: #fff8e9;
+  border: 1px solid #f4cc79;
+  border-radius: 5px;
+  padding: 13px;
+  line-height: 1.6;
+}
+.policies {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin: 14px 0 20px;
+}
+.policies .card {
+  text-align: center;
+  min-height: 140px;
+}
+.policies i {
+  display: block;
+  font-size: 42px;
+  color: #627b9d;
+  padding: 13px;
+  font-style: normal;
+}
+.policies p {
+  line-height: 1.5;
+  color: #4c5e77;
+}
+.pad > .primary {
+  float: right;
+}
+.success {
+  background: #effaf2;
+  border: 1px solid #aadbbc;
+  border-radius: 5px;
+  padding: 10px;
+  color: #176e35;
+}
+.success b {
+  font-size: 19px;
+}
+.success em {
+  float: right;
+  border: 1px solid #73bd8d;
+  border-radius: 12px;
+  padding: 3px 8px;
+  font-style: normal;
+}
+.compare {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+  margin-top: 8px;
+}
+.compare article {
+  text-align: center;
+}
+.compare h3 {
+  font-size: 12px;
+}
+.compare .photo {
+  height: 90px;
+}
+.compare .bag {
+  transform: scale(0.7);
+  margin-top: 17px;
+}
+.compare span {
+  display: block;
+  color: #16813a;
+  font-size: 23px;
+}
+.human {
+  border: 1px solid #b9d5ff;
+  background: #f2f8ff;
+  border-radius: 5px;
+  padding: 10px;
+  color: #143f82;
+}
+.pad > footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  margin-top: 10px;
+}
+.pad > footer > a:first-child {
+  border: 1px solid #d4dce8;
+  padding: 10px 28px;
+  color: #203559;
+  text-decoration: none;
+  border-radius: 5px;
+}
+.measure {
+  display: grid;
+  grid-template-columns: 1.25fr 1fr;
+  gap: 10px;
+}
+.measureBody {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: 8px;
+}
+.measureBody .photo {
+  height: 275px;
+}
+.measureBody .bag {
+  transform: scale(1.8);
+  margin-top: 95px;
+}
+.measureDiagram {
+  height: 275px;
+  border: 1px solid #e2e7ee;
+  border-radius: 4px;
+  background: linear-gradient(180deg, #fcfdff, #f3f8fb);
+  padding: 4px;
+  box-sizing: border-box;
+}
+.measureDiagram svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.diagramBag {
+  fill: #e9ddca;
+  stroke: #8e7b62;
+  stroke-width: 3;
+}
+.diagramHandle {
+  fill: none;
+  stroke: #8e7b62;
+  stroke-width: 9;
+  stroke-linecap: round;
+}
+.diagramSeam {
+  fill: none;
+  stroke: #b59c7c;
+  stroke-width: 2;
+}
+.diagramGreenText,
+.diagramOrangeText,
+.diagramBlueText,
+.diagramPurpleText,
+.diagramPinkText {
+  font-size: 11px;
+  font-weight: 700;
+}
+.diagramGreenText {
+  fill: #198b57;
+}
+.diagramOrangeText {
+  fill: #c56f0e;
+}
+.diagramBlueText {
+  fill: #1769d5;
+}
+.diagramPurpleText {
+  fill: #7040bf;
+}
+.diagramPinkText {
+  fill: #c53988;
+}
+.measure table,
+.price {
+  width: 100%;
+  border-collapse: collapse;
+}
+.measure th,
+.measure td,
+.price th,
+.price td {
+  border: 1px solid #dfe5ed;
+  padding: 7px;
+  text-align: left;
+  font-size: 11px;
+}
+.measure section {
+  display: grid;
+  gap: 10px;
+}
+.evidence {
+  display: flex;
+  gap: 5px;
+}
+.evidence .photo {
+  width: 20%;
+  height: 90px;
+}
+.evidence .bag {
+  transform: scale(0.55);
+  margin-top: 20px;
+}
+.measure label,
+.ship label,
+.packBottom label,
+.reply label {
+  display: block;
+  margin: 8px 0;
+}
+.measure input,
+.ship input,
+.order input,
+.after input,
+.numbers input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #d9e1ec;
+  border-radius: 4px;
+}
+.total {
+  border: 1px solid #dfe6ef;
+  padding: 11px;
+  border-radius: 4px;
+}
+.total b {
+  float: right;
+  font-size: 17px;
+}
+.tags {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 14px;
+}
+.tags h3 a {
+  float: right;
+}
+.tagPhotos {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+.tagPhotos .photo {
+  height: 125px;
+  background: #9ab5d0;
+}
+.tagPhotos .shirt {
+  transform: scale(0.9);
+}
+.tagForm label {
+  display: block;
+  position: relative;
+  margin: 9px 0;
+}
+.tagForm select {
+  display: block;
+  width: 80%;
+  margin-top: 4px;
+  border: 1px solid #dae2ed;
+  padding: 8px;
+  border-radius: 4px;
+}
+.tagForm label b {
+  position: absolute;
+  right: 0;
+  top: 24px;
+  color: #18823f;
+  background: #e1f6e7;
+  border-radius: 8px;
+  padding: 5px;
+}
+.tagForm strong {
+  float: right;
+  color: #16833c;
+  font-size: 20px;
+}
+.productHero {
+  display: flex;
+  gap: 20px;
+  background: #fff;
+  padding: 16px;
+}
+.productHero > .photo {
+  width: 142px;
+  height: 112px;
+}
+.productHero > .photo .shirt {
+  transform: scale(0.9);
+  margin-top: 10px;
+}
+.productHero h2 {
+  font-size: 17px;
+}
+.productHero em,
+.pad h2 em {
+  font-size: 11px;
+  color: #d78300;
+  background: #fff1cf;
+  padding: 5px;
+  border-radius: 10px;
+  font-style: normal;
+}
+.productHero b {
+  display: inline-block;
+  background: #f3f7f4;
+  padding: 9px;
+  margin: 4px;
+  color: #177b36;
+}
+.productCols {
+  display: grid;
+  grid-template-columns: 1.15fr 1.15fr 0.9fr 0.95fr;
+  gap: 8px;
+  margin-top: 10px;
+}
+.productCols p {
+  margin: 7px 0;
+}
+.productCols a {
+  display: block;
+  text-align: center;
+  margin-top: 12px;
+}
+.twelve {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+.twelve .photo {
+  height: 55px;
+}
+.twelve .shirt {
+  transform: scale(0.4);
+  margin-top: -14px;
+}
+.missing {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  gap: 8px;
+  margin-top: 8px;
+}
+.desc {
+  display: grid;
+  grid-template-columns: 1.35fr 0.9fr;
+  gap: 10px;
+}
+.desc textarea,
+.official textarea,
+.reply textarea {
+  box-sizing: border-box;
+  width: 100%;
+  border: 1px solid #dce3ed;
+  border-radius: 4px;
+  padding: 10px;
+  line-height: 1.55;
+  min-height: 275px;
+}
+.desc .card small {
+  float: right;
+  color: #78859a;
+}
+.desc section {
+  display: grid;
+  gap: 8px;
+}
+.desc section textarea {
+  min-height: 60px;
+}
+.official {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 9px;
+}
+.official .photo {
+  height: 145px;
+}
+.official .shirt {
+  transform: scale(1.2);
+  margin-top: 45px;
+}
+.official textarea {
+  min-height: 145px;
+}
+.official .card > a {
+  display: block;
+  text-align: center;
+  margin-top: 10px;
+}
+.browser {
+  height: 115px;
+  background: #f2f4f7;
+  border: 1px solid #e0e5ec;
+  border-radius: 5px;
+  padding: 10px;
+  color: #a4aebb;
+}
+.after {
+  margin-top: 9px;
+}
+.after > div {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.gallery {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 9px;
+}
+.toggle {
+  border: 1px solid #b8cced;
+  border-radius: 15px;
+  width: 245px;
+  padding: 7px;
+  text-align: center;
+  color: #49627f;
+}
+.toggle b {
+  background: #075be6;
+  color: #fff;
+  padding: 7px 12px;
+  border-radius: 13px;
+}
+.filter {
+  color: #3566ae;
+}
+.gallery .card {
+  position: relative;
+  min-height: 220px;
+}
+.gallery .photo {
+  width: 94px;
+  height: 88px;
+  float: left;
+  margin-right: 9px;
+}
+.gallery .bag {
+  transform: scale(0.65);
+  margin-top: 15px;
+}
+.galleryArt {
+  width: 94px;
+  height: 88px;
+  float: left;
+  margin-right: 9px;
+  position: relative;
+  overflow: hidden;
+  border-radius: 4px;
+  background: linear-gradient(145deg, #e4e8ed, #c7d0d8);
+}
+.galleryArt i,
+.galleryArt b {
+  position: absolute;
+  display: block;
+}
+.galleryBag {
+  background: linear-gradient(145deg, #dfe4e8, #c6d0d4);
+}
+.galleryBag i {
+  left: 26px;
+  top: 29px;
+  width: 43px;
+  height: 48px;
+  border-radius: 5px 5px 9px 9px;
+  background: #a8a39c;
+  box-shadow: inset 7px 0 #ffffff22;
+}
+.galleryBag i::before {
+  content: "";
+  position: absolute;
+  left: 10px;
+  top: -22px;
+  width: 20px;
+  height: 25px;
+  border: 4px solid #8d8a85;
+  border-bottom: 0;
+  border-radius: 15px 15px 0 0;
+}
+.galleryWallet {
+  background: linear-gradient(145deg, #c3cedd, #9daabd);
+}
+.galleryWallet i {
+  left: 20px;
+  top: 26px;
+  width: 54px;
+  height: 38px;
+  border-radius: 4px;
+  background: #192d4b;
+  transform: rotate(-7deg);
+  box-shadow: inset 0 -6px #ffffff15;
+}
+.galleryWallet i::after {
+  content: "";
+  position: absolute;
+  right: 7px;
+  top: 17px;
+  width: 10px;
+  border-top: 2px solid #7183a0;
+}
+.galleryShoe {
+  background: linear-gradient(145deg, #eef0f0, #bec6ca);
+}
+.galleryShoe i {
+  left: 18px;
+  top: 43px;
+  width: 65px;
+  height: 25px;
+  border-radius: 30px 10px 8px 8px;
+  background: #f8f8f5;
+  transform: rotate(-12deg);
+  border-bottom: 6px solid #d4d6d5;
+}
+.galleryShoe b {
+  left: 31px;
+  top: 27px;
+  width: 36px;
+  height: 26px;
+  border-radius: 18px 8px 4px 4px;
+  background: #fff;
+  transform: rotate(-14deg);
+}
+.galleryBackpack {
+  background: linear-gradient(145deg, #d5d9dd, #b4bcc5);
+}
+.galleryBackpack i {
+  left: 25px;
+  top: 28px;
+  width: 45px;
+  height: 57px;
+  border-radius: 15px 15px 7px 7px;
+  background: #222b35;
+}
+.galleryBackpack i::before {
+  content: "";
+  position: absolute;
+  left: 10px;
+  top: -18px;
+  width: 22px;
+  height: 24px;
+  border: 4px solid #242c34;
+  border-bottom: 0;
+  border-radius: 14px 14px 0 0;
+}
+.galleryShirt {
+  background: linear-gradient(145deg, #dbe6ed, #bdceda);
+}
+.galleryShirt i {
+  left: 26px;
+  top: 16px;
+  width: 43px;
+  height: 66px;
+  background: #e4cfc0;
+  clip-path: polygon(
+    22% 8%,
+    39% 0,
+    61% 0,
+    78% 8%,
+    100% 27%,
+    83% 43%,
+    76% 100%,
+    24% 100%,
+    17% 43%,
+    0 27%
+  );
+}
+.galleryPants {
+  background: linear-gradient(145deg, #e4e8e6, #c7d0cd);
+}
+.galleryPants i {
+  left: 21px;
+  top: 13px;
+  width: 51px;
+  height: 72px;
+  background: #7c8f79;
+  clip-path: polygon(
+    8% 0,
+    45% 0,
+    50% 48%,
+    55% 0,
+    92% 0,
+    86% 100%,
+    56% 100%,
+    50% 55%,
+    44% 100%,
+    14% 100%
+  );
+}
+.gallery h3 {
+  font-size: 12px;
+  margin: 5px;
+}
+.gallery p,
+.gallery small {
+  font-size: 11px;
+  margin: 4px;
+}
+.gallery footer {
+  clear: both;
+  padding-top: 8px;
+  display: flex;
+  justify-content: space-between;
+}
+.gallery footer em {
+  font-size: 10px;
+  background: #e3f5e6;
+  color: #197d37;
+  padding: 4px;
+  font-style: normal;
+}
+.gallery footer a {
+  font-size: 10px;
+  padding: 4px;
+}
+.sales {
+  display: grid;
+  grid-template-columns: 1fr 2.4fr;
+  gap: 12px;
+}
+.sales > .card > a {
+  display: block;
+  min-height: 48px;
+  color: #1d3153;
+  text-decoration: none;
+  padding: 6px;
+  border: 1px solid #e4e9f0;
+  margin: 5px 0;
+}
+.sales > .card > button {
+  display: block;
+  width: 100%;
+  min-height: 48px;
+  text-align: left;
+  color: #1d3153;
+  background: #fff;
+  font: inherit;
+  padding: 6px;
+  border: 1px solid #e4e9f0;
+  margin: 5px 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.sales .photo {
+  width: 38px;
+  height: 42px;
+  float: left;
+  margin-right: 7px;
+}
+.sales .bag {
+  transform: scale(0.32);
+  margin-top: -3px;
+}
+.sales a span,
+.sales a small {
+  display: block;
+  font-size: 10px;
+}
+.sales section > h3 em {
+  float: right;
+  color: #d67800;
+  font-style: normal;
+}
+.tabs {
+  border-bottom: 1px solid #dde4ee;
+  padding: 11px;
+  color: #075be6;
+  font-weight: bold;
+}
+.tabs button {
+  border: 0;
+  background: transparent;
+  color: #536783;
+  padding: 8px 22px;
+  font-weight: 700;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+.tabs .tabActive {
+  color: #075be6;
+  border-bottom-color: #075be6;
+}
+.screenshotMode {
+  display: grid;
+  grid-template-columns: 1.15fr 0.85fr;
+  gap: 12px;
+}
+.screenshotArt {
+  position: relative;
+  min-height: 154px;
+  border: 1px solid #d9e1ec;
+  border-radius: 5px;
+  background: linear-gradient(180deg, #fafafa 0 21%, #edf2f6 21% 25%, #fff 25%);
+  padding: 16px;
+}
+.screenshotArt > img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #fff;
+  z-index: 2;
+}
+.screenshotArt::before {
+  content: "●  ●  ●";
+  position: absolute;
+  left: 10px;
+  top: 4px;
+  color: #abb7c5;
+  font-size: 9px;
+  letter-spacing: 3px;
+}
+.screenshotArt b,
+.screenshotArt strong,
+.screenshotArt span {
+  display: block;
+  margin: 13px 0 0 28px;
+}
+.screenshotArt strong {
+  font-size: 24px;
+  color: #142343;
+}
+.screenshotArt span {
+  color: #6b7890;
+}
+.screenshotArt i {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  width: 34px;
+  height: 7px;
+  border-radius: 5px;
+  background: #d9423e;
+}
+.screenshotMode label {
+  display: block;
+  margin: 8px 0;
+  font-weight: 700;
+}
+.screenshotMode label input {
+  display: block;
+  margin-top: 4px;
+}
+.candidate {
+  display: inline-block;
+  margin: 0;
+  padding: 4px 8px;
+  color: #c36e05;
+  background: #fff4d9;
+  border-radius: 8px;
+  font-size: 11px;
+}
+.numbers {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  width: 55%;
+  float: left;
+}
+.sales section > .card > .photo {
+  width: 35%;
+  height: 145px;
+  float: right;
+}
+.sales section > .card > .galleryArt {
+  width: 35%;
+  height: 145px;
+  float: right;
+  margin-right: 0;
+}
+.sales section > .card > .photo .bag {
+  transform: scale(1.2);
+  margin-top: 55px;
+}
+.sales label {
+  display: block;
+  clear: both;
+  padding-top: 15px;
+}
+.sales footer {
+  clear: both;
+  padding-top: 12px;
+  display: flex;
+  justify-content: space-between;
+}
+.price th,
+.price td {
+  font-size: 12px;
+  text-align: center;
+}
+.price th:first-child {
+  width: 140px;
+  text-align: left;
+}
+.price input {
+  width: 70px;
+  border: 1px solid #d7dfe9;
+  padding: 6px;
+}
+.reply {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr;
+  gap: 10px;
+}
+.reply article {
+  border: 1px solid #e2e7ef;
+  border-radius: 5px;
+  padding: 9px;
+  margin: 7px 0;
+}
+.reply article p {
+  font-size: 11px;
+  line-height: 1.4;
+}
+.reply article a {
+  float: right;
+  margin-top: -40px;
+  padding: 4px 8px;
+}
+.reply .outline {
+  display: block;
+  text-align: center;
+}
+.reply h4 {
+  margin: 19px 0 8px;
+}
+.reply textarea {
+  min-height: 75px;
+}
+.order h3 {
+  border: 1px solid #9fd8c3;
+  background: #f1fbf7;
+  color: #075be6;
+  padding: 11px;
+}
+.order > div {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+.order label {
+  font-weight: bold;
+}
+.order input {
+  display: block;
+  margin-top: 6px;
+}
+.warn {
+  background: #fff3da;
+  border: 1px solid #f5c45f;
+  border-radius: 5px;
+  padding: 9px;
+  color: #c67300;
+}
+.pick {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.3fr;
+  gap: 8px;
+}
+.pick .card {
+  text-align: center;
+  min-height: 140px;
+}
+.barcode {
+  height: 48px;
+  margin: 18px;
+  background: repeating-linear-gradient(
+    90deg,
+    #111 0 2px,
+    #fff 2px 4px,
+    #111 4px 7px,
+    #fff 7px 10px
+  );
+}
+.productLabel {
+  border: 1px solid #d9e1ea;
+  border-radius: 5px;
+  background: #fff;
+  padding: 9px;
+  min-height: 116px;
+}
+.productLabel .barcode {
+  height: 28px;
+  margin: 2px 0 8px;
+}
+.productLabel strong,
+.productLabel span,
+.productLabel b {
+  display: block;
+}
+.productLabel strong {
+  font-size: 20px;
+  color: #142343;
+  letter-spacing: 0.5px;
+}
+.productLabel span {
+  font-size: 11px;
+  margin-top: 4px;
+}
+.productLabel b {
+  margin-top: 5px;
+  color: #1769d5;
+  font-size: 11px;
+}
+.locationLabel {
+  min-height: 116px;
+  border: 1px solid #cfe5d6;
+  border-radius: 5px;
+  background: linear-gradient(135deg, #f7fffa, #edf7ef);
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 12px;
+}
+.locationLabel strong {
+  font-size: 22px;
+  color: #1c3348;
+}
+.locationLabel span {
+  color: #386348;
+  font-size: 11px;
+}
+.shelfPhoto {
+  position: relative;
+  height: 105px;
+  border-radius: 5px;
+  overflow: hidden;
+  background:
+    repeating-linear-gradient(90deg, #453426 0 7px, #ab895f 7px 47px, #5b4532 47px 53px),
+    linear-gradient(#d0b084, #57422f);
+}
+.shelfPhoto::after {
+  content: "";
+  position: absolute;
+  inset: 28px 0 auto;
+  border-top: 6px solid #33271f;
+  border-bottom: 6px solid #33271f;
+  height: 39px;
+}
+.shelfPhoto span,
+.shelfPhoto b {
+  position: absolute;
+  z-index: 1;
+  background: #f2e3c1;
+  color: #29364b;
+  padding: 5px 8px;
+  font-weight: 700;
+}
+.shelfPhoto span {
+  left: 22%;
+  top: 36%;
+  font-size: 16px;
+}
+.shelfPhoto b {
+  right: 7px;
+  bottom: 7px;
+  font-size: 10px;
+}
+.pick strong {
+  display: block;
+  font-size: 20px;
+  margin-top: 40px;
+}
+.shelf {
+  height: 105px;
+  background: linear-gradient(130deg, #594838, #b99d78, #514130);
+  display: grid;
+  place-items: center;
+  color: #16243e;
+  font-size: 18px;
+  font-weight: bold;
+}
+.shelf:before {
+  content: "";
+  position: absolute;
+}
+.pickBottom {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 8px;
+  margin-top: 9px;
+}
+.ok {
+  color: #138043;
+  font-size: 16px;
+}
+.packOpts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.packOpts .card {
+  height: 105px;
+}
+.packBottom {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+  margin-top: 10px;
+}
+.packBottom .photo,
+.packBottom .box {
+  height: 115px;
+}
+.packBottom .bag {
+  transform: scale(0.85);
+  margin-top: 20px;
+}
+.box {
+  background: linear-gradient(135deg, #b88857, #d3a36d 46%, #9e6d43);
+  border-radius: 3px;
+}
+.headphones {
+  position: relative;
+  height: 115px;
+  border-radius: 4px;
+  background: linear-gradient(145deg, #d7dce0, #aeb8c0);
+  overflow: hidden;
+}
+.headphones::before {
+  content: "";
+  position: absolute;
+  width: 96px;
+  height: 92px;
+  left: 50%;
+  top: 15px;
+  transform: translateX(-50%);
+  border: 8px solid #1c2128;
+  border-bottom: 0;
+  border-radius: 54px 54px 0 0;
+}
+.headphones i,
+.headphones b {
+  position: absolute;
+  top: 66px;
+  width: 25px;
+  height: 40px;
+  border-radius: 12px;
+  background: linear-gradient(#313b46, #0e141a);
+  z-index: 1;
+}
+.headphones i {
+  left: calc(50% - 49px);
+}
+.headphones b {
+  right: calc(50% - 49px);
+}
+.headphones i::after,
+.headphones b::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  width: 9px;
+  height: 18px;
+  border-radius: 50%;
+  background: #6a7580;
+}
+.packBottom a {
+  float: right;
+  margin-top: -30px;
+  background: #fff;
+}
+.shipDone {
+  border: 1px solid #dce3ec;
+  padding: 11px;
+  border-radius: 5px;
+  color: #188544;
+}
+.ship {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr 0.9fr;
+  gap: 8px;
+}
+.ship .card > a {
+  display: block;
+  border: 1px solid #dce4ee;
+  padding: 10px;
+  margin: 6px 0;
+  color: #1d3153;
+  text-decoration: none;
+}
+.ship .card table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.ship td {
+  border: 1px solid #dce4ee;
+  padding: 9px;
+}
+.ship label {
+  margin: 15px 0;
+}
+.ship label input {
+  display: block;
+  margin-top: 5px;
+}
+/* PcCanvas owns the proportional review scale; the app remains a fixed desktop board. */
+
+/* Orders and shipping use the approved utility row above the navigation. */
+.utilityApp {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  grid-template-rows: 56px minmax(0, 1fr);
+}
+.utilityApp > .utilityHeader {
+  grid-column: 1 / -1;
+  grid-row: 1;
+}
+.utilityApp > aside {
+  grid-column: 1;
+  grid-row: 2;
+  width: auto;
+  min-height: 0;
+  box-sizing: border-box;
+  padding-top: 18px;
+}
+.utilityApp > .frame {
+  grid-column: 2;
+  grid-row: 2;
+  min-width: 0;
+  min-height: 0;
+  height: 456px;
+  overflow: hidden;
+}
+.utilityHeader {
+  min-width: 0;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 22px;
+  background: #fff;
+  border-bottom: 1px solid #dfe5ee;
+  color: #152442;
+}
+.utilityHeader > button {
+  width: 32px;
+  height: 32px;
+  border: 1px solid #d9e1ec;
+  border-radius: 6px;
+  background: #fff;
+  color: #2c4770;
+  font-size: 18px;
+  line-height: 1;
+}
+.utilityHeader > strong {
+  font-size: 16px;
+  white-space: nowrap;
+}
+.utilityScreenNo {
+  padding: 7px 9px;
+  border-radius: 4px;
+  background: #071b49;
+  color: #fff;
+  font-size: 16px;
+}
+.utilityWorkspace {
+  padding: 8px 12px;
+  border: 1px solid #dbe4f0;
+  border-radius: 6px;
+  color: #526580;
+  font-size: 12px;
+}
+.utilityTools {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-left: auto;
+  color: #5a6b83;
+  font-size: 12px;
+}
+.utilityTools > span:not(.utilityUser) {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid #dbe4f0;
+  border-radius: 50%;
+}
+.utilityUser {
+  padding: 8px 11px;
+  border-radius: 18px;
+  background: #f3f6fa;
+  color: #243a5f;
+  font-weight: 700;
+}
+.utilityApp .frame > header {
+  display: none;
+}
+.utilityApp .frame > header > div b {
+  min-width: 33px;
+  text-align: center;
+}
+.utilityApp .frame > header > label,
+.utilityApp .frame > header > span {
+  display: none;
+}
+.utilityApp .pad > h2:first-child {
+  display: none;
+}
+.utilityApp .pad {
+  padding: 8px 20px;
+}
+.utilityApp .order {
+  padding: 9px 11px;
+}
+.utilityApp .order h3 {
+  margin: 0 0 7px;
+  padding: 7px 9px;
+  font-size: 12px;
+}
+.utilityApp .order > div {
+  gap: 7px 10px;
+}
+.utilityApp .order label {
+  font-size: 11px;
+}
+.utilityApp .order input,
+.utilityApp .order select {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 3px;
+  padding: 6px 8px;
+  min-height: 29px;
+}
+.utilityApp .order .warn,
+.utilityApp .order .notice {
+  margin: 7px 0 0;
+  padding: 7px 9px;
+  line-height: 1.35;
+  font-size: 11px;
+}
+.utilityApp .pad > footer {
+  margin-top: 6px;
+}
+.orderFieldHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 5px;
+}
+.requiredChip {
+  border-radius: 9px;
+  padding: 2px 6px;
+  background: #e9f2ff;
+  color: #075be6;
+  font-size: 9px;
+}
+.laterHint {
+  color: #60718a;
+  font-size: 9px;
+  font-weight: 400;
+}
+.moneyInput {
+  position: relative;
+}
+.moneyInput > span {
+  position: absolute;
+  left: 9px;
+  top: 11px;
+  color: #314867;
+  z-index: 1;
+}
+.moneyInput input {
+  padding-left: 22px !important;
+}
+.photo > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  mix-blend-mode: multiply;
+}
+.photoFallback {
+  display: none;
+}
+.galleryArt > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  mix-blend-mode: multiply;
+}
+.galleryFallback {
+  display: none;
+}
+.headphones > img,
+.box > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+}
+.headphones::before,
+.headphones > i,
+.headphones > b {
+  display: none;
+}
+.box {
+  overflow: hidden;
+}
+.box::before {
+  display: none;
+}
+.shelfPhoto > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.shelfPhoto::after {
+  display: none;
+}
+.galleryPagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+  margin-top: 12px;
+  color: #63728b;
+}
+.galleryPagination a {
+  min-width: 32px;
+  height: 32px;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  border: 1px solid #d7e0eb;
+  border-radius: 5px;
+  background: #fff;
+  color: #284266;
+  text-decoration: none;
+}
+.galleryPagination .pageActive {
+  border-color: #075de4;
+  background: #075de4;
+  color: #fff;
+  font-weight: 700;
+}
+.galleryPagination span {
+  margin-left: 8px;
+  font-size: 12px;
+}
+.measureDiagram {
+  position: relative;
+}
+.measureAsset {
+  position: absolute;
+  inset: 4px;
+  display: block;
+  width: calc(100% - 8px);
+  height: calc(100% - 8px);
+  object-fit: contain;
+  object-position: center;
+  mix-blend-mode: multiply;
+}
+.measureDiagram svg {
+  position: relative;
+  z-index: 1;
+}
+.measureDiagram .diagramBag,
+.measureDiagram .diagramHandle,
+.measureDiagram .diagramSeam {
+  display: none;
+}
+.measureEvidencePhoto {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  height: 90px;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid #dfe5ed;
+  border-radius: 4px;
+  background: #f4f6f8;
+}
+.measureEvidencePhoto img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.measureEvidencePhoto figcaption {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: #fffffff0;
+  color: #21456f;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+/*
+ * Middle-screen fidelity pass
+ *
+ * The approved PC board is a 768 x 512 virtual canvas.  The rules below keep
+ * each screen inside that canvas while retaining the dense list/detail layout
+ * from the design boards.  They intentionally live at the end of this module
+ * so the bounded middle screens can be tuned without changing the shared
+ * canvas or the early/late screen implementations.
+ */
+.app {
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: 122px minmax(0, 1fr);
+  grid-template-rows: 48px minmax(0, 1fr);
+  font-size: 11px;
+}
+
+.app > aside {
+  grid-column: 1;
+  grid-row: 2;
+  width: auto;
+  min-height: 0;
+  padding: 8px 9px;
+  overflow: hidden;
+}
+
+.app > aside a {
+  gap: 7px;
+  padding: 7px 6px;
+  font-size: 10px;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.app > aside i {
+  width: 15px;
+  flex: none;
+  font-size: 14px;
+  text-align: center;
+}
+
+.app > aside .navGlyph {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  color: currentColor;
+}
+
+.frame {
+  grid-column: 2;
+  grid-row: 2;
+  min-width: 0;
+  min-height: 0;
+  height: auto;
+  overflow: hidden;
+}
+
+.topbar {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  min-width: 0;
+  height: 48px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 8px;
+  background: #fff;
+  border-bottom: 1px solid #dfe5ee;
+  color: #142343;
+}
+
+.topbarTitle {
+  display: flex;
+  align-items: center;
+  flex: 0 0 282px;
+  min-width: 0;
+  gap: 8px;
+}
+
+.topbarTitle b {
+  width: 40px;
+  height: 32px;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  flex: none;
+  padding: 0;
+  border-radius: 4px;
+  background: #071b49;
+  color: #fff;
+  font-size: 16px;
+}
+
+.topbarTitle h1 {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-size: 15px;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbarSearch {
+  flex: 0 0 238px;
+  min-width: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+  padding: 6px 9px;
+  border: 1px solid #dce3ed;
+  border-radius: 5px;
+  color: #7f8da2;
+  font-size: 10px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.topbarSearch span {
+  color: #99a4b5;
+}
+
+.topbarBell {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: #65758b;
+  font-size: 16px;
+}
+
+.topbarBell svg {
+  width: 17px;
+  height: 17px;
+}
+
+.topbarUser {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  color: #2f466a;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.topbarUser svg {
+  width: 17px;
+  height: 17px;
+}
+
+.pad {
+  max-width: none;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 10px 13px 8px;
+}
+
+.card {
+  padding: 8px;
+  border-radius: 5px;
+}
+
+.card h2,
+.card h3 {
+  margin: 0 0 6px;
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.card p {
+  margin: 4px 0;
+  line-height: 1.35;
+}
+
+.card a,
+.outline {
+  padding: 5px 8px;
+  font-size: 10px;
+  line-height: 1.15;
+}
+
+.primary {
+  box-sizing: border-box;
+  padding: 8px 15px;
+  font-size: 11px;
+  line-height: 1.15;
+}
+
+.crumb {
+  margin: 1px 0 8px;
+  font-size: 10px;
+  line-height: 1.2;
+}
+
+.notice {
+  box-sizing: border-box;
+  margin: 6px 0;
+  padding: 7px 9px;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.pad > footer {
+  clear: both;
+  margin-top: 6px;
+  gap: 6px;
+}
+
+.pad > footer > a:first-child {
+  box-sizing: border-box;
+  padding: 7px 18px;
+  font-size: 10px;
+  line-height: 1.15;
+}
+
+.pad > footer .primary {
+  white-space: nowrap;
+}
+
+/* 17: the two approved actions remain visible on the photo header row. */
+.photoHeaderActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-height: 23px;
+  margin: -1px 0 6px;
+}
+
+.photoHeaderActions a {
+  box-sizing: border-box;
+  padding: 4px 8px;
+  border: 1px solid #a9c8ff;
+  border-radius: 4px;
+  color: #075be6;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.1;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.photoHeaderActions .confirmedAction {
+  border-color: #8dcaa0;
+  background: #effaf2;
+  color: #18823f;
+}
+
+.photoFive {
+  gap: 6px;
+}
+
+.photoFive .card {
+  height: 230px;
+  min-height: 0;
+  padding: 6px;
+  overflow: hidden;
+}
+
+.photoFive h3 {
+  margin-bottom: 5px;
+  font-size: 10px;
+}
+
+.photoFive .photo {
+  height: 146px;
+}
+
+.photoFive > b {
+  margin-top: 6px;
+  padding: 3px 8px;
+  font-size: 9px;
+}
+
+.photoAdd {
+  gap: 9px;
+  margin-top: 9px;
+}
+
+.uploadCard {
+  box-sizing: border-box;
+  height: 80px;
+  min-height: 0;
+  padding: 16px 9px;
+}
+
+.uploadCard a {
+  font-size: 12px;
+}
+
+.uploadCard small {
+  margin-top: 5px;
+  font-size: 9px;
+}
+
+.photoAdd > .card {
+  height: 80px;
+  min-height: 0;
+}
+
+/* 18: policy cards and the edit-set CTA fit in the first viewport. */
+.screen18 .lock {
+  box-sizing: border-box;
+  margin: 6px 0;
+  padding: 7px 9px;
+  line-height: 1.35;
+  font-size: 10px;
+}
+
+.screen18 .pad > p:not(.crumb):not(.notice):not(.lock) {
+  margin: 6px 0;
+}
+
+.policies {
+  gap: 7px;
+  margin: 8px 0 9px;
+}
+
+.policies .card {
+  height: 156px;
+  min-height: 0;
+  padding: 7px;
+  overflow: hidden;
+}
+
+.policies i {
+  padding: 8px;
+  font-size: 29px;
+}
+
+.policies p {
+  margin: 3px 0;
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+.screen18 .pad > .primary {
+  float: none;
+  display: block;
+  width: 270px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+/* 19: show the human confirmation block and both final actions. */
+.screen19 .success {
+  box-sizing: border-box;
+  margin: 6px 0;
+  padding: 7px 9px;
+  line-height: 1.3;
+}
+
+.screen19 .success b {
+  font-size: 16px;
+}
+
+.screen19 .success em {
+  padding: 2px 7px;
+  font-size: 9px;
+}
+
+.compare {
+  gap: 5px;
+  margin-top: 6px;
+  padding: 6px;
+}
+
+.compare h3 {
+  margin-bottom: 4px;
+  font-size: 9px;
+}
+
+.compare .photo {
+  height: 90px;
+}
+
+.compare span {
+  font-size: 17px;
+  line-height: 1;
+}
+
+.screen19 .human {
+  box-sizing: border-box;
+  margin: 6px 0;
+  padding: 7px 9px;
+  font-size: 10px;
+  line-height: 1.3;
+}
+
+.screen19 .pad > footer {
+  margin-top: 6px;
+}
+
+/* 20: keep the diagram, all reason candidates, and save/cancel actions. */
+.measure {
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: 7px;
+}
+
+.screen20 .measure > .card {
+  height: 369px;
+  min-height: 0;
+  padding: 7px;
+  overflow: hidden;
+}
+
+.measureBody {
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: 6px;
+}
+
+.measureDiagram {
+  height: 201px;
+  padding: 2px;
+}
+
+.measure th,
+.measure td {
+  padding: 3px 4px;
+  font-size: 8px;
+  line-height: 1.15;
+}
+
+.screen20 .measure .notice {
+  margin: 5px 0;
+  padding: 5px 7px;
+}
+
+.screen20 .measure .total {
+  margin: 5px 0 0;
+  padding: 6px 7px;
+  font-size: 9px;
+}
+
+.screen20 .measure > section {
+  gap: 7px;
+}
+
+.screen20 .measure > section > .card {
+  min-height: 0;
+  padding: 7px;
+  overflow: hidden;
+}
+
+.screen20 .measure > section > .card:first-child {
+  height: 188px;
+}
+
+.screen20 .measure > section > .card:last-child {
+  height: 174px;
+}
+
+.measureEvidencePhoto {
+  flex: 0 0 calc(25% - 4px);
+  height: 58px;
+}
+
+.screen20 .evidence {
+  flex-wrap: wrap;
+}
+
+.measureEvidencePhoto figcaption {
+  font-size: 7px;
+}
+
+.screen20 .measure label {
+  display: block;
+  margin: 6px 0;
+  font-size: 9px;
+  line-height: 1.15;
+}
+
+.screen20 .measure input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 5px 6px;
+  font-size: 9px;
+}
+
+/* 21: real label photos fill their tiles without the old letterbox bands. */
+.screen21 .tags {
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+  gap: 8px;
+}
+
+.screen21 .tags > .card {
+  min-height: 0;
+  height: 337px;
+  padding: 7px;
+  overflow: hidden;
+}
+
+.screen21 .tagPhotos {
+  gap: 6px;
+}
+
+.screen21 .tagPhotos .photo {
+  height: 112px;
+  min-height: 0;
+  background: #fff;
+}
+
+.screen21 .tagPhotos .photo > img {
+  object-fit: cover;
+  mix-blend-mode: normal;
+}
+
+.screen21 .tags small {
+  display: block;
+  margin-top: 5px;
+  font-size: 9px;
+}
+
+.screen21 .tagForm label {
+  margin: 6px 0;
+  font-size: 9px;
+}
+
+.screen21 .tagForm select {
+  width: 78%;
+  margin-top: 3px;
+  padding: 5px;
+  font-size: 9px;
+}
+
+.screen21 .tagForm label b {
+  top: 19px;
+  padding: 3px 5px;
+  font-size: 8px;
+}
+
+.screen21 .tagForm strong {
+  font-size: 16px;
+}
+
+/* 22: compact product summary with six distinct approved photos. */
+.screen22 .productHero {
+  min-height: 0;
+  gap: 10px;
+  padding: 8px;
+}
+
+.screen22 .productHero > .photo {
+  width: 108px;
+  height: 86px;
+  flex: none;
+}
+
+.screen22 .productHero h2 {
+  margin: 0 0 4px;
+  font-size: 14px;
+}
+
+.screen22 .productHero p {
+  margin: 3px 0;
+  font-size: 9px;
+}
+
+.screen22 .productHero b {
+  margin: 2px 2px 0 0;
+  padding: 4px 5px;
+  font-size: 8px;
+}
+
+.productCols {
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1.15fr) minmax(0, 0.9fr) minmax(0, 0.95fr);
+  gap: 6px;
+  margin-top: 7px;
+}
+
+.screen22 .productCols .card {
+  min-height: 0;
+  height: 174px;
+  padding: 6px;
+  overflow: hidden;
+}
+
+.screen22 .productCols p {
+  margin: 4px 0;
+  font-size: 8px;
+  line-height: 1.2;
+}
+
+.screen22 .productCols a {
+  margin-top: 6px;
+  padding: 4px 5px;
+  font-size: 8px;
+}
+
+.screen22 .twelve {
+  gap: 3px;
+}
+
+.screen22 .twelve .photo {
+  height: 41px;
+}
+
+.screen22 .twelve .photo > img {
+  object-fit: cover;
+  mix-blend-mode: normal;
+}
+
+.screen22 .missing {
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.screen22 .missing .card {
+  min-height: 0;
+  height: 58px;
+  padding: 6px;
+  overflow: hidden;
+}
+
+.screen22 .missing p {
+  margin: 3px 0;
+  font-size: 8px;
+}
+
+.screen22 .pad > .primary {
+  margin-top: 6px;
+}
+
+/* 23: the description starts at the top of its textarea, with evidence/memo. */
+.screen23 .desc {
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 0.9fr);
+  gap: 7px;
+}
+
+.screen23 .desc > .card {
+  height: 369px;
+  min-height: 0;
+  padding: 7px;
+  overflow: hidden;
+  align-self: start;
+}
+
+.screen23 .desc textarea {
+  display: block;
+  min-height: 0;
+  height: 307px;
+  padding: 7px;
+  font-size: 9px;
+  line-height: 1.35;
+  resize: none;
+}
+
+.screen23 .desc > .card > p {
+  margin: 5px 0 0;
+  font-size: 9px;
+}
+
+.screen23 .desc section {
+  grid-template-rows: 176px 62px 119px;
+  gap: 6px;
+  min-height: 0;
+}
+
+.screen23 .desc section > .card {
+  min-height: 0;
+  padding: 7px;
+  overflow: hidden;
+}
+
+.screen23 .desc section p {
+  margin: 3px 0;
+  font-size: 8px;
+  line-height: 1.25;
+}
+
+.screen23 .desc section textarea {
+  height: 80px;
+  min-height: 0;
+  padding: 6px;
+  font-size: 9px;
+}
+
+/* 24: official-screen-style mock plus the listing form and footer. */
+.screen24 .official {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.screen24 .official .card {
+  height: 254px;
+  min-height: 0;
+  padding: 7px;
+  overflow: hidden;
+}
+
+.screen24 .official .card > p {
+  margin: 3px 0;
+  font-size: 8px;
+  line-height: 1.25;
+}
+
+.screen24 .official .photo {
+  height: 107px;
+}
+
+.screen24 .official .photo > img {
+  object-fit: contain;
+  mix-blend-mode: normal;
+}
+
+.screen24 .official textarea {
+  height: 106px;
+  min-height: 0;
+  padding: 6px;
+  font-size: 8px;
+  line-height: 1.3;
+  resize: none;
+}
+
+.screen24 .official .card > a {
+  margin-top: 6px;
+  padding: 4px 5px;
+  font-size: 8px;
+}
+
+.browser {
+  height: 107px;
+  box-sizing: border-box;
+  overflow: hidden;
+  padding: 0;
+  border-color: #cfd8e4;
+  background: #fff;
+  color: #334b6d;
+}
+
+.browserBar {
+  height: 18px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 5px;
+  background: #eef2f6;
+  border-bottom: 1px solid #dce3ed;
+}
+
+.browserBar i {
+  width: 5px;
+  height: 5px;
+  display: block;
+  border-radius: 50%;
+  background: #bdc8d4;
+}
+
+.browserBar span {
+  margin-left: 5px;
+  color: #7d8da3;
+  font-size: 7px;
+}
+
+.browserBody {
+  display: grid;
+  grid-template-columns: 1fr 0.8fr;
+  gap: 5px;
+  padding: 7px;
+}
+
+.browserBody b {
+  grid-column: 1 / -1;
+  color: #203a64;
+  font-size: 8px;
+}
+
+.browserBody span {
+  height: 13px;
+  display: block;
+  border: 1px solid #e0e6ee;
+  border-radius: 2px;
+  background: #fbfcfd;
+}
+
+.browserBody em {
+  grid-column: 1 / -1;
+  padding: 4px 5px;
+  border-radius: 3px;
+  background: #eaf2ff;
+  color: #075be6;
+  font-size: 7px;
+  font-style: normal;
+}
+
+.screen24 .browser + a {
+  display: block;
+  margin-top: 6px;
+  padding: 5px 6px;
+  text-align: center;
+  font-size: 8px;
+}
+
+.screen24 .after {
+  height: 61px;
+  min-height: 0;
+  margin-top: 7px;
+  padding: 6px;
+  overflow: hidden;
+}
+
+.screen24 .after h3 {
+  margin-bottom: 4px;
+}
+
+.screen24 .after > div {
+  gap: 5px;
+}
+
+.screen24 .after input {
+  min-width: 0;
+  padding: 5px;
+  font-size: 8px;
+}
+
+/* 25: six distinct gallery cards, second row, and pagination. */
+.screen25 .topbarTitle h1,
+.screen26 .topbarTitle h1,
+.screen27 .topbarTitle h1,
+.screen28 .topbarTitle h1 {
+  display: none;
+}
+
+.screen25 .pad > h2,
+.screen26 .pad > h2 {
+  margin: 0 0 6px;
+  font-size: 15px;
+  line-height: 1.15;
+}
+
+.screen25 .toggle {
+  box-sizing: border-box;
+  width: 208px;
+  margin: 5px 0;
+  padding: 5px;
+  font-size: 9px;
+}
+
+.screen25 .toggle b {
+  padding: 5px 8px;
+}
+
+.screen25 .filter {
+  margin: 4px 0 6px;
+  font-size: 9px;
+}
+
+.screen25 .gallery {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.screen25 .gallery .card {
+  height: 132px;
+  min-height: 0;
+  padding: 5px;
+  overflow: hidden;
+}
+
+.screen25 .galleryArt {
+  width: 54px;
+  height: 48px;
+  margin-right: 6px;
+  background: #f3f6f8;
+}
+
+.screen25 .galleryArt > img {
+  object-fit: cover;
+  mix-blend-mode: normal;
+}
+
+.screen25 .galleryPants > img {
+  object-fit: contain;
+}
+
+.screen25 .gallery h3 {
+  margin: 2px 0;
+  font-size: 9px;
+  line-height: 1.15;
+}
+
+.screen25 .gallery p,
+.screen25 .gallery small {
+  margin: 2px 0;
+  font-size: 8px;
+  line-height: 1.15;
+}
+
+.screen25 .gallery footer {
+  gap: 3px;
+  padding-top: 3px;
+}
+
+.screen25 .gallery footer em,
+.screen25 .gallery footer a {
+  padding: 3px;
+  font-size: 7px;
+  line-height: 1.1;
+}
+
+.screen25 .galleryPagination {
+  gap: 4px;
+  margin-top: 5px;
+}
+
+.screen25 .galleryPagination a {
+  min-width: 22px;
+  height: 22px;
+  font-size: 9px;
+}
+
+.screen25 .galleryPagination span {
+  margin-left: 4px;
+  font-size: 8px;
+}
+
+/* 26: six list rows, official pants screen, fit fields, and save controls. */
+.screen26 .sales {
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 7px;
+  height: 365px;
+}
+
+.screen26 .sales > .card {
+  min-height: 0;
+  padding: 6px;
+  overflow: hidden;
+}
+
+.screen26 .sales > .card > button {
+  min-height: 0;
+  height: 48px;
+  box-sizing: border-box;
+  margin: 3px 0;
+  padding: 4px;
+  font-size: 8px;
+  line-height: 1.1;
+}
+
+.screen26 .sales .galleryArt {
+  width: 31px;
+  height: 37px;
+  margin-right: 5px;
+  background: #f3f6f8;
+}
+
+.screen26 .sales .galleryArt > img {
+  object-fit: cover;
+  mix-blend-mode: normal;
+}
+
+.screen26 .sales .galleryPants > img {
+  object-fit: contain;
+}
+
+.screen26 .sales button strong,
+.screen26 .sales button span,
+.screen26 .sales button small {
+  font-size: 8px;
+}
+
+.screen26 .sales > section {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.screen26 .sales > section > h3 {
+  margin: 0 0 3px;
+  font-size: 11px;
+  line-height: 1.15;
+}
+
+.screen26 .tabs {
+  padding: 4px 3px;
+  font-size: 8px;
+}
+
+.screen26 .tabs button {
+  padding: 5px 8px;
+  font-size: 8px;
+}
+
+.screen26 .sales > section > .card {
+  height: 325px;
+  min-height: 0;
+  padding: 6px;
+  overflow: hidden;
+}
+
+.screen26 .numbers {
+  gap: 5px;
+  width: 58%;
+}
+
+.screen26 .numbers input {
+  min-width: 0;
+  padding: 5px;
+  font-size: 8px;
+}
+
+.screen26 .sales section > .card > .galleryArt {
+  width: 34%;
+  height: 105px;
+}
+
+.screen26 .sales label {
+  padding-top: 7px;
+  font-size: 9px;
+}
+
+.screen26 .sales label input {
+  margin-top: 3px;
+  padding: 5px;
+  font-size: 9px;
+}
+
+.screen26 .sales footer {
+  padding-top: 6px;
+}
+
+.screen26 .sales footer a,
+.screen26 .sales footer .primary {
+  padding: 5px 7px;
+  font-size: 8px;
+}
+
+.screen26 .screenshotMode {
+  gap: 6px;
+}
+
+.screen26 .screenshotArt {
+  min-height: 116px;
+  padding: 8px;
+}
+
+.screen26 .directScreenshot {
+  width: 34%;
+  height: 105px;
+  min-height: 0;
+  box-sizing: border-box;
+  float: right;
+  margin: 0 0 5px 7px;
+  padding: 0;
+  overflow: hidden;
+  background: #fff;
+}
+
+.screen26 .directScreenshot > img {
+  position: static;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #fff;
+}
+
+.screen26 .directScreenshot::before {
+  display: none;
+}
+
+/* 27: all comparison rows, including source and confirmation date, stay in view. */
+.screen27 .pad > h2,
+.screen28 .pad > h2 {
+  margin: 0 0 7px;
+  font-size: 15px;
+  line-height: 1.15;
+}
+
+.screen27 .price {
+  table-layout: fixed;
+}
+
+.screen27 .price th,
+.screen27 .price td {
+  box-sizing: border-box;
+  padding: 3px 4px;
+  font-size: 8px;
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.screen27 .price th:first-child {
+  width: 110px;
+}
+
+.screen27 .price input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 4px;
+  font-size: 8px;
+}
+
+.screen27 .pad > p {
+  margin: 6px 0;
+  font-size: 8px;
+  line-height: 1.25;
+}
+
+.screen27 .pad > .primary {
+  margin-top: 2px;
+}
+
+/* 28: all four templates, memo, and record CTA remain visible. */
+.screen28 .reply {
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  gap: 7px;
+  height: 351px;
+}
+
+.screen28 .reply > .card {
+  min-height: 0;
+  height: 351px;
+  padding: 6px;
+  overflow: hidden;
+}
+
+.screen28 .reply article {
+  box-sizing: border-box;
+  height: 66px;
+  margin: 4px 0;
+  padding: 5px;
+  overflow: hidden;
+}
+
+.screen28 .reply article p {
+  margin: 3px 0;
+  font-size: 8px;
+  line-height: 1.2;
+}
+
+.screen28 .reply article a {
+  margin-top: -24px;
+  padding: 3px 5px;
+  font-size: 8px;
+}
+
+.screen28 .reply .outline {
+  padding: 5px;
+  font-size: 9px;
+}
+
+.screen28 .reply h4 {
+  margin: 8px 0 4px;
+  font-size: 9px;
+}
+
+.screen28 .reply label {
+  margin: 4px 0;
+  font-size: 8px;
+}
+
+.screen28 .reply textarea {
+  height: 45px;
+  min-height: 0;
+  padding: 5px;
+  font-size: 8px;
+}
+
+.screen28 .pad > .primary {
+  margin-top: 5px;
+}
+
+/* Orders/shipping utility header (29-32), matching the approved two-level shell. */
+.utilityApp {
+  grid-template-columns: 122px minmax(0, 1fr);
+  grid-template-rows: 48px minmax(0, 1fr);
+}
+
+.utilityApp > .utilityHeader {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  height: 48px;
+  display: grid;
+  grid-template-columns: 122px minmax(0, 1fr);
+  gap: 0;
+  padding: 0;
+}
+
+.utilitySideToggle {
+  width: 122px;
+  height: 48px;
+  box-sizing: border-box;
+  border: 0;
+  border-right: 1px solid #dfe5ee;
+  border-radius: 0;
+  background: #fff;
+  color: #2c4770;
+  font-size: 17px;
+}
+
+.utilityMainTools {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 10px;
+}
+
+.utilityFrameToggle {
+  width: 28px;
+  height: 28px;
+  box-sizing: border-box;
+  border: 1px solid #d9e1ec;
+  border-radius: 5px;
+  background: #fff;
+  color: #2c4770;
+  font-size: 15px;
+}
+
+.workerMenu {
+  height: 28px;
+  box-sizing: border-box;
+  border: 0;
+  background: transparent;
+  color: #243a5f;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.utilityApp .utilityTools {
+  gap: 8px;
+  margin-left: auto;
+  font-size: 10px;
+}
+
+.utilityApp .utilityTools > span:not(.utilityUser) {
+  width: 24px;
+  height: 24px;
+  font-size: 11px;
+}
+
+.utilityApp .utilityTools > span:not(.utilityUser) svg {
+  width: 14px;
+  height: 14px;
+}
+
+.utilityApp .utilityUser {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  font-size: 9px;
+}
+
+.utilityApp .utilityUser svg {
+  width: 14px;
+  height: 14px;
+}
+
+.utilityApp > aside {
+  grid-column: 1;
+  grid-row: 2;
+  padding-top: 8px;
+}
+
+.utilityApp > .frame {
+  grid-column: 2;
+  grid-row: 2;
+  height: auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.utilityPageHeading {
+  height: 42px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 13px 3px;
+  background: #f8fafc;
+}
+
+.utilityPageHeading b {
+  width: 30px;
+  height: 25px;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  border-radius: 4px;
+  background: #071b49;
+  color: #fff;
+  font-size: 12px;
+}
+
+.utilityPageHeading h1 {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.15;
+}
+
+.utilityPageHeading em {
+  padding: 3px 6px;
+  border-radius: 9px;
+  background: #fff1cf;
+  color: #d78300;
+  font-size: 8px;
+  font-style: normal;
+}
+
+.utilityApp .pad {
+  padding: 3px 13px 7px;
+}
+
+.utilityApp .pad > h2:first-child {
+  display: none;
+}
+
+.utilityApp .order {
+  height: 302px;
+  min-height: 0;
+  padding: 7px 9px;
+  overflow: hidden;
+}
+
+.utilityApp .order h3 {
+  margin: 0 0 6px;
+  padding: 6px 8px;
+  font-size: 10px;
+}
+
+.utilityApp .order > div {
+  gap: 6px 8px;
+}
+
+.utilityApp .order label {
+  font-size: 9px;
+}
+
+.utilityApp .order input,
+.utilityApp .order select {
+  min-height: 25px;
+  margin-top: 2px;
+  padding: 5px 6px;
+  font-size: 9px;
+}
+
+.utilityApp .order .warn,
+.utilityApp .order .notice {
+  margin: 5px 0 0;
+  padding: 6px 8px;
+  font-size: 9px;
+  line-height: 1.25;
+}
+
+.utilityApp .pad > footer {
+  margin-top: 5px;
+}
+
+/* 30: labels and shelf photo stay compact; the location is not a giant title. */
+.screen30 .pad > p {
+  margin: 2px 0 5px;
+  font-size: 9px;
+}
+
+.screen30 .pick {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.3fr);
+  gap: 6px;
+}
+
+.screen30 .pick .card {
+  height: 184px;
+  min-height: 0;
+  padding: 6px;
+  overflow: hidden;
+}
+
+.screen30 .pick .card h3 {
+  margin-bottom: 5px;
+  font-size: 10px;
+}
+
+.screen30 .productLabel {
+  min-height: 0;
+  height: 101px;
+  padding: 6px;
+}
+
+.screen30 .productLabel .barcode {
+  height: 22px;
+  margin: 1px 0 5px;
+}
+
+.screen30 .productLabel strong {
+  font-size: 14px;
+}
+
+.screen30 .productLabel span,
+.screen30 .productLabel b {
+  margin-top: 3px;
+  font-size: 8px;
+}
+
+.screen30 .locationLabel {
+  min-height: 0;
+  height: 101px;
+  gap: 6px;
+}
+
+.screen30 .locationLabel strong {
+  font-size: 16px;
+}
+
+.screen30 .locationLabel span {
+  font-size: 8px;
+}
+
+.screen30 .shelfPhoto {
+  height: 101px;
+}
+
+.screen30 .shelfPhoto span {
+  font-size: 12px;
+}
+
+.screen30 .pickBottom {
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.screen30 .pickBottom .card {
+  height: 97px;
+  min-height: 0;
+  padding: 6px;
+  overflow: hidden;
+}
+
+.screen30 .pickBottom p,
+.screen30 .pickBottom .notice {
+  margin: 3px 0;
+  font-size: 8px;
+  line-height: 1.2;
+}
+
+.screen30 .pickBottom .ok {
+  font-size: 12px;
+}
+
+/* 31: both workflow notes and both final actions are visible. */
+.screen31 .pad > p {
+  margin: 2px 0 4px;
+  font-size: 9px;
+}
+
+.screen31 .pad > h3 {
+  margin: 5px 0 4px;
+  font-size: 10px;
+  line-height: 1.2;
+}
+
+.screen31 .threshold {
+  float: right;
+  color: #63728b;
+  font-size: 8px;
+  font-weight: 400;
+}
+
+.screen31 .threshold b {
+  color: #075be6;
+}
+
+.packOpts {
+  gap: 6px;
+}
+
+.screen31 .packOpts .card {
+  height: 84px;
+  min-height: 0;
+  padding: 6px;
+  overflow: hidden;
+}
+
+.screen31 .packOpts .card b {
+  font-size: 9px;
+  line-height: 1.15;
+}
+
+.screen31 .packOpts p {
+  margin: 4px 0;
+  font-size: 8px;
+  line-height: 1.2;
+}
+
+.screen31 .packBottom {
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.screen31 .packBottom > .card {
+  height: 148px;
+  min-height: 0;
+  padding: 6px;
+  overflow: hidden;
+}
+
+.screen31 .packBottom .headphones,
+.screen31 .packBottom .box {
+  height: 87px;
+}
+
+.screen31 .packBottom .card > a {
+  margin-top: -22px;
+  padding: 3px 5px;
+  font-size: 8px;
+}
+
+.screen31 .packBottom label {
+  margin: 3px 0;
+  font-size: 8px;
+  line-height: 1.1;
+}
+
+.screen31 .packBottom input {
+  width: 11px;
+  height: 11px;
+  margin: 0 2px 0 0;
+}
+
+.screen31 .privacyNote {
+  margin: 4px 0;
+  color: #60718a;
+  font-size: 8px;
+}
+
+.screen31 .pad > .notice {
+  margin: 5px 0 3px;
+  padding: 5px 7px;
+}
+
+/* 32: explicit manual-input note, missing-information warning, and shipping CTA. */
+.screen32 .shipDone {
+  margin: 4px 0;
+  padding: 5px 7px;
+  font-size: 9px;
+}
+
+.screen32 .ship {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 0.9fr);
+  gap: 6px;
+  height: 230px;
+}
+
+.screen32 .ship > .card {
+  min-height: 0;
+  height: 230px;
+  padding: 6px;
+  overflow: hidden;
+}
+
+.screen32 .ship .card h3 {
+  margin-bottom: 4px;
+  font-size: 9px;
+}
+
+.screen32 .ship .card > p,
+.screen32 .ship td {
+  padding: 4px;
+  font-size: 8px;
+  line-height: 1.15;
+}
+
+.screen32 .ship .card > a {
+  margin: 3px 0;
+  padding: 5px;
+  font-size: 8px;
+  line-height: 1.1;
+}
+
+.screen32 .ship .total {
+  margin: 5px 0 0;
+  padding: 5px;
+  font-size: 8px;
+}
+
+.screen32 .ship label {
+  margin: 7px 0;
+  font-size: 8px;
+}
+
+.screen32 .ship label input {
+  margin-top: 3px;
+  padding: 5px;
+  font-size: 8px;
+}
+
+.screen32 .pad > .notice {
+  margin: 5px 0 4px;
+  padding: 6px 8px;
+  font-size: 8px;
+  line-height: 1.25;
+}
+
+.orderFooterWarning {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin: 4px 0;
+  padding: 5px 7px;
+  border: 1px solid #f5c45f;
+  border-radius: 5px;
+  background: #fff3da;
+  color: #c67300;
+  font-size: 8px;
+  line-height: 1.15;
+}
+
+.orderFooterWarning a {
+  flex: none;
+  padding: 3px 5px;
+  border: 1px solid #e5b750;
+  border-radius: 4px;
+  color: #a25e00;
+  font-size: 8px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+/* Final approved-board alignment for PC17–32.  These are deliberately
+   screen-scoped: all 16 routes use the same 768 × 512 canvas, but their
+   approved layouts do not share a generic card density. */
+.screen18 .policies .card {
+  position: relative;
+  display: grid;
+  grid-template-rows: 17px 66px minmax(0, 1fr);
+  justify-items: center;
+  cursor: pointer;
+}
+
+.screen18 .policies .card:focus-visible {
+  outline: 2px solid #075be6;
+  outline-offset: 2px;
+}
+
+.screen18 .policies .card > b {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #1f3150;
+  font-size: 10px;
+  text-align: left;
+}
+
+.screen18 .radioMark {
+  width: 11px;
+  height: 11px;
+  box-sizing: border-box;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  border: 1px solid #9aa9bd;
+  border-radius: 50%;
+  color: #075be6;
+  font-size: 7px;
+  line-height: 1;
+}
+
+.screen18 .selected .radioMark {
+  border-color: #075be6;
+}
+
+.policyIcon {
+  width: 72px;
+  height: 56px;
+  margin: 2px 0 0;
+  color: #647996;
+}
+
+.screen18 .policies p {
+  align-self: start;
+  width: 100%;
+  color: #566a84;
+  text-align: left;
+}
+
+/* PC20 has six approved evidence photos: five measurement points plus the
+   separate circumference reference on the second row. */
+.screen20 .measureEvidencePhoto {
+  flex: 0 0 calc(20% - 4px);
+  height: 56px;
+}
+
+.screen20 .measureEvidencePhoto figcaption {
+  padding: 1px 3px;
+  font-size: 7px;
+}
+
+/* PC22's shirt image occupies the tall hero block in the approved summary,
+   not a short thumbnail.  The three confirmation rows are intentionally
+   retained rather than clipping the inspection result. */
+.screen22 .productHero {
+  min-height: 114px;
+  align-items: center;
+}
+
+.screen22 .productHero > .photo {
+  width: 110px;
+  height: 104px;
+}
+
+.screen22 .productHero h2 {
+  font-size: 15px;
+}
+
+.screen22 .missing .card:last-child {
+  height: 64px;
+}
+
+.screen22 .missing .card:last-child p {
+  margin: 2px 0;
+  line-height: 1.05;
+}
+
+/* PC23 uses a readable, top-aligned description and three evidence blocks.
+   The added condition line remains in the visible editing area. */
+.screen23 .desc textarea {
+  white-space: pre-wrap;
+}
+
+.screen23 .desc > .card > p {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* PC26 is a manual confirmation screen.  Each value is a real editable
+   input, matching the approved four-field grid rather than a sentence inside
+   a text box. */
+.screen26 .directEntry {
+  width: 58%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px 6px;
+}
+
+.screen26 .directEntry label {
+  min-width: 0;
+  padding-top: 0;
+  color: #334b6d;
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.screen26 .directEntry label > span {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 3px;
+}
+
+.screen26 .directEntry input {
+  min-width: 0;
+  width: 100%;
+  margin: 0;
+  padding: 5px;
+  color: #263957;
+  font-size: 9px;
+}
+
+.screen26 .directEntry i {
+  color: #556984;
+  font-size: 8px;
+  font-style: normal;
+  white-space: nowrap;
+}
+
+.screen26 .sales section > .card > .directScreenshot {
+  width: 34%;
+  height: 126px;
+  margin: 0 0 5px 7px;
+}
+
+/* PC21–24 use the approved work-detail shell: the navigation begins at the
+   very top and the number/title toolbar begins to its right.  It is distinct
+   from the full-width product toolbar used by PC17–20. */
+.workDetailApp > .topbar {
+  grid-column: 2;
+  grid-row: 1;
+  padding: 0 20px;
+}
+
+.workDetailApp > aside {
+  grid-column: 1;
+  grid-row: 1 / -1;
+  padding-top: 55px;
+}
+
+.workDetailApp .topbarTitle {
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.workDetailApp .topbarTitle b {
+  width: 30px;
+  height: 28px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.workDetailApp .topbarTitle h1 {
+  font-size: 15px;
+}
+
+.workDetailApp .topbarSearch {
+  flex-basis: 214px;
+  margin-left: auto;
+}
+
+.topbarHelp {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: #536783;
+}
+
+.topbarHelp svg {
+  width: 17px;
+  height: 17px;
+}
+
+.workDetailApp .topbarUser {
+  width: 24px;
+  height: 24px;
+  justify-content: center;
+}
+
+.headerStatus {
+  display: inline-block;
+  flex: none;
+  padding: 3px 6px;
+  border-radius: 9px;
+  background: #fff1cf;
+  color: #c87900;
+  font-size: 8px;
+  font-style: normal;
+  white-space: nowrap;
+}
+
+/* PC20: all four reason checkboxes and the free-text input fit in the
+   approved lower-right card; no interactive control is allowed below 512px. */
+.screen20 .measure > section > .card:last-child {
+  height: 174px;
+  padding: 6px 7px;
+}
+
+.screen20 .measure > section > .card:last-child h3 {
+  margin-bottom: 4px;
+  font-size: 10px;
+}
+
+.screen20 .measure > section > .card:last-child label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 13px;
+  margin: 3px 0;
+  font-size: 8px;
+  line-height: 1.1;
+}
+
+.screen20 .measure > section > .card:last-child label input {
+  width: 10px;
+  height: 10px;
+  margin: 0;
+  padding: 0;
+  flex: none;
+}
+
+.screen20 .measure > section > .card:last-child > input {
+  height: 21px;
+  margin-top: 2px;
+  padding: 4px 6px;
+  font-size: 8px;
+}
+
+/* PC22 needs the hero and the two information rows to end at the same
+   vertical rhythm as the approved summary rather than moving the CTA upward. */
+.screen22 .pad {
+  padding-top: 19px;
+}
+
+.screen22 .missing .card,
+.screen22 .missing .card:last-child {
+  height: 82px;
+}
+
+/* PC23: the original descendant selector matched the outer Card <section>
+   as well as the right memo section, shrinking the main description to 80px.
+   Use a direct section selector and a column layout so the textarea begins
+   below its title and both sides stay inside the approved viewport. */
+.screen23 .pad {
+  padding-top: 17px;
+}
+
+.screen23 .desc > .card {
+  display: flex;
+  flex-direction: column;
+}
+
+.screen23 .desc > .card > textarea {
+  height: 285px;
+  min-height: 0;
+  flex: 0 0 285px;
+  margin: 0;
+}
+
+.screen23 .desc > .card > p {
+  flex: none;
+  margin-top: 7px;
+}
+
+.screen23 .desc > section {
+  grid-template-rows: 187px 52px 108px;
+}
+
+.screen23 .desc > section > .card {
+  display: block;
+}
+
+.screen23 .desc > section > .card > p {
+  display: block;
+}
+
+.screen23 .desc > section > .card > textarea {
+  display: block;
+  height: 75px;
+  min-height: 0;
+  margin: 0;
+}
+
+.screen23 .desc > section textarea {
+  height: 75px;
+  min-height: 0;
+}
+
+.screen23 .pad > footer {
+  margin-top: 30px;
+}
+
+/* PC26's approved layout uses compact controls, with the official-page
+   reference beside (not under) the four manually confirmed values. */
+.screen26 .pad > h2 {
+  margin-bottom: 12px;
+}
+
+.screen26 .pad > .notice {
+  margin-bottom: 10px;
+}
+
+.screen26 .sales {
+  grid-template-columns: 171px minmax(0, 1fr);
+  height: 380px;
+}
+
+.screen26 .sales > section > h3 {
+  margin-bottom: 7px;
+}
+
+.screen26 .directEntry {
+  width: 44%;
+  float: left;
+}
+
+.screen26 .sales section > .card > .directScreenshot {
+  width: 43%;
+  height: 160px;
+}
+
+/* Final board-by-board pass.  These values keep the real controls within the
+   approved 768 × 512 compositions instead of treating every route as the
+   same generic desktop form. */
+
+/* 18–19: retain the approved information rhythm before the final CTA. */
+.screen18 .pad {
+  padding-top: 15px;
+}
+
+.screen18 .crumb {
+  margin-bottom: 17px;
+}
+
+.screen18 .notice,
+.screen18 .lock {
+  margin: 12px 0;
+  padding: 15px 9px;
+}
+
+.screen18 .pad > p:not(.crumb):not(.notice):not(.lock) {
+  margin: 12px 0;
+}
+
+.screen18 .policies {
+  margin: 14px 0 17px;
+}
+
+.screen19 .pad {
+  padding-top: 15px;
+}
+
+.screen19 .crumb {
+  margin-bottom: 11px;
+}
+
+.screen19 .success {
+  padding: 8px 9px;
+}
+
+.screen19 .compare {
+  box-sizing: border-box;
+  height: 247px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.screen19 .human {
+  margin: 10px 0;
+  padding: 10px 9px;
+}
+
+.screen19 .pad > footer {
+  margin-top: 9px;
+}
+
+/* 21: photo tiles, confidence meter, and actions use the compact work-detail
+   column widths from the approved tag-reading screen. */
+.screen21 .pad {
+  padding: 8px 25px;
+}
+
+.screen21 .tags {
+  gap: 12px;
+}
+
+.screen21 .tags > .card {
+  height: 328px;
+}
+
+.screen21 .tags > .card:first-child {
+  padding: 11px;
+}
+
+.screen21 .tagPhotos {
+  gap: 6px;
+  margin-top: 11px;
+}
+
+.screen21 .tagPhotos .photo {
+  height: 126px;
+}
+
+.screen21 .tags small {
+  margin-top: 7px;
+  font-size: 8px;
+}
+
+.screen21 .tagForm {
+  padding: 13px 16px;
+}
+
+.screen21 .tagForm label {
+  margin: 9px 0;
+  font-size: 8px;
+}
+
+.screen21 .tagForm select {
+  width: 75%;
+  margin-top: 3px;
+  padding: 7px;
+  font-size: 8px;
+}
+
+.screen21 .tagForm label b {
+  top: 22px;
+  padding: 3px 5px;
+  font-size: 8px;
+}
+
+.tagConfidence {
+  box-sizing: border-box;
+  height: 72px;
+  margin-top: 10px;
+  padding: 7px;
+  border: 1px solid #dfe6ef;
+  border-radius: 5px;
+}
+
+.tagConfidence p {
+  margin: 0;
+  font-size: 8px;
+}
+
+.tagConfidence strong {
+  float: right;
+  color: #16833c;
+  font-size: 16px;
+}
+
+.tagConfidence i {
+  width: 100%;
+  height: 6px;
+  display: block;
+  margin: 6px 0 5px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: #e2f4e7;
+}
+
+.tagConfidence i b {
+  width: 92%;
+  height: 100%;
+  display: block;
+  border-radius: inherit;
+  background: #21a54b;
+}
+
+.tagConfidence small {
+  display: block;
+  margin: 0;
+  color: #18823f;
+  font-size: 7px;
+  line-height: 1.15;
+}
+
+.screen21 .pad > footer {
+  justify-content: space-between;
+  margin-top: 31px;
+}
+
+.screen21 .pad > footer .primary {
+  width: 250px;
+  text-align: center;
+}
+
+/* 22–24: restore the approved detail-board column widths and keep the actions
+   on their original baselines. */
+.screen22 .pad {
+  padding: 19px 25px 8px 19px;
+}
+
+.screen22 .productHero {
+  min-height: 112px;
+  padding: 0;
+  gap: 22px;
+  align-items: flex-start;
+}
+
+.screen22 .productHero > .photo {
+  width: 140px;
+  height: 112px;
+}
+
+.screen22 .productHero > div:last-child {
+  padding-top: 11px;
+}
+
+.screen22 .productHero > div:last-child > div {
+  margin-top: 14px;
+}
+
+.screen22 .productCols {
+  grid-template-columns: 0.85fr 1.3fr 0.85fr 1.1fr;
+  margin-top: 12px;
+}
+
+.screen22 .productCols .card {
+  height: 176px;
+}
+
+.screen22 .pad > .primary {
+  margin-top: 13px;
+}
+
+.screen23 .pad {
+  padding: 17px 24px 8px 23px;
+}
+
+.screen23 .desc > .card > textarea {
+  height: 293px;
+  flex-basis: 293px;
+}
+
+.screen23 .desc > section {
+  grid-template-rows: 189px 55px 108px;
+}
+
+.screen23 .pad > footer {
+  justify-content: space-between;
+}
+
+.screen23 .pad > footer .primary {
+  width: 240px;
+  text-align: center;
+}
+
+.screen24 .pad {
+  padding: 10px 25px 8px 18px;
+}
+
+.screen24 .official {
+  grid-template-columns: 176px 226px 181px;
+  gap: 10px;
+}
+
+.screen24 .official .card {
+  height: 267px;
+}
+
+.screen24 .official .card > p {
+  margin: 11px 0 14px;
+}
+
+.screen24 .official .card:first-child > p {
+  margin-bottom: 31px;
+}
+
+.screen24 .official .card:nth-child(3) > p {
+  margin-bottom: 24px;
+}
+
+.screen24 .official .photo {
+  height: 120px;
+}
+
+.screen24 .official textarea {
+  height: 140px;
+}
+
+.screen24 .official .card > a {
+  margin-top: 13px;
+}
+
+.screen24 .after {
+  height: 93px;
+}
+
+/* 25–28 use the narrower full-width navigation board rather than the work
+   detail rail from 21–24. */
+.screen25,
+.screen26,
+.screen27,
+.screen28 {
+  grid-template-columns: 112px minmax(0, 1fr);
+}
+
+.screen25 .pad {
+  padding: 10px 18px 8px 22px;
+}
+
+.screen26 .pad {
+  padding: 10px 19px 8px 21px;
+}
+
+.screen27 .pad {
+  padding: 10px 20px 8px;
+}
+
+.screen28 .pad {
+  padding: 10px 21px 8px 18px;
+}
+
+.screen25 .pad > h2 {
+  margin-bottom: 12px;
+}
+
+.screen25 .toggle {
+  margin-top: 8px;
+}
+
+.screen25 .filter {
+  margin-top: 9px;
+}
+
+.screen25 .gallery {
+  row-gap: 13px;
+  margin-top: 8px;
+}
+
+.screen25 .gallery .card {
+  height: 125px;
+}
+
+.screen25 .galleryArt {
+  width: 72px;
+  height: 72px;
+}
+
+.screen25 .gallery > .card > b,
+.screen25 .gallery h3 {
+  font-size: 8px;
+}
+
+.screen25 .gallery p,
+.screen25 .gallery small {
+  font-size: 7px;
+}
+
+.screen25 .galleryPagination {
+  margin-top: 14px;
+}
+
+/* 26: six list rows, four direct-entry fields, and the uploaded reference all
+   remain visible without a control falling below the desktop board. */
+.screen26 .sales {
+  grid-template-columns: 181px minmax(0, 1fr);
+  gap: 9px;
+  height: 382px;
+}
+
+.screen26 .sales > .card > button {
+  height: 54px;
+}
+
+.screen26 .sales .galleryArt {
+  width: 37px;
+  height: 43px;
+}
+
+.screen26 .sales > section {
+  padding-top: 14px;
+}
+
+.screen26 .sales > section > h3 {
+  margin-bottom: 19px;
+}
+
+.screen26 .tabs {
+  padding: 6px 3px;
+}
+
+.screen26 .tabs button {
+  padding: 6px 8px;
+}
+
+.screen26 .sales > section > .card {
+  height: 298px;
+}
+
+.screen26 .directEntry {
+  padding-top: 13px;
+}
+
+.screen26 .sales section > .card > .directScreenshot {
+  height: 178px;
+  margin-top: 13px;
+  padding: 0;
+}
+
+.screen26 .directScreenshot > b {
+  display: block;
+  margin: 0;
+  padding: 0 2px 3px;
+  color: #334b6d;
+  font-size: 7px;
+}
+
+.screen26 .directScreenshot > img {
+  height: 130px;
+}
+
+.screen26 .directScreenshot > small {
+  display: inline-block;
+  margin: 3px 0 0 2px;
+  color: #63728b;
+  font-size: 7px;
+}
+
+.screen26 .directScreenshot > a {
+  float: right;
+  margin: 2px 2px 0 0;
+  padding: 2px 4px;
+  border: 1px solid #9fc4ff;
+  border-radius: 3px;
+  color: #075be6;
+  font-size: 7px;
+  text-decoration: none;
+}
+
+.screen26 .sales footer {
+  padding-top: 13px;
+}
+
+/* 27–28: source-table rows and reply blocks are deliberately compact, not
+   stretched to consume the whole viewport. */
+.screen27 .pad > h2 {
+  margin-bottom: 11px;
+}
+
+.screen27 .price tr {
+  height: 30px;
+}
+
+.screen27 .pad > p {
+  margin: 11px 0;
+}
+
+.screen27 .pad > .primary {
+  margin-top: 4px;
+}
+
+.screen28 .pad > h2 {
+  margin-bottom: 12px;
+}
+
+.screen28 .reply {
+  grid-template-columns: 333px minmax(0, 1fr);
+  gap: 10px;
+  height: 312px;
+  margin-top: 6px;
+}
+
+.screen28 .reply > .card {
+  height: 312px;
+}
+
+.screen28 .reply article {
+  height: 56px;
+}
+
+.screen28 .reply textarea {
+  height: 73px;
+}
+
+.screen28 .pad > .primary {
+  margin-top: 9px;
+}
+
+/* 29–32 each have their own utility-header width in the approved workflow
+   boards.  The controls remain ordinary HTML form controls. */
+.screen29.utilityApp {
+  grid-template-columns: 132px minmax(0, 1fr);
+}
+
+.screen29.utilityApp > .utilityHeader {
+  grid-template-columns: 132px minmax(0, 1fr);
+}
+
+.screen29 .utilitySideToggle {
+  width: 132px;
+}
+
+.screen29 .utilityPageHeading {
+  padding-left: 21px;
+}
+
+.screen29 .pad {
+  padding: 3px 20px 7px 21px;
+}
+
+.screen29 .order {
+  height: 296px;
+}
+
+.screen29 .order h3 {
+  margin-bottom: 11px;
+}
+
+.screen29 .order > div {
+  row-gap: 28px;
+}
+
+.screen29 .order input,
+.screen29 .order select {
+  min-height: 30px;
+}
+
+.orderInlineInput {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.screen29 .orderInlineInput > input,
+.screen29 .orderInlineInput .moneyInput {
+  flex: 1;
+  min-width: 0;
+  margin-top: 0;
+}
+
+.screen29 .orderInlineInput > button {
+  flex: none;
+  padding: 5px 7px;
+  border: 1px solid #d5deeb;
+  border-radius: 4px;
+  background: #fff;
+  color: #314867;
+  font-size: 8px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.screen29 .order .warn {
+  margin-top: 27px;
+  padding: 8px 9px;
+}
+
+.screen29 .order .notice {
+  margin-top: 10px;
+}
+
+.screen29 .pad > footer {
+  margin-top: 10px;
+}
+
+.screen30.utilityApp {
+  grid-template-columns: 140px minmax(0, 1fr);
+}
+
+.screen30.utilityApp > .utilityHeader {
+  grid-template-columns: 140px minmax(0, 1fr);
+}
+
+.screen30 .utilitySideToggle {
+  width: 140px;
+}
+
+.screen30 .utilityPageHeading {
+  padding-left: 19px;
+}
+
+.screen30 .pad {
+  padding: 10px 20px 7px 19px;
+}
+
+.screen30 .pad > p {
+  margin: 2px 0 8px;
+}
+
+.screen30 .productLabel,
+.screen30 .locationLabel,
+.screen30 .shelfPhoto {
+  height: 143px;
+}
+
+.screen30 .pickBottom {
+  margin-top: 22px;
+}
+
+.screen30 .pad > footer {
+  margin-top: 14px;
+}
+
+.screen31.utilityApp,
+.screen32.utilityApp {
+  grid-template-rows: 36px minmax(0, 1fr);
+}
+
+.screen31.utilityApp > .utilityHeader,
+.screen32.utilityApp > .utilityHeader {
+  height: 36px;
+}
+
+.screen31 .utilitySideToggle,
+.screen32 .utilitySideToggle {
+  height: 36px;
+}
+
+.screen31 .utilityPageHeading {
+  height: 45px;
+  padding-left: 20px;
+}
+
+.screen31 .pad {
+  padding: 3px 18px 7px 21px;
+}
+
+.screen31 .pad > h3 {
+  margin: 26px 0 9px;
+}
+
+.screen31 .packBottom {
+  margin-top: 4px;
+}
+
+.screen31 .packBottom .headphones,
+.screen31 .packBottom .box {
+  height: 112px;
+}
+
+.screen31 .pad > footer {
+  margin-top: 16px;
+}
+
+.screen32 .utilityPageHeading {
+  height: 40px;
+  padding-left: 10px;
+}
+
+.screen32 .utilityPageHeading > * {
+  transform: translateY(5px);
+}
+
+.screen32 .pad {
+  padding: 3px 17px 7px 10px;
+}
+
+.screen32 .ship {
+  grid-template-columns: 202px 254px minmax(0, 1fr);
+  height: 221px;
+}
+
+.screen32 .ship > .card {
+  height: 221px;
+}
+
+/* Fix 11: content-level fidelity for the approved PC17–32 boards. */
+.screen20 .measure .notice {
+  color: #66521e;
+  font-size: 8px;
+  line-height: 1.24;
+}
+
+.screen20 .measure .notice small {
+  font-size: 7px;
+  line-height: 1.2;
+}
+
+.measureTolerance {
+  margin: 3px 0 0;
+  color: #6b7890;
+  font-size: 7px;
+  line-height: 1.15;
+}
+
+.screen22 .photoSummaryHero > img,
+.screen22 .photoSummaryFront > img,
+.screen22 .photoSummaryBack > img,
+.screen22 .photoSummaryCollar > img,
+.screen22 .photoSummaryCuff > img,
+.screen22 .photoSummaryButton > img,
+.screen22 .photoSummaryLabel > img {
+  object-position: center;
+  mix-blend-mode: normal;
+}
+
+.screen22 .photoSummaryHero > img {
+  object-fit: contain;
+  background: #f6f4ef;
+}
+
+.screen22 .photoSummaryFront > img,
+.screen22 .photoSummaryBack > img,
+.screen22 .photoSummaryCollar > img,
+.screen22 .photoSummaryCuff > img,
+.screen22 .photoSummaryButton > img,
+.screen22 .photoSummaryLabel > img {
+  object-fit: cover;
+}
+
+.screen23 .desc > .card > p {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.screen23 .desc > .card > p small {
+  margin-left: auto;
+  color: #728097;
+  font-size: 7px;
+  white-space: nowrap;
+}
+
+.officialPhotoStack {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  height: 120px;
+  object-fit: contain;
+  object-position: center;
+  border: 1px solid #dfe5ec;
+  border-radius: 5px;
+  background: #f7f8fa;
+}
+
+.screen24 .official .card:first-child > p {
+  margin-bottom: 7px;
+}
+
+.screen24 .official .card:first-child > a {
+  margin-top: 5px;
+}
+
+.screen25 .galleryArt > img {
+  object-fit: contain;
+  object-position: center;
+  background: #f3f6f8;
+}
+
+.screen26 .sales > .card > button {
+  position: relative;
+  display: grid;
+  grid-template-columns: 37px minmax(0, 1fr) auto;
+  grid-template-rows: 12px 14px 12px;
+  column-gap: 5px;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+}
+
+.screen26 .sales > .card > button .galleryArt {
+  grid-column: 1;
+  grid-row: 1 / 4;
+  margin: 0;
+}
+
+.screen26 .sales > .card > button strong,
+.screen26 .sales > .card > button span,
+.screen26 .sales > .card > button small {
+  grid-column: 2 / 4;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.screen26 .sales > .card > button strong {
+  grid-row: 1;
+}
+
+.screen26 .sales > .card > button span {
+  grid-row: 2;
+}
+
+.screen26 .sales > .card > button small {
+  grid-row: 3;
+  padding-right: 38px;
+}
+
+.salesItemStatus {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  padding: 2px 3px;
+  border-radius: 3px;
+  background: #fff1cf;
+  color: #a66000;
+  font-size: 7px;
+  font-style: normal;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.salesChannel {
+  margin: -15px 0 4px;
+  color: #68778e;
+  font-size: 8px;
+  text-align: right;
+}
+
+.screen27 .price td > span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.screen27 .price select {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: 4px 2px;
+  border: 1px solid #cfd8e4;
+  border-radius: 3px;
+  background: #fff;
+  color: #263c5a;
+  font-size: 7px;
+}
+
+.screen28 .reply article p {
+  padding-right: 45px;
+  white-space: pre-line;
+}
+
+.screen28 .reply article a {
+  position: relative;
+  z-index: 1;
+}
+
+.domesticChip {
+  display: inline-block;
+  margin-left: 3px;
+  padding: 2px 4px;
+  border-radius: 999px;
+  background: #e8f5eb;
+  color: #18823f;
+  font-size: 7px;
+  font-style: normal;
+  white-space: nowrap;
+}
+
+.catalogEdit {
+  float: right;
+  margin: -2px 0 0 4px;
+  color: #075be6;
+  font-size: 7px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.screen32 .ship > .card:first-child > a {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  column-gap: 4px;
+  align-items: center;
+}
+
+.screen32 .ship > .card:first-child > a span {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.screen32 .ship > .card:first-child > a small {
+  grid-column: 1;
+  grid-row: 2;
+  color: #6a7890;
+  font-size: 7px;
+}
+
+.screen32 .ship > .card:first-child > a b {
+  grid-column: 2;
+  grid-row: 1 / 3;
+}
+
+.screen32 .ship label small {
+  color: #a66000;
+  font-size: 7px;
+}

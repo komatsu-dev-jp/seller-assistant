@@ -1,23 +1,23 @@
 # フリマ物販業務アプリ（仮称）｜技術アーキテクチャ v1
 
-- 状態: Goal開始・P0実装中（Slack最終承認 `1786721887.034329`、2026-08-15 JST）
-- 更新日: 2026-08-15（JST）
+- 状態: 修正版AをSlack承認済み・Goal契約v2をユーザー確認済み・P0実装再開
+- 更新日: 2026-08-20（JST）
 - 方針: iPhone PWAは現場作業、PC Webは高密度管理、サーバーを唯一の確定データ源にする。開発・検証費用は0円とする
 
 ## 1. 推奨技術構成
 
 ### 推奨
 
-| 領域 | 推奨 | 理由 | 弱点・確認点 |
-|---|---|---|---|
-| PWA/Web | Next.js 16.3.1 + React 19.2.8 + TypeScript 5.9.3 | PC業務画面と、iPhoneのホーム画面へ追加できる現場画面を同じ技術で作れ、Windowsだけで検証できる | iPhone Safari固有のカメラ・保存制限は実機確認が必要 |
-| API | Node.js + TypeScriptの独立API | PWAとPC画面で同じ業務ルールを使える | Webだけより構成要素が増える |
-| 契約 | OpenAPI + JSON Schema | APIの入出力を機械検証できる | 生成物の版管理が必要 |
-| DB | PostgreSQL | 取引、在庫、監査、権限、集計を一貫して扱える | 運用・バックアップが必要 |
-| 認証/DB/Storage | ローカルのPostgreSQLと開発用ファイル保存adapter | 無料のオープンソース構成で安全境界を検証できる | 本番サービス選定・接続・公開は今回対象外 |
-| 画像 | 非公開Storage契約 + ローカル開発adapter | 本番の署名URL境界を保ちつつ、検証は無料で行える | 本番保存費・転送費の選定は将来の再承認事項 |
-| 非同期処理 | PostgreSQL outbox + worker | 外部同期やAI処理の再試行を、追加の大型基盤なしで開始できる | 規模増加時は専用キューへ移行が必要 |
-| AI | 無料の決定的テンプレート + 将来のprovider adapter | 候補/確定分離を0円で検証し、有料AIなしでもP0を完了できる | 外部AI接続は将来の明示承認事項 |
+| 領域            | 推奨                                              | 理由                                                                                          | 弱点・確認点                                        |
+| --------------- | ------------------------------------------------- | --------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| PWA/Web         | Next.js 16.3.1 + React 19.2.8 + TypeScript 5.9.3  | PC業務画面と、iPhoneのホーム画面へ追加できる現場画面を同じ技術で作れ、Windowsだけで検証できる | iPhone Safari固有のカメラ・保存制限は実機確認が必要 |
+| API             | Node.js + TypeScriptの独立API                     | PWAとPC画面で同じ業務ルールを使える                                                           | Webだけより構成要素が増える                         |
+| 契約            | OpenAPI + JSON Schema                             | APIの入出力を機械検証できる                                                                   | 生成物の版管理が必要                                |
+| DB              | PostgreSQL                                        | 取引、在庫、監査、権限、集計を一貫して扱える                                                  | 運用・バックアップが必要                            |
+| 認証/DB/Storage | ローカルのPostgreSQLと開発用ファイル保存adapter   | 無料のオープンソース構成で安全境界を検証できる                                                | 本番サービス選定・接続・公開は今回対象外            |
+| 画像            | 非公開Storage契約 + ローカル開発adapter           | 本番の署名URL境界を保ちつつ、検証は無料で行える                                               | 本番保存費・転送費の選定は将来の再承認事項          |
+| 非同期処理      | PostgreSQL outbox + worker                        | 外部同期やAI処理の再試行を、追加の大型基盤なしで開始できる                                    | 規模増加時は専用キューへ移行が必要                  |
+| AI              | 無料の決定的テンプレート + 将来のprovider adapter | 候補/確定分離を0円で検証し、有料AIなしでもP0を完了できる                                      | 外部AI接続は将来の明示承認事項                      |
 
 ### 代替案
 
@@ -99,13 +99,16 @@ tests/
 - `inventory_label`: 商品または場所の内部ラベル。128 bit以上の推測不能tokenのハッシュ、短いコード、対象、種別、版、状態、再発行履歴を持つ。token hashは全体一意、短いコードはworkspace内の有効ラベル間で一意、対象/種別ごとの有効版は部分一意制約で1件だけとする。生tokenや業務情報をDBの検索可能列へ保存しない。
 - P0のラベル出力は画面表示と通常のA4/PDFだけに依存し、専用プリンターSDKを持たない。P1の一括出力も同じlabel版と失効履歴を使う。
 - `inventory_movement`: 受入、格納、移動、ピッキング、返品、調整の追記型履歴。移動元/先、理由、担当、scan session、商品/場所ラベルID・版・読取日時、人の確認、操作ID、冪等キーを持つ。
-- `count_session`, `count_observation`, `inventory_discrepancy`: 棚卸開始時の`basis_movement_seq`と期待対象、開始後の通常移動、全読取、差異分類、再確認、解決理由、承認を保持する。
+- `count_session`, `count_observation`, `inventory_discrepancy`: 棚卸開始時の`basis_movement_seq`と期待対象、開始後の通常移動、全読取、差異分類、人数mode、可逆確認/別担当再確認、解決理由、承認を保持する。
+- `discrepancy_evidence`: 商品/場所の現行label版、1回限りのscan session、非公開証拠MediaAsset、理由コード/メモ、確認者、確認時刻を保持する。住所・原価・秘密値をaudit payloadへ複製しない。
 - `location_assignment`: 利用者、場所ツリーの枝、許可作業、期限を結び、外注の操作範囲を限定する。
 - `order`, `shipment`, `return_case`: 注文、配送、返品。
 - `financial_event`: 売上、返金、原価、手数料、送料等の追記型事実イベント。`amount_minor`（最小通貨単位の整数）、`currency`、`tax_inclusion`、`tax_category`、`burden_party`、`source_kind/id/hash`、`source_amount_semantics`、`occurred_at`、`rule_version`、`reverses_event_id` を持つ。
 - `order_price_fact`: 注文時商品価格、販売者負担割引、チャネル負担クーポン、返金前の販売者商品収入を分離し、取得元が値引/返金を反映済みかを示す。
-- `journal_candidate`: 仕訳候補、根拠、ルール版、承認。
-- `export_batch`: CSVの対象、件数、合計、ハッシュ、作成者、承認者、状態。
+- `accounting_profile`: workspaceの会計前提。事業/申告の前提、消費税の扱い、インボイス登録、記帳方式を持ち、初期値はすべて`unconfigured`とする。
+- `account_mapping_rule`: transaction/event kindから借方/貸方候補へのmapping、rule version、有効期間、承認者、状態を持つ。AI作成値をactiveへ直接昇格できない。
+- `journal_candidate`: 仕訳候補、根拠、mapping rule版、採用/変更した人、承認。
+- `export_batch`: `money_forward_journal_v1` と `generic_journal_v1` を別formatとして持ち、対象集合、件数、貸借合計、ハッシュ、作成者、承認者、download/import確認、無効化/置換を保持する。
 
 ### 共同作業
 
@@ -124,6 +127,7 @@ P0の箱・棚は動かない`location_node`として扱う。箱自体の移動
 - `seller_revenue_pre_refund` が取得元に存在する場合、販売者負担割引を再控除しない。標準価格変更後の注文価格へ同じ値下げ額を再度引かない。
 - 成功済み返金だけを元売上イベントの取消として計上する。返金後金額が取得元なら元金額へ正規化するか、差額イベントだけを作り、同じ返金を二度引かない。
 - チャネル負担クーポンは買い手価格だけを下げ、販売者収入から控除しない。手数料返還は手数料の反対イベントとし、返金へ混ぜない。
+- 計算式、欠損時の停止、丸め、表示指標、固定fixtureは `docs/specs/financial-formulas-v1.md` を正本とし、全計算結果へ`financial_formula_version`を保存する。
 - 税込/税抜/税区分/負担者が不明なら `unknown` のまま確定集計を停止する。AIが補完しない。
 - 端数処理は取得元の公式規則または利用者/税理士承認済み規則の版を保存し、表示とCSVで同じdomain関数を使う。
 - 固定fixtureには少なくとも「値引後売上9,000円へ1,000円を再控除しない」「チャネル負担1,000円でも販売者収入10,000円」「9,000円全額返金と900円手数料返還」「一部返金」「返品在庫復帰」を含める。
@@ -174,9 +178,13 @@ validate(job, result) -> checks
 
 ### 業務別状態機械
 
-- `inventory_unit`: `received → inspection_pending → putaway_pending → available → reserved → picked → packed → shipped`。取消/引当解除は現物を再格納して`reserved|picked → available`、返品は`shipped → return_received → quarantined → inspection_pending → putaway_pending|available|disposal_pending → disposed`とする。active予約は`(workspace_id, inventory_unit_id)`の部分一意制約で1件だけにする。
+- `inventory_unit`: `received → inspection_pending → putaway_pending → available → reserved → picked → packed → shipped`。取消/引当解除は現物を再格納して`reserved|picked → available`、返品はP0では`shipped → return_received → quarantined → inspection_pending → putaway_pending|available|disposal_pending`までとする。`lost/disposed/quantity_adjusted`はP0のAPI/DB transitionから外す。active予約は`(workspace_id, inventory_unit_id)`の部分一意制約で1件だけにする。
 - `location_node`: `active ↔ suspended → retired`。子や在庫が残る場所はretiredへできず、suspended/retiredへの新規格納を拒否する。
 - `count_session`: `draft → counting → reconciliation → approved`。開始時の対象snapshot/`basis_movement_seq`と読取記録は不変とし、開始後の通常移動を差し引いて照合する。差異だけで現在地や数量を自動変更しない。
+- `inventory_discrepancy`の`kind=missing_candidate`はP0で`open → candidate_confirmed → restored`だけを許可する。`resolved`は別kind専用とし、candidateを復元せず閉じるgeneric/API/DB経路を拒否する。有効membership数が1なら`solo_reversible`、2以上なら`dual_actor`をサーバーがtransaction内で決め、client指定を受け付けない。`candidate_confirmed`は在庫原本/最後の場所を変えず、active候補があるInventoryUnitの予約/出品可能判定をDB/domainで拒否する。
+- 人数modeを決めるtransactionはworkspace/membership gate行を`SELECT FOR UPDATE`相当でlockし、active membershipの追加/解除と直列化する。評価したmembership count、mode、membership revisionを差異へ保存し、同時に1人↔2人へ変わるbarrier testで古いmode確定0件を確認する。
+- `solo_reversible`は同じonline作業内の現行商品label＋場所label、1回限りscan session、形式/保存/安全検査済みの非公開証拠写真1枚以上、理由、明示的最終確認を要求する。touch/pointerは3秒長押し、keyboardは最初のEnter/Spaceで3秒countdownを開始し、終了後の2回目で確定する。serverは開始時にconfirmation challengeと`not_before`を発行し、時刻前・再利用・別対象を拒否する。screen readerへ残り時間と最終actionを通知する。24時間待機・別sessionは不要だが、offline outboxへ最終確認を保存しない。発見時も商品/場所の再読取と人の確認で`restored`へ進める。
+- `dual_actor`は `initial_counter_id != reconfirmer_id`、不可逆操作を将来追加する場合は`requester_id != approver_id`かつdistinct actor 2人以上を要求する。P0は不可逆操作をroute・domain・DBで拒否する。
 - `inventory_movement`確定時は、1回限りのscan session、追記イベント、`inventory_unit.current_location_id`、場所の利用数、監査、outboxを同一transactionで保存する。`available / reserved / picked / packed`は同一workspaceの`active`かつ`can_store_inventory=true`の固定場所を正確に1つ持ち、場所なしは`putaway_pending`等にする。容量判定は場所行をlockして同時超過を防ぐ。
 - `approval`: `draft → pending → approved|rejected|changes_requested`。pending中の対象revisionを固定し、重要操作では提出者の自己承認をDB/APIで拒否する。
 - `export_batch`: `preparing → ready → downloaded → confirmed`、例外は `failed|expired`。承認済みrevisionだけを対象とし、manifest/hashをready時に固定する。
@@ -197,6 +205,7 @@ validate(job, result) -> checks
 - 再送は同じ操作IDを使い、サーバーが二重仕入、二重承認、二重出力を防ぐ。
 - 競合時は勝手に新しい方を採用せず、変更差分と担当者を表示する。
 - 格納・移動・ピッキングは端末上で「商品読取→場所読取→人の確認」を行う。オフライン中は`同期待ち`として保存するだけで、サーバー確定前に現在地を確定表示しない。
+- 棚卸開始、差異候補の最終確認、候補からの復元はオンライン専用とし、IndexedDB/outboxへ確定commandを保存しない。通信断では入力済みの秘密でない下書きだけを画面内に保持し、再接続後に現行label版とmembership人数を再検査する。
 - 再送時に現在地、場所版、割当が変わっていれば自動上書きせず、商品と場所の再読取または棚卸差異解決へ進める。
 - BarcodeDetector非対応、カメラ拒否、ラベル損傷時は、チェック値付き在庫管理番号/場所コードの手入力と人の確認へ切り替える。P0は自動コード認識を必須にしない。
 
@@ -260,9 +269,11 @@ validate(job, result) -> checks
 
 ### 会計CSV
 
-- `accounting_export_adapter` を使い、内部financial_eventから対象形式へ変換する。
-- Money Forward用の現行列/文字コード/上限はGoal開始時に公式仕様を再確認する。
-- 人の承認前、未解決あり、貸借不一致、重複時は出力をブロックする。
+- `accounting_export_adapter` を使い、内部financial_eventから対象形式へ変換する。`money_forward_journal_v1` と `generic_journal_v1` は別schema/serializer/fixtureにする。
+- Money Forward向けは公式ガイドのA〜AA 27列、汎用は本アプリ所有の19列とし、正確なheader、必須/条件付き必須、空欄、許容値、上限、serializer規則、fixture path/hashを `docs/specs/accounting-export-schemas-v1.md` と配下JSONへ固定する。公式ページは参照根拠でありruntime依存にしない。複合仕訳は同一取引No/日付と貸借一致を要求する。
+- 公式ガイド確認日2026-08-20: https://biz.moneyforward.com/support/account/guide/import-books/ib01.html 。出力時にも保存済みsample snapshot/versionを照合し、仕様差分があれば停止する。
+- 人の承認前、会計profile未設定、未承認/期限外mapping、低信頼、税項目不明、証憑不足、貸借不一致は出力をブロックする。同一batch内の重複source/rowはhard blockする。過去batchと同じsource集合/hashは、警告、人の明示確認、新batch ID、`supersedes`参照がない限り拒否する。外部API、自動送信、自動importは実装しない。
+- 利用者はファイルをダウンロードし、公式画面で手動import、mapping/件数/合計を確認し、結果をアプリへ記録する。再importは既存仕訳の更新ではなく新規追加になり得るため、同一source set/hashの再利用を警告する。
 
 ### Photoroom
 
@@ -315,7 +326,7 @@ validate(job, result) -> checks
 
 - Mac/Xcode/Apple Developer契約は不要。Windowsでproduction buildを起動し、Playwright（ブラウザを自動操作する検査）でPWA画面、manifest、Service Worker、オフラインfallbackを検証する。
 - 対応iPhoneではSafariのホーム画面追加、カメラ写真、商品/場所の二重確認、手入力fallback、同期待ち表示を人が確認し、機種、iOS版、確認者、日時、結果を記録する。
-- GitHub Actionsは `workflow_dispatch`（利用者が明示的に押した場合だけ実行）に限定する。今回の検証では実行せず、外部計算費用を0円にする。
+- GitHub Actionsは公開リポジトリの標準`ubuntu-latest`だけを使い、Pull Requestと`main`へのpushで自動実行する。`workflow_dispatch`も再実行用に残す。larger runner、macOS runner、有料Action、private repositoryの課金枠は使わず、外部計算費用を0円にする。
 - Shops CSV公式根拠: https://support.mercari-shops.com/hc/ja/articles/8859698858649- / https://support.mercari-shops.com/hc/ja/articles/10202904748057-
 
 ### CIゲート候補
@@ -362,12 +373,23 @@ validate(job, result) -> checks
 - TA-029: ProductSKU/InventoryUnitを分離し、workspace複合外部キー、在庫番号/場所コード一意、最大8階層、同一workspace親、循環禁止をDB testする。各対象状態で場所なし/複数/停止/廃止/直接保管不可、単品専用への別個体、最大点数超過、混載禁止を100%拒否し、空き1枠への同時格納は1件だけ成功する。
 - TA-030: 商品/場所QRが128 bit以上のopaque token、256 bytes以下、安全なpayload、hash保存、版/失効を満たす。token hashは全体一意、短いコードはworkspace内の有効ラベル間で一意、対象/種別ごとの有効版は1件だけで、読取だけでは権限が増えない。
 - TA-031: 操作ごとの期待現物/現在地/移動先と、商品/場所ラベルID・版・読取日時・確認者を1回限りのscan sessionとしてInventoryMovementと同一transactionに保存する。欠落/不一致/旧版/再利用/未確認を100%拒否し、再送・同時移動・同一key異payloadで二重移動0件、競合自動上書き0件となる。
-- TA-032: 棚卸snapshot、`basis_movement_seq`、全Observationが不変で、開始後の通常移動を区別し、差異による自動調整0件とする。未発見候補は `initial_counter_id != reconfirmer_id`、紛失/廃棄/数量調整は `requester_id != approver_id`、一連の確認に関与した `distinct human actor` 数が2以上であることを監査schema、DB制約またはdomain testで100%検証する。
+- TA-032: 棚卸snapshot、`basis_movement_seq`、全Observationが不変で、開始後の通常移動を区別し、差異による自動調整0件とする。有効メンバー2人以上では `initial_counter_id != reconfirmer_id` とdistinct actor 2人以上を監査schema、DB制約/domain testで100%検証する。
 - TA-033: 場所案内写真の表示用派生で位置EXIFが0件、非公開Storage、割当枝外の取得0件となる。`pending_review/rejected`は派生生成、署名URL発行、API取得を100%拒否する。
 - TA-034: 場所枝と作業種別の期限付き割当をAPI/RLSで検査し、外注者による枝外在庫・写真・履歴・全在庫exportの取得/変更を100%拒否する。
 - TA-035: 返品InventoryUnitが隔離場所と人の検品を経ずにavailableへ遷移できず、全許可/禁止transitionをdomain testする。
 - TA-036: オフライン在庫移動を同期前は`同期待ち`として保持し、現在地/場所版/割当競合時に自動確定0件、再読取または差異解決へ進む。
 - TA-037: DataScanner対応/非対応/カメラ拒否/破損ラベルの実機・fallback検証、場所/写真/QRの固定上限、GS1契約前のGLN/SSCC/GRAI生成0件を確認する。
+- TA-038: workspace/membership gateをlockしたtransaction内でactive membership数から`solo_reversible|dual_actor`を自動選択し、client mode指定を拒否する。soloでは現行商品/場所label、同一online scan session、安全検査済みprivate evidence 1件以上、理由、server `not_before`付き3秒/keyboard同等final confirmationを100%要求し、active候補中の予約/出品を拒否し、二重読取で`restored`へ復元する。同時membership変更、challenge再利用、`resolved`への迂回を100%拒否する。
+- TA-039: `accounting_profile`は必須項目`unconfigured`を許容し、`account_mapping_rule`はworkspace、event kind、rule version、有効期間、approved_by、statusを持つ。未設定/未承認/期限外/競合ruleからready exportを作れないことをDB/domain/APIで検証する。
+- TA-040: Money Forward向け27列adapterと汎用19列adapterを別contractにし、`accounting-export-schemas-v1.md`のschema/fixture SHA-256、列順、必須、文字数、日付、円整数、貸借一致、BOM/CRLF/quote bytesを検査する。同一batch重複はhard blockし、過去batch重複は明示確認+新batch+`supersedes`なしで拒否する。network call 0件で、download/import-confirmed/voided/supersededを不変履歴へ残す。
+- TA-041: すべての財務計算が同じ`financial_formula_version`付きdomain関数を使い、二重値引、チャネルcoupon、全額/一部返金、手数料返還、返品在庫復帰、欠損の固定fixtureと一致する。
+- TA-042: P0で`lost/disposed/quantity_adjusted`へ進むUI/API/DB経路を100%拒否し、返品の廃棄選択は`disposal_pending`で停止する。旧routeやgeneric transition経路からも回避できない。
+- TA-043: `?`ヘルプはbutton semantics、キーボード、focus return、accessible nameを満たす。`pilot-protocol-v1.md`の対象、端末/viewport、入力asset、開始/終了、中断、待ち時間、warm-up、失敗数を計測定義version付きで保存し、10商品中央値を再現計算できる。UIは`ui-evaluation-rubric-v1.md`で90点以上かつ重大項目0点なしとする。
+- TA-044: Code 128の生成と読取は版固定したオープンソース実装をPWA bundleへ同梱し、CDNや外部runtime APIを使わない。ラベルpayloadは完全在庫番号と版だけを含み、住所、原価、氏名、認証秘密0件とする。読取結果は既存sessionとroleで再検査し、検索だけではInventoryMovement、引当、棚卸状態を作成しない。
+- TA-045: A4 24面の選択集合はInventoryUnit IDで重複排除し、同じ商品を複数面へ出さない。印刷用CSSと通常画面を分離し、短い番号を完全番号へ一意に対応づける。390×844、768×1024、1440×1000で横overflow 0、主要操作44px以上を検証する。
+- TA-046: 気になる箇所はworkspace、SKU、検品項目、座標、場所/種類/程度、private MediaAsset、メモ、確認状態、作成者/確認者/時刻を結ぶ版管理済みcontractを持つ。割当外取得、本人だけの自動確定、原本更新をAPI/RLS/DBで拒否し、pilotの固定入力を変更する場合は新protocol版にする。
+- TA-047: 発送前写真policy、金額目安、注文ごとの人のoverride、private MediaAsset、確認者、発送状態を分離する。金額欠損を0円へ変換せず、policy判断だけでpack/shipを自動遷移せず、割当外取得と外部送信を拒否する。
+- TA-048: 検索語、Codex用質問文、公式画面URL、任意取引IDはallowlist済みの手動支援contractとして扱う。runtimeから外部hostへのfetch 0件、資格情報保存0件とし、取引ID欠損をpick/packの停止条件にしない。外部画面から戻った後の反映状態は人が記録する。
 
 ## 15. 未確認とGoal開始条件
 
@@ -377,17 +399,17 @@ validate(job, result) -> checks
 - 対応するSafari/Chromeの下限、iPhoneのカメラ・ホーム画面追加・保存容量の実機差。
 - PostgreSQL/Auth/Storage提供事業者とリージョン、費用、データ処理契約。
 - 外部AI provider/modelは未選定。今回の0円MVPでは接続しない。
-- Shops/Photoroom API契約、Money Forward現行CSV仕様。
+- Shops/Photoroom API契約。Money Forwardの公式importガイドは2026-08-20確認済みだが、実際の利用契約、利用中の設定、出力時点のsample版は人が確認する。
 - 保持期間、削除、バックアップ目標、税務・古物営業上の運用判断。
 - 実際の拠点・部屋・棚・段・箱の命名、最大階層、単品/複数保管の容量方針、現場Wi-Fi/通信状況。
 - ラベル寸法、耐久性、印刷枚数、既存プリンター、対応コード、RFIDやGS1を将来必要とする取引先運用。
 - GitHub `komatsu-dev-jp/resale-ops-app/private` とGitHub CLI認証は確認済み。外部CIは実行しない。
 
-### Goal開始後の継続条件
+### Goal再開後の継続条件
 
 1. 承認済みP0/P1順序と安全境界を維持する。
 2. 有料契約、従量課金、外部クラウドCI、本番公開を実行しない。
 3. PWAのiPhone実機項目はDraft PR前に確認手順と結果を記録し、未確認を合格扱いしない。
 4. 外部サービス接続が将来必要になった場合は、0円条件への影響を示してユーザーへ再承認を求める。
 
-Claude Code CLIは現環境に未導入であり、共同実行は未検証。`CLAUDE.md` は準備するが、導入・認証を勝手に行わない。
+Claude CodeはGitHub側で利用可能だが、Codexのローカル環境からのCLI共同実行は未検証である。`CLAUDE.md` とhandoffを共通契約として使い、認証・有料実行・外部接続を勝手に行わない。
