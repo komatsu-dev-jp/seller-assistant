@@ -3,59 +3,71 @@
 import type { AccountingOrderOptionResponse } from "@resale/contracts";
 import { useCallback, useEffect, useState } from "react";
 import { AccountingWorkspace, type AccountingMobileStage } from "./accounting-workspace";
+import styles from "./accounting-live-layout.module.css";
 
 export function AccountingPageWorkspace({ workspaceId }: { workspaceId: string }) {
   const [orders, setOrders] = useState<AccountingOrderOptionResponse[]>([]);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
-  const [message, setMessage] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const [loading, setLoading] = useState(false);
   const [mobileStage, setMobileStage] = useState<AccountingMobileStage>("format");
   const [format, setFormat] = useState<"money_forward_journal_v1" | "generic_journal_v1">(
     "money_forward_journal_v1",
   );
 
   const reload = useCallback(async () => {
-    const response = await fetch(`/v1/workspaces/${workspaceId}/accounting/orders`, {
-      headers: { accept: "application/json" },
-      cache: "no-store",
-    });
-    const payload = (await response.json().catch(() => null)) as
-      AccountingOrderOptionResponse[] | { message?: string } | null;
-    if (!response.ok || !Array.isArray(payload)) {
-      throw new Error(
-        (!Array.isArray(payload) ? payload?.message : null) ??
-          "会計候補のある注文を取得できませんでした。",
+    setLoading(true);
+    setLoadError("");
+    try {
+      const response = await fetch(`/v1/workspaces/${workspaceId}/accounting/orders`, {
+        headers: { accept: "application/json" },
+        cache: "no-store",
+      });
+      const payload = (await response.json().catch(() => null)) as
+        AccountingOrderOptionResponse[] | { message?: string } | null;
+      if (!response.ok || !Array.isArray(payload)) {
+        throw new Error(
+          (!Array.isArray(payload) ? payload?.message : null) ??
+            "会計候補のある注文を取得できませんでした。",
+        );
+      }
+      setOrders(payload);
+      setSelectedOrderId((current) =>
+        current && payload.some((order) => order.orderId === current)
+          ? current
+          : (payload[0]?.orderId ?? null),
       );
+    } catch (reason) {
+      setLoadError(reason instanceof Error ? reason.message : "注文一覧を取得できませんでした。");
+      throw reason;
+    } finally {
+      setLoading(false);
     }
-    setOrders(payload);
-    setSelectedOrderId((current) =>
-      current && payload.some((order) => order.orderId === current)
-        ? current
-        : (payload[0]?.orderId ?? null),
-    );
   }, [workspaceId]);
 
   useEffect(() => {
-    void reload().catch((error: unknown) =>
-      setMessage(error instanceof Error ? error.message : "注文一覧を取得できませんでした。"),
-    );
+    void reload().catch(() => undefined);
   }, [reload]);
 
   const selected = orders.find((order) => order.orderId === selectedOrderId) ?? null;
   return (
-    <div className="workflowBoard accountingPageBoard">
-      <nav className="accountingMobileStages" aria-label="会計CSVの作業画面">
+    <div className={`workflowBoard accountingPageBoard ${styles.board}`}>
+      <nav className={styles.stages} aria-label="会計の作業画面">
         {(
           [
-            ["format", "出力形式"],
-            ["profile", "会計設定"],
-            ["mappings", "科目候補"],
-            ["export", "CSV確認"],
+            ["format", "売上の事実"],
+            ["profile", "基本設定"],
+            ["mappings", "会計項目"],
+            ["export", "ファイル・履歴"],
           ] as const
         ).map(([stage, label], index) => (
           <button
             key={stage}
             type="button"
-            aria-pressed={mobileStage === stage}
+            aria-pressed={
+              mobileStage === stage ||
+              (stage === "export" && ["preview", "import", "history"].includes(mobileStage))
+            }
             onClick={() => setMobileStage(stage)}
           >
             <span>{index + 1}</span>
@@ -63,9 +75,42 @@ export function AccountingPageWorkspace({ workspaceId }: { workspaceId: string }
           </button>
         ))}
       </nav>
+      {["export", "preview", "import", "history"].includes(mobileStage) ? (
+        <nav className={styles.substages} aria-label="ファイル作成と取込の工程">
+          {(
+            [
+              ["export", "作成前の確認"],
+              ["preview", "ファイル内容"],
+              ["import", "手動取込の結果"],
+              ["history", "作成・取込履歴"],
+            ] as const
+          ).map(([stage, label]) => (
+            <button
+              key={stage}
+              type="button"
+              aria-pressed={mobileStage === stage}
+              onClick={() => setMobileStage(stage)}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+      ) : null}
+      {loadError ? (
+        <div className={styles.loadError} role="alert">
+          <p>{loadError}</p>
+          <button
+            type="button"
+            onClick={() => void reload().catch(() => undefined)}
+            disabled={loading}
+          >
+            {loading ? "再読み込み中…" : "再読み込み"}
+          </button>
+        </div>
+      ) : null}
       <div
         className={`accountingFormatTabs accountingMobilePanel ${
-          mobileStage === "format" ? "isActive" : ""
+          mobileStage === "export" ? "isActive" : ""
         }`}
         aria-label="CSV出力形式"
       >
@@ -75,7 +120,6 @@ export function AccountingPageWorkspace({ workspaceId }: { workspaceId: string }
           aria-pressed={format === "money_forward_journal_v1"}
           onClick={() => {
             setFormat("money_forward_journal_v1");
-            setMobileStage("profile");
           }}
         >
           <strong>Money Forward向けCSV</strong>
@@ -87,7 +131,6 @@ export function AccountingPageWorkspace({ workspaceId }: { workspaceId: string }
           aria-pressed={format === "generic_journal_v1"}
           onClick={() => {
             setFormat("generic_journal_v1");
-            setMobileStage("profile");
           }}
         >
           <strong>汎用CSV</strong>
@@ -97,16 +140,21 @@ export function AccountingPageWorkspace({ workspaceId }: { workspaceId: string }
       </div>
       <section
         className={`panel accountingOrderPicker accountingMobilePanel ${
-          mobileStage === "export" ? "isActive" : ""
+          mobileStage === "format" ? "isActive" : ""
         }`}
         aria-labelledby="accounting-order-heading"
       >
         <div>
-          <p className="eyebrow">SOURCE ORDER</p>
           <h2 id="accounting-order-heading">対象取引</h2>
           {selected ? (
             <p className="candidateReferences">
-              状態: {selected.orderState} / 金額イベント: {selected.financialEventCount}件
+              状態:{" "}
+              {selected.orderState === "shipped"
+                ? "発送済み"
+                : selected.orderState === "returned"
+                  ? "返品済み"
+                  : "確認中"}{" "}
+              / 金額の根拠: {selected.financialEventCount}件
             </p>
           ) : null}
         </div>
@@ -128,7 +176,6 @@ export function AccountingPageWorkspace({ workspaceId }: { workspaceId: string }
         ) : (
           <p>会計候補を作れる発送済み取引はまだありません。</p>
         )}
-        {message ? <p role="alert">{message}</p> : null}
       </section>
       <AccountingWorkspace
         key={`${selectedOrderId ?? "none"}:${format}`}

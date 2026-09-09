@@ -4,6 +4,8 @@ const inventoryNumberPattern = /^INV-([0-9]{6})-[0-9]$/u;
 const shortNumberPattern = /^[0-9]{4,6}$/u;
 const barcodePayloadPattern = /^RESALE\|(INV-[0-9]{6}-[0-9])\|V([1-9][0-9]{0,3})$/u;
 
+export const inventoryCodeKindLabel = "自社内部コード";
+
 export type InventoryBarcodePayload = {
   inventoryNumber: string;
   labelVersion: number;

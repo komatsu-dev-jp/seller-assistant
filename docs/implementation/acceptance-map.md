@@ -139,7 +139,7 @@ P0の必須ACは AC-001、003〜008、013〜014、018〜023、025〜026、028〜
 | TA-011 | PASS            | ORD、AUTH、A、DB                   | 現HEAD再検証待ち                     |
 | TA-012 | PASS            | FIN                                | 現HEAD再検証待ち                     |
 | TA-013 | PASS            | audit、DB                          | 現HEAD再検証待ち                     |
-| TA-014 | not evidenced   | —                                  | backup/restore実行証拠なし           |
+| TA-014 | PASS            | PG-RESTORE、0040、CHECK、REVIEW    | —                                    |
 | TA-015 | partial         | Web、PWA、UI127                    | 実運用UI未接続                       |
 | TA-016 | human pending   | CODE、PWA                          | 実iPhone Safari/home/camera未確認    |
 | TA-017 | not evidenced   | AUTH、DB                           | 専用secret scan結果なし              |
@@ -151,7 +151,7 @@ P0の必須ACは AC-001、003〜008、013〜014、018〜023、025〜026、028〜
 | TA-023 | PASS            | workflow、INV、ORD、A              | 現HEAD再検証待ち                     |
 | TA-024 | not implemented | —                                  | Notion schema/upsertなし             |
 | TA-025 | PASS            | MEDIA、DB                          | 現HEAD再検証待ち                     |
-| TA-026 | partial         | MEDIA、PWA                         | backup/URL期限/用途の境界値不足      |
+| TA-026 | partial         | PG-RESTORE、MEDIA、PWA             | providerの頻度・RPO/RTO実測なし      |
 | TA-027 | partial         | `package.json`、`vitest.config.ts` | 現HEAD coverage再実行待ち            |
 | TA-028 | not implemented | —                                  | Shops create/update CSVなし          |
 | TA-029 | PASS            | INV、RLS、DB                       | 現HEAD再検証待ち                     |
@@ -464,3 +464,44 @@ P0の必須ACは AC-001、003〜008、013〜014、018〜023、025〜026、028〜
 - 実DB: 新規DBへ0001〜0018を適用し、37業務テーブルRLS、棚卸snapshot、開始後移動の非混入、古いラベル拒否監査、主要P0一気通貫を含む結合テストPASS。
 - 実画面: `output/playwright/iteration-24-team-assignments.png`、`iteration-24-inventory-stocktake.png`。console error 0件。PC内`127.0.0.1`以外への通信0件。
 - 未確認: 実iPhone Safari、ホーム画面追加、実カメラ、圏外復帰、HEIC/WebP。外部push、Draft PR、公開、Slack/Notion追加送信は未実行。
+
+## 2026-09-08 P0終了監査による現行判定
+
+過去の`PASS`、`partial`、`human pending`は当時の履歴として保持し、現行の厳格な判定は[`goal-closeout.md`](./goal-closeout.md)を正本とする。基準SHAは`220d6266a3b0975a2af0c81fefde2b316576755b`、検証候補は同SHA+限定3修正である。
+
+- P0 AC 52件: PASS 40 / NOT_RUN 2 / NOT_IMPLEMENTED 3 / WAITING_HUMAN 7。
+- P0 TA 42件: PASS 34 / NOT_RUN 1 / FAIL 2 / NOT_IMPLEMENTED 1 / WAITING_HUMAN 4。
+- 修正3件: Pages base path二重化、Windows fresh checkoutのfixture byte不一致、security coverage不足。限定差分の独立レビューはCritical 0 / High 0。
+- 未解消P0影響Medium: 通常`pg_restore`が管理番号検査関数の未固定`search_path`で停止する。段階復元は70 table / 856 row / hash mismatch 0だが、TA-014/026をPASSへ繰り上げない。
+- モバイル擬似status表示は基準SHAですでに削除済み。実iPhone safe areaはWAITING_HUMAN。
+- 基準SHAのAC-067/TA-048検索支援は未実装。正本worktreeにある先行draftを検証済み実装へ数えない。
+- GitHubがPUBLICでprivate限定条件と不一致のため、push、PR/Pages/Slack/Notion更新はBLOCKED。P1、ready化、merge、本番API公開は行わない。
+
+## 2026-09-08 P17 TA-014通常復元の現行訂正
+
+Iteration 43は修正前の履歴として保持する。現行の厳格な判定は[`goal-closeout.md`](./goal-closeout.md)と次のP17証拠を正本とする。
+
+- 必須P0 ACは、`1 + 6 + 2 + 6 + 2 + 7 + 1 + 27 = 52`件。現行集計はPASS 40 / NOT_RUN 2 / NOT_IMPLEMENTED 3 / WAITING_HUMAN 7。
+- 必須P0 TAは、`4 + 3 + 7 + 5 + 3 + 20 = 42`件。現行集計はPASS 35 / NOT_RUN 2 / FAIL 0 / NOT_IMPLEMENTED 1 / WAITING_HUMAN 4。
+- 修正前: PostgreSQL 18.6の隔離環境で70 public tablesを持つdumpを空DBへ通常復元すると、`inventory_unit`のCOPY中に`app_code_check_digit(text) does not exist`で終了コード1となった。
+- 再発防止: `restore-safe-code-helpers.test.ts`は0040追加前にFAILし、追加後PASS。既存`0015`は変更せず、`0040_restore_safe_checked_code_helpers.sql`で3関数の`search_path`を固定し、内部呼出しを`public.`修飾した。
+- 正常復元: `pg_dump --format=custom --no-owner`から`pg_restore --exit-on-error --single-transaction --no-owner`をPASS。70 tables / 48 rows、全行SHA-256 `3570429b1b2780eaaef40068cf56ea9dc3b53841fed9f0af4a4595f3b28ca9c8`、244 foreign keys、原本写真manifest SHA-256 `6b69dd2eadaa20d06cac61e97c6321994e95ec27894b9586790d7c64eecd5858`、監査SHA-256 `c8446a645a97016171dcbeb2e29ce98991a62dd3663175d6a1aaeea4a3c0edcc`が一致した。
+- 安全境界: 同一DB、非空target、権限不足、loopback外、破損dump、写真junctionを拒否。子processから継承`PG*`を除去し、接続文字列へ拡張できるDB名、query/hash、stderrの生行値を拒否・秘匿する回帰testをPASSした。
+- 回帰: fresh 39 migration、upgrade 0001〜0040と0040注入失敗rollback・再接続・再適用、root `npm.cmd run check` 50 files / 431 testsをPASS。coverageはlines 89.06%、branches 80.93%。
+- 独立再レビュー: Astra mediumはCritical 0 / High 0 / Medium 0 / Low 1でPASS。Lowは未検証IPv6形式が安全側に接続失敗する互換性で、正式手順は実証済みのIPv4 `127.0.0.1`に限定する。
+- 現行判定: TA-014はPASS。TA-026はDBとprivate Storage原本の復元・hashまで証明したが、実運用providerのバックアップ頻度とRPO/RTOを未計測のためNOT_RUN/partialのままとする。
+- モバイル上部の固定`9:41`、Dynamic Island、電波、Wi-Fi、電池は基準SHA `220d626`ですでに削除済み。古い公開画像へは今回反映しておらず、実iPhone safe areaはWAITING_HUMAN。
+- 外部書込みは0件。push、Draft PR、Pages、Slack、Notionは更新していない。
+
+## 2026-09-09 P20最終候補による現行訂正
+
+2026-09-08の判定は当時の履歴として保持する。現在の正本は[`p0-progress-checklist.md`](./p0-progress-checklist.md)と[`goal-closeout.md`](./goal-closeout.md)である。
+
+- P0 AC 52件: PASS 45 / WAITING_HUMAN 7。Codex側のNOT_RUN / NOT_IMPLEMENTED / FAILは0。
+- P0 TA 42件: PASS 38 / WAITING_HUMAN 4。Codex側のNOT_RUN / NOT_IMPLEMENTED / FAILは0。
+- `npm.cmd run check`: 63 files / 580 tests、format/lint/typecheck/security/build、Next 86 routesをPASS。
+- fresh: 45 migrations through 0046。upgrade: 0001→0046。通常restore: 73 tables / 316 rows / 253 FK / private files 23、全行・file・audit hash一致。
+- 承認UI: mobile 75＋PC52の127/127を最終buildから撮影し、missing 0、external resource 0、比較25シート。live 10 route×3幅の30/30もoverflow/console/page error/external request各0。
+- 独立レビュー: PASS。Critical 0 / High 0 / P0阻害Medium 0 / Low 2。Lowは正式手順外IPv6と、未公開0043単独運用時だけのpending互換。
+- 実iPhone、物理A4/Code 128、固定10商品pilot、実Money Forward、商品別写真項目の最終判断は11件の`WAITING_HUMAN`として成功扱いにしない。
+- commit、push、PR/Pages/Slack、本番公開、課金、外部runtime APIは行わない。指定済みNotion進捗表だけを同期する。

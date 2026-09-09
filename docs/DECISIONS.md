@@ -495,3 +495,50 @@ APIキー、トークン、個人情報、生ログ、会話全文、一時的�
 - Independent review: 初回Low 1だったCSS testの範囲を`.header`と`.scrollArea`の宣言ブロックへ限定した。別Solの再確認はCritical / High / Medium / Low各0、最終PASS。
 - Human gate: 実iPhone Safariの実safe-area、ホーム画面追加後の表示は利用者確認まで未確認とする。自動検証で合格へ繰り上げない。
 - Applies to: `approved-mobile-demo`、live login、live shipping、公開レビューPWAの全モバイル画面。
+
+### 2026-09-08 — 現行P0の新規パケットをastra-centricへ移行し、完成監査からAC-067を先行する
+
+- Type: implementation process / completion audit
+- Context: 利用者から、実装難易度に合わせて担当モデルを選び総コストを抑えるよう明示され、`app-development-orchestrator`の標準運転も2026-09-07に`astra-centric`へ更新された。現HEAD `220d6266a3b0975a2af0c81fefde2b316576755b`をAC-001〜068、TA-001〜048、保留gateへ再照合した。
+- Decision or rule: 過去の`cost-optimized`割当は履歴として残し、2026-09-08以降の新規実装はAstra lowを開始候補、複雑な部分をAstra medium候補とする。作成担当と別実行の独立レビューを維持し、モデル名だけで合格にしない。軽量モデルへ分けるのは委任準備から再検証までの総消費が小さくなる場合だけとする。
+- Completion finding: 視覚確認用の127画面と実運用routeは別系統であり、全P0完成の証拠にはまだならない。利用者判断を待たずに閉じられる最大の機能差分はAC-067の検索語・Codex用質問文の生成、編集、コピー、本人クリックによる公式検索である。AC-065は商品別撮影項目の2判断までAPI/Webを開始しない。
+- Safety boundary: 検索語と質問文は端末内で候補生成し、外部検索とコピーは人のクリック時だけ行う。メルカリやCodexへの自動送信、自動取得、スクレイピング、RPA、Cookie共有、価格自動確定を行わない。P06計測中は外部操作を無効のまま維持する。
+- Reconciliation: GitHub Actionsは現HEADのCI/Pages両workflowが`workflow_dispatch`だけで、無料・手動方針と一致しているため再質問しない。未解決の製品判断はP12の2点とPC29文言、未確認の人手gateは実iPhone、A4 24面物理印刷、固定10商品pilot、実Money Forward取込である。
+- Applies to: `AGENTS.md`、`docs/implementation/model-routing-plan.md`、P16、AC-067、TA-048、P07完成監査、active handoff。
+
+### 2026-09-08 — TA-014の復元互換性はforward migrationと単一transaction復元で直す
+
+- Type: database backup / restore safety
+- Context: migration 0039までの通常custom dumpを空DBへ復元すると、0015由来のSQL関数が制限された`search_path`下で内部関数を見つけられず、`inventory_unit`のCOPYが停止した。過去migrationを書き換えると既存環境と新規環境の履歴が分岐する。
+- Decision or rule: 0015以前を変更せず、追加migration `0040_restore_safe_checked_code_helpers.sql`で3関数を同じ計算のまま再作成し、`search_path = pg_catalog, public`と内部呼出しの`public.`修飾を固定する。通常復元は`pg_dump --format=custom --no-owner`と`pg_restore --exit-on-error --single-transaction --no-owner`を使い、途中失敗時に空targetへ部分schemaを残さない。
+- Verification boundary: 復元試験は数値IPv4 loopback `127.0.0.1`、空の使い捨てtarget DB、空の実体media root、架空データだけで行う。全table集合・件数・全行SHA-256、constraint/FK、RLS、sequence、original media metadata/file hash、audit、runtime role/grant/tenant isolationを比較する。
+- Connection and secret boundary: database/user名を接続文字列へ再解釈できない形式へ限定し、query/hashを拒否する。`pg_dump`/`pg_restore`子processは継承`PG*`をすべて除去して必要なpasswordだけを明示し、生stderrを通常ログへ出さない。mediaのsymlink/junction越境を拒否する。
+- Result: PostgreSQL 18.6の正常restore、fresh/upgrade、破損・非空・権限・loopback外・junction等の拒否、root check、独立Astra medium再レビューをPASS。TA-014はPASSとする。
+- Remaining boundary: 現postgres.jsのIPv6 URL互換性は未解消Lowであり、本手順ではIPv6を案内しない。実運用providerのバックアップ頻度とRPO/RTOはTA-026の別検証として残し、TA-014合格から推定しない。
+- Applies to: migration 0040、`postgres-restore-integration.ts`、`postgres-restore-safety.ts`、TA-014、TA-026、復元運用手順。
+
+### 2026-09-09 — 非公開mediaのbackup対象を全P0参照へ統一する
+
+- Type: database and private-file restore safety
+- Context: DB全行を復元しても、`media_asset`以外のレシート、場所、棚卸差異、発送の実ファイルがmanifest外なら、ファイル欠落を検出せず復元試験が合格し得た。
+- Decision or rule: backup/restore manifestは`media_asset`、`receipt_media_asset`、`location_photo`の原本と承認済み派生、`discrepancy_evidence_media`、`shipping_photo_asset`の全storage keyを一つにまとめる。重複keyを拒否し、実体path、symlink/junction境界、保存済みsize、SHA-256を復元前・backup・復元後に照合する。
+- Verification: 6種類すべてを持つ架空sourceから空DB・空media rootへ通常復元し、73 tables / 316 rows / 253 FK / private files 23とDB・file・audit hash一致を確認。独立再レビューはCritical 0 / High 0 / P0阻害Medium 0。
+- Applies to: `postgres-restore-integration.ts`、TA-014、TA-026、無料ローカルbackup/restore手順。
+
+### 2026-09-09 — Codex側P0完了と人手gateを分離する
+
+- Type: P0 completion gate
+- Context: 実装可能な未完了と、実iPhone・物理印刷・公式サービス・利用者判断が必要な項目が同じ未完了一覧にあり、完成度と次の操作が不明瞭だった。
+- Decision or rule: 同一候補の全check、fresh/upgrade/restore、live browser、127画面比較、独立reviewを合格したため、Codex側未完了を0とする。94項目のうち83項目をPASS、残る11項目だけを`WAITING_HUMAN`として保持する。自動証拠で人手確認を代用しない。
+- Design boundary: 承認モックの業務レイアウトを受け入れ基準とし、固定時刻・Dynamic Island・電波・電池・端末枠・架空値だけは製品UIへ入れない。
+- External boundary: Notionの指定済み進捗表以外へ送信せず、commit、push、PR ready化/merge、Pages、本番公開、課金、外部runtime APIを行わない。
+- Applies to: `p0-progress-checklist.md`、`goal-closeout.md`、Draft PR更新案、active handoff。
+
+### 2026-09-09 — 公開リポジトリの無料CIとPagesを自動実行してPRをmergeする
+
+- Type: delivery, CI/CD and zero-cost decision
+- Context: Codex側P0完了後、利用者がPR作成・GitHubへのmergeを明示依頼した。既存の手動限定方針と安全なmerge手順が衝突したため、公開リポジトリの標準runnerとGitHub Pagesが無料であることを提示し、利用者が自動実行への変更を承認した。
+- Decision or rule: 既存Draft PR #9を再利用する。`.github/workflows/ci.yml`はPull Requestと`main`へのpushで`npm ci`、`npm test`、`npm run lint`、`npm run build`を自動実行する。`.github/workflows/pages.yml`は`main`へのpush後に承認画面review buildをGitHub Pagesへ公開する。両方に手動再実行用`workflow_dispatch`を残す。
+- Zero-cost boundary: 対象は公開`komatsu-dev-jp/seller-assistant`、runnerは標準`ubuntu-latest`だけとする。larger runner、macOS runner、有料Action、有料API、有料SaaS、private repositoryの課金枠を使わない。
+- Safety boundary: PR headとmerge commitに一致するCI・Pagesだけを合格証拠にする。required checkを迂回せず、force push、管理者override、無関係な変更、実データ、外部runtime APIを追加しない。
+- Applies to: PR #9、`.github/workflows/ci.yml`、`.github/workflows/pages.yml`、`AGENTS.md`、`zero-cost-guard.md`、`technical-architecture-v1.md`。

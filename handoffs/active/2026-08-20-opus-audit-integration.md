@@ -243,3 +243,57 @@ Claude Codeの `claude/opus-spec-audit-proposals` を現main、既存仕様、�
 - 対象17 tests、root full check 45 files / 403 tests、review production build 134 pages / 139 files / 766 precache filesをPASSした。
 - 別Solは初回Critical 0 / High 0 / Medium 0 / Low 1。広すぎたCSS回帰testを`.header`と`.scrollArea`の宣言ブロックへ限定し、再確認はCritical / High / Medium / Low各0、Low Closed、最終PASS。修正後root full checkも45 files / 403 testsで再PASSした。
 - 残りは限定commit/push、既存Draft PR #9とGitHub Pages確認版の更新。実iPhoneのsafe-areaとホーム画面表示は利用者確認待ち。PR ready化・merge、実API/DB公開は行わない。
+
+## 2026-09-08 P16完成監査・現在の再開点
+
+- 正本worktreeは`_worktrees/opus-audit-integration`、branchは`codex/opus-audit-integration`、開始HEADは`220d6266a3b0975a2af0c81fefde2b316576755b`。Draft PR #9はOPEN/Draft/CLEANで、mergeしない。
+- 現行の新規モデル運用は`astra-centric`へ移行した。過去のLuna/Terra/Sol割当は履歴である。P16-A sourceは`gpt-6-astra` lowの`p16_ac067_handoff`だけが書き、別実行のAstraが凍結差分を読む。
+- AC/TA完成監査で、判断不要の次パケットをAC-067の商品調査本人操作支援とした。検索語とCodex用質問文は端末内候補で、人が編集・コピーし、公式メルカリ検索は本人クリック時だけ開く。自動取得、自動送信、スクレイピング、RPA、Cookie共有、価格自動確定は0件とする。
+- Actions方針は解決済み。`.github/workflows/ci.yml`と`pages.yml`はいずれも`workflow_dispatch`だけで、無料・手動方針と一致する。利用者への再質問はしない。
+- 判断待ちはP12の「細部写真を必須にするか」「共通入口後にパンツ／スカートを分けるか」と、PC29の販売金額文言である。人手待ちは実iPhone、A4 24面物理印刷、固定10商品pilot、実Money Forward取込である。
+- P16-A後の検証差分候補はTA-027 security coverage、TA-014/026 backup/restore、TA-017 secret scan、AC-039 legacy allowlist scan、AC-055 GS1非生成testである。一度に一パケットだけ閉じ、合格済みと未確認を混ぜない。
+- P06操作票は古い対象SHAとmigration 0033を記載しているため、人手pilotを案内する前に最新凍結SHA・現行migrationへ更新し、再preflightする。実装・検証・独立レビュー後だけ限定commit/pushとDraft PR本文更新を行い、ready化・merge、本番API公開、有料サービスは行わない。
+
+## 2026-09-08 P0終了監査・次回の再開点
+
+- 正本: `docs/implementation/goal-closeout.md`。終了区分LIMIT_REACHED、P0未合格。
+- 基準SHA+限定3修正はfull check、security coverage、fresh/upgrade PostgreSQL、base-path browser、独立reviewで合格相当。AC-067先行draftは対象外で、消さずに保持している。
+- モバイル擬似status表示と上部圧迫は基準SHA`220d626`ですでに修正済み。実iPhone safe areaは利用者確認待ち。
+- 最優先blocker: `0015_shipping_assignment_checked_codes.sql`の関数内で`app_code_check_digit`がschema未修飾かつ固定`search_path`なし。通常`pg_restore`はFAILし、TA-014/026は未達。次は既存migrationを書き換えずforward migration+通常restore回帰を1パケットで行う。
+- 人手gate: 実iPhone、A4 24面物理印刷、WARMUP+固定10商品pilot、実Money Forward取込。仕様判断: P12写真必須/任意、パンツ/スカート分岐、PC29販売金額文言。
+- GitHubは`PUBLIC`でprivate限定条件と不一致。push、Draft PR/Pages、Slack/Notionを更新しない。公開範囲変更、代替repo、ready化、merge、本番API公開、P1開始を行わない。
+
+## 2026-09-08 TA-014限定Goalの完了申し送り
+
+- 作業対象は開始HEAD `220d6266a3b0975a2af0c81fefde2b316576755b` + 保護された未commit差分。branchは`codex/opus-audit-integration`のまま。clone、branch切替、reset/clean、commit、push、PR/Pages更新は行っていない。
+- 修正前再現: 専用PostgreSQL 18.6、`127.0.0.1:55444`、架空データで通常`pg_restore`が`app_code_check_digit(text) does not exist`によりFAIL。production/既存DBは未接触。
+- 根本修正: 旧0015を変更せず、forward migration 0040で3 checked-code関数の`search_path`と`public.`修飾を固定。追加前にFAILするmigration回帰test、通常restore script、upgrade rollback試験を追加。
+- 正常証拠: 70 tables / 48 rows、全行SHA-256 `3570429b1b2780eaaef40068cf56ea9dc3b53841fed9f0af4a4595f3b28ca9c8`、244 FK、原本写真manifest SHA-256 `6b69dd2eadaa20d06cac61e97c6321994e95ec27894b9586790d7c64eecd5858`、監査SHA-256 `c8446a645a97016171dcbeb2e29ce98991a62dd3663175d6a1aaeea4a3c0edcc`が通常一括復元後に一致。runtime role/RLS/追記監査拒否もPASS。
+- 安全証拠: 同一DB、非空target、権限不足、loopback外、破損dump、写真junctionを拒否。継承`PG*`除去、接続文字列化の拒否、stderr行値秘匿を外部接続なしの実子process testで固定。
+- 回帰証拠: fresh 39 migration PASS、upgrade 0001〜0040と0040注入失敗rollback/reconnect/reapply PASS。最終`npm.cmd run check`は50 files / 431 tests、coverage lines 89.06% / branches 80.93%、API/Web build、Next 86 routes PASS。
+- 独立レビュー: Astra medium再レビューPASS。Critical 0 / High 0 / Medium 0 / Low 1。LowはIPv6 URLが安全側に接続失敗する互換性で、復元手順は実証済みIPv4 `127.0.0.1`だけを使う。
+- 判定: TA-014 PASS。TA-026はDB/private Storage原本復元までPASSしたが、実providerの頻度・RPO/RTO未計測のためNOT_RUN/partial。P0全体は未合格、P1未開始、外部反映0件。
+- モバイル: 固定`9:41`、Dynamic Island、電波/Wi-Fi/電池と上部圧迫はHEAD `220d626`ですでに修正済み。利用者画像は未更新の公開版。実iPhone safe areaとホーム画面表示は`real-iphone-api-verification-checklist.md`に従う人手確認待ち。
+- 次の1件: PCとiPhoneのIPv4・機種・iOS版を確認後、IP限定HTTPS中継で実API版を人が一連確認する。外部トンネルや架空の完成URLを作らない。別の実装Goalは自動開始しない。
+- Cleanup: 専用loopback PostgreSQLを正常停止し、確認済みの使い捨て試験root `C:\tmp\seller-assistant-ta014-restore-20260908-01`だけを削除済み。既存DB、実データ、PostgreSQL本体は未変更。
+
+## 2026-09-09 P20 Codex側P0完了申し送り
+
+- 正本worktree/branch/基準SHAは変更なし。大きな未commit差分を保護し、reset/clean/commit/push/merge/Pages更新は行っていない。
+- 現行チェックリストは`docs/implementation/p0-progress-checklist.md`。83/94（AC 45/52、TA 38/42）、Codex側未完了0、`WAITING_HUMAN` 11。
+- 最終`npm.cmd run check`は63 test files / 580 tests、coverage 83.93 / 81.06 / 92.06 / 89.50、format/lint/typecheck/security/build、Next 86 routesをPASS。
+- fresh `resale_fresh_p20_20260909f`は45 migration、upgrade `resale_upgrade_p20_20260909f`は0001→0046をPASS。
+- restoreは専用架空source/targetで73 tables / 316 rows / 253 FK / private files 23をPASS。商品、レシート、場所原本/派生、棚卸差異、発送を同じmanifestでDB・file・audit hash照合した。
+- 承認UIは`output/playwright/p20-approved-ui-20260909/`に127画面、比較は`output/playwright/approved-ui-comparison/p20-final-20260909/`に25シート。liveは`output/playwright/p20-final-live/`で10 route×3幅の30/30を合格。
+- 最終独立再レビューはCritical 0 / High 0 / P0阻害Medium 0 / Low 2。LowはIPv6 URL互換と未公開0043単独運用時の旧pending互換。正式運用のIPv4 `127.0.0.1`・0043〜0046一括適用ではblockerではない。
+- 人の次作業: 実iPhone、物理A4/Code 128、固定10商品pilot、実Money Forward、商品別写真項目の最終判断。失敗した項目だけを限定修正する。
+- GitHub更新用のローカル本文案は`docs/implementation/draft-pr-update-proposal-p20.md`。PRはDraftのままにし、利用者の明示依頼なしに外部反映しない。
+- 既存Notion進捗表`3d61548a971b81058338cae0787b7ac0`だけを同期済み。再取得で94項目・完了83・未完了11、最終レビューCritical 0 / High 0 / P0阻害Medium 0を照合した。
+- Cleanupは完了。検証用の3006/3105/4175 listenerとP20 Playwright daemonは0。復元証拠の架空DB・mediaと、`127.0.0.1:55439`のPostgreSQL試験環境は再検証用に保持した。
+
+## 2026-09-09 PR #9 merge承認後の申し送り
+
+- 利用者は既存PR #9の更新・mergeを明示依頼し、公開リポジトリの標準`ubuntu-latest`によるPull Request・`main`自動CIとGitHub Pages公開も承認した。以前の手動限定方針は同日の`docs/DECISIONS.md`で置き換えた。
+- workflowはPR/`main` CIと`main` Pages triggerを追加し、`workflow_dispatch`を再実行用に維持した。larger/macOS runner、有料Action、有料API、外部runtime APIは0件のまま。
+- 最終source凍結後のローカルgateは`npm test` 63 files / 580 tests、`npm run lint`、`npm run build` 86 routesを順番どおりPASSした。
+- 次の必須gateはPR head SHA一致のCI、merge commit SHA一致の`main` CI・Pages、公開URL確認、local main同期、task worktree/branchの安全なcleanupである。

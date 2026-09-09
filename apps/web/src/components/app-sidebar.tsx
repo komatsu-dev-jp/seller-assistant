@@ -1,15 +1,23 @@
 import { LogoutButton } from "./logout-button";
+import styles from "./navigation-home-team.module.css";
 
-const links = [
-  ["/", "ホーム", "home", "primary", "⌂"],
-  ["/workflow", "商品", "workflow", "primary", "▣"],
-  ["/workflow", "仕入・出品", "listing", "secondary", "⇢"],
-  ["/shipping", "注文・配送", "orders", "secondary", "▱"],
-  ["/inventory", "在庫", "inventory", "primary", "◇"],
-  ["/inventory/stocktake", "差異・確認", "discrepancy", "secondary", "△"],
-  ["/accounting", "収支・帳簿", "accounting", "secondary", "▧"],
-  ["/team", "チーム", "team", "secondary", "◎"],
-  ["/mobile", "現場作業", "mobile", "primary", "▤"],
+const desktopLinks = [
+  ["/", "ホーム", "home", "⌂"],
+  ["/mobile", "作業", "mobile", "✓"],
+  ["/workflow", "仕入れ", "workflow", "＋"],
+  ["/workflow", "商品", "product", "▣"],
+  ["/shipping", "注文・発送", "orders", "▱"],
+  ["/inventory", "在庫", "inventory", "◇"],
+  ["/accounting", "会計", "accounting", "▧"],
+  ["/team", "メンバー", "team", "◎"],
+] as const;
+
+const mobileLinks = [
+  ["/", "ホーム", "home", "⌂"],
+  ["/mobile", "作業", "mobile", "✓"],
+  ["/workflow", "商品", "workflow", "▣"],
+  ["/inventory", "在庫", "inventory", "◇"],
+  ["/accounting", "会計", "accounting", "▧"],
 ] as const;
 
 interface AppSidebarProps {
@@ -18,18 +26,21 @@ interface AppSidebarProps {
 
 export function AppSidebar({ current }: AppSidebarProps) {
   return (
-    <aside className={`sidebar sidebar-${current}`} aria-label="メインナビゲーション">
+    <aside
+      className={`sidebar sidebar-${current} ${styles.sidebar}`}
+      aria-label="メインナビゲーション"
+    >
       <a className="brand" href="/" aria-label="Resale Operations ホーム">
         <span className="brandMark">OP</span>
-        <span className="brandText">オペレーション</span>
+        <span className="brandText">業務を確認する</span>
       </a>
-      <nav>
-        {links.map(([href, label, key, mobilePriority, icon]) => {
-          const isCurrent = current === key;
+      <nav className={styles.desktopNav} aria-label="PC用メインナビゲーション">
+        {desktopLinks.map(([href, label, key, icon]) => {
+          const isCurrent = current === key || (current === "workflow" && key === "product");
           return (
             <a
               aria-current={isCurrent ? "page" : undefined}
-              className={`nav-${mobilePriority} nav-${key}`}
+              className={`${styles.navLink} nav-${key}`}
               href={href}
               key={label}
             >
@@ -40,9 +51,29 @@ export function AppSidebar({ current }: AppSidebarProps) {
             </a>
           );
         })}
+        <span className={styles.comingSoon} aria-disabled="true">
+          <span aria-hidden="true">⚙</span>
+          設定
+          <small>P0対象外</small>
+        </span>
       </nav>
       <LogoutButton />
       <div className="safety">重要操作は人が確認して確定します</div>
+
+      <nav className={styles.mobileNav} aria-label="モバイルナビゲーション">
+        {mobileLinks.map(([href, label, key, icon]) => {
+          const isCurrent =
+            current === key ||
+            (current === "workflow" && key === "workflow") ||
+            (current === "discrepancy" && key === "inventory");
+          return (
+            <a aria-current={isCurrent ? "page" : undefined} href={href} key={label}>
+              <span aria-hidden="true">{icon}</span>
+              {label}
+            </a>
+          );
+        })}
+      </nav>
     </aside>
   );
 }

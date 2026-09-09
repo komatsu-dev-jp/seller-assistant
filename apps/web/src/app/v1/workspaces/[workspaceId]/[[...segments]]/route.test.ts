@@ -226,3 +226,189 @@ describe("workspace pilot external invalidation proxy allowlist", () => {
     expect(upstream).not.toHaveBeenCalled();
   });
 });
+
+describe("workspace evidence proxy allowlist", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  it("forwards a confirmed JPEG receipt as private binary data", async () => {
+    vi.stubEnv("API_INTERNAL_ORIGIN", "http://api.invalid");
+    vi.stubEnv("APP_ORIGIN", appOrigin);
+    const upstream = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ assetId: skuId }), {
+        status: 201,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const response = await POST(
+      new NextRequest(
+        `http://127.0.0.1:3000/v1/workspaces/${workspaceId}/receipt-evidence?assetId=${skuId}&humanConfirmed=true`,
+        {
+          method: "POST",
+          headers: { origin: appOrigin, "content-type": "image/jpeg" },
+          body: new Uint8Array([1, 2, 3]),
+        },
+      ),
+      { params: Promise.resolve({ workspaceId, segments: ["receipt-evidence"] }) },
+    );
+    expect(response.status).toBe(201);
+    expect(upstream).toHaveBeenCalledOnce();
+    expect((upstream.mock.calls[0]?.[1] as RequestInit).redirect).toBe("manual");
+  });
+
+  it("rejects receipt query widening and unsupported file types before fetch", async () => {
+    vi.stubEnv("API_INTERNAL_ORIGIN", "http://api.invalid");
+    vi.stubEnv("APP_ORIGIN", appOrigin);
+    const upstream = vi.spyOn(globalThis, "fetch");
+    const rejectedQuery = await POST(
+      new NextRequest(
+        `http://127.0.0.1:3000/v1/workspaces/${workspaceId}/receipt-evidence?assetId=${skuId}&humanConfirmed=false`,
+        { method: "POST", headers: { origin: appOrigin, "content-type": "image/jpeg" } },
+      ),
+      { params: Promise.resolve({ workspaceId, segments: ["receipt-evidence"] }) },
+    );
+    const rejectedType = await POST(
+      new NextRequest(
+        `http://127.0.0.1:3000/v1/workspaces/${workspaceId}/receipt-evidence?assetId=${skuId}&humanConfirmed=true`,
+        { method: "POST", headers: { origin: appOrigin, "content-type": "image/webp" }, body: "x" },
+      ),
+      { params: Promise.resolve({ workspaceId, segments: ["receipt-evidence"] }) },
+    );
+    expect(rejectedQuery.status).toBe(404);
+    expect(rejectedType.status).toBe(400);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
+  it("returns product photos only from the exact private content route", async () => {
+    vi.stubEnv("API_INTERNAL_ORIGIN", "http://api.invalid");
+    const bytes = new Uint8Array([2, 3, 4]);
+    const upstream = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        new Response(bytes, { status: 200, headers: { "content-type": "image/png" } }),
+      );
+    const segments = ["skus", skuId, "product-photos", ruleId, "content"];
+    const response = await GET(
+      new NextRequest(`http://127.0.0.1:3000/v1/workspaces/${workspaceId}/${segments.join("/")}`),
+      { params: Promise.resolve({ workspaceId, segments }) },
+    );
+    expect(response.status).toBe(200);
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(upstream).toHaveBeenCalledOnce();
+  });
+
+  it("returns a receipt only from its exact private content route", async () => {
+    vi.stubEnv("API_INTERNAL_ORIGIN", "http://api.invalid");
+    const bytes = new Uint8Array([8, 5, 3]);
+    const upstream = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        new Response(bytes, { status: 200, headers: { "content-type": "image/jpeg" } }),
+      );
+    const segments = ["receipt-evidence", skuId, "content"];
+    const response = await GET(
+      new NextRequest(`http://127.0.0.1:3000/v1/workspaces/${workspaceId}/${segments.join("/")}`),
+      { params: Promise.resolve({ workspaceId, segments }) },
+    );
+    expect(response.status).toBe(200);
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(upstream).toHaveBeenCalledOnce();
+  });
+
+  it("allows only the exact owner return catalog", async () => {
+    vi.stubEnv("API_INTERNAL_ORIGIN", "http://api.invalid");
+    const upstream = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ items: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const segments = ["inventory", "return-catalog"];
+    const response = await GET(
+      new NextRequest(`http://127.0.0.1:3000/v1/workspaces/${workspaceId}/${segments.join("/")}`),
+      { params: Promise.resolve({ workspaceId, segments }) },
+    );
+    expect(response.status).toBe(200);
+    expect(upstream).toHaveBeenCalledOnce();
+  });
+});
+
+describe("team change request proxy allowlist", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  it("forwards only GET list, POST request, and POST event routes", async () => {
+    vi.stubEnv("API_INTERNAL_ORIGIN", "http://api.invalid");
+    vi.stubEnv("APP_ORIGIN", appOrigin);
+    const upstream = vi.spyOn(globalThis, "fetch").mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ workspaceId, changes: [] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    const list = ["team", "change-requests"];
+    const request = await GET(
+      new NextRequest(`http://127.0.0.1:3000/v1/workspaces/${workspaceId}/${list.join("/")}`),
+      { params: Promise.resolve({ workspaceId, segments: list }) },
+    );
+    expect(request.status).toBe(200);
+
+    const create = await POST(
+      new NextRequest(`http://127.0.0.1:3000/v1/workspaces/${workspaceId}/${list.join("/")}`, {
+        method: "POST",
+        headers: { origin: appOrigin, "content-type": "application/json" },
+        body: JSON.stringify({ ok: true }),
+      }),
+      { params: Promise.resolve({ workspaceId, segments: list }) },
+    );
+    expect(create.status).toBe(200);
+
+    const requestId = "66666666-6666-4666-8666-666666666666";
+    const event = ["team", "change-requests", requestId, "events"];
+    const eventResponse = await POST(
+      new NextRequest(`http://127.0.0.1:3000/v1/workspaces/${workspaceId}/${event.join("/")}`, {
+        method: "POST",
+        headers: { origin: appOrigin, "content-type": "application/json" },
+        body: JSON.stringify({ ok: true }),
+      }),
+      { params: Promise.resolve({ workspaceId, segments: event }) },
+    );
+    expect(eventResponse.status).toBe(200);
+    expect(upstream).toHaveBeenCalledTimes(3);
+  });
+
+  it("rejects near-match paths and unsupported methods without contacting the API", async () => {
+    vi.stubEnv("API_INTERNAL_ORIGIN", "http://api.invalid");
+    vi.stubEnv("APP_ORIGIN", appOrigin);
+    const upstream = vi.spyOn(globalThis, "fetch");
+    const nearMatch = ["team", "change-requests-extra"];
+    const rejectedGet = await GET(
+      new NextRequest(`http://127.0.0.1:3000/v1/workspaces/${workspaceId}/${nearMatch.join("/")}`),
+      { params: Promise.resolve({ workspaceId, segments: nearMatch }) },
+    );
+    const rejectedPost = await POST(
+      new NextRequest(
+        `http://127.0.0.1:3000/v1/workspaces/${workspaceId}/team/change-requests/66666666-6666-4666-8666-666666666666/event`,
+        { method: "POST", headers: { origin: appOrigin } },
+      ),
+      {
+        params: Promise.resolve({
+          workspaceId,
+          segments: ["team", "change-requests", "66666666-6666-4666-8666-666666666666", "event"],
+        }),
+      },
+    );
+    expect(rejectedGet.status).toBe(404);
+    expect(rejectedPost.status).toBe(404);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+});

@@ -437,3 +437,61 @@
 - 全75モバイルrouteを再撮影し、75/75 viewport、横overflow 0、縦overflow 0、clipped interactive 0、external resource 0を確認した。対象17 testsとroot full check 45 files / 403 tests、format、lint、typecheck、API/Web build、review 134 pages / 139 files / 766 precache filesをPASSした。
 - 別Solの初回判定はCritical 0 / High 0 / Medium 0 / Low 1。LowはCSS testが無関係な同じ値でも通り得る点だった。Luna maxが`.header`と`.scrollArea`の各宣言ブロックへ検査を限定し、別Solの再確認はCritical / High / Medium / Low各0、Low Closed、最終PASS。修正後のroot full checkも45 files / 403 testsで再PASSした。
 - 実iPhone Safariの実safe-areaとホーム画面表示は利用者確認まで未確認として残す。GitHub Pagesは画面確認用の架空データ静的版だけを更新し、実API/DBは公開しない。Draft PR #9はDraftのまま、ready化・mergeを行わない。
+
+## Iteration 42 — 2026-09-08 完成監査とAC-067開始
+
+- 現HEAD `220d6266a3b0975a2af0c81fefde2b316576755b`を、別実行のAstra lowでAC-001〜068、TA-001〜048、保留gateへ読み取り専用で再照合した。過去のPASS記録を現HEADの再実行証拠へ自動昇格していない。
+- P0必須52 ACのうち、コードまたは検証差分はAC-028、039、055、062、067、利用者判断待ちはAC-065、人手・実環境待ちは16件と分類した。TAはP0の検証差分として014/017/026/027、利用者判断待ちとして046、人手待ちとして016/037/043を確認した。
+- 古い記録を訂正した。実運用home、workflow、shippingはAPIへ接続済みであり「全部未接続」ではない。一方、承認済みmobile/PC routeは静的demoで、127画面撮影だけを全機能完成の証拠にはしない。CSV adapter再送不足とActions自動実行待ちは現HEADに該当しない。
+- 判断不要で閉じられる最大の機能差分としてP16-A AC-067を開始した。Astra lowの唯一writerは商品調査パネル・helper・testだけを担当し、ルートは別ファイルのルール・decision・handoff整合を担当する。
+- 安全境界は本人クリック時だけの公式メルカリ検索と端末内コピーである。外部検索結果取得、Codex自動送信、スクレイピング、RPA、Cookie共有、価格自動確定、API/DB変更、P12項目実装は行わない。
+- 次のgateは対象試験、full check、390/768/1440px、通常時/pilot時、外部request 0、独立レビュー。同一SHAで合格するまでP16-Aを完了扱いにせず、Draft PR ready化・merge、本番API公開を行わない。
+
+## Iteration 43 — 2026-09-08 P0限定修正と終了監査
+
+- 基準SHA`220d6266a3b0975a2af0c81fefde2b316576755b`をclean detached worktreeへ固定し、正本worktreeのAC-067先行draftを除外して検証した。
+- 修正1: GitHub Pages確認入口でNext `Link`とexport後base pathが重なり、`/seller-assistant/seller-assistant/...`へ進む404を再現。通常`a`要素へ限定変更し、review 134-page buildとローカル実ブラウザでmobile/PC遷移をPASS。
+- 修正2: Windowsの`core.autocrlf=true`で生成fixture bytesが変わる問題を、全text LF + CHECKLISTだけ`-text`で固定。生成hash、対象59 tests、full checkをPASS。
+- 修正3: security coverageへauth/session/DB role/media/origin/proxy等8 moduleを追加し、認証とDB role否定分岐を補強。security lines 87.96%、branches 81.33%、46 files / 411 tests、全buildをPASS。
+- fresh PostgreSQLは38 migration、65-table RLS、仕入/写真/採寸/在庫/注文/発送/返品/棚卸/会計をPASS。upgradeは0001〜0039、既存履歴保持と注入失敗rollback/再適用をPASS。
+- 通常`pg_restore`は`0015`の未修飾`app_code_check_digit`解決でFAIL。段階復元+関数search path設定なら70 table / 856 row / mismatch 0、論理SHA-256`237c2f16f2d188232a4622e79a6abe2709a8079a0158f081c000bdf336595183`。修正上限3件到達後のため製品コードは直さず、TA-014/026をFAILで停止。
+- 独立reviewは限定3修正をCritical 0 / High 0とし、通常復元をP0影響Medium 1、navigation実装文字列testとsecurity単独閾値をLow 2と判定。
+- モバイル擬似`9:41`/Dynamic Island/電波/Wi-Fi/電池は基準SHAで削除済み。2026-09-08の390×844 direct routeでも重複なしを再確認。実iPhone safe areaはWAITING_HUMAN。
+- 終了区分はLIMIT_REACHED、P0は未合格。GitHubはPUBLICでprivate限定条件と不一致のため外部書込み0件。検証用DB4個、LOGIN role、一時backupを削除し、loopback PostgreSQLを停止した。
+- 詳細なAC/TA個別判定、証拠、人手gate、次の1件は`docs/implementation/goal-closeout.md`を正本とする。
+
+## Iteration 44 — 2026-09-08 TA-014通常復元の根本修正
+
+- Iteration 43の通常復元FAILを、専用のPostgreSQL 18.6、`127.0.0.1:55444`、架空データだけの新しい隔離環境で再現した。復元元は70 public tables / SKU 2 / media 1 / audit 3で、修正前の`pg_restore`は`inventory_unit` COPY中の`app_code_check_digit(text) does not exist`で終了コード1となった。
+- 追加前に失敗する`restore-safe-code-helpers.test.ts`を固定し、過去の`0015_shipping_assignment_checked_codes.sql`は変更せず、forward migration `0040_restore_safe_checked_code_helpers.sql`を追加した。3関数は`search_path = pg_catalog, public`を固定し、内部関数を`public.`修飾する。
+- 通常のcustom dumpから空DBへのsingle-transaction restoreをPASSした。全70 tables / 48 rowsと全行値SHA-256、244 foreign keys、RLS、sequence、media metadata/原本ファイルhash、audit履歴、runtime role/grant/tenant isolation/追記監査拒否が一致した。
+- fresh PostgreSQLは存在する39 migrationを適用してrestricted role、65-table RLS、在庫・写真・注文・発送・会計等をPASS。upgradeは0001〜0040、0040注入失敗のrollback・再接続・再適用、既存SKU/media/finance/export/audit保持をPASSした。
+- モバイル上部の固定`9:41`等は基準SHAですでに削除済みで、TA-014のためにUIを変更していない。外部push、Pages、PR、Slack、Notionは0件。
+
+## Iteration 45 — 2026-09-08 復元安全境界の再レビューと終了
+
+- 初回Astra mediumレビューはCritical 0 / High 1 / Medium 1 / Low 2。Highは継承`PGHOSTADDR`等により確認先とCLI復元先が分離し得る点、MediumはCOPY失敗のstderrに行値が出得る点、Lowは写真link脱出とsequence `is_called`未照合だった。
+- 第2ラウンドで、接続URLを数値loopback・安全なdatabase/user名・query/hashなしへ限定し、子processの全`PG*`を除去して`PGPASSWORD`だけを渡した。stderrは読み捨てて行値を例外へ含めない。実子processを使う外部接続なしの回帰testで固定した。
+- 写真root/fileは`lstat`と`realpath`で実体を確認し、symlink/junctionを復元前に拒否する。sequenceは`last_value`と`is_called`、RLS可視件数はworkspace単位で照合する。架空junctionは期待どおり拒否し、正常restoreは同じ全行・写真・監査hashで再PASSした。
+- 最終`npm.cmd run check`はfixture 44 PNG/hash、format、lint、typecheck、50 files / 431 tests、coverage statements 83.56% / branches 80.93% / functions 92.06% / lines 89.06%、API/Web build、Next 86 routesをPASSした。
+- 再レビューはPASS、Critical 0 / High 0 / Medium 0 / Low 1。Lowは`[::1]`形式を現postgres.jsが安全側に接続失敗するIPv6互換性で、今回の正式手順を実証済み`127.0.0.1`に限定する。2ラウンド上限後のため追加拡張しない。
+- TA-014はPASS。TA-026はDB/private Storage原本復元まで証明したが、実運用providerの頻度・RPO/RTO未計測によりNOT_RUN/partial。P0全体は未合格、P1は未開始、外部反映0件で今回を終了する。
+- 検証後は専用clusterを正常停止し、正規化した絶対pathが意図した試験rootと完全一致することを再確認してから、`C:\tmp\seller-assistant-ta014-restore-20260908-01`だけを削除した。既存DB、実データ、PostgreSQL本体は変更・削除していない。
+
+## Iteration 46 — 2026-09-09 P0 Codex側完了監査
+
+- 94項目の進捗を再監査し、Codex側で閉じられる8項目（AC-001/028/055/062/067、TA-017/026/048）を現在候補の証拠へ対応づけた。結果は83/94、AC 45/52、TA 38/42。残る11項目はすべて実機・物理・公式画面・利用者判断の`WAITING_HUMAN`である。
+- 承認済みmobile 75＋PC52を最終buildから127/127再撮影し、route欠落0、外部resource 0、比較25シートを生成した。live 10 routeは390/768/1440の30条件でHTTP 200、横overflow、console warning/error、page error、外部request各0だった。
+- role別の実ブラウザで、ownerの担当解除申請、自己承認不可、別inventory managerの承認、追記履歴を確認した。管理担当の掲載4写真取得が背面/タグで403になる問題を修正し、field workerの限定権限は広げなかった。
+- 独立レビューで、商品写真以外のprivate fileが通常復元manifestへ入らないP0阻害Mediumを検出した。レシート、場所原本/派生、棚卸差異、発送を追加し、6種すべてを持つ架空DBで73 tables / 316 rows / 253 FK / private files 23のDB・file・audit hash一致を再実証した。
+- 最終`npm.cmd run check`は63 files / 580 tests、coverage 83.93 / 81.06 / 92.06 / 89.50、format/lint/typecheck/security/build、Next 86 routesをPASS。fresh 45 migrations、upgrade 0001〜0046、通常restoreも同じ候補でPASSした。
+- 最終独立再レビューはPASS。Critical 0 / High 0 / P0阻害Medium 0 / Low 2。LowはIPv6接続互換と、未公開0043単独運用時だけの旧pending互換であり、今回のIPv4・0043〜0046一括適用を止めない。
+- GitHub/Pages/Slack/PR/本番への反映、commit、push、merge、課金、外部runtime APIは0件。利用者指定の既存Notion進捗表だけを最終チェック状態へ同期し、再取得で94項目・完了83・未完了11を照合した。
+
+## Iteration 47 — 2026-09-09 無料CI・PR #9・merge準備
+
+- 利用者がP0完了候補のPR作成とGitHub mergeを明示依頼し、既存の手動CI方針との衝突提示後、公開リポジトリの無料自動CI・Pages公開への変更を承認した。
+- `.github/workflows/ci.yml`はPull Requestと`main`へのpush、`.github/workflows/pages.yml`は`main`へのpushを自動triggerに追加した。再実行用`workflow_dispatch`は残し、標準`ubuntu-latest`以外を使わない。
+- 方針変更を`AGENTS.md`、`zero-cost-guard.md`、`technical-architecture-v1.md`、`docs/DECISIONS.md`、解決済みinboxへ反映し、旧手動限定判断を日付付きで置き換えた。
+- merge直前のローカルgateは、一時的な5秒timeoutを対象単独実行で非再現と確認後、`npm test` 63 files / 580 tests、`npm run lint`、`npm run build` 86 routesを順番どおりPASSした。
+- 次は全task-owned pathだけを明示stageし、既存PR #9を更新する。PR head CI、merge後`main` CI、Pagesを各commit SHA一致で確認するまで完了扱いにしない。

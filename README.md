@@ -42,7 +42,7 @@ WebからAPIへ同一URLで安全に中継するときだけ `API_INTERNAL_ORIGI
 
 ## 同じWi-Fi内のiPhone表示
 
-認証Cookieの`Secure`設定を弱めず、`scripts/start-lan-preview.mjs`のローカルHTTPS中継を使います。PC用WebとAPIは`127.0.0.1`のままにし、許可したiPhoneのIPv4アドレス1件だけを通します。証明書や秘密鍵はGitへ保存しません。詳しい準備、iPhone操作、停止・削除は`docs/implementation/secure-lan-preview-guide.md`を参照してください。
+認証Cookieの`Secure`設定を弱めず、`scripts/start-lan-preview.mjs`のローカルHTTPS中継を使います。PC用WebとAPIは`127.0.0.1`のままにし、許可したiPhoneのIPv4アドレス1件だけを通します。証明書や秘密鍵はGitへ保存しません。詳しい準備、iPhone操作、停止・削除は`docs/implementation/secure-lan-preview-guide.md`、現在の実API導線を確認する操作表は`docs/implementation/real-iphone-api-verification-checklist.md`を参照してください。
 
 ```powershell
 npm.cmd run lan:preview

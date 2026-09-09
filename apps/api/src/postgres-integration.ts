@@ -86,6 +86,9 @@ const workspaceProtectedTables = [
   "marketplace_reference",
   "measurement_attempt",
   "media_asset",
+  "receipt_media_asset",
+  "team_assignment_change_request",
+  "team_assignment_change_event",
   "order_allocation",
   "order_operation_record",
   "order_assignment",
@@ -384,6 +387,28 @@ try {
   const top01PilotIdentifiers = listingPrepPilotItemIdentifiers(pilotRunId, "TOP-01");
 
   const acquisitionKey = randomUUID();
+  const receiptAssetId = randomUUID();
+  const receiptUploadRequest = {
+    method: "POST" as const,
+    url: `/v1/workspaces/${owner.workspaceId}/receipt-evidence?assetId=${receiptAssetId}&humanConfirmed=true`,
+    headers: { cookie, "content-type": "image/jpeg" },
+    payload: jpegWithGpsMetadata(),
+  };
+  const uploadedReceipt = await app.inject(receiptUploadRequest);
+  assert.equal(uploadedReceipt.statusCode, 201, uploadedReceipt.body);
+  assert.equal(uploadedReceipt.body.includes("storageKey"), false);
+  const receiptReplays = await Promise.all([
+    app.inject(receiptUploadRequest),
+    app.inject(receiptUploadRequest),
+  ]);
+  for (const replay of receiptReplays) assert.deepEqual(replay.json(), uploadedReceipt.json());
+  const receiptRead = await app.inject({
+    url: uploadedReceipt.json<{ contentUrl: string }>().contentUrl,
+    headers: { cookie },
+  });
+  assert.equal(receiptRead.statusCode, 200, receiptRead.body);
+  assert.equal(receiptRead.body.includes("GPSLatitude"), false);
+  assert.equal(receiptRead.headers["cache-control"], "private, no-store");
   const acquisitionPayload = {
     skuCode: top01PilotIdentifiers.skuCode,
     title: top01PilotFixture.title,
@@ -391,6 +416,7 @@ try {
     measurementTemplateId: top01PilotFixture.templateId,
     supplierName: "架空テスト仕入先",
     receiptReference: top01PilotIdentifiers.receiptReference,
+    receiptEvidenceAssetId: receiptAssetId,
     purchasedAt: new Date().toISOString(),
     receiptAmountMinor: 1500,
     allocatedCostMinor: 1500,
@@ -413,6 +439,10 @@ try {
     workflowState: string;
   }>();
   assert.equal(acquiredItem.workflowState, "purchase_confirmed");
+  assert.equal(
+    acquired.json<{ receiptEvidenceAssetId: string }>().receiptEvidenceAssetId,
+    receiptAssetId,
+  );
   assert.equal(acquiredItem.inventoryNumber, appendCodeCheckDigit("INV-000001"));
   const acquiredReplay = await app.inject({
     method: "POST",
@@ -584,17 +614,32 @@ try {
     assert.equal(rejectedMeasurement.statusCode, 409, rejectedMeasurement.body);
   }
   for (const [index, expectedMeasurement] of top01PilotFixture.measurements.entries()) {
-    const measurement = await app.inject({
-      method: "POST",
+    const measurementRequest = {
+      method: "POST" as const,
       url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/measurements`,
       headers: { cookie },
       payload: pilotMeasurementInput(expectedMeasurement, {
         value: index === 0 ? expectedMeasurement.value + 3 : expectedMeasurement.value,
-        evidenceAssetId: acquisitionAssetByRole.get("front") ?? "",
+        evidenceAssetId: await uploadDedicatedMeasurement(
+          app,
+          owner.workspaceId,
+          acquiredItem.skuId,
+          cookie,
+          expectedMeasurement.definitionId,
+        ),
         attempt: 1,
       }),
-    });
+    };
+    const measurement = await app.inject(measurementRequest);
     assert.equal(measurement.statusCode, 201, measurement.body);
+    const replayResults = await Promise.all([
+      app.inject(measurementRequest),
+      app.inject(measurementRequest),
+    ]);
+    for (const replay of replayResults) {
+      assert.equal(replay.statusCode, 201, replay.body);
+      assert.deepEqual(replay.json(), measurement.json());
+    }
   }
   const rejectedWrongImageCapture = await app.inject({
     method: "POST",
@@ -650,18 +695,31 @@ try {
     url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/measurements`,
     headers: { cookie },
     payload: pilotMeasurementInput(firstPilotMeasurement, {
-      evidenceAssetId: correctedFrontAssetId,
+      evidenceAssetId: await uploadDedicatedMeasurement(
+        app,
+        owner.workspaceId,
+        acquiredItem.skuId,
+        cookie,
+        firstPilotMeasurement.definitionId,
+      ),
       attempt: 2,
     }),
   });
   assert.equal(correctedMeasurement.statusCode, 201, correctedMeasurement.body);
   assert.equal(correctedMeasurement.json<{ requiresReview: boolean }>().requiresReview, true);
+  const correctedReviewEvidence = await uploadDedicatedMeasurement(
+    app,
+    owner.workspaceId,
+    acquiredItem.skuId,
+    cookie,
+    firstPilotMeasurement.definitionId,
+  );
   const missingMeasurementReviewReason = await app.inject({
     method: "POST",
     url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/measurements`,
     headers: { cookie },
     payload: pilotMeasurementInput(firstPilotMeasurement, {
-      evidenceAssetId: correctedFrontAssetId,
+      evidenceAssetId: correctedReviewEvidence,
       attempt: 3,
     }),
   });
@@ -672,7 +730,7 @@ try {
     url: `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/measurements`,
     headers: { cookie },
     payload: pilotMeasurementInput(firstPilotMeasurement, {
-      evidenceAssetId: correctedFrontAssetId,
+      evidenceAssetId: correctedReviewEvidence,
       attempt: 3,
       reviewReasonCode: "previous_entry_error",
     }),
@@ -1287,7 +1345,13 @@ try {
       basis: "flat_width",
       state: "natural",
       measuredAt: new Date().toISOString(),
-      evidenceAssetId: captureAssetId,
+      evidenceAssetId: await uploadDedicatedMeasurement(
+        app,
+        owner.workspaceId,
+        skuId,
+        workerCookie,
+        "chest_width",
+      ),
       attempt: 1,
       humanConfirmed: true,
     },
@@ -1343,7 +1407,13 @@ try {
         basis: "length",
         state: "natural",
         measuredAt: new Date().toISOString(),
-        evidenceAssetId: captureAssetId,
+        evidenceAssetId: await uploadDedicatedMeasurement(
+          app,
+          owner.workspaceId,
+          skuId,
+          workerCookie,
+          definitionId,
+        ),
         attempt: 1,
         humanConfirmed: true,
       },
@@ -2849,13 +2919,13 @@ try {
       await transaction`
         insert into location_node (
           id, workspace_id, parent_id, code, name, depth, can_store_inventory,
-          single_item_only, allow_mixed_sku, max_units
+          single_item_only, allow_mixed_sku, max_units, purpose
         ) values
-          (${rootLocationId}, ${owner.workspaceId}, null, ${appendCodeCheckDigit("ROOM-01")}, '架空保管室', 0, false, false, true, null),
-          (${binAId}, ${owner.workspaceId}, ${rootLocationId}, ${appendCodeCheckDigit("BIN-A")}, '棚A-1', 1, true, false, false, 3),
-          (${binBId}, ${owner.workspaceId}, ${rootLocationId}, ${appendCodeCheckDigit("BIN-B")}, '棚B-1', 1, true, true, false, 1),
-          (${capacityBinId}, ${owner.workspaceId}, ${rootLocationId}, ${appendCodeCheckDigit("BIN-C")}, '同時格納試験棚', 1, true, true, false, 1),
-          (${returnBinId}, ${owner.workspaceId}, ${rootLocationId}, ${appendCodeCheckDigit("RETURN-01")}, '返品隔離棚', 1, true, false, true, 20)
+          (${rootLocationId}, ${owner.workspaceId}, null, ${appendCodeCheckDigit("ROOM-01")}, '架空保管室', 0, false, false, true, null,'general'),
+          (${binAId}, ${owner.workspaceId}, ${rootLocationId}, ${appendCodeCheckDigit("BIN-A")}, '棚A-1', 1, true, false, false, 3,'general'),
+          (${binBId}, ${owner.workspaceId}, ${rootLocationId}, ${appendCodeCheckDigit("BIN-B")}, '棚B-1', 1, true, true, false, 1,'general'),
+          (${capacityBinId}, ${owner.workspaceId}, ${rootLocationId}, ${appendCodeCheckDigit("BIN-C")}, '同時格納試験棚', 1, true, true, false, 1,'general'),
+          (${returnBinId}, ${owner.workspaceId}, ${rootLocationId}, ${appendCodeCheckDigit("RETURN-01")}, '返品隔離棚', 1, true, false, true, 20,'return_quarantine')
       `;
       await transaction`
         insert into inventory_unit (id, workspace_id, sku_id, inventory_number) values
@@ -2951,6 +3021,16 @@ try {
       headers: { cookie: workerCookie },
     });
     assert.equal(workerPutawayCatalog.statusCode, 200, workerPutawayCatalog.body);
+    const forbiddenReturns = await app.inject({
+      url: `/v1/workspaces/${owner.workspaceId}/inventory/return-catalog`,
+      headers: { cookie: workerCookie },
+    });
+    assert.equal(forbiddenReturns.statusCode, 403, forbiddenReturns.body);
+    const forbiddenReceipt = await app.inject({
+      url: `/v1/workspaces/${owner.workspaceId}/receipt-evidence/${receiptAssetId}/content`,
+      headers: { cookie: workerCookie },
+    });
+    assert.equal(forbiddenReceipt.statusCode, 403, forbiddenReceipt.body);
     assert.deepEqual(
       workerPutawayCatalog
         .json<{ locations: Array<{ code: string }> }>()
@@ -3350,7 +3430,7 @@ try {
           location_scanned_at, confirmed_by, confirmed_at
         ) values (
           ${moveExpectedOutScanId}, ${owner.workspaceId}, 'move', ${unitFiveId}, ${binAId},
-          ${returnBinId}, ${itemLabelFiveId}, 1, ${returnBinLabelId}, 1,
+          ${binBId}, ${itemLabelFiveId}, 1, ${binBLabelId}, 1,
           now(), now(), ${owner.identityId}, now()
         )
       `;
@@ -3360,7 +3440,7 @@ try {
           to_location_id, movement_kind, scan_session_id, idempotency_key,
           payload_hash, moved_by
         ) values (
-          ${owner.workspaceId}, ${unitFiveId}, 2, ${binAId}, ${returnBinId}, 'move',
+          ${owner.workspaceId}, ${unitFiveId}, 2, ${binAId}, ${binBId}, 'move',
           ${moveExpectedOutScanId}, 'move-out-after-stocktake-snapshot',
           ${hashFixture("move-out-after-stocktake-snapshot")}, ${owner.identityId}
         )
@@ -3440,7 +3520,7 @@ try {
       {
         inventoryUnitId: unitFiveId,
         expectedLocationId: binAId,
-        currentLocationId: returnBinId,
+        currentLocationId: binBId,
         snapshotMovementSequence: 1,
         currentMovementSequence: 2,
       },
@@ -10365,6 +10445,24 @@ try {
     });
     assert.equal(quarantined.statusCode, 200, quarantined.body);
     assert.equal(quarantined.json<{ inventoryStatus: string }>().inventoryStatus, "quarantined");
+    const returnCatalog = await app.inject({
+      url: `/v1/workspaces/${owner.workspaceId}/inventory/return-catalog`,
+      headers: { cookie },
+    });
+    assert.equal(returnCatalog.statusCode, 200, returnCatalog.body);
+    const returnCatalogItem = returnCatalog
+      .json<{
+        orders: Array<{
+          orderId: string;
+          quarantined: boolean;
+          inventoryLabelVersion: number | null;
+        }>;
+      }>()
+      .orders.find((item) => item.orderId === orderId);
+    assert.equal(returnCatalogItem?.quarantined, true);
+    assert.ok(returnCatalogItem?.inventoryLabelVersion);
+    assert.equal(returnCatalog.body.includes("address"), false);
+    assert.equal(returnCatalog.body.includes("AmountMinor"), false);
     const inspected = await app.inject({
       method: "POST",
       url: `/v1/workspaces/${owner.workspaceId}/orders/${orderId}/return-inspection`,
@@ -12596,6 +12694,40 @@ try {
 process.stdout.write(
   "postgres-integration: PASS (restricted role, 65-table RLS matrix, P14 collision-free server order numbering, managed shipping-method revisions, assigned minimal shipping context, order-scoped assigned zero-GPS location derivative, explicit missing-information acknowledgement and frozen shipment fee, assigned inspection concerns with deferred latest-state exact-set consistency, terminal human dismissal, separate prior-recorder review, P13 three-mode shipping-photo policy, immutable private sale-basis snapshots, exact-set private photo confirmation, server packing and separate shipment confirmation, non-probeable session-bound access and denied cross-workspace/role/expired assignment access, append-only server-timed pilot exceptions, purchase-to-versioned-accounting order flow, encrypted 5-minute address lease, checked inventory/location codes, persisted capture/research/listing evidence, reviewed zero-GPS location photo, double scan, immutable stocktake snapshot, complete read evidence, post-start movement separation, audited stale-label rejection, DB-enforced mode-aware solo/dual stocktake approval, approved dual candidate restored by its original owner at the same or a moved location without direct scan UPDATE, exact 27-column accounting CSV, return quarantine, stocktake and label reissue, logout)\n",
 );
+
+async function uploadDedicatedMeasurement(
+  app: ReturnType<typeof buildApp>,
+  workspaceId: string,
+  skuId: string,
+  cookie: string | undefined,
+  definitionId: string,
+): Promise<string> {
+  assert.ok(cookie, "A test actor cookie is required for dedicated evidence");
+  const assetId = randomUUID();
+  const bytes = jpegWithGpsMetadata();
+  // Test-only image bytes: vary the scan payload so each measurement has distinct evidence.
+  const uniqueScan = Buffer.from(assetId, "ascii");
+  const distinctBytes = Buffer.concat([
+    bytes.subarray(0, bytes.length - 2),
+    uniqueScan,
+    bytes.subarray(bytes.length - 2),
+  ]);
+  const uploaded = await app.inject({
+    method: "POST",
+    url: `/v1/workspaces/${workspaceId}/skus/${skuId}/media-uploads?assetId=${assetId}&role=measurement_evidence&measurementDefinitionId=${definitionId}`,
+    headers: { cookie, "content-type": "image/jpeg" },
+    payload: distinctBytes,
+  });
+  assert.equal(uploaded.statusCode, 201, uploaded.body);
+  const read = await app.inject({
+    url: `/v1/workspaces/${workspaceId}/skus/${skuId}/product-photos/${assetId}/content`,
+    headers: { cookie },
+  });
+  assert.equal(read.statusCode, 200, read.body);
+  assert.equal(read.body.includes("GPSLatitude"), false);
+  assert.equal(read.headers["cache-control"], "private, no-store");
+  return assetId;
+}
 
 function jpegWithGpsMetadata(): Buffer {
   const exif = Buffer.from("Exif\0\0GPSLatitude=35.0;GPSLongitude=139.0", "utf8");

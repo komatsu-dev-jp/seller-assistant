@@ -80,6 +80,9 @@ import {
   resolveStocktakeDiscrepancyRequestSchema,
   restoreMissingCandidateRequestSchema,
   returnOrderRequestSchema,
+  returnCatalogResponseSchema,
+  uploadReceiptEvidenceQuerySchema,
+  receiptEvidenceResponseSchema,
   sessionContextResponseSchema,
   saveShippingMethodRequestSchema,
   selectOrderShippingMethodRequestSchema,
@@ -100,6 +103,10 @@ import {
   teamAssignmentResponseSchema,
   teamMemberResponseSchema,
   teamStateResponseSchema,
+  createTeamChangeRequestSchema,
+  recordTeamChangeEventSchema,
+  teamChangeResponseSchema,
+  teamChangeListResponseSchema,
   updateAccountingProfileRequestSchema,
   updateOrderRegistrationRequestSchema,
   updateShippingPhotoPolicyRequestSchema,
@@ -382,6 +389,91 @@ export function buildApp(options: BuildAppOptions = {}) {
       return reply.code(mapped.status).send(mapped.payload);
     }
   });
+
+  app.get<{ Params: { workspaceId: string } }>(
+    "/v1/workspaces/:workspaceId/team/change-requests",
+    async (request, reply) => {
+      const actor = await authenticate(request.headers);
+      const workspace = workspaceIdSchema.safeParse(request.params.workspaceId);
+      if (!actor) return reply.code(401).send(authenticationError(request.id));
+      if (!workspace.success) return reply.code(400).send(invalidOrderInput(request.id));
+      const denied = actorWorkspaceError(actor, workspace.data, request.id);
+      if (denied) return reply.code(403).send(denied);
+      if (!options.teamRepository) return reply.code(503).send(teamServiceUnavailable(request.id));
+      try {
+        return reply
+          .header("cache-control", "private, no-store")
+          .send(
+            teamChangeListResponseSchema.parse(
+              await options.teamRepository.changes(workspace.data, actor),
+            ),
+          );
+      } catch (error) {
+        const mapped = mapRepositoryError(error, request.id);
+        return reply.code(mapped.status).send(mapped.payload);
+      }
+    },
+  );
+  app.post<{ Params: { workspaceId: string }; Body: unknown }>(
+    "/v1/workspaces/:workspaceId/team/change-requests",
+    async (request, reply) => {
+      const actor = await authenticate(request.headers);
+      const workspace = workspaceIdSchema.safeParse(request.params.workspaceId);
+      const input = createTeamChangeRequestSchema.safeParse(request.body);
+      if (!actor) return reply.code(401).send(authenticationError(request.id));
+      if (!workspace.success || !input.success)
+        return reply.code(400).send(invalidOrderInput(request.id));
+      const denied = actorWorkspaceError(actor, workspace.data, request.id);
+      if (denied) return reply.code(403).send(denied);
+      if (!options.teamRepository) return reply.code(503).send(teamServiceUnavailable(request.id));
+      try {
+        return reply
+          .code(201)
+          .header("cache-control", "private, no-store")
+          .send(
+            teamChangeResponseSchema.parse(
+              await options.teamRepository.requestChange(workspace.data, actor, input.data),
+            ),
+          );
+      } catch (error) {
+        const mapped = mapRepositoryError(error, request.id);
+        return reply.code(mapped.status).send(mapped.payload);
+      }
+    },
+  );
+  app.post<{ Params: { workspaceId: string; requestId: string }; Body: unknown }>(
+    "/v1/workspaces/:workspaceId/team/change-requests/:requestId/events",
+    async (request, reply) => {
+      const actor = await authenticate(request.headers);
+      const workspace = workspaceIdSchema.safeParse(request.params.workspaceId);
+      const requestId = workspaceIdSchema.safeParse(request.params.requestId);
+      const input = recordTeamChangeEventSchema.safeParse(request.body);
+      if (!actor) return reply.code(401).send(authenticationError(request.id));
+      if (!workspace.success || !requestId.success || !input.success)
+        return reply.code(400).send(invalidOrderInput(request.id));
+      const denied = actorWorkspaceError(actor, workspace.data, request.id);
+      if (denied) return reply.code(403).send(denied);
+      if (!options.teamRepository) return reply.code(503).send(teamServiceUnavailable(request.id));
+      try {
+        return reply
+          .code(201)
+          .header("cache-control", "private, no-store")
+          .send(
+            teamChangeResponseSchema.parse(
+              await options.teamRepository.recordChangeEvent(
+                workspace.data,
+                requestId.data,
+                actor,
+                input.data,
+              ),
+            ),
+          );
+      } catch (error) {
+        const mapped = mapRepositoryError(error, request.id);
+        return reply.code(mapped.status).send(mapped.payload);
+      }
+    },
+  );
 
   app.post<{
     Params: { workspaceId: string };
@@ -2164,6 +2256,183 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
   });
 
+  app.post<{ Params: { workspaceId: string }; Querystring: unknown; Body: Buffer }>(
+    "/v1/workspaces/:workspaceId/receipt-evidence",
+    async (request, reply) => {
+      const workspace = workspaceIdSchema.safeParse(request.params.workspaceId);
+      const query = uploadReceiptEvidenceQuerySchema.safeParse(request.query);
+      const actor = await authenticate(request.headers);
+      if (!actor) return reply.code(401).send(authenticationError(request.id));
+      if (!workspace.success || !query.success || !Buffer.isBuffer(request.body))
+        return reply.code(400).send(mediaInputError(request.id));
+      const denied = actorWorkspaceError(actor, workspace.data, request.id);
+      if (denied) return reply.code(403).send(denied);
+      if (!options.p0ItemRepository)
+        return reply.code(503).send(p0ItemServiceUnavailable(request.id));
+      if (!options.mediaStore) return reply.code(503).send(mediaStoreUnavailable(request.id));
+      try {
+        await options.p0ItemRepository.authorizeReceiptEvidence(workspace.data, actor);
+        const inspected = inspectImage(request.body);
+        const extension = inspected.mimeType === "image/jpeg" ? "jpg" : "png";
+        const stored = await options.mediaStore.saveOriginal(
+          `workspaces/${workspace.data}/originals/receipt-${query.data.assetId}.${extension}`,
+          request.body,
+        );
+        try {
+          const result = await options.p0ItemRepository.registerReceiptEvidence(
+            workspace.data,
+            actor,
+            {
+              assetId: query.data.assetId,
+              storageKey: stored.storageKey,
+              sha256: stored.sha256,
+              mimeType: inspected.mimeType,
+              sizeBytes: stored.sizeBytes,
+              width: inspected.width,
+              height: inspected.height,
+            },
+          );
+          return reply
+            .code(201)
+            .header("cache-control", "private, no-store")
+            .send(receiptEvidenceResponseSchema.parse(result));
+        } catch (error) {
+          if (stored.created)
+            await options.mediaStore.removeOriginal(stored.storageKey, stored.sha256);
+          throw error;
+        }
+      } catch (error) {
+        if (error instanceof RepositoryError) {
+          const mapped = mapRepositoryError(error, request.id);
+          return reply.code(mapped.status).send(mapped.payload);
+        }
+        return reply.code(400).send(mediaInputError(request.id));
+      }
+    },
+  );
+
+  app.get<{ Params: { workspaceId: string; assetId: string } }>(
+    "/v1/workspaces/:workspaceId/receipt-evidence/:assetId/content",
+    async (request, reply) => {
+      const workspace = workspaceIdSchema.safeParse(request.params.workspaceId);
+      const asset = workspaceIdSchema.safeParse(request.params.assetId);
+      const actor = await authenticate(request.headers);
+      if (!actor) return reply.code(401).send(authenticationError(request.id));
+      if (!workspace.success || !asset.success)
+        return reply.code(400).send(mediaInputError(request.id));
+      const denied = actorWorkspaceError(actor, workspace.data, request.id);
+      if (denied) return reply.code(403).send(denied);
+      if (!options.p0ItemRepository)
+        return reply.code(503).send(p0ItemServiceUnavailable(request.id));
+      if (!options.mediaStore) return reply.code(503).send(mediaStoreUnavailable(request.id));
+      try {
+        const source = await options.p0ItemRepository.receiptEvidenceContent(
+          workspace.data,
+          asset.data,
+          actor,
+        );
+        const bytes = await options.mediaStore.readSanitizedOriginal(source);
+        const refreshed = await authenticate(request.headers);
+        if (
+          !refreshed ||
+          refreshed.identityId !== actor.identityId ||
+          actorWorkspaceError(refreshed, workspace.data, request.id)
+        )
+          return reply.code(403).send(authenticationError(request.id));
+        await options.p0ItemRepository.receiptEvidenceContent(
+          workspace.data,
+          asset.data,
+          refreshed,
+        );
+        return reply
+          .header("cache-control", "private, no-store")
+          .header("x-content-type-options", "nosniff")
+          .type(source.expectedMimeType)
+          .send(bytes);
+      } catch (error) {
+        if (error instanceof RepositoryError) {
+          const mapped = mapRepositoryError(error, request.id);
+          return reply.code(mapped.status).send(mapped.payload);
+        }
+        return reply.code(503).send(mediaStoreUnavailable(request.id));
+      }
+    },
+  );
+
+  app.get<{ Params: { workspaceId: string } }>(
+    "/v1/workspaces/:workspaceId/inventory/return-catalog",
+    async (request, reply) => {
+      const workspace = workspaceIdSchema.safeParse(request.params.workspaceId);
+      const actor = await authenticate(request.headers);
+      if (!actor) return reply.code(401).send(authenticationError(request.id));
+      if (!workspace.success) return reply.code(400).send(invalidLocationInput(request.id));
+      const denied = actorWorkspaceError(actor, workspace.data, request.id);
+      if (denied) return reply.code(403).send(denied);
+      if (!options.p0ItemRepository)
+        return reply.code(503).send(p0ItemServiceUnavailable(request.id));
+      try {
+        const catalog = await options.p0ItemRepository.returnCatalog(workspace.data, actor);
+        return reply
+          .header("cache-control", "private, no-store")
+          .send(returnCatalogResponseSchema.parse(catalog));
+      } catch (error) {
+        const mapped = mapRepositoryError(error, request.id);
+        return reply.code(mapped.status).send(mapped.payload);
+      }
+    },
+  );
+
+  app.get<{ Params: { workspaceId: string; skuId: string; assetId: string } }>(
+    "/v1/workspaces/:workspaceId/skus/:skuId/product-photos/:assetId/content",
+    async (request, reply) => {
+      const workspace = workspaceIdSchema.safeParse(request.params.workspaceId);
+      const sku = workspaceIdSchema.safeParse(request.params.skuId);
+      const asset = workspaceIdSchema.safeParse(request.params.assetId);
+      const actor = await authenticate(request.headers);
+      if (!actor) return reply.code(401).send(authenticationError(request.id));
+      if (!workspace.success || !sku.success || !asset.success)
+        return reply.code(400).send(mediaInputError(request.id));
+      const denied = actorWorkspaceError(actor, workspace.data, request.id);
+      if (denied) return reply.code(403).send(denied);
+      if (!options.p0ItemRepository)
+        return reply.code(503).send(p0ItemServiceUnavailable(request.id));
+      if (!options.mediaStore) return reply.code(503).send(mediaStoreUnavailable(request.id));
+      try {
+        const source = await options.p0ItemRepository.productPhotoContent(
+          workspace.data,
+          sku.data,
+          asset.data,
+          actor,
+        );
+        const bytes = await options.mediaStore.readSanitizedOriginal(source);
+        const refreshed = await authenticate(request.headers);
+        if (
+          !refreshed ||
+          refreshed.identityId !== actor.identityId ||
+          actorWorkspaceError(refreshed, workspace.data, request.id)
+        )
+          return reply.code(403).send(authenticationError(request.id));
+        await options.p0ItemRepository.productPhotoContent(
+          workspace.data,
+          sku.data,
+          asset.data,
+          refreshed,
+        );
+        return reply
+          .header("cache-control", "private, no-store")
+          .header("x-content-type-options", "nosniff")
+          .type(source.expectedMimeType)
+          .send(bytes);
+      } catch (error) {
+        if (error instanceof RepositoryError) {
+          const mapped = mapRepositoryError(error, request.id);
+          return reply.code(mapped.status).send(mapped.payload);
+        }
+        return reply.code(503).send(mediaStoreUnavailable(request.id));
+      }
+    },
+  );
+
   app.get<{
     Params: { workspaceId: string };
     Reply: LocationNodeResponse[] | ApiError;
@@ -2418,7 +2687,25 @@ export function buildApp(options: BuildAppOptions = {}) {
           source.displayStorageKey,
           source.displaySha256,
         );
-        return reply.header("cache-control", "private, no-store").type(source.mimeType).send(bytes);
+        const refreshed = await authenticate(request.headers);
+        if (
+          !refreshed ||
+          refreshed.identityId !== actor.identityId ||
+          actorWorkspaceError(refreshed, workspace.data, request.id)
+        ) {
+          return reply.code(403).send(authenticationError(request.id));
+        }
+        await repository.approvedLocationPhotoContent(
+          workspace.data,
+          location.data,
+          photo.data,
+          refreshed,
+        );
+        return reply
+          .header("cache-control", "private, no-store")
+          .header("x-content-type-options", "nosniff")
+          .type(source.mimeType)
+          .send(bytes);
       } catch (error) {
         const mapped = mapRepositoryError(error, request.id);
         return reply.code(mapped.status).send(mapped.payload);
@@ -2551,6 +2838,9 @@ export function buildApp(options: BuildAppOptions = {}) {
         const result = await repository.registerMediaAsset(workspace.data, sku.data, actor, {
           assetId: query.data.assetId,
           role: query.data.role,
+          ...(query.data.measurementDefinitionId
+            ? { measurementDefinitionId: query.data.measurementDefinitionId }
+            : {}),
           originalSha256: stored.sha256,
           originalStorageKey: stored.storageKey,
           mimeType: inspected.mimeType,
@@ -2564,6 +2854,9 @@ export function buildApp(options: BuildAppOptions = {}) {
             workspaceId: result.workspaceId,
             skuId: result.skuId,
             role: result.role,
+            ...(result.measurementDefinitionId
+              ? { measurementDefinitionId: result.measurementDefinitionId }
+              : {}),
             originalSha256: result.originalSha256,
             mimeType: result.mimeType,
             sizeBytes: result.sizeBytes,

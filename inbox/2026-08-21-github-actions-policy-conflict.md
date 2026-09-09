@@ -1,8 +1,9 @@
 # 2026-08-21 — GitHub Actionsの自動実行方針
 
-- Status: open
-- Question: 現在のGitHub Actions自動実行を維持するか、手動実行だけへ戻すか。
-- Context: `.github/workflows/ci.yml`は`pull_request`と`main`へのpushで実行する。Draft PR #5の作成時に実行 #32389338067 が自動起動して成功した。一方、`AGENTS.md`と`docs/implementation/zero-cost-guard.md`は外部CIを手動実行だけにする方針を記録している。詳細はGitHub Issue #6を参照する。
-- Owner: ユーザー
-- Next action: 自動実行を維持するか、`workflow_dispatch`だけへ戻すかを選ぶ。選択後にworkflowと方針文書を同じ内容へそろえ、`docs/DECISIONS.md`へ記録する。
-- Resolution: none
+- Status: resolved
+- Question: GitHub Actionsを手動実行だけに固定できているか。
+- Context: 過去には自動実行との食い違いがあったが、現HEADの`.github/workflows/ci.yml`と`.github/workflows/pages.yml`はいずれも`workflow_dispatch`だけである。`AGENTS.md`、`docs/implementation/zero-cost-guard.md`、`docs/DECISIONS.md`の2026-08-20判断も、無料優先のため手動実行だけとする内容で一致している。
+- Owner: none
+- Next action: 利用者への再質問は不要。GitHub Issue #6の外部状態は別途整理するまで未変更のままにする。
+- Resolution: 2026-09-08の現HEAD照合で、手動実行だけに統一済みと確認した。
+- Superseded: 2026-09-09に利用者がPR作成・mergeと、自動CI・Pages公開を明示承認した。公開リポジトリの標準`ubuntu-latest`だけを使う0円境界で、Pull Requestと`main`へのpushを自動実行する。詳細は`docs/DECISIONS.md`の同日判断を正本とする。

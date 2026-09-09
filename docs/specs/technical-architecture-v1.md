@@ -8,16 +8,16 @@
 
 ### 推奨
 
-| 領域 | 推奨 | 理由 | 弱点・確認点 |
-|---|---|---|---|
-| PWA/Web | Next.js 16.3.1 + React 19.2.8 + TypeScript 5.9.3 | PC業務画面と、iPhoneのホーム画面へ追加できる現場画面を同じ技術で作れ、Windowsだけで検証できる | iPhone Safari固有のカメラ・保存制限は実機確認が必要 |
-| API | Node.js + TypeScriptの独立API | PWAとPC画面で同じ業務ルールを使える | Webだけより構成要素が増える |
-| 契約 | OpenAPI + JSON Schema | APIの入出力を機械検証できる | 生成物の版管理が必要 |
-| DB | PostgreSQL | 取引、在庫、監査、権限、集計を一貫して扱える | 運用・バックアップが必要 |
-| 認証/DB/Storage | ローカルのPostgreSQLと開発用ファイル保存adapter | 無料のオープンソース構成で安全境界を検証できる | 本番サービス選定・接続・公開は今回対象外 |
-| 画像 | 非公開Storage契約 + ローカル開発adapter | 本番の署名URL境界を保ちつつ、検証は無料で行える | 本番保存費・転送費の選定は将来の再承認事項 |
-| 非同期処理 | PostgreSQL outbox + worker | 外部同期やAI処理の再試行を、追加の大型基盤なしで開始できる | 規模増加時は専用キューへ移行が必要 |
-| AI | 無料の決定的テンプレート + 将来のprovider adapter | 候補/確定分離を0円で検証し、有料AIなしでもP0を完了できる | 外部AI接続は将来の明示承認事項 |
+| 領域            | 推奨                                              | 理由                                                                                          | 弱点・確認点                                        |
+| --------------- | ------------------------------------------------- | --------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| PWA/Web         | Next.js 16.3.1 + React 19.2.8 + TypeScript 5.9.3  | PC業務画面と、iPhoneのホーム画面へ追加できる現場画面を同じ技術で作れ、Windowsだけで検証できる | iPhone Safari固有のカメラ・保存制限は実機確認が必要 |
+| API             | Node.js + TypeScriptの独立API                     | PWAとPC画面で同じ業務ルールを使える                                                           | Webだけより構成要素が増える                         |
+| 契約            | OpenAPI + JSON Schema                             | APIの入出力を機械検証できる                                                                   | 生成物の版管理が必要                                |
+| DB              | PostgreSQL                                        | 取引、在庫、監査、権限、集計を一貫して扱える                                                  | 運用・バックアップが必要                            |
+| 認証/DB/Storage | ローカルのPostgreSQLと開発用ファイル保存adapter   | 無料のオープンソース構成で安全境界を検証できる                                                | 本番サービス選定・接続・公開は今回対象外            |
+| 画像            | 非公開Storage契約 + ローカル開発adapter           | 本番の署名URL境界を保ちつつ、検証は無料で行える                                               | 本番保存費・転送費の選定は将来の再承認事項          |
+| 非同期処理      | PostgreSQL outbox + worker                        | 外部同期やAI処理の再試行を、追加の大型基盤なしで開始できる                                    | 規模増加時は専用キューへ移行が必要                  |
+| AI              | 無料の決定的テンプレート + 将来のprovider adapter | 候補/確定分離を0円で検証し、有料AIなしでもP0を完了できる                                      | 外部AI接続は将来の明示承認事項                      |
 
 ### 代替案
 
@@ -326,7 +326,7 @@ validate(job, result) -> checks
 
 - Mac/Xcode/Apple Developer契約は不要。Windowsでproduction buildを起動し、Playwright（ブラウザを自動操作する検査）でPWA画面、manifest、Service Worker、オフラインfallbackを検証する。
 - 対応iPhoneではSafariのホーム画面追加、カメラ写真、商品/場所の二重確認、手入力fallback、同期待ち表示を人が確認し、機種、iOS版、確認者、日時、結果を記録する。
-- GitHub Actionsは `workflow_dispatch`（利用者が明示的に押した場合だけ実行）に限定する。今回の検証では実行せず、外部計算費用を0円にする。
+- GitHub Actionsは公開リポジトリの標準`ubuntu-latest`だけを使い、Pull Requestと`main`へのpushで自動実行する。`workflow_dispatch`も再実行用に残す。larger runner、macOS runner、有料Action、private repositoryの課金枠は使わず、外部計算費用を0円にする。
 - Shops CSV公式根拠: https://support.mercari-shops.com/hc/ja/articles/8859698858649- / https://support.mercari-shops.com/hc/ja/articles/10202904748057-
 
 ### CIゲート候補

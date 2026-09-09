@@ -60,6 +60,21 @@
   font-size: 19px;
   margin: 0;
 }
+.scopeBadge {
+  flex: none;
+  margin-left: auto;
+  padding: 5px 8px;
+  color: #805600;
+  background: #fff5d9;
+  border: 1px solid #e8c871;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.frame > header .scopeBadge + .frameTools {
+  margin-left: 0;
+}
 .frame > header span {
   margin-left: auto;
 }

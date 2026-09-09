@@ -1078,7 +1078,10 @@ function LivePcShell({
   children: ReactNode;
 }) {
   return (
-    <PcCanvas className={`${pcStyles.app} ${pcStyles.utilityApp} ${pcStyles[`screen${n}`] ?? ""}`}>
+    <PcCanvas
+      className={`${pcStyles.app} ${pcStyles.utilityApp} ${pcStyles[`screen${n}`] ?? ""}`}
+      screenNumber={n}
+    >
       <header className={pcStyles.utilityHeader}>
         <button type="button" aria-label="サイドバーを開く" className={pcStyles.utilitySideToggle}>
           ☰

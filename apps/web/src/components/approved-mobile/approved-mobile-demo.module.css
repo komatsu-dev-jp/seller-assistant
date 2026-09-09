@@ -1212,6 +1212,19 @@
   color: var(--blue);
 }
 
+.demoNoticeP1 {
+  min-height: 28px;
+  padding: 4px 9px;
+  color: #755215;
+  background: #fff7df;
+  border: 1px solid #efd28b;
+  border-radius: 9px;
+}
+
+.demoNoticeP1 span:first-child {
+  color: #8a5b00;
+}
+
 .titleBlock {
   padding: 22px 2px 18px;
 }

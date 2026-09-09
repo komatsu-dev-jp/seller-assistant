@@ -4,6 +4,76 @@ import { describe, expect, it } from "vitest";
 
 const migrationPath = fileURLToPath(new URL("../migrations/0001_p0_core.sql", import.meta.url));
 const sql = readFileSync(migrationPath, "utf8");
+describe("P19 exact team assignment versions", () => {
+  const exact = readFileSync(
+    new URL("../migrations/0046_exact_team_assignment_versions.sql", import.meta.url),
+    "utf8",
+  );
+  it("revokes the old timestamp signature and checks required args before locks", () => {
+    expect(exact).toContain("timestamptz,timestamptz,text,uuid) from public,resale_app_runtime");
+    expect(exact).toContain(
+      "or expected_version is null or requested_reason is null or requested_key is null",
+    );
+    expect(exact).toContain(
+      "or requested_action is null or requested_comment is null or requested_key is null",
+    );
+    expect(exact).toContain("source.revision is distinct from expected_revision");
+  });
+  it("compares raw-precision digests and checks real time after obtaining the row lock", () => {
+    expect(exact).toContain("extract(epoch from (source->>'starts_at')::timestamptz)");
+    expect(exact).toContain("context->>'version' is distinct from expected_version");
+    expect(exact).toContain("target->>'version' is distinct from source.target_version");
+    expect(exact.indexOf("checked_at := clock_timestamp()")).toBeGreaterThan(
+      exact.indexOf("for update"),
+    );
+    expect(exact).toContain("source.expires_at <= checked_at");
+  });
+});
+describe("P19 quarantine location lifecycle", () => {
+  const lifecycle = readFileSync(
+    new URL("../migrations/0045_quarantine_location_lifecycle.sql", import.meta.url),
+    "utf8",
+  );
+  it("allows empty quarantine locations to close without weakening stocked-location or scan guards", () => {
+    expect(lifecycle).toContain("check (purpose <> 'return_quarantine' or can_store_inventory)");
+    expect(lifecycle).toContain("occupied location cannot be suspended or retired");
+    expect(lifecycle).toContain("status not in ('shipped','lost','disposed')");
+    expect(lifecycle).toContain("destination.state <> 'active'");
+    expect(lifecycle).toContain("for share");
+    expect(lifecycle).not.toMatch(/update\s+(?:public\.)?(?:inventory_unit|location_node)\s+set/iu);
+  });
+});
+const receiptOriginalSql = readFileSync(
+  new URL("../migrations/0041_purchase_receipt_originals.sql", import.meta.url),
+  "utf8",
+);
+const dedicatedMeasurementSql = readFileSync(
+  new URL("../migrations/0042_dedicated_measurement_evidence.sql", import.meta.url),
+  "utf8",
+);
+
+describe("P18 receipt and measurement originals", () => {
+  it("stores private receipt originals with forced tenant isolation and no runtime updates", () => {
+    expect(receiptOriginalSql).toContain("force row level security");
+    expect(receiptOriginalSql).toContain("foreign key (workspace_id, evidence_asset_id)");
+    expect(receiptOriginalSql).toContain("grant select, insert on receipt_media_asset");
+    expect(receiptOriginalSql).not.toMatch(/grant[^;]*update/iu);
+    expect(receiptOriginalSql).toContain("receipt_original_one_confirmation");
+  });
+  it("guards only new measurement records without rewriting legacy evidence", () => {
+    expect(dedicatedMeasurementSql).toContain("before insert on measurement_attempt");
+    expect(dedicatedMeasurementSql).toContain("evidence.role <> 'measurement_evidence'");
+    expect(dedicatedMeasurementSql).toContain(
+      "evidence.measurement_definition_id <> new.definition_id",
+    );
+    expect(dedicatedMeasurementSql).toContain("one attempt only");
+    expect(dedicatedMeasurementSql).toContain("pg_advisory_xact_lock");
+    expect(dedicatedMeasurementSql).toContain("new.attempt <> coalesce");
+    expect(dedicatedMeasurementSql).not.toMatch(
+      /update\s+(media_asset|measurement_attempt)\s+set/iu,
+    );
+  });
+});
 const workflowMigrationPath = fileURLToPath(
   new URL("../migrations/0002_p0_workflow.sql", import.meta.url),
 );

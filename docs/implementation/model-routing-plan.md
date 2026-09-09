@@ -302,3 +302,47 @@
 - 画面検証: 390×844の画面04は擬似status barなし、header `y=0 / h=56`、本文`y=56 / h=788`で、修正前より37pxを本文へ戻した。画面01は擬似表示なし、本文`y=0 / h=844`、上下padding 8px。全75 routeは横overflow、縦overflow、clipped interactive、external resourceが各0件。
 - 独立判定: 別Solは初回PASS（Critical 0 / High 0 / Medium 0 / Low 1）。広すぎるCSS回帰testだけをLuna maxが対象2 test files内で限定修正し、別Solの再確認でLowをClosed、Critical / High / Medium / Low各0、最終PASSとした。
 - 状態: source・自動検証・ローカル画面検証・独立レビューを完了。限定commit、既存Draft PR、GitHub Pages確認版の更新へ進める。実iPhone Safariのsafe-areaとホーム画面表示は利用者確認まで未確認として残す。
+
+## 2026-09-08 P16-A 商品調査の本人操作支援
+
+- 目的と参照: AC-067とTA-048に従い、実運用の商品調査画面へ、確認済み商品情報から作る検索語とCodex用質問文の候補、編集、コピー、本人クリックによる公式メルカリ検索を接続する。参照は`mvp-product-spec-v1.md`、`approved-ui-integration-addendum-v1.md`、`approved-ui-packets-v1.md`、PC02 v3。
+- リスク: 中程度。外部サイトを開くブラウザ操作とクリップボードを扱うが、API、DB、権限、金額確定、業務状態は変更しない。
+- 実装担当: `gpt-6-astra` / `low` / `p16_ac067_handoff`。商品調査パネル、専用helper、対応testだけの唯一writerとする。
+- 確認担当: 実装担当とは別実行の`gpt-6-astra` / `low`による読み取り専用レビューと、ルート担当による自動試験・実ブラウザ確認。
+- 実装運転モード: `astra-centric`。親セッションの実モデルと利用単価は取得できないため未確認・未計測とし、委任準備、再読、統合、検証を含む総消費は完了後に定性的に振り返る。
+- モデル切替ゲート: 開始前PASS。API、DB、契約、認証、権限、金額確定、外部自動通信、承認済み静的画面の変更が必要になった場合、または原因不明の失敗が出た場合は変更を広げずルートへ戻し、Astra medium以上を再評価する。
+- 変更可能: `apps/web/src/components/product-research-panel.tsx`、必要な`apps/web/src/lib/product-research-handoff.ts`とtest、`apps/web/src/app/globals.css`、対象source-contract test、検証後の証拠文書。
+- 変更禁止: API、DB、contracts、migration、P12商品テンプレート、承認済み静的mobile/PC demo、外部API、自動送信、自動取得、スクレイピング、RPA、Cookie共有、価格自動確定、PR ready化・merge。
+- 実装内容: 確認済み属性を優先し、なければ不採用でない候補から検索語を安定順で正規化・重複除去する。利用者の編集を再読込で上書きしない。質問文は確認済み事実と検索語だけから作り、価格を未確認の候補と明記する。検索URLは`https://jp.mercari.com/search?keyword=<encoded>`だけを本人クリック時に`noopener,noreferrer`で開く。コピー失敗を成功表示せず、空検索語では外部を開かない。P06中は全操作を表示・実行しない。
+- 受け入れ条件: 検索語と質問文を編集・コピーでき、成功と失敗を正しく表示する。本人クリック前の外部通信0、自動Codex送信0、許可外host 0、未確認価格の自動確定0、pilot中の外部操作0。390/768/1440pxで横あふれ0、主要操作44px以上、キーボード操作可能とする。
+- 検証: helper単体test、source-contract test、対象Vitest、format/lint/typecheck、root `npm.cmd run check`、loopback限定の実ブラウザで通常時とpilot時を確認し、凍結差分を別実行でレビューする。
+- 停止・昇格条件: 外部検索結果の取得、Codex接続、価格決定、API/DB保存、P12項目判断、承認済み静的画面の変更が必要なら停止する。クリップボード非対応時は失敗を明示し、別の未承認fallbackを独断で追加しない。
+- 状態: 実装中。AC/TA監査は完了し、GitHub Actionsの手動実行方針は現HEADと文書で一致した。P12の2判断、PC29文言、人手4gateは別の未解決項目として保持する。
+
+## 2026-09-08 P17 TA-014 通常バックアップ復元の限定修正
+
+- 目的と参照: `technical-architecture-v1.md`のTA-014と再開中Goalに従い、架空データの通常`pg_dump`→空DBへの`pg_restore`を成功させ、件数・値・関連・ハッシュ、原本写真メタデータ、監査履歴、復元後権限を照合する。
+- 基準測定: PostgreSQL 18.6の専用loopback環境で、70 tables / workspace 1 / SKU 2 / media 1 / audit 3を持つ復元元から作成したcustom dumpは成功したが、空DBへの通常復元は`inventory_unit`のCOPY中に`app_code_check_digit(text) does not exist`で終了コード1となった。
+- リスク: 重大。DB復元、既存データ、関数探索経路、権限と監査証拠へ関係するため。
+- 実装担当: ルートCodexを唯一writerとし、原因調査、失敗する回帰test、追加migration、実PostgreSQL照合だけを担当する。旧migrationの書換えやUI変更は行わない。
+- 確認担当: 実装凍結後、実装担当とは別実行の`gpt-6-astra` / `medium`が読み取り専用で差分、復元証拠、権限・安全境界を確認する。
+- 実装運転モード: `astra-centric`。定型抽出のためだけに別writerを増やさず、独立レビューにだけ別実行を使う。
+- 変更可能: 新しい前進migration、DB migration contract test、通常復元の再発防止test/試験スクリプト、upgrade PostgreSQL試験、今回に必要な実装・終了証拠文書。
+- 変更禁止: `0015_shipping_assignment_checked_codes.sql`を含む既存migration、Web/モバイル/PC UI、API業務契約、production DB、外部Storage、GitHub push/Pages/PR更新、既存未送信差分の破棄。
+- 原因仮説: 0015で作られたSQL関数が、dump復元時の制限された`search_path`下で別のpublic関数を非修飾名で呼ぶため、COPY時の関数inliningで探索できない。追加migrationで固定`search_path`とschema修飾を与えるまで仮説として扱う。
+- 受け入れ条件: 修正前に回帰testがFAILし、追加migration後にPASSする。通常dump/restoreが終了コード0となり、全public tableの集合、件数、正規化した全行値のSHA-256、外部キー定義・検証状態、media原本参照/ハッシュ、audit履歴が一致する。runtime roleはLOGIN/SUPERUSER/BYPASSRLSを持たず、復元先で必要権限とRLS強制が維持される。
+- 検証: 対象Vitest、fresh PostgreSQL、upgrade PostgreSQL、修正前後の通常dump/restore、破損dump・非空復元先・同一DB・権限不足など既存/追加failure checks、root `npm.cmd run check`、`git diff --check`、別Astra mediumレビュー。
+- 停止・昇格条件: 2ラウンドで合格しない、原因が関数探索以外、既存migration変更や本番/外部書込みが必要、対象外機能の不具合を検出、検証用DBを使い捨てと確認できない場合は範囲を広げず終了報告へ移る。
+- Round 1結果: 修正前FAILを再現し、forward migration 0040、事前に失敗する回帰test、通常restore scriptを追加。正常restore、fresh/upgrade、root checkをPASSした。
+- 初回独立レビュー: Astra mediumはCritical 0 / High 1 / Medium 1 / Low 2でFAIL。継承`PG*`による接続先分離をHigh、生stderrの行値露出可能性をMedium、media linkとsequence状態をLowとした。
+- Round 2結果: 数値loopback・安全な接続識別子・query/hash拒否、全継承`PG*`除去、stderr秘匿、media realpath、sequence `is_called`、workspace別RLS件数を追加。正常restoreとjunction拒否、50 files / 431 testsのroot checkをPASSした。
+- 最終独立レビュー: 同じAstra mediumがPASS。Critical 0 / High 0 / Medium 0 / Low 1。残るLowはIPv6形式が安全側に接続失敗する互換性で、正式手順を実証済みIPv4 `127.0.0.1`へ限定する。
+- 状態: P17完了。TA-014 PASS。TA-026は実providerの頻度・RPO/RTO未計測のためNOT_RUN/partial。2ラウンドと1回+再レビューの上限を使い切り、追加実装へ拡張しない。
+
+## 2026-09-09 P20 P0最終候補
+
+- 実装運転モード: `cost-optimized`。軽微で範囲が明確な商品写真権限の回帰修正は`gpt-5.6-luna` / `max`へ限定し、DB復元・在庫・担当変更など重大領域は上位モデルで実装済みの差分と独立レビュー証拠を再利用した。
+- 最終候補は63 test files / 580 tests、fresh・upgrade・通常restore、承認127画面、live 10 route×3幅を同一差分でPASSした。
+- 独立再レビューはCritical 0 / High 0 / P0阻害Medium 0 / Low 2。Lowは正式なIPv4手順と未公開migration一括適用では現在のP0を止めないため、追加の高コスト担当は増やさず終了条件を満たした。
+- P0全94項目のうち83項目は証拠付きPASS、残り11項目は実iPhone・物理印刷・公式Money Forward・固定10商品・利用者判断が必要な`WAITING_HUMAN`。Codex側の未完了は0項目。
+- commit、push、PR ready化、merge、Pages更新、本番公開、外部runtime API、有料サービスは行わない。

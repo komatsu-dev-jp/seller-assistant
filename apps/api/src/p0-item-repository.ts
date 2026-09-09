@@ -24,6 +24,8 @@ import {
   type ProductAttributeConfirmationResponse,
   type ProductResearchResponse,
   type PutawayCatalogResponse,
+  type ReturnCatalogResponse,
+  type ReceiptEvidenceResponse,
   type PilotRunResponse,
   type RecordPilotExceptionRequest,
   type StartPilotRunRequest,
@@ -33,6 +35,17 @@ import postgres from "postgres";
 
 import { recordActivePilotManualCorrection } from "./pilot-manual-correction.js";
 import { RepositoryError, type RequestActor } from "./repository.js";
+import type { SanitizedOriginalReadRequest } from "./local-media-store.js";
+
+export interface RegisterReceiptEvidence {
+  assetId: string;
+  storageKey: string;
+  sha256: string;
+  mimeType: "image/jpeg" | "image/png";
+  sizeBytes: number;
+  width: number;
+  height: number;
+}
 
 export interface P0ItemRepository {
   createItem(
@@ -66,6 +79,24 @@ export interface P0ItemRepository {
   ): Promise<LocationNodeResponse>;
   listLocations(workspaceId: string, actor: RequestActor): Promise<LocationNodeResponse[]>;
   putawayCatalog(workspaceId: string, actor: RequestActor): Promise<PutawayCatalogResponse>;
+  returnCatalog(workspaceId: string, actor: RequestActor): Promise<ReturnCatalogResponse>;
+  productPhotoContent(
+    workspaceId: string,
+    skuId: string,
+    assetId: string,
+    actor: RequestActor,
+  ): Promise<SanitizedOriginalReadRequest>;
+  authorizeReceiptEvidence(workspaceId: string, actor: RequestActor): Promise<void>;
+  registerReceiptEvidence(
+    workspaceId: string,
+    actor: RequestActor,
+    input: RegisterReceiptEvidence,
+  ): Promise<ReceiptEvidenceResponse>;
+  receiptEvidenceContent(
+    workspaceId: string,
+    assetId: string,
+    actor: RequestActor,
+  ): Promise<SanitizedOriginalReadRequest>;
   captureTasks(workspaceId: string, actor: RequestActor): Promise<CaptureTaskResponse[]>;
   createIdentityCandidate(
     workspaceId: string,
@@ -129,6 +160,7 @@ interface P0ItemRow {
   location_label_version: number | null;
   receipt_id: string;
   receipt_reference: string;
+  receipt_evidence_asset_id: string | null;
   purchased_at: Date;
   allocated_cost_minor: number;
   photo_asset_ids: string[];
@@ -158,6 +190,7 @@ interface LocationRow {
   name: string;
   depth: number;
   can_store_inventory: boolean;
+  purpose: "general" | "return_quarantine";
   single_item_only: boolean;
   allow_mixed_sku: boolean;
   max_units: number | null;
@@ -269,6 +302,7 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
       return await this.sql.begin(async (transaction) => {
         await setWorkspace(transaction, workspaceId);
         await requireManagementRole(transaction, workspaceId, actor.identityId);
+        await transaction`select pg_advisory_xact_lock(hashtext(${workspaceId}))`;
         const replay = await transaction<
           Array<{ result_reference_id: string; payload_hash: string }>
         >`
@@ -283,9 +317,15 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
           return requireP0Item(transaction, workspaceId, replay[0].result_reference_id);
         }
 
-        await transaction`select pg_advisory_xact_lock(hashtext(${workspaceId}))`;
         const measurementTemplate =
           listingPrepPilotMeasurementTemplates[input.measurementTemplateId];
+        if (input.receiptEvidenceAssetId) {
+          const source = await transaction`
+            select id from receipt_media_asset where workspace_id = ${workspaceId} and id = ${input.receiptEvidenceAssetId}
+          `;
+          if (!source[0])
+            throw new RepositoryError("forbidden", "The confirmed receipt evidence is unavailable");
+        }
         let pilotRun:
           | {
               protocol_version: PilotRunResponse["protocolVersion"];
@@ -455,10 +495,10 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
         await transaction`
           insert into receipt (
             id, workspace_id, purchase_batch_id, receipt_reference, amount_minor,
-            confirmed_by, confirmed_at
+            confirmed_by, confirmed_at, evidence_asset_id
           ) values (
             ${receiptId}, ${workspaceId}, ${purchaseBatchId}, ${input.receiptReference},
-            ${input.receiptAmountMinor}, ${actor.identityId}, ${input.purchasedAt}
+            ${input.receiptAmountMinor}, ${actor.identityId}, ${input.purchasedAt}, ${input.receiptEvidenceAssetId ?? null}
           )
         `;
         await transaction`
@@ -497,8 +537,8 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
           ) values (
             ${workspaceId}, ${actor.identityId}, 'purchase.confirmed', 'product_sku', ${skuId},
             ${["sku_code", "inventory_number", "allocated_cost_minor"]},
-            ${transaction.json({ confirmation: { by: "human" }, source: "receipt_reference" })},
-            ${[receiptId, inventoryUnitId]}, 'receipt_and_cost_human_confirmed', ${actor.identityId}
+            ${transaction.json({ confirmation: { by: "human" }, source: input.receiptEvidenceAssetId ? "private_receipt_original" : "receipt_reference" })},
+            ${[receiptId, inventoryUnitId, ...(input.receiptEvidenceAssetId ? [input.receiptEvidenceAssetId] : [])]}, 'receipt_and_cost_human_confirmed', ${actor.identityId}
           )
         `;
         await transaction`
@@ -840,11 +880,11 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
         await transaction`
           insert into location_node (
             id, workspace_id, parent_id, code, name, depth, can_store_inventory,
-            single_item_only, allow_mixed_sku, max_units
+            single_item_only, allow_mixed_sku, max_units, purpose
           ) values (
             ${locationId}, ${workspaceId}, ${input.parentId}, ${checkedCode}, ${input.name},
             ${depth}, ${input.canStoreInventory}, ${input.singleItemOnly},
-            ${input.allowMixedSku}, ${input.maxUnits}
+            ${input.allowMixedSku}, ${input.maxUnits}, ${input.purpose ?? "general"}
           )
         `;
         await transaction`
@@ -901,10 +941,24 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
         const role = roles[0]?.role;
         if (!role) throw new RepositoryError("forbidden", "Putaway role is required");
         const inventory = await transaction<
-          Array<{ inventory_number: string; label_version: number }>
+          Array<{
+            inventory_number: string;
+            label_version: number;
+            sku_id: string;
+            title: string;
+            photo_id: string | null;
+          }>
         >`
-          select unit.inventory_number, label.version as label_version
+          select unit.inventory_number, label.version as label_version, unit.sku_id, sku.title,
+                 photo.id as photo_id
           from inventory_unit unit
+          join product_sku sku on sku.workspace_id = unit.workspace_id and sku.id = unit.sku_id
+          left join lateral (
+            select asset.id from media_asset asset
+            where asset.workspace_id = unit.workspace_id and asset.sku_id = unit.sku_id
+              and asset.role = 'front' and asset.mime_type in ('image/jpeg','image/png')
+            order by asset.created_at desc, asset.id desc limit 1
+          ) photo on true
           join inventory_label label
             on label.workspace_id = unit.workspace_id and label.target_type = 'inventory_unit'
            and label.target_id = unit.id and label.active
@@ -918,15 +972,29 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
           order by unit.created_at, unit.inventory_number
         `;
         const locations = await transaction<
-          Array<{ code: string; name: string; label_version: number }>
+          Array<{
+            id: string;
+            code: string;
+            name: string;
+            label_version: number;
+            photo_id: string | null;
+            purpose: "general" | "return_quarantine";
+          }>
         >`
-          select location.code, location.name, label.version as label_version
+          select location.id, location.code, location.name, label.version as label_version,
+                 photo.id as photo_id, location.purpose
           from location_node location
+          left join lateral (
+            select id from location_photo
+            where workspace_id = location.workspace_id and location_id = location.id
+              and review_state = 'approved' and derivative_storage_key is not null
+            order by reviewed_at desc, id desc limit 1
+          ) photo on true
           join inventory_label label
             on label.workspace_id = location.workspace_id and label.target_type = 'location'
            and label.target_id = location.id and label.active
           where location.workspace_id = ${workspaceId} and location.state = 'active'
-            and location.can_store_inventory
+            and location.can_store_inventory and location.purpose = 'general'
             and (
               ${role} in ('owner', 'inventory_manager')
               or has_active_work_assignment(
@@ -941,13 +1009,263 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
             inventoryNumber: row.inventory_number,
             labelVersion: row.label_version,
             status: "putaway_pending" as const,
+            skuId: row.sku_id,
+            title: row.title,
+            productPhotoUrl: row.photo_id
+              ? `/v1/workspaces/${workspaceId}/skus/${row.sku_id}/product-photos/${row.photo_id}/content`
+              : null,
           })),
           locations: locations.map((row) => ({
             code: row.code,
             name: row.name,
             labelVersion: row.label_version,
+            locationId: row.id,
+            purpose: row.purpose,
+            approvedPhotoUrl: row.photo_id
+              ? `/v1/workspaces/${workspaceId}/locations/${row.id}/photos/${row.photo_id}/content`
+              : null,
           })),
           loadedAt: new Date().toISOString(),
+        };
+      });
+    } catch (error) {
+      throw normalizeP0ItemError(error);
+    }
+  }
+
+  async authorizeReceiptEvidence(workspaceId: string, actor: RequestActor): Promise<void> {
+    try {
+      await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId);
+        await requireManagementRole(transaction, workspaceId, actor.identityId);
+      });
+    } catch (error) {
+      throw normalizeP0ItemError(error);
+    }
+  }
+
+  async registerReceiptEvidence(
+    workspaceId: string,
+    actor: RequestActor,
+    input: RegisterReceiptEvidence,
+  ): Promise<ReceiptEvidenceResponse> {
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId);
+        await requireManagementRole(transaction, workspaceId, actor.identityId);
+        await transaction`select pg_advisory_xact_lock(hashtext(${workspaceId}), hashtext(${input.assetId}))`;
+        const previous = await transaction<
+          Array<{ original_sha256: string; original_storage_key: string; confirmed_at: Date }>
+        >`
+          select original_sha256, original_storage_key, confirmed_at from receipt_media_asset
+          where workspace_id = ${workspaceId} and id = ${input.assetId}
+        `;
+        let confirmedAt = previous[0]?.confirmed_at;
+        if (
+          previous[0] &&
+          (previous[0].original_sha256 !== input.sha256 ||
+            previous[0].original_storage_key !== input.storageKey)
+        ) {
+          throw new RepositoryError("conflict", "The receipt asset has different immutable bytes");
+        }
+        if (!previous[0]) {
+          const inserted = await transaction<Array<{ confirmed_at: Date }>>`
+            insert into receipt_media_asset (id, workspace_id, original_storage_key, original_sha256,
+              mime_type, size_bytes, width, height, confirmed_by)
+            values (${input.assetId}, ${workspaceId}, ${input.storageKey}, ${input.sha256},
+              ${input.mimeType}, ${input.sizeBytes}, ${input.width}, ${input.height}, ${actor.identityId})
+            returning confirmed_at
+          `;
+          confirmedAt = inserted[0]?.confirmed_at;
+          await transaction`
+            insert into audit_event(workspace_id, actor_id, action, target_type, target_id,
+              field_names, redacted_changes, reference_ids, reason_code, approved_by)
+            values (${workspaceId}, ${actor.identityId}, 'receipt.original.confirmed', 'receipt_media_asset', ${input.assetId},
+              array['private_original'], ${transaction.json({ source: "human_confirmed_private_bytes" })},
+              ${[input.assetId]}, 'receipt_original_human_confirmed', ${actor.identityId})
+          `;
+        }
+        if (!confirmedAt)
+          throw new RepositoryError("database_error", "Receipt insert returned no timestamp");
+        return {
+          assetId: input.assetId,
+          workspaceId,
+          mimeType: input.mimeType,
+          sizeBytes: input.sizeBytes,
+          width: input.width,
+          height: input.height,
+          confirmedAt: confirmedAt.toISOString(),
+          contentUrl: `/v1/workspaces/${workspaceId}/receipt-evidence/${input.assetId}/content`,
+        };
+      });
+    } catch (error) {
+      throw normalizeP0ItemError(error);
+    }
+  }
+
+  async receiptEvidenceContent(
+    workspaceId: string,
+    assetId: string,
+    actor: RequestActor,
+  ): Promise<SanitizedOriginalReadRequest> {
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId);
+        await requireManagementRole(transaction, workspaceId, actor.identityId);
+        const rows = await transaction<
+          Array<{
+            original_storage_key: string;
+            original_sha256: string;
+            mime_type: "image/jpeg" | "image/png";
+            size_bytes: number;
+            width: number;
+            height: number;
+          }>
+        >`
+          select original_storage_key, original_sha256, mime_type, size_bytes, width, height
+          from receipt_media_asset where workspace_id = ${workspaceId} and id = ${assetId}
+        `;
+        const row = rows[0];
+        if (!row) throw new RepositoryError("forbidden", "Receipt evidence is unavailable");
+        return {
+          storageKey: row.original_storage_key,
+          expectedSha256: row.original_sha256,
+          expectedMimeType: row.mime_type,
+          expectedSizeBytes: row.size_bytes,
+          expectedWidth: row.width,
+          expectedHeight: row.height,
+        };
+      });
+    } catch (error) {
+      throw normalizeP0ItemError(error);
+    }
+  }
+
+  async returnCatalog(workspaceId: string, actor: RequestActor): Promise<ReturnCatalogResponse> {
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId);
+        await requireManagementRole(transaction, workspaceId, actor.identityId);
+        const rows = await transaction<
+          Array<{
+            order_id: string;
+            order_number: string;
+            order_state: "shipped" | "returned";
+            sku_id: string;
+            title: string;
+            inventory_unit_id: string;
+            inventory_number: string;
+            inventory_status:
+              "shipped" | "quarantined" | "available" | "disposal_pending" | "putaway_pending";
+            inventory_label_version: number | null;
+            movement_seq: number;
+            location_id: string | null;
+            location_code: string | null;
+            location_label_version: number | null;
+          }>
+        >`
+          select orders.id as order_id, orders.order_number, orders.state as order_state,
+                 unit.sku_id, sku.title, unit.id as inventory_unit_id, unit.inventory_number,
+                 unit.status as inventory_status, inventory_label.version as inventory_label_version,
+                 unit.movement_seq::integer as movement_seq, unit.location_id,
+                 location.code as location_code, location_label.version as location_label_version
+          from sales_order orders
+          join order_allocation allocation on allocation.workspace_id = orders.workspace_id
+            and allocation.order_id = orders.id and allocation.active
+          join inventory_unit unit on unit.workspace_id = allocation.workspace_id and unit.id = allocation.inventory_unit_id
+          join product_sku sku on sku.workspace_id = unit.workspace_id and sku.id = unit.sku_id
+          left join location_node location on location.workspace_id = unit.workspace_id and location.id = unit.location_id
+          left join inventory_label inventory_label on inventory_label.workspace_id = unit.workspace_id
+            and inventory_label.target_type = 'inventory_unit' and inventory_label.target_id = unit.id and inventory_label.active
+          left join inventory_label location_label on location_label.workspace_id = unit.workspace_id
+            and location_label.target_type = 'location' and location_label.target_id = location.id and location_label.active
+          where orders.workspace_id = ${workspaceId} and orders.state in ('shipped','returned')
+            and unit.status in ('shipped','quarantined','available','disposal_pending','putaway_pending')
+          order by orders.order_number, orders.id
+        `;
+        return {
+          workspaceId,
+          loadedAt: new Date().toISOString(),
+          orders: rows.map((row) => ({
+            orderId: row.order_id,
+            orderNumber: row.order_number,
+            orderState: row.order_state,
+            skuId: row.sku_id,
+            title: row.title,
+            inventoryUnitId: row.inventory_unit_id,
+            inventoryNumber: row.inventory_number,
+            inventoryStatus: row.inventory_status,
+            inventoryLabelVersion: row.inventory_label_version,
+            movementSequence: row.movement_seq,
+            locationId: row.location_id,
+            locationCode: row.location_code,
+            locationLabelVersion: row.location_label_version,
+            quarantined: row.inventory_status === "quarantined",
+          })),
+        };
+      });
+    } catch (error) {
+      throw normalizeP0ItemError(error);
+    }
+  }
+
+  async productPhotoContent(
+    workspaceId: string,
+    skuId: string,
+    assetId: string,
+    actor: RequestActor,
+  ): Promise<SanitizedOriginalReadRequest> {
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId);
+        const rows = await transaction<
+          Array<{
+            original_storage_key: string;
+            original_sha256: string;
+            mime_type: "image/jpeg" | "image/png";
+            size_bytes: number;
+            width: number;
+            height: number;
+          }>
+        >`
+          select asset.original_storage_key, asset.original_sha256, asset.mime_type,
+                 asset.size_bytes, asset.width, asset.height
+          from media_asset asset
+          join workspace_membership membership on membership.workspace_id = asset.workspace_id
+            and membership.identity_id = ${actor.identityId} and membership.active
+          where asset.workspace_id = ${workspaceId} and asset.sku_id = ${skuId} and asset.id = ${assetId}
+            and asset.mime_type in ('image/jpeg','image/png')
+            and (
+              (
+                membership.role in ('owner','inventory_manager')
+                and asset.role in ('front','back','brand_tag','care_label','measurement_evidence')
+              )
+              or (
+                membership.role = 'field_worker'
+                and asset.role in ('front','measurement_evidence')
+                and (exists (
+                  select 1 from inventory_unit unit where unit.workspace_id = asset.workspace_id
+                    and unit.sku_id = asset.sku_id and unit.status = 'putaway_pending'
+                    and has_active_inventory_unit_assignment(${workspaceId}, ${actor.identityId}, 'putaway', unit.id, now())
+                ) or exists (
+                  select 1 from sku_work_assignment assignment where assignment.workspace_id = asset.workspace_id
+                    and assignment.sku_id = asset.sku_id and assignment.identity_id = ${actor.identityId}
+                    and assignment.operation = 'capture' and assignment.revoked_at is null
+                    and assignment.starts_at <= now() and assignment.expires_at > now()
+                ))
+              )
+            )
+        `;
+        const row = rows[0];
+        if (!row)
+          throw new RepositoryError("forbidden", "The product photo is outside this assignment");
+        return {
+          storageKey: row.original_storage_key,
+          expectedSha256: row.original_sha256,
+          expectedMimeType: row.mime_type,
+          expectedSizeBytes: row.size_bytes,
+          expectedWidth: row.width,
+          expectedHeight: row.height,
         };
       });
     } catch (error) {
@@ -1002,6 +1320,7 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
                    array_agg(asset.role order by asset.created_at) as roles
             from media_asset asset
             where asset.workspace_id = sku.workspace_id and asset.sku_id = sku.id
+              and asset.role <> 'measurement_evidence'
           ) photos on true
           left join lateral (
             select jsonb_agg(jsonb_build_object(
@@ -1401,7 +1720,7 @@ async function selectLocations(
 ): Promise<LocationRow[]> {
   return sql<LocationRow[]>`
     select location.id, location.workspace_id, location.parent_id, location.code,
-           location.name, location.depth, location.can_store_inventory,
+           location.name, location.depth, location.can_store_inventory, location.purpose,
            location.single_item_only, location.allow_mixed_sku, location.max_units,
            count(distinct unit.id) filter (
              where unit.status in ('putaway_pending', 'available', 'reserved', 'picked', 'packed', 'quarantined')
@@ -1434,6 +1753,7 @@ function toLocationResponse(row: LocationRow): LocationNodeResponse {
     depth: row.depth,
     state: "active",
     canStoreInventory: row.can_store_inventory,
+    purpose: row.purpose,
     singleItemOnly: row.single_item_only,
     allowMixedSku: row.allow_mixed_sku,
     maxUnits: row.max_units,
@@ -1468,7 +1788,7 @@ async function selectP0Items(
            unit.id as inventory_unit_id, unit.inventory_number, unit.status as inventory_status,
            location.code as location_code, item_label.version as inventory_label_version,
            location_label.version as location_label_version, receipt.id as receipt_id,
-           receipt.receipt_reference, batch.purchased_at,
+           receipt.receipt_reference, receipt.evidence_asset_id as receipt_evidence_asset_id, batch.purchased_at,
            allocation.allocated_amount_minor::integer as allocated_cost_minor,
            coalesce(capture_photos.asset_ids, array[]::uuid[]) as photo_asset_ids,
            coalesce(capture_photos.roles, array[]::text[]) as photo_roles,
@@ -1512,6 +1832,7 @@ async function selectP0Items(
              array_agg(asset.role order by asset.created_at, asset.id) as roles
       from media_asset asset
       where asset.workspace_id = sku.workspace_id and asset.sku_id = sku.id
+        and asset.role <> 'measurement_evidence'
     ) capture_photos on true
     left join lateral (
       select jsonb_agg(
@@ -1637,6 +1958,10 @@ function toP0ItemResponse(row: P0ItemRow): P0ItemResponse {
     locationLabelVersion: row.location_label_version,
     receiptId: row.receipt_id,
     receiptReference: row.receipt_reference,
+    receiptEvidenceAssetId: row.receipt_evidence_asset_id,
+    receiptEvidenceContentUrl: row.receipt_evidence_asset_id
+      ? `/v1/workspaces/${row.workspace_id}/receipt-evidence/${row.receipt_evidence_asset_id}/content`
+      : null,
     purchasedAt: row.purchased_at.toISOString(),
     allocatedCostMinor: row.allocated_cost_minor,
     capture: {

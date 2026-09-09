@@ -1,5 +1,3 @@
-import Link from "next/link";
-
 import styles from "./review-home.module.css";
 
 export default function ReviewHomePage() {
@@ -15,12 +13,12 @@ export default function ReviewHomePage() {
           スマホではモバイル版、パソコンではPC版を開くと、承認済みの全画面を順番に確認できます。
         </p>
         <div className={styles.actions}>
-          <Link className={styles.primary} href="/mobile/screens/04">
+          <a className={styles.primary} href="/mobile/screens/04">
             モバイル版を開く
-          </Link>
-          <Link className={styles.secondary} href="/pc/2">
+          </a>
+          <a className={styles.secondary} href="/pc/2">
             PC版を開く
-          </Link>
+          </a>
         </div>
         <small>外部APIや有料サービスには接続しません。</small>
       </section>

@@ -1,7 +1,7 @@
 # Slack承認済みデザイン反映証拠
 
-- 更新日: 2026-09-03（JST）
-- 状態: 承認済みモバイル75画面＋PC52画面を金額欠損修正後の最新同一ビルドから127/127再撮影・比較し、viewport 127/127、欠落0、外部runtime resource 0件。注文系M34〜38/PC29〜32の実API導線もローカル実ブラウザで完走。最終独立Sol再レビューPASS（Critical 0 / High 0）
+- 更新日: 2026-09-09（JST）
+- 状態: 承認済みモバイル75画面＋PC52画面を最終候補から127/127再撮影・比較。欠落0、外部runtime resource 0件。live 10 route×3幅も横あふれ・console・外部通信0。正式UI評価100/100の基準を維持し、重大なデザイン欠落0。
 - UI正本: `docs/design/selected-direction.md`
 - 修正版A承認: `docs/design/revised-a-approval-v2.md`
 
@@ -85,3 +85,20 @@ Slack承認画像を参考資料ではなくUI受け入れ基準として扱う�
 - 承認済みPC29には「販売金額 必須」と「未入力でも続行」が同居している。現実装は後者の承認挙動に合わせて未入力を許可しており、見た目の差ではなく承認文言内の意味上の矛盾として、利用者が文言を再承認するまで勝手に変更しない。
 - 書込みを担当していない別Sol maxは、capture 127件、route-map 127/127、M34〜38とPC29〜32の比較シートを独立確認し、重大な構成・導線欠落0、Critical 0 / High 0でPASSとした。PC29の既知文言矛盾だけをMedium 1として分離した。
 - 実iPhone Safari、ホーム画面追加、実カメラ/Code 128、圏外復帰、物理A4ラベル、固定10商品pilot、実Money Forward取込はこの証拠では確認していない。承認画像の端末外枠や架空値は意図的に製品UIへ固定しない。
+
+## 2026-09-08 モバイル上部と確認入口の追補
+
+- 利用者画像にある固定`9:41`、Dynamic Island、電波、Wi-Fi、電池`77`は、端末外枠と同じ説明用要素であり製品UIへ表示しない。基準SHA`220d6266a3b0975a2af0c81fefde2b316576755b`ですでにstatic mobile 75画面、live login、live shippingから削除済みである。
+- 390×844の既存計測は、修正前の本文開始`y=93`から修正後`y=56`へ変わり、37pxを操作領域へ戻している。2026-09-08のdirect mobile route再確認でも擬似status表示0件だった。
+- ノッチ等の余白は固定画像で再現せず、CSS `env(safe-area-inset-top/bottom)`へ委ねる。実iPhone Safariとホーム画面追加後の余白は利用者確認まで`WAITING_HUMAN`とする。
+- 公開reviewトップはbase pathが二重になる404を再現した。ローカル候補では通常linkへ限定変更し、`/seller-assistant/mobile/screens/04/`と`/seller-assistant/pc/2/`への実ブラウザ遷移をPASSした。GitHubがPUBLICで現Goalのprivate限定条件と一致しないため、公開ページには未反映である。
+- 今回の終了判定と証拠は`docs/implementation/goal-closeout.md`を参照する。公開reviewは架空データの画面確認版であり、実API/DBを備えた完成版URLではない。
+
+## 2026-09-09 P20最終候補の全画面照合
+
+- `npm run build --workspace @resale/review`で134 static pagesを生成し、`verify-approved-ui-routes.mjs`は127/127 route、外部参照0を合格した。
+- `output/playwright/p20-approved-ui-20260909/`へモバイル75画面とPC52画面を同じビルドから撮影した。127/127で指定viewportを満たし、欠落0、外部resource 0だった。
+- `output/playwright/approved-ui-comparison/p20-final-20260909/`は承認原本127画面と現在127画面を25枚の比較シートへ対応づけ、missing 0だった。モバイル比較01/05/07/09、PC比較01/08/10/13を原寸目視し、画面階層、白・薄灰・濃紺・青・琥珀・緑、主要操作、1画面1目的、PC左ナビと作業台を維持している。
+- 意図した差分は、実端末と重複する固定時刻・Dynamic Island・電波・電池、説明用端末枠・画面番号、架空金額/写真を製品UIへ入れないことだけである。承認された業務レイアウトの変更ではない。
+- live routeは`output/playwright/p20-final-live/`で10 routeを390×844、768×1024、1440×1000の30条件で確認した。HTTP 200、横あふれ0、console error/warning 0、page error 0、外部request 0だった。
+- `docs/specs/ui-evaluation-rubric-v1.md`の正式評価100/100を回帰基準にし、今回の全画面比較・live 30条件・580自動testで重大項目0点なしを再確認した。実iPhone Safari、ホーム画面追加、実カメラ、物理印刷は自動証拠へ混ぜず`WAITING_HUMAN`を維持する。

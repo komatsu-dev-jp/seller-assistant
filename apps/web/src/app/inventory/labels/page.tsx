@@ -1,6 +1,7 @@
 import { AppSidebar } from "../../../components/app-sidebar";
 import { InventoryLabelWorkspace } from "../../../components/inventory-label-workspace";
 import { requirePageSession } from "../../../lib/server-session";
+import styles from "../../../components/inventory-live.module.css";
 
 export const dynamic = "force-dynamic";
 
@@ -8,14 +9,14 @@ export default async function InventoryLabelsPage() {
   const session = await requirePageSession(["owner", "inventory_manager"]);
 
   return (
-    <main className="shell inventoryLabelPage">
+    <main className={`shell inventoryLabelPage ${styles.page}`}>
       <AppSidebar current="inventory" />
       <section className="content inventoryLabelContent">
         <header className="topbar noPrint">
           <div>
             <p className="eyebrow">INVENTORY LABELS</p>
-            <h1>商品バーコードを印刷</h1>
-            <p>スマホで商品を探せる、商品ごとのラベルをA4で印刷します。</p>
+            <h1>商品番号・ラベル</h1>
+            <p>手書きの番号で始められます。バーコード印刷は任意です。</p>
           </div>
           <a className="secondaryButton" href="/inventory">
             在庫管理へ戻る

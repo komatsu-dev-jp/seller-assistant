@@ -274,7 +274,7 @@ describe("zero-cost PWA contract", () => {
     );
     const styles = readFileSync(resolve("apps/web/src/app/globals.css"), "utf8");
 
-    for (const label of ["出力形式", "会計設定", "科目候補", "CSV確認"]) {
+    for (const label of ["売上の事実", "基本設定", "会計項目", "ファイル・履歴"]) {
       expect(accountingPage).toContain(label);
     }
     for (const label of ["運用モード", "商品を読む", "差異を確認", "復元・監査", "ラベル"]) {
@@ -474,11 +474,16 @@ describe("zero-cost PWA contract", () => {
       resolve("apps/web/src/components/mobile-capture-workspace.tsx"),
       "utf8",
     );
+    const captureLayout = readFileSync(
+      resolve("apps/web/src/components/workflow-live-layout.tsx"),
+      "utf8",
+    );
     const save = capture.slice(capture.indexOf("async function save()"));
     const stageIndex = save.indexOf("await prepareCaptureUpload");
     const uploadIndex = save.indexOf("await requestJson(");
     expect(stageIndex).toBeGreaterThan(-1);
     expect(uploadIndex).toBeGreaterThan(stageIndex);
+    expect(save.indexOf("const stagedMeasurementUploads")).toBeLessThan(uploadIndex);
     expect(save).toContain("const stagedUploads = new Map");
     expect(save).toContain("clearCaptureUploads(workspaceId, task.skuId)");
     expect(capture).toContain("clearCaptureBusinessData");
@@ -487,10 +492,15 @@ describe("zero-cost PWA contract", () => {
     expect(capture).not.toContain("reason.status === 401 || reason.status === 403");
     const outbox = readFileSync(resolve("apps/web/src/lib/capture-outbox.ts"), "utf8");
     const styles = readFileSync(resolve("apps/web/src/app/globals.css"), "utf8");
-    expect(outbox).toContain('crypto.subtle.digest("SHA-256"');
-    expect(outbox).toContain("existing.fileSha256 === fileSha256");
-    expect(capture).toContain('capture="environment"');
-    expect(capture).toContain('className="mobileCaptureSave"');
+    expect(outbox).toContain("const filesInCurrentPage = new Map<string, File>()");
+    expect(outbox).toContain("const fingerprintsInCurrentPage = new Map<string, string>()");
+    expect(outbox).toContain('const persisted: Omit<CaptureUploadRecord, "file">');
+    expect(outbox).not.toContain("fileSha256");
+    expect(outbox).toContain("filesInCurrentPage.clear()");
+    expect(outbox).toContain("fingerprintsInCurrentPage.clear()");
+    expect(outbox).toContain("event.oldVersion < 4");
+    expect(captureLayout).toContain('capture="environment"');
+    expect(captureLayout).toContain('className="mobileCaptureSave"');
 
     const captureSaveStyles = styles.slice(
       styles.indexOf(".mobileCaptureSave {"),
@@ -540,20 +550,26 @@ describe("zero-cost PWA contract", () => {
     expect(outbox).toContain("caches.delete(cacheName)");
   });
 
-  it("keeps cloud checks and validation publishing manual-only", () => {
+  it("runs free public-repository checks for pull requests and main pushes", () => {
     const workflow = readFileSync(resolve(".github/workflows/ci.yml"), "utf8");
     expect(workflow).toContain("workflow_dispatch:");
-    expect(workflow).not.toContain("pull_request:");
-    expect(workflow).not.toContain("push:");
+    expect(workflow).toContain("pull_request:");
+    expect(workflow).toContain("push:");
+    expect(workflow).toContain("- main");
+    expect(workflow).toContain("runs-on: ubuntu-latest");
     expect(workflow).toContain("npm test");
     expect(workflow).toContain("npm run lint");
     expect(workflow).toContain("npm run build");
     expect(workflow).not.toContain("macos-");
     const pages = readFileSync(resolve(".github/workflows/pages.yml"), "utf8");
     expect(pages).toContain("workflow_dispatch:");
-    expect(pages).not.toContain("push:");
+    expect(pages).toContain("push:");
+    expect(pages).toContain("- main");
+    expect(pages).toContain("runs-on: ubuntu-latest");
+    expect(pages).toContain("name: github-pages");
     expect(pages).toContain("actions/deploy-pages@v4");
     expect(pages).toContain("pages: write");
+    expect(pages).not.toContain("macos-");
   });
 
   it("protects sensitive pages with a server-side session and role allowlist", () => {

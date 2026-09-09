@@ -1,0 +1,1181 @@
+.sidebar {
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar .desktopNav {
+  display: grid;
+  gap: 2px;
+}
+
+.navLink {
+  text-decoration: none;
+}
+
+.comingSoon {
+  min-height: 44px;
+  padding: 8px 9px;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.comingSoon > span {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+}
+
+.comingSoon small {
+  grid-column: 2;
+  margin-top: -8px;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.sidebar .mobileNav {
+  display: none;
+}
+
+.homeRoute,
+.teamRoute {
+  min-width: 0;
+}
+
+.routeHeader {
+  align-items: flex-start;
+}
+
+.headerCopy {
+  min-width: 0;
+}
+
+.headerEyebrow {
+  margin: 0 0 4px;
+  color: var(--blue);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.11em;
+}
+
+.headerStatus {
+  min-height: 32px;
+  padding: 7px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #315887;
+  background: #edf4ff;
+  border: 1px solid #cddfff;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.homeDashboard {
+  gap: 16px;
+}
+
+.homeModes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 6px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.homeModes button {
+  min-height: 54px;
+  padding: 8px 12px;
+  display: grid;
+  align-content: center;
+  gap: 2px;
+  color: var(--muted);
+  background: #fff;
+  border: 0;
+  border-radius: 8px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.homeModes button[aria-selected="true"] {
+  color: var(--blue);
+  background: var(--blue-soft);
+}
+
+.homeModes strong {
+  font-size: 13px;
+}
+
+.homeModes small {
+  font-size: 10px;
+}
+
+.modeHeading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.modeHeading h2 {
+  margin: 3px 0 5px;
+  font-size: 22px;
+}
+
+.modeHeading p:not(.eyebrow) {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.workListView,
+.outboxView {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.workSummaryGrid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.workSummaryCard {
+  min-height: 82px;
+  padding: 12px;
+  display: grid;
+  align-content: space-between;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.workSummaryCard span,
+.workSummaryCard strong {
+  font-size: 11px;
+}
+
+.workSummaryCard strong {
+  color: var(--blue);
+  font-size: 20px;
+}
+
+.workCards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.workCard,
+.emptyState,
+.captureOutboxCard {
+  min-width: 0;
+  padding: 16px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.workCard {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+.workCardHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.workStage,
+.workStatus,
+.sectionLabel {
+  color: #315887;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.workStage {
+  padding: 4px 7px;
+  background: var(--blue-soft);
+  border-radius: 999px;
+}
+
+.workStatus {
+  color: var(--muted);
+}
+
+.workCard h3,
+.captureOutboxCard h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.workCard p,
+.workCard small,
+.captureOutboxCard p,
+.modeNote {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.workCard .primaryButton,
+.captureOutboxCard .primaryButton {
+  min-height: 44px;
+  margin-top: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.emptyState {
+  color: var(--muted);
+}
+
+.captureOutboxCard {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px 16px;
+}
+
+.captureOutboxCard > strong {
+  color: var(--blue);
+  font-size: 28px;
+}
+
+.captureOutboxCard > p,
+.captureOutboxCard > a {
+  grid-column: 1 / -1;
+}
+
+.modeNote {
+  padding: 10px 12px;
+  background: #f8fafd;
+  border-radius: 8px;
+}
+
+.loadError {
+  min-height: 52px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #8a2b2b;
+  background: #fff3f3;
+  border: 1px solid #f0bcbc;
+  border-radius: 10px;
+}
+
+.loadError p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.loadError button {
+  min-height: 44px;
+  padding: 8px 12px;
+  color: #8a2b2b;
+  background: #fff;
+  border: 1px solid #d98484;
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.homeDashboard :global(.ownerMetricGrid) {
+  gap: 14px;
+}
+
+.homeDashboard :global(.ownerMetricCard) {
+  min-height: 148px;
+  padding: 18px;
+  border-radius: 14px;
+}
+
+.homeDashboard :global(.ownerMetricCard strong) {
+  font-size: clamp(26px, 2.4vw, 36px);
+}
+
+.homeDashboard :global(.panel),
+.teamBoard :global(.panel) {
+  border-radius: 14px;
+}
+
+.homeDashboard :global(.ownerCheckRow) {
+  min-height: 52px;
+}
+
+.homeDashboard :global(.ownerWaterfall) {
+  min-height: 250px;
+}
+
+.homeDashboard :global(.ownerAgingCell) {
+  min-height: 118px;
+}
+
+.teamBoard {
+  display: grid;
+  gap: 16px;
+}
+
+.teamSummary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.teamSummaryCard {
+  min-height: 104px;
+  padding: 16px;
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.teamSummaryCard span,
+.teamSummaryCard small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.teamSummaryCard strong {
+  color: var(--ink);
+  font-size: 28px;
+}
+
+.teamSummaryCard.warning {
+  background: #fffaf0;
+  border-color: #f4c675;
+}
+
+.teamSections {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 6px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.teamSections button {
+  min-height: 54px;
+  padding: 8px 10px;
+  display: grid;
+  align-content: center;
+  gap: 2px;
+  color: var(--muted);
+  background: #fff;
+  border: 0;
+  border-radius: 8px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.teamSections button[aria-selected="true"] {
+  color: var(--blue);
+  background: var(--blue-soft);
+}
+
+.teamSections strong {
+  font-size: 12px;
+}
+
+.teamSections small {
+  font-size: 10px;
+}
+
+.teamLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.teamLayout > * {
+  min-width: 0;
+}
+
+.teamLayout > [hidden] {
+  display: none !important;
+}
+
+.changePanel {
+  display: grid;
+  gap: 14px;
+}
+
+.changeList,
+.historyList {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.changeCard {
+  padding: 16px;
+  display: grid;
+  gap: 14px;
+  background: #f8fafd;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.changeCardHead,
+.historyHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.changeCardHead > div {
+  display: grid;
+  gap: 6px;
+}
+
+.changeCard h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.changeCardHead small,
+.historyHead + p {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.changeCompare {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: stretch;
+}
+
+.changeCompare > div {
+  padding: 12px;
+  display: grid;
+  gap: 4px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+
+.changeCompare span,
+.changeCompare small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.changeCompare strong {
+  font-size: 13px;
+}
+
+.changeArrow {
+  align-self: center;
+  color: var(--blue);
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.changeFacts {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.changeFacts > div {
+  padding: 9px;
+  background: #fff;
+  border-radius: 8px;
+}
+
+.changeFacts dt {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.changeFacts dd {
+  margin: 3px 0 0;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.requesterNotice {
+  margin: 0;
+  padding: 10px 12px;
+  color: #8a5200;
+  background: #fff6df;
+  border: 1px solid #f2c46d;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.changeActions {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.2fr);
+  gap: 10px;
+  align-items: end;
+}
+
+.changeActions label,
+.changeReason {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.changeActions select,
+.changeReason select {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  font-size: 12px;
+}
+
+.decisionButtons {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.decisionButtons button,
+.changeActions > button,
+.changeActions .secondaryButton {
+  min-height: 44px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.decisionButtons button {
+  color: #315887;
+  background: #fff;
+  border: 1px solid #b8cbe7;
+}
+
+.decisionButtons button:first-child {
+  color: #166534;
+  border-color: #9fd4ae;
+}
+
+.decisionButtons button:last-child {
+  color: #8a2b2b;
+  border-color: #e0a4a4;
+}
+
+.changeReason {
+  margin-top: 8px;
+}
+
+.assignmentList .changeReason + button {
+  margin-top: 8px;
+}
+
+.historyList > li {
+  padding: 14px;
+  display: grid;
+  gap: 8px;
+  background: #f8fafd;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.historyHead strong {
+  font-size: 13px;
+}
+
+.historyHead + p {
+  margin: 0;
+}
+
+.historySnapshot {
+  display: grid;
+  gap: 3px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.eventList {
+  margin: 4px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 5px;
+  list-style: none;
+}
+
+.eventList li {
+  min-height: 32px;
+  padding: 6px 8px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  background: #fff;
+  border-radius: 6px;
+  font-size: 10px;
+}
+
+.eventList small,
+.eventList em {
+  color: var(--muted);
+  font-style: normal;
+}
+
+.emptyState {
+  padding: 16px;
+  color: var(--muted);
+  background: #f8fafd;
+  border: 1px dashed var(--line);
+  border-radius: 9px;
+  font-size: 12px;
+}
+
+.cardHeading {
+  margin: 0 0 5px;
+  font-size: 18px;
+}
+
+.cardLead {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.stepList,
+.memberList,
+.assignmentList {
+  margin: 16px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  list-style: none;
+}
+
+.setupPanel {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.setupPanel > .formTitle {
+  margin-top: 4px;
+}
+
+.setupSteps {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.setupSteps button {
+  min-height: 72px;
+  padding: 10px;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+  background: #f8fafd;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.setupSteps button[aria-selected="true"] {
+  color: var(--blue);
+  background: var(--blue-soft);
+  border-color: #a9c8ff;
+}
+
+.setupSteps button > span:last-child {
+  display: grid;
+  gap: 3px;
+}
+
+.setupSteps strong {
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.setupSteps small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.setupDetail {
+  margin-top: 10px;
+  padding: 12px;
+  background: #f8fafd;
+  border-radius: 9px;
+}
+
+.setupDetail strong {
+  font-size: 12px;
+}
+
+.setupDetail p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.assignmentHistory {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.stepList li,
+.memberList li,
+.assignmentList li {
+  min-width: 0;
+  padding: 12px;
+  display: grid;
+  gap: 4px;
+  background: #f8fafd;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+
+.stepList li {
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: start;
+}
+
+.stepNumber {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  color: var(--blue);
+  background: var(--blue-soft);
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.stepList strong,
+.memberList strong,
+.assignmentList strong {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.stepList p,
+.memberList small,
+.assignmentList small {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.memberList li,
+.assignmentList li {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.memberMeta,
+.assignmentMeta {
+  display: grid;
+  gap: 3px;
+}
+
+.assignmentList li > div:last-child {
+  min-width: 200px;
+  display: grid;
+  gap: 5px;
+  justify-items: stretch;
+}
+
+.roleBadge,
+.stateBadge {
+  width: max-content;
+  min-height: 24px;
+  padding: 4px 8px;
+  display: inline-flex;
+  align-items: center;
+  color: #315887;
+  background: #edf4ff;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.stateBadge.warning {
+  color: #8a5200;
+  background: #fff1d3;
+}
+
+.formBlock {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.formTitle {
+  margin: 0;
+  font-size: 14px;
+}
+
+.formNote,
+.auditNotice {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.teamBoard :global(.teamFormGrid) {
+  margin-top: 12px;
+  gap: 12px;
+}
+
+.teamBoard :global(.teamFormGrid input),
+.teamBoard :global(.teamFormGrid select),
+.teamBoard :global(.teamFormGrid button) {
+  min-height: 44px;
+}
+
+.teamBoard :global(.teamFormGrid button) {
+  padding: 10px 14px;
+}
+
+.assignmentList button {
+  min-height: 40px;
+  padding: 8px 10px;
+  color: #8a5200;
+  background: #fff;
+  border: 1px solid #f2c46d;
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.message {
+  margin: 0;
+  padding: 12px 14px;
+  color: #315887;
+  background: #edf4ff;
+  border: 1px solid #cddfff;
+  border-radius: 10px;
+  font-size: 12px;
+}
+
+@media (max-width: 1100px) {
+  .teamLayout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .workCards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .sidebar {
+    display: block;
+    height: calc(64px + env(safe-area-inset-bottom));
+    padding: 5px 5px max(5px, env(safe-area-inset-bottom));
+  }
+
+  .sidebar :global(.brand),
+  .sidebar :global(.logoutArea),
+  .sidebar :global(.safety),
+  .sidebar .desktopNav {
+    display: none;
+  }
+
+  .sidebar .mobileNav {
+    height: 54px;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 1px;
+  }
+
+  .sidebar .mobileNav a {
+    min-height: 50px;
+    padding: 4px 2px;
+    display: grid;
+    grid-template-rows: 24px auto;
+    place-items: center;
+    color: #53647f;
+    border-radius: 7px;
+    font-size: 9px;
+    font-weight: 800;
+    text-decoration: none;
+  }
+
+  .sidebar .mobileNav a > span {
+    font-size: 17px;
+  }
+
+  .sidebar .mobileNav a[aria-current="page"] {
+    color: var(--blue);
+    background: var(--blue-soft);
+  }
+
+  .homeRoute,
+  .teamRoute {
+    padding-bottom: calc(86px + env(safe-area-inset-bottom));
+  }
+
+  .routeHeader {
+    min-height: 56px;
+  }
+
+  .routeHeader > div:first-child > p:not(.headerEyebrow) {
+    margin-bottom: 0;
+  }
+
+  .headerStatus {
+    min-height: 30px;
+    padding: 6px 9px;
+    font-size: 10px;
+  }
+
+  .headerActions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .homeDashboard {
+    gap: 12px;
+  }
+
+  .homeModes {
+    gap: 3px;
+    margin-bottom: 12px;
+    padding: 4px;
+  }
+
+  .homeModes button {
+    min-height: 52px;
+    padding: 7px 6px;
+    text-align: center;
+  }
+
+  .homeModes strong {
+    font-size: 11px;
+  }
+
+  .homeModes small {
+    font-size: 9px;
+  }
+
+  .modeHeading {
+    display: grid;
+    gap: 10px;
+  }
+
+  .modeHeading h2 {
+    font-size: 19px;
+  }
+
+  .modeHeading .secondaryButton {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .workSummaryGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .workSummaryCard:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .workCards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .captureOutboxCard {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .loadError {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .loadError button {
+    width: 100%;
+  }
+
+  .homeDashboard :global(.ownerMetricGrid) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .homeDashboard :global(.ownerMetricCard) {
+    min-height: 132px;
+    padding: 14px;
+  }
+
+  .homeDashboard :global(.ownerMetricCard strong) {
+    font-size: 24px;
+  }
+
+  .homeDashboard :global(.ownerWaterfall) {
+    min-height: 220px;
+  }
+
+  .homeDashboard :global(.ownerAgingGrid) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .homeDashboard :global(.ownerAgingCell:nth-child(2)) {
+    border-right: 0;
+  }
+
+  .homeDashboard :global(.ownerAgingCell:nth-child(-n + 2)) {
+    border-bottom: 1px solid var(--line);
+  }
+
+  .teamBoard {
+    gap: 12px;
+  }
+
+  .teamSections {
+    gap: 3px;
+    padding: 4px;
+  }
+
+  .teamSections button {
+    min-height: 52px;
+    padding: 7px 4px;
+    text-align: center;
+  }
+
+  .teamSections strong {
+    font-size: 10px;
+  }
+
+  .teamSections small {
+    font-size: 8px;
+  }
+
+  .teamSummary,
+  .teamLayout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .teamLayout > :last-child {
+    grid-column: auto;
+  }
+
+  .changeCompare {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .changeArrow {
+    justify-self: center;
+    transform: rotate(90deg);
+  }
+
+  .changeFacts,
+  .changeActions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .decisionButtons {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .changeCardHead,
+  .historyHead {
+    display: grid;
+    gap: 8px;
+  }
+
+  .teamSummaryCard {
+    min-height: 76px;
+    padding: 13px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  .teamSummaryCard small {
+    grid-column: 1 / -1;
+  }
+
+  .teamBoard :global(.panel) {
+    padding: 15px;
+  }
+
+  .setupSteps {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .setupSteps button {
+    min-height: 60px;
+  }
+
+  .memberList li,
+  .assignmentList li {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .assignmentList li > div:last-child {
+    min-width: 0;
+  }
+
+  .assignmentList button {
+    width: 100%;
+    min-height: 44px;
+  }
+}

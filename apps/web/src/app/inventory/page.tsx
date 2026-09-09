@@ -1,6 +1,7 @@
 import { AppSidebar } from "../../components/app-sidebar";
 import { InventoryWorkspace, type InventoryFocus } from "../../components/inventory-workspace";
 import { requirePageSession } from "../../lib/server-session";
+import styles from "../../components/inventory-live.module.css";
 
 export const dynamic = "force-dynamic";
 
@@ -15,18 +16,18 @@ export default async function InventoryPage({
   const { focus } = await searchParams;
   const initialFocus = inventoryFocus(focus);
   return (
-    <main className="shell inventoryShell">
+    <main className={`shell inventoryShell ${styles.page}`}>
       <AppSidebar current="inventory" />
       <section className="content inventoryContent">
         <header className="topbar inventoryTopbar">
           <div>
             <p className="eyebrow">INVENTORY CONTROL</p>
-            <h1>在庫ロケーション管理</h1>
-            <p>部屋・棚・箱・位置写真と在庫管理番号を、実データで結びます。</p>
+            <h1>在庫と保管場所</h1>
+            <p>商品がどこにあるか、番号と場所の写真で確認します。</p>
           </div>
           <div className="actionGroup">
             <a className="secondaryButton" href="/inventory/labels">
-              商品ラベルを印刷
+              商品番号・ラベル
             </a>
             <a className="secondaryButton" href="/inventory/stocktake">
               棚卸・差異を確認

@@ -263,7 +263,7 @@ function PcSide() {
 function PcLogin(props: ApprovedLiveLoginProps) {
   return (
     <div className={liveStyles.pc} aria-label="PC 01 ログイン">
-      <PcCanvas className={`${pcStyles.app} ${pcStyles.legacyApp}`}>
+      <PcCanvas className={`${pcStyles.app} ${pcStyles.legacyApp}`} screenNumber={1}>
         <PcTop />
         <PcSide />
         <section className={pcStyles.frame}>

@@ -197,6 +197,9 @@ export const putawayCatalogResponseSchema = z.object({
       inventoryNumber: inventoryNumberSchema,
       labelVersion: z.number().int().positive(),
       status: z.literal("putaway_pending"),
+      skuId: z.string().uuid().optional(),
+      title: z.string().optional(),
+      productPhotoUrl: z.string().startsWith("/v1/workspaces/").nullable().optional(),
     }),
   ),
   locations: z.array(
@@ -204,10 +207,43 @@ export const putawayCatalogResponseSchema = z.object({
       code: checkedLocationCodeSchema,
       name: z.string(),
       labelVersion: z.number().int().positive(),
+      locationId: z.string().uuid().optional(),
+      approvedPhotoUrl: z.string().startsWith("/v1/workspaces/").nullable().optional(),
+      purpose: z.enum(["general", "return_quarantine"]),
     }),
   ),
   loadedAt: z.iso.datetime(),
 });
+
+export const returnCatalogResponseSchema = z.object({
+  workspaceId: workspaceIdSchema,
+  orders: z.array(
+    z.object({
+      orderId: z.string().uuid(),
+      orderNumber: z.string(),
+      orderState: z.enum(["shipped", "returned"]),
+      skuId: z.string().uuid(),
+      title: z.string(),
+      inventoryUnitId: z.string().uuid(),
+      inventoryNumber: inventoryNumberSchema,
+      inventoryStatus: z.enum([
+        "shipped",
+        "quarantined",
+        "available",
+        "disposal_pending",
+        "putaway_pending",
+      ]),
+      inventoryLabelVersion: z.number().int().positive().nullable(),
+      movementSequence: z.number().int().nonnegative(),
+      locationId: z.string().uuid().nullable(),
+      locationCode: checkedLocationCodeSchema.nullable(),
+      locationLabelVersion: z.number().int().positive().nullable(),
+      quarantined: z.boolean(),
+    }),
+  ),
+  loadedAt: z.iso.datetime(),
+});
+export type ReturnCatalogResponse = z.infer<typeof returnCatalogResponseSchema>;
 
 export const locationPhotoKindSchema = z.enum(["room", "shelf", "exact_position"]);
 
@@ -457,11 +493,16 @@ export const p0WorkflowResponseSchema = z.object({
 });
 
 export const photoRoleSchema = z.enum(["front", "back", "brand_tag", "care_label", "flaw"]);
+export const mediaRoleSchema = z.enum([...photoRoleSchema.options, "measurement_evidence"]);
 
 export const registerMediaAssetRequestSchema = z
   .object({
     assetId: z.string().uuid(),
-    role: photoRoleSchema,
+    role: mediaRoleSchema,
+    measurementDefinitionId: z
+      .string()
+      .regex(/^[a-z][a-z0-9_]{1,63}$/u)
+      .optional(),
     originalSha256: z.string().regex(/^[a-f0-9]{64}$/u),
     originalStorageKey: z.string().trim().min(1).max(500),
     mimeType: z.enum(["image/jpeg", "image/png", "image/webp", "image/heic"]),
@@ -478,9 +519,21 @@ export const registerMediaAssetRequestSchema = z
 export const uploadProductMediaQuerySchema = z
   .object({
     assetId: z.string().uuid(),
-    role: z.enum(["front", "back", "brand_tag", "care_label", "flaw"]),
+    role: mediaRoleSchema,
+    measurementDefinitionId: z
+      .string()
+      .regex(/^[a-z][a-z0-9_]{1,63}$/u)
+      .optional(),
   })
-  .strict();
+  .strict()
+  .refine(
+    (value) =>
+      (value.role === "measurement_evidence") === (value.measurementDefinitionId !== undefined),
+    {
+      message: "Only dedicated measurement evidence requires a measurement definition",
+      path: ["measurementDefinitionId"],
+    },
+  );
 
 export const mediaAssetResponseSchema = registerMediaAssetRequestSchema.extend({
   workspaceId: workspaceIdSchema,
@@ -1074,6 +1127,7 @@ export const createP0ItemRequestSchema = z
     measurementTemplateId: measurementTemplateIdSchema,
     supplierName: z.string().trim().min(1).max(160),
     receiptReference: z.string().trim().min(1).max(120),
+    receiptEvidenceAssetId: z.string().uuid().optional(),
     purchasedAt: z.iso.datetime(),
     receiptAmountMinor: z.number().int().nonnegative().max(100_000_000),
     allocatedCostMinor: z.number().int().nonnegative().max(100_000_000),
@@ -1110,6 +1164,29 @@ export const createP0ItemRequestSchema = z
   });
 
 export const listingPrepPilotMigrationVersion = "0033" as const;
+
+export const uploadReceiptEvidenceQuerySchema = z
+  .object({
+    assetId: z.string().uuid(),
+    humanConfirmed: z.literal("true"),
+  })
+  .strict();
+
+export const receiptEvidenceResponseSchema = z.object({
+  assetId: z.string().uuid(),
+  workspaceId: workspaceIdSchema,
+  mimeType: z.enum(["image/jpeg", "image/png"]),
+  sizeBytes: z
+    .number()
+    .int()
+    .positive()
+    .max(25 * 1024 * 1024),
+  width: z.number().int().positive().max(12000),
+  height: z.number().int().positive().max(12000),
+  contentUrl: z.string().startsWith("/v1/workspaces/"),
+  confirmedAt: z.iso.datetime(),
+});
+export type ReceiptEvidenceResponse = z.infer<typeof receiptEvidenceResponseSchema>;
 
 export const startPilotRunRequestSchema = z
   .object({
@@ -1396,6 +1473,8 @@ export const p0ItemResponseSchema = z.object({
   locationLabelVersion: z.number().int().positive().nullable(),
   receiptId: z.string().uuid(),
   receiptReference: z.string(),
+  receiptEvidenceAssetId: z.string().uuid().nullable().optional(),
+  receiptEvidenceContentUrl: z.string().startsWith("/v1/workspaces/").nullable().optional(),
   purchasedAt: z.iso.datetime(),
   allocatedCostMinor: z.number().int().nonnegative(),
   capture: z.object({
@@ -1446,6 +1525,7 @@ export const createLocationRequestSchema = z
       .max(64)
       .regex(/^[A-Z0-9]+(?:-[A-Z0-9]+)*$/u),
     name: z.string().trim().min(1).max(120),
+    purpose: z.enum(["general", "return_quarantine"]).optional(),
     canStoreInventory: z.boolean(),
     singleItemOnly: z.boolean(),
     allowMixedSku: z.boolean(),
@@ -1456,6 +1536,10 @@ export const createLocationRequestSchema = z
   .refine((value) => value.canStoreInventory || value.maxUnits === null, {
     message: "A non-storage location cannot have inventory capacity",
     path: ["maxUnits"],
+  })
+  .refine((value) => value.purpose !== "return_quarantine" || value.canStoreInventory, {
+    message: "返品隔離場所は保管可能な場所にしてください。",
+    path: ["purpose"],
   });
 
 export const locationNodeResponseSchema = z.object({
@@ -1464,6 +1548,7 @@ export const locationNodeResponseSchema = z.object({
   parentId: z.string().uuid().nullable(),
   code: checkedLocationCodeSchema,
   name: z.string(),
+  purpose: z.enum(["general", "return_quarantine"]),
   depth: z.number().int().min(0).max(7),
   state: z.literal("active"),
   canStoreInventory: z.boolean(),
@@ -1484,6 +1569,7 @@ export const orderOperationResponseSchema = z.object({
   inventoryUnitId: z.string().uuid(),
   state: z.enum(["confirmed", "picking", "packed", "shipped", "returned"]),
   inventoryStatus: z.enum([
+    "putaway_pending",
     "reserved",
     "picked",
     "packed",
@@ -1578,6 +1664,7 @@ export const revokeTeamAssignmentRequestSchema = z
 
 export const teamAssignmentResponseSchema = z.object({
   assignmentId: z.string().uuid(),
+  assignmentVersion: z.string().regex(/^[a-f0-9]{64}$/u),
   assignmentType: teamAssignmentTypeSchema,
   identityId: z.string().uuid(),
   assigneeEmail: z.string().email(),
@@ -1593,6 +1680,90 @@ export const teamStateResponseSchema = z.object({
   members: teamMemberResponseSchema.array(),
   assignments: teamAssignmentResponseSchema.array(),
 });
+
+export const teamChangeReasonSchema = z.enum([
+  "assignment_error",
+  "assignment_changed",
+  "device_lost",
+  "worker_unavailable",
+]);
+export const teamChangeCommentSchema = z.enum([
+  "target_checked",
+  "dates_checked",
+  "check_target_again",
+  "check_dates_again",
+  "clarify_reason",
+]);
+export const createTeamChangeRequestSchema = z
+  .object({
+    assignmentId: z.string().uuid(),
+    assignmentType: teamAssignmentTypeSchema,
+    expectedAssignmentVersion: z.string().regex(/^[a-f0-9]{64}$/u),
+    reasonCode: teamChangeReasonSchema,
+    idempotencyKey: z.string().uuid(),
+    humanConfirmed: z.literal(true),
+  })
+  .strict();
+export const recordTeamChangeEventSchema = z
+  .object({
+    action: z.enum(["approve", "reject", "request_changes", "comment"]),
+    expectedRevision: z.number().int().positive(),
+    commentCode: teamChangeCommentSchema,
+    idempotencyKey: z.string().uuid(),
+    humanConfirmed: z.literal(true),
+  })
+  .strict();
+export const teamChangeSnapshotSchema = z
+  .object({
+    assignmentId: z.string().uuid(),
+    assignmentType: teamAssignmentTypeSchema,
+    assigneeId: z.string().uuid(),
+    targetId: z.string().uuid(),
+    targetLabel: z.string(),
+    startsAt: z.iso.datetime(),
+    expiresAt: z.iso.datetime(),
+    access: z.enum(["active", "revoked"]),
+  })
+  .strict();
+export const teamChangeEventResponseSchema = z
+  .object({
+    eventId: z.string().uuid(),
+    revision: z.number().int().positive(),
+    actorId: z.string().uuid(),
+    actorName: z.string(),
+    action: z.enum(["requested", "approve", "reject", "request_changes", "comment"]),
+    commentCode: teamChangeCommentSchema.nullable(),
+    occurredAt: z.iso.datetime(),
+  })
+  .strict();
+export const teamChangeResponseSchema = z
+  .object({
+    requestId: z.string().uuid(),
+    workspaceId: workspaceIdSchema,
+    action: z.literal("revoke_assignment"),
+    state: z.enum(["pending", "approved", "rejected", "changes_requested"]),
+    revision: z.number().int().positive(),
+    targetVersion: z.string().regex(/^[a-f0-9]{64}$/u),
+    requesterId: z.string().uuid(),
+    requesterName: z.string(),
+    approverId: z.string().uuid().nullable(),
+    approverName: z.string().nullable(),
+    reasonCode: teamChangeReasonSchema,
+    requestedAt: z.iso.datetime(),
+    decidedAt: z.iso.datetime().nullable(),
+    before: teamChangeSnapshotSchema,
+    after: teamChangeSnapshotSchema,
+    evidence: z.null(),
+    events: teamChangeEventResponseSchema.array(),
+  })
+  .strict();
+export const teamChangeListResponseSchema = z
+  .object({ workspaceId: workspaceIdSchema, changes: teamChangeResponseSchema.array() })
+  .strict();
+export type CreateTeamChangeRequest = z.infer<typeof createTeamChangeRequestSchema>;
+export type RecordTeamChangeEvent = z.infer<typeof recordTeamChangeEventSchema>;
+export type TeamChangeResponse = z.infer<typeof teamChangeResponseSchema>;
+export type TeamChangeListResponse = z.infer<typeof teamChangeListResponseSchema>;
 
 export const startStocktakeRequestSchema = z
   .object({ locationId: z.string().uuid(), humanConfirmed: z.literal(true) })

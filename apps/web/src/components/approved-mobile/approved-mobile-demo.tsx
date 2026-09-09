@@ -3,10 +3,13 @@
 import { useState, type ReactNode } from "react";
 
 import {
+  getMobileFooterSection,
+  getMobileLiveRoute,
   getMobileNext,
   getMobilePrevious,
   getMobileScreen,
   getMobileScreenIndex,
+  isP1MobileReviewScreen,
   mobileScreens,
   type MobileScreen,
 } from "./mobile-screen-data";
@@ -468,18 +471,8 @@ function FooterIcon({ kind }: { kind: "home" | "work" | "product" | "inventory" 
 }
 
 function Footer({ screen }: { screen: MobileScreen }) {
-  if (Number(screen.id) >= 1 && Number(screen.id) <= 3) return null;
-  const number = Number(screen.id);
-  const active: "home" | "work" | "product" | "accounting" =
-    screen.id === "04"
-      ? "home"
-      : screen.flow !== "canonical" || (number >= 5 && number <= 38)
-        ? "work"
-        : number >= 39 && number <= 43
-          ? "work"
-          : number >= 44
-            ? "accounting"
-            : "work";
+  if (Number(screen.id) === 1) return null;
+  const active = getMobileFooterSection(screen);
   return (
     <nav className={styles.footer} aria-label="モバイルナビゲーション">
       <a
@@ -502,13 +495,21 @@ function Footer({ screen }: { screen: MobileScreen }) {
         </span>
         作業
       </a>
-      <a href="/mobile/screens/31">
+      <a
+        className={cn(active === "product" && styles.footerActive)}
+        href="/mobile/screens/31"
+        aria-current={active === "product" ? "page" : undefined}
+      >
         <span>
           <FooterIcon kind="product" />
         </span>
         商品
       </a>
-      <a href="/mobile/screens/39">
+      <a
+        className={cn(active === "inventory" && styles.footerActive)}
+        href="/mobile/screens/39"
+        aria-current={active === "inventory" ? "page" : undefined}
+      >
         <span>
           <FooterIcon kind="inventory" />
         </span>
@@ -3339,12 +3340,24 @@ export function ApprovedMobileDemo({ screenId }: { screenId: string }) {
   const index = getMobileScreenIndex(screen.id);
   const next = getMobileNext(screen.id);
   const isFirst = index === 0;
+  const isP1Preview = isP1MobileReviewScreen(screen);
+  const liveRoute = getMobileLiveRoute(screen);
 
   return (
-    <main className={styles.page}>
+    <main
+      className={styles.page}
+      data-implementation-scope={isP1Preview ? "p1-preview" : "p0-live-mapped"}
+      data-live-route={liveRoute ?? undefined}
+    >
       <div className={styles.phoneShell}>
         {screen.id === "01" ? null : <Header screen={screen} isFirst={isFirst} />}
         <div className={styles.scrollArea}>
+          {isP1Preview ? (
+            <div className={cn(styles.demoNotice, styles.demoNoticeP1)}>
+              <span>準備中・P0対象外</span>
+              <span>架空データ・保存されません</span>
+            </div>
+          ) : null}
           <RenderScreenContent id={screen.id} />
           <ActionBar screen={screen} next={next} />
         </div>
@@ -3375,7 +3388,7 @@ export function ApprovedMobileIndex() {
       <div className={styles.indexLegend}>
         <span>
           <i className={styles.dotBlue} />
-          canonical 01–49
+          基本49画面
         </span>
         <span>
           <i className={styles.dotGreen} />

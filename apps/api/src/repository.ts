@@ -506,6 +506,15 @@ export class InMemoryWorkflowRepository implements WorkflowRepository {
     this.requireCaptureEditable(workspaceId, skuId);
     const key = `${workspaceId}:${input.assetId}`;
     const existing = this.mediaAssets.get(key);
+    if ((input.role === "measurement_evidence") !== (input.measurementDefinitionId !== undefined)) {
+      throw new RepositoryError(
+        "conflict",
+        "Dedicated measurement evidence requires its definition",
+      );
+    }
+    if (existing && existing.measurementDefinitionId !== input.measurementDefinitionId) {
+      throw new RepositoryError("conflict", "The immutable measurement definition differs");
+    }
     const candidate = {
       id: input.assetId,
       workspaceId,
@@ -538,6 +547,20 @@ export class InMemoryWorkflowRepository implements WorkflowRepository {
       throw new RepositoryError("conflict", "The asset ID has different immutable metadata");
     }
     if (registration.kind === "replay" && existing) return Promise.resolve(existing);
+    if (
+      [...this.mediaAssets.values()].some(
+        (asset) =>
+          asset.workspaceId === workspaceId &&
+          asset.skuId === skuId &&
+          asset.originalSha256 === input.originalSha256 &&
+          (asset.role === "measurement_evidence" || input.role === "measurement_evidence"),
+      )
+    ) {
+      throw new RepositoryError(
+        "conflict",
+        "Dedicated measurement media cannot reuse another photo",
+      );
+    }
     const response: MediaAssetResponse = {
       ...input,
       workspaceId,
@@ -555,16 +578,47 @@ export class InMemoryWorkflowRepository implements WorkflowRepository {
     input: RecordMeasurementRequest,
   ): Promise<MeasurementResponse> {
     this.requireSku(workspaceId, skuId);
+    const replayKey = `${workspaceId}:${skuId}:${input.definitionId}:${input.attempt}`;
+    const replay = this.measurements.get(replayKey);
+    if (replay) {
+      if (measurementInputMatches(replay, actor, input)) return Promise.resolve(replay);
+      throw new RepositoryError("conflict", "The measurement attempt already has another payload");
+    }
     this.requireCaptureEditable(workspaceId, skuId);
     const evidence = this.mediaAssets.get(`${workspaceId}:${input.evidenceAssetId}`);
-    if (!evidence || evidence.skuId !== skuId) {
+    if (
+      !evidence ||
+      evidence.skuId !== skuId ||
+      evidence.role !== "measurement_evidence" ||
+      evidence.measurementDefinitionId !== input.definitionId
+    ) {
       throw new RepositoryError("forbidden", "Measurement evidence is not available for this SKU");
+    }
+    if (
+      [...this.mediaAssets.values()].some(
+        (asset) =>
+          asset.workspaceId === workspaceId &&
+          asset.skuId === skuId &&
+          asset.assetId !== evidence.assetId &&
+          asset.originalSha256 === evidence.originalSha256,
+      ) ||
+      [...this.measurements.values()].some(
+        (item) => item.workspaceId === workspaceId && item.evidenceAssetId === evidence.assetId,
+      )
+    ) {
+      throw new RepositoryError("conflict", "Measurement evidence must be unique to this attempt");
     }
     const key = `${workspaceId}:${skuId}:${input.definitionId}:${input.attempt}`;
     if (this.measurements.has(key)) {
       throw new RepositoryError("conflict", "The measurement attempt already exists");
     }
     const previous = this.latestMeasurement(workspaceId, skuId, input.definitionId);
+    if (input.attempt !== (previous?.attempt ?? 0) + 1) {
+      throw new RepositoryError(
+        "conflict",
+        "The measurement attempt is stale or skips the current version",
+      );
+    }
     const measurement: Measurement = {
       definitionId: input.definitionId,
       definitionVersion: input.definitionVersion,
@@ -675,6 +729,7 @@ interface MediaAssetRow {
   workspace_id: string;
   sku_id: string;
   role: MediaAssetResponse["role"];
+  measurement_definition_id?: string | null;
   original_sha256: string;
   original_storage_key: string;
   mime_type: MediaAssetResponse["mimeType"];
@@ -1191,6 +1246,7 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
             limit 1
           ) label on true
           where location.workspace_id = ${workspaceId} and location.code = ${input.locationCode}
+            and location.purpose = 'general'
         `;
         const unit = units[0];
         const location = locations[0];
@@ -1992,11 +2048,26 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
         await requireCaptureEditable(transaction, workspaceId, skuId);
         const existingRows = await transaction<MediaAssetRow[]>`
           select id, workspace_id, sku_id, role, original_sha256, original_storage_key,
-                 mime_type, size_bytes, width, height, created_at
+                 mime_type, size_bytes, width, height, created_at, measurement_definition_id
           from media_asset
           where workspace_id = ${workspaceId} and id = ${input.assetId}
         `;
         const existing = existingRows[0];
+        if (
+          (input.role === "measurement_evidence") !==
+          (input.measurementDefinitionId !== undefined)
+        ) {
+          throw new RepositoryError(
+            "conflict",
+            "Dedicated measurement evidence requires its definition",
+          );
+        }
+        if (
+          existing &&
+          (existing.measurement_definition_id ?? undefined) !== input.measurementDefinitionId
+        ) {
+          throw new RepositoryError("conflict", "The immutable measurement definition differs");
+        }
         const candidate = {
           id: input.assetId,
           workspaceId,
@@ -2032,21 +2103,21 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
         const previousRoleAssets = await transaction<Array<{ id: string }>>`
           select id from media_asset
           where workspace_id = ${workspaceId} and sku_id = ${skuId}
-            and role = ${input.role} and id <> ${input.assetId}
+            and role = ${input.role} and role <> 'measurement_evidence' and id <> ${input.assetId}
           order by created_at desc, id desc
           limit 1
         `;
         const rows = await transaction<MediaAssetRow[]>`
           insert into media_asset (
             id, workspace_id, sku_id, role, original_sha256, original_storage_key,
-            mime_type, size_bytes, width, height, created_by
+            mime_type, size_bytes, width, height, created_by, measurement_definition_id
           ) values (
             ${input.assetId}, ${workspaceId}, ${skuId}, ${input.role}, ${input.originalSha256},
             ${input.originalStorageKey}, ${input.mimeType}, ${input.sizeBytes}, ${input.width},
-            ${input.height}, ${actor.identityId}
+            ${input.height}, ${actor.identityId}, ${input.measurementDefinitionId ?? null}
           )
           returning id, workspace_id, sku_id, role, original_sha256, original_storage_key,
-                    mime_type, size_bytes, width, height, created_at
+                    mime_type, size_bytes, width, height, created_at, measurement_definition_id
         `;
         const row = rows[0];
         if (!row) throw new RepositoryError("database_error", "Media insert returned no row");
@@ -2114,6 +2185,19 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
           actor.identityId,
           role,
         );
+        await transaction`select sku_id from p0_workflow where workspace_id = ${workspaceId} and sku_id = ${skuId} for update`;
+        const replays = await transaction<MeasurementRow[]>`
+          select * from measurement_attempt where workspace_id = ${workspaceId} and sku_id = ${skuId}
+            and definition_id = ${input.definitionId} and attempt = ${input.attempt}
+        `;
+        if (replays[0]) {
+          const replay = toMeasurementResponse(replays[0]);
+          if (measurementInputMatches(replay, actor, input)) return replay;
+          throw new RepositoryError(
+            "conflict",
+            "The measurement attempt already has another payload",
+          );
+        }
         await requireCaptureEditable(transaction, workspaceId, skuId);
         const measurementProfile = await loadMeasurementProfile(transaction, workspaceId, skuId);
         if (measurementProfile) {
@@ -2123,6 +2207,7 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
           select id from media_asset
           where workspace_id = ${workspaceId} and sku_id = ${skuId}
             and id = ${input.evidenceAssetId}
+            and role = 'measurement_evidence' and measurement_definition_id = ${input.definitionId}
         `;
         if (!evidence[0]) {
           throw new RepositoryError(
@@ -2140,6 +2225,12 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
           order by attempt desc
           limit 1
         `;
+        if (input.attempt !== (previousRows[0]?.attempt ?? 0) + 1) {
+          throw new RepositoryError(
+            "conflict",
+            "The measurement attempt is stale or skips the current version",
+          );
+        }
         const measurement: Measurement = {
           definitionId: input.definitionId,
           definitionVersion: input.definitionVersion,
@@ -2331,6 +2422,7 @@ async function requireCaptureEditable(
   const rows = await sql<Array<{ state: string }>>`
     select state from p0_workflow
     where workspace_id = ${workspaceId} and sku_id = ${skuId}
+    for update
   `;
   if (!rows[0] || !["sku_created", "purchase_confirmed"].includes(rows[0].state)) {
     throw new RepositoryError(
@@ -2368,6 +2460,9 @@ function toMediaAssetResponse(row: MediaAssetRow): MediaAssetResponse {
     workspaceId: row.workspace_id,
     skuId: row.sku_id,
     role: row.role,
+    ...(row.measurement_definition_id
+      ? { measurementDefinitionId: row.measurement_definition_id }
+      : {}),
     originalSha256: row.original_sha256,
     originalStorageKey: row.original_storage_key,
     mimeType: row.mime_type,
@@ -2376,6 +2471,26 @@ function toMediaAssetResponse(row: MediaAssetRow): MediaAssetResponse {
     height: row.height,
     createdAt: row.created_at.toISOString(),
   };
+}
+
+function measurementInputMatches(
+  previous: MeasurementResponse,
+  actor: RequestActor,
+  input: RecordMeasurementRequest,
+): boolean {
+  return (
+    previous.measuredBy === actor.identityId &&
+    previous.definitionId === input.definitionId &&
+    previous.definitionVersion === input.definitionVersion &&
+    previous.value === input.value &&
+    previous.unit === input.unit &&
+    previous.basis === input.basis &&
+    previous.state === input.state &&
+    Date.parse(previous.measuredAt) === Date.parse(input.measuredAt) &&
+    previous.evidenceAssetId === input.evidenceAssetId &&
+    previous.attempt === input.attempt &&
+    previous.reviewReasonCode === (input.reviewReasonCode ?? null)
+  );
 }
 
 function toMeasurementResponse(row: MeasurementRow): MeasurementResponse {
@@ -2576,6 +2691,7 @@ function assertCurrentPilotCaptureEvidence(
 
   const currentAssetByRole = new Map<MediaAssetResponse["role"], MediaAssetResponse>();
   for (const asset of assets) {
+    if (asset.role === "measurement_evidence") continue;
     const current = currentAssetByRole.get(asset.role);
     if (
       !current ||
@@ -2665,7 +2781,7 @@ function assertCurrentPilotAttributeEvidence(
   }
 }
 
-const requiredCaptureRoles: MediaAssetResponse["role"][] = [
+const requiredCaptureRoles: Exclude<MediaAssetResponse["role"], "measurement_evidence">[] = [
   "front",
   "back",
   "brand_tag",
@@ -2730,7 +2846,9 @@ function assertCaptureEvidenceForWorkflow(
     }
   }
   const expected = new Set([
-    ...assets.map((asset) => asset.assetId),
+    ...assets
+      .filter((asset) => asset.role !== "measurement_evidence")
+      .map((asset) => asset.assetId),
     ...[...latestByDefinition.values()].map((measurement) => measurement.id),
     ...(confirmedAttributes ? [confirmedAttributes.confirmationId] : []),
   ]);
@@ -2753,7 +2871,9 @@ function buildCaptureSummary(
   measurements: MeasurementResponse[],
   measurementProfile: MeasurementProfileResponse | null,
 ): CaptureSummary {
-  const photoRoles = [...new Set(assets.map((asset) => asset.role))].sort();
+  const photoRoles = [
+    ...new Set(assets.map((asset) => asset.role).filter((role) => role !== "measurement_evidence")),
+  ].sort();
   const latestByDefinition = new Map<string, MeasurementResponse>();
   for (const measurement of measurements) {
     const current = latestByDefinition.get(measurement.definitionId);

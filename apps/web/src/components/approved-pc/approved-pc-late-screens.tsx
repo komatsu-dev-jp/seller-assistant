@@ -2,6 +2,7 @@
 import { useState } from "react";
 import styles from "./approved-pc-late-screens.module.css";
 import { PcCanvas } from "./pc-canvas";
+import { isP1ApprovedPcScreen } from "./approved-screen-scope";
 const titles = [
   "在庫と保管場所",
   "棚卸し",
@@ -263,6 +264,7 @@ function Shell({ n, children }: { n: number; children: React.ReactNode }) {
   const utility = n >= 33 && n <= 48;
   return (
     <PcCanvas
+      screenNumber={n}
       className={`${styles.app} ${styles[`screen${n}`] ?? ""} ${n >= 49 ? styles.settingsApp : ""} ${utility ? styles.utilityApp : ""}`}
     >
       {utility && <UtilityHeader n={n} />}
@@ -284,6 +286,9 @@ function Shell({ n, children }: { n: number; children: React.ReactNode }) {
         <header>
           <b>{String(n).padStart(2, "0")}</b>
           <h1>{titles[n - 33] ?? ""}</h1>
+          {isP1ApprovedPcScreen(n) ? (
+            <span className={styles.scopeBadge}>準備中・P0対象外</span>
+          ) : null}
           <span className={styles.frameTools}>
             <PcGlyph name="bell" />
             <PcGlyph name="help" />

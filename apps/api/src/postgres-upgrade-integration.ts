@@ -28,7 +28,7 @@ const legacyMigrations = migrationNames.filter((name) => Number(name.slice(0, 4)
 const upgradeMigrations = migrationNames.filter((name) => Number(name.slice(0, 4)) > 14);
 assert.ok(legacyMigrations.length > 0, "Legacy migrations must be present");
 assert.deepEqual(
-  upgradeMigrations.slice(-18).map((name) => name.slice(0, 4)),
+  upgradeMigrations.slice(-25).map((name) => name.slice(0, 4)),
   [
     "0021",
     "0022",
@@ -48,6 +48,13 @@ assert.deepEqual(
     "0037",
     "0038",
     "0039",
+    "0040",
+    "0041",
+    "0042",
+    "0043",
+    "0044",
+    "0045",
+    "0046",
   ],
   "The upgrade fixture must include the revised-A migrations",
 );
@@ -71,6 +78,9 @@ const orderAddressModeMigration = upgradeMigrations.find((name) => name.startsWi
 const registeredMissingFinancialFactsMigration = upgradeMigrations.find((name) =>
   name.startsWith("0039_"),
 );
+const restoreSafeCheckedCodeHelpersMigration = upgradeMigrations.find((name) =>
+  name.startsWith("0040_"),
+);
 assert.ok(modeAwareApprovalMigration, "Migration 0027 must be present");
 assert.ok(completeApprovalMigration, "Migration 0028 must be present");
 assert.ok(safeMappingReplacementMigration, "Migration 0029 must be present");
@@ -83,6 +93,7 @@ assert.ok(shippingPhotoPreflightMigration, "Migration 0035 must be present");
 assert.ok(orderRegistrationShippingMethodMigration, "Migration 0037 must be present");
 assert.ok(orderAddressModeMigration, "Migration 0038 must be present");
 assert.ok(registeredMissingFinancialFactsMigration, "Migration 0039 must be present");
+assert.ok(restoreSafeCheckedCodeHelpersMigration, "Migration 0040 must be present");
 const upgradesBeforeApprovalRepair = upgradeMigrations.filter(
   (name) => Number(name.slice(0, 4)) < 27,
 );
@@ -1887,6 +1898,175 @@ try {
     historyBeforeMissingFinancialFactsContract,
     "0039 must replace only the shipment guard without rewriting existing history",
   );
+  const readCheckedCodeHelperDefinitions = async () =>
+    sql<
+      Array<{
+        definition: string;
+        name: string;
+        settings: string[] | null;
+      }>
+    >`
+      select procedure_row.proname as name,
+             pg_get_functiondef(procedure_row.oid) as definition,
+             procedure_row.proconfig as settings
+      from pg_proc procedure_row
+      join pg_namespace namespace_row on namespace_row.oid = procedure_row.pronamespace
+      where namespace_row.nspname = 'public'
+        and procedure_row.proname in (
+          'app_code_check_digit',
+          'app_append_code_check_digit',
+          'app_has_valid_code_check_digit'
+        )
+      order by procedure_row.proname
+    `;
+  const checkedCodeHelpersBeforeRestoreSafety = await readCheckedCodeHelperDefinitions();
+  const historyBeforeRestoreSafety = await readInspectionUpgradeHistory();
+  const restoreSafeHelpersSource = await readFile(
+    new URL(restoreSafeCheckedCodeHelpersMigration, migrationsUrl),
+    "utf8",
+  );
+  const injectedRestoreSafeHelpersFailureSource = restoreSafeHelpersSource.replace(
+    /commit;\s*$/u,
+    `do $injected$ begin
+       raise exception 'injected 0040 rollback test';
+     end $injected$;
+     commit;`,
+  );
+  assert.notEqual(injectedRestoreSafeHelpersFailureSource, restoreSafeHelpersSource);
+  await assert.rejects(
+    () => sql.unsafe(injectedRestoreSafeHelpersFailureSource),
+    /injected 0040 rollback test/u,
+  );
+
+  await sql.end({ timeout: 5 });
+  sql = postgres(adminUrl, { max: 1, prepare: false });
+
+  assert.deepEqual(
+    await readCheckedCodeHelperDefinitions(),
+    checkedCodeHelpersBeforeRestoreSafety,
+    "A failed 0040 transaction must restore every prior checked-code helper definition",
+  );
+  assert.deepEqual(
+    await readInspectionUpgradeHistory(),
+    historyBeforeRestoreSafety,
+    "A failed 0040 transaction must preserve SKU, media, finance, export and audit history",
+  );
+  await applyMigration(restoreSafeCheckedCodeHelpersMigration);
+  const checkedCodeHelpersAfterRestoreSafety = await readCheckedCodeHelperDefinitions();
+  assert.equal(checkedCodeHelpersAfterRestoreSafety.length, 3);
+  for (const helper of checkedCodeHelpersAfterRestoreSafety) {
+    assert.ok(
+      helper.settings?.includes("search_path=pg_catalog, public"),
+      `${helper.name} must pin a restore-safe search_path`,
+    );
+  }
+  assert.match(
+    checkedCodeHelpersAfterRestoreSafety.find(
+      (helper) => helper.name === "app_append_code_check_digit",
+    )?.definition ?? "",
+    /public\.app_code_check_digit/iu,
+  );
+  assert.match(
+    checkedCodeHelpersAfterRestoreSafety.find(
+      (helper) => helper.name === "app_has_valid_code_check_digit",
+    )?.definition ?? "",
+    /public\.app_code_check_digit/iu,
+  );
+  await sql.begin(async (transaction) => {
+    await transaction`set local search_path = pg_catalog, pg_temp`;
+    const [checkedCodeResult] = await transaction<[{ valid: boolean }]>`
+      select public.app_has_valid_code_check_digit(
+        (select inventory_number from public.inventory_unit
+         where workspace_id = ${ids.workspace} and id = ${ids.inventory})
+      ) as valid
+    `;
+    assert.equal(checkedCodeResult.valid, true);
+  });
+  assert.deepEqual(
+    await readInspectionUpgradeHistory(),
+    historyBeforeRestoreSafety,
+    "0040 must only harden helper resolution without rewriting existing history",
+  );
+  for (const version of ["0041", "0042", "0043", "0044", "0045", "0046"]) {
+    let legacyTeamHistory: string | undefined;
+    if (version === "0046") {
+      await sql`select set_config('app.workspace_id',${ids.workspace},false)`;
+      const [legacyAssignment] = await sql<
+        Array<{ id: string; starts_at: Date; expires_at: Date }>
+      >`insert into sku_work_assignment(workspace_id,identity_id,sku_id,operation,starts_at,expires_at,created_by)
+        values(${ids.workspace},${ids.owner},${ids.sku},'capture',date_trunc('milliseconds',clock_timestamp())-interval '1 minute',date_trunc('milliseconds',clock_timestamp())+interval '10 minutes',${ids.owner})
+        returning id,starts_at,expires_at`;
+      assert.ok(legacyAssignment);
+      await sql`select app_request_team_assignment_change(${ids.workspace},${ids.owner},${legacyAssignment.id},'capture',${legacyAssignment.starts_at},${legacyAssignment.expires_at},'assignment_changed',gen_random_uuid())`;
+      legacyTeamHistory = JSON.stringify(
+        await sql`select to_jsonb(request) as request,
+        (select jsonb_agg(event order by revision) from team_assignment_change_event event where event.workspace_id=request.workspace_id and event.request_id=request.id) as events
+        from team_assignment_change_request request order by id`,
+      );
+    }
+    const filename = migrationNames.find((name) => name.startsWith(`${version}_`));
+    assert.ok(filename);
+    const migration = await readFile(new URL(filename, migrationsUrl), "utf8");
+    const history = await readInspectionUpgradeHistory();
+    const injected = migration.replace(
+      /commit;\s*$/u,
+      () => `do $$ begin raise exception 'injected ${version} rollback test'; end $$; commit;`,
+    );
+    await assert.rejects(
+      sql.unsafe(injected),
+      new RegExp(`injected ${version} rollback test`, "u"),
+    );
+    await sql`rollback`;
+    assert.deepEqual(await readInspectionUpgradeHistory(), history);
+    if (version === "0041") {
+      const [result] = await sql<
+        [{ absent: boolean }]
+      >`select to_regclass('public.receipt_media_asset') is null as absent`;
+      assert.equal(result.absent, true);
+    } else if (version === "0042") {
+      const columns =
+        await sql`select column_name from information_schema.columns where table_name = 'media_asset' and column_name = 'measurement_definition_id'`;
+      assert.equal(columns.length, 0);
+    } else if (version === "0043") {
+      const [result] = await sql<
+        [{ absent: boolean }]
+      >`select to_regclass('public.team_assignment_change_request') is null as absent`;
+      assert.equal(result.absent, true);
+    } else if (version === "0044") {
+      const columns =
+        await sql`select column_name from information_schema.columns where table_name='location_node' and column_name='purpose'`;
+      assert.equal(columns.length, 0);
+    } else if (version === "0045") {
+      const [prior] = await sql`select pg_get_constraintdef(oid) as definition from pg_constraint
+        where conrelid='location_node'::regclass and conname='quarantine_location_storage_check'`;
+      assert.ok(prior);
+      assert.match(prior.definition as string, /active/u);
+    } else {
+      const [prior] =
+        await sql`select to_regprocedure('app_team_assignment_exact_version(text,jsonb)') is null as absent`;
+      assert.ok(prior?.absent);
+      const [grant] = await sql`select has_function_privilege('resale_app_runtime',
+        'app_request_team_assignment_change(uuid,uuid,uuid,text,timestamptz,timestamptz,text,uuid)', 'EXECUTE') as allowed`;
+      assert.ok(grant?.allowed);
+    }
+    await sql.unsafe(migration);
+    if (legacyTeamHistory !== undefined) {
+      assert.equal(
+        JSON.stringify(
+          await sql`select to_jsonb(request) as request,
+        (select jsonb_agg(event order by revision) from team_assignment_change_event event where event.workspace_id=request.workspace_id and event.request_id=request.id) as events
+        from team_assignment_change_request request order by id`,
+        ),
+        legacyTeamHistory,
+        "0046 must retain legacy team request and event bytes without fabricating exact versions",
+      );
+    }
+    assert.deepEqual(
+      await readInspectionUpgradeHistory(),
+      history,
+      `${version} must preserve existing business history`,
+    );
+  }
   const legacyAddressModes = await sql<
     Array<{
       id: string;
@@ -2306,7 +2486,7 @@ try {
   );
 
   process.stdout.write(
-    `postgres-upgrade-integration: PASS (${legacyMigrations[0]} through ${upgradeMigrations.at(-1)}, additive inspection, shipping-photo, P14 order/shipping-method, explicit address-mode and missing-financial-fact controls installed without rewriting SKU/media/pilot/finance/audit history, legacy NULL address mode remains stored without row/history rewrite, anonymous and stored creation cardinality enforced, legacy packing and shipment behavior preserved without fabricated P14 evidence, historical two-actor approval preserved and mode-normalized, state/evidence/actors/timestamps/audit preserved, injected 0028, 0029, 0030, 0031, 0037, 0038 and 0039 failures fully rolled back after reconnect and reapplied, actor-bound movement-snapshot restore function upgraded without direct scan UPDATE, historical mapping/candidate IDs and export hashes/bytes preserved, historical v1.0 pilot environment preserved with nullable v1.1 fields and current v1.1/0033 accepted, non-approved approval metadata remains null, return dispose mapped to disposal_pending)\n`,
+    `postgres-upgrade-integration: PASS (${legacyMigrations[0]} through ${upgradeMigrations.at(-1)}, additive inspection, shipping-photo, P14 order/shipping-method, explicit address-mode, missing-financial-fact and restore-safe checked-code controls installed without rewriting SKU/media/pilot/finance/audit history, legacy NULL address mode remains stored without row/history rewrite, anonymous and stored creation cardinality enforced, legacy packing and shipment behavior preserved without fabricated P14 evidence, historical two-actor approval preserved and mode-normalized, state/evidence/actors/timestamps/audit preserved, injected 0028, 0029, 0030, 0031, 0037, 0038, 0039 and 0040 failures fully rolled back after reconnect and reapplied, actor-bound movement-snapshot restore function upgraded without direct scan UPDATE, historical mapping/candidate IDs and export hashes/bytes preserved, historical v1.0 pilot environment preserved with nullable v1.1 fields and current v1.1/0033 accepted, non-approved approval metadata remains null, return dispose mapped to disposal_pending)\n`,
   );
 } finally {
   await sql.end({ timeout: 5 });

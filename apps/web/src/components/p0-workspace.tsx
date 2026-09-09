@@ -17,12 +17,16 @@ import {
   listingPrepPilotProtocolVersion,
   listingPrepPilotWarmupFixture,
 } from "@resale/contracts";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   clearCaptureUploads,
+  clearCaptureUpload,
   loadCaptureUploads,
+  loadReceiptEvidenceUpload,
   markCaptureUploaded,
   prepareCaptureUpload,
+  prepareMeasurementEvidenceUpload,
+  prepareReceiptEvidenceUpload,
 } from "../lib/capture-outbox";
 import {
   categoryTemplates,
@@ -32,6 +36,7 @@ import {
 } from "../lib/measurement-profile";
 import { optionalFormText } from "../lib/form-data-fields";
 import { recoverablePilotCorrection } from "../lib/pilot-correction";
+import { p0UserFacingErrorMessage } from "../lib/p0-user-facing-error";
 import { pilotDisplayCategory } from "../lib/pilot-category";
 import {
   canStartNextPilotFixture,
@@ -40,6 +45,8 @@ import {
 } from "../lib/pilot-stage";
 import { AccountingWorkspace } from "./accounting-workspace";
 import { ProductResearchPanel } from "./product-research-panel";
+import { WorkflowLiveLayout, WorkflowCaptureSteps } from "./workflow-live-layout";
+import { copyBeforeWorkflowHandoff } from "./workflow-copy-handoff";
 
 type Stage = WorkflowStage;
 type PhotoRole = "front" | "back" | "brand_tag" | "care_label";
@@ -87,12 +94,16 @@ class HttpResponseError extends Error {
 
 export function P0Workspace({ workspaceId }: { workspaceId: string }) {
   const [stage, setStage] = useState<Stage>("purchase");
+  const [listingStep, setListingStep] = useState<"research" | "description">("research");
+  const [descriptionDraft, setDescriptionDraft] = useState<string | null>(null);
+  const [putawayStep, setPutawayStep] = useState<"number" | "location">("number");
   const [items, setItems] = useState<P0ItemResponse[]>([]);
   const [selectedSkuId, setSelectedSkuId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [photos, setPhotos] = useState<Partial<Record<PhotoRole, File>>>({});
+  const [measurementEvidence, setMeasurementEvidence] = useState<Partial<Record<string, File>>>({});
   const [measurements, setMeasurements] = useState<Record<string, string>>({});
   const [measurementReviewReason, setMeasurementReviewReason] = useState("");
   const [addressLeaseId, setAddressLeaseId] = useState<string | null>(null);
@@ -105,6 +116,16 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
   const initialPilotResumeChecked = useRef(false);
 
   const item = items.find((candidate) => candidate.skuId === selectedSkuId) ?? items[0] ?? null;
+  const listingPhotos = useMemo(
+    () =>
+      item
+        ? photoRoles.flatMap(({ id, label }) => {
+            const assetId = item.capture.photoAssetIds[item.capture.photoRoles.indexOf(id)];
+            return assetId ? [{ id, label, assetId }] : [];
+          })
+        : [],
+    [item],
+  );
   const activeMeasurementDefinitions = measurementDefinitionsFor(item?.measurementProfile ?? null);
   const refreshItems = useCallback(async () => {
     const result = await requestJson<P0ItemResponse[]>(`/v1/workspaces/${workspaceId}/p0-items`);
@@ -199,6 +220,7 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
   useEffect(() => {
     let cancelled = false;
     setPhotos({});
+    setMeasurementEvidence({});
     if (!item || workflowStateRank(item.workflowState) >= workflowStateRank("capture_confirmed")) {
       return () => {
         cancelled = true;
@@ -209,8 +231,18 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
       .then((records) => {
         if (cancelled) return;
         const restored: Partial<Record<PhotoRole, File>> = {};
-        for (const record of records) restored[record.role] = record.file;
+        const restoredEvidence: Partial<Record<string, File>> = {};
+        for (const record of records) {
+          if (record.file && isPhotoRole(record.role)) restored[record.role] = record.file;
+          if (
+            record.file &&
+            record.role === "measurement_evidence" &&
+            record.measurementDefinitionId
+          )
+            restoredEvidence[record.measurementDefinitionId] = record.file;
+        }
         setPhotos(restored);
+        setMeasurementEvidence(restoredEvidence);
       })
       .catch(() => undefined);
     return () => {
@@ -227,7 +259,11 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
     accounting: workflowRank >= workflowStateRank("journal_approved"),
   };
   const measurementComplete = completeMeasurements(activeMeasurementDefinitions, measurements);
-  const description = item?.listingCandidate.text ?? "商品情報を読み込んでいます。";
+  const description = descriptionDraft ?? item?.listingCandidate.text ?? "";
+  useEffect(() => {
+    setDescriptionDraft(null);
+    setPutawayStep("number");
+  }, [item?.skuId]);
   const activePilotItem =
     pilotRun?.state === "active" && item
       ? (pilotRun.items.find((candidate) => candidate.skuId === item.skuId) ?? null)
@@ -300,14 +336,33 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
     }
   }
 
-  async function createPurchase(form: FormData) {
+  async function createPurchase(form: FormData, receiptFile: File | null) {
     await run(async () => {
       const pilotRunId = optionalFormText(form, "pilotRunId");
       const productFixtureId = optionalFormText(form, "productFixtureId");
       if ((pilotRunId === null) !== (productFixtureId === null)) {
         throw new Error("計測用の商品情報を確認できません。画面を読み直してください。");
       }
+      if (!receiptFile) {
+        throw new Error("請求書・レシートの写真を選んで、人が内容を確認してください。");
+      }
+      const receipt = await prepareReceiptEvidenceUpload(workspaceId, receiptFile);
+      const itemCreateIdempotencyKey = receipt.purchaseIdempotencyKey;
+      if (!itemCreateIdempotencyKey) throw new Error("再送用の確認番号を準備できませんでした。");
+      if (!navigator.onLine)
+        throw new Error("通信がないため保存できません。写真は画面を開いている間だけ保持します。");
       if (pilotRunId) await ensurePilotEventsSynced();
+      if (!receipt.uploaded) {
+        await requestJson(
+          `/v1/workspaces/${workspaceId}/receipt-evidence?assetId=${receipt.assetId}&humanConfirmed=true`,
+          {
+            method: "POST",
+            body: receipt.file,
+            headers: { "content-type": receipt.file.type },
+          },
+        );
+        await markCaptureUploaded(receipt.key);
+      }
       const created = await requestJson<P0ItemResponse>(`/v1/workspaces/${workspaceId}/p0-items`, {
         method: "POST",
         body: JSON.stringify({
@@ -319,8 +374,9 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
           receiptReference: textField(form, "receiptReference"),
           purchasedAt: new Date(textField(form, "purchasedAt")).toISOString(),
           receiptAmountMinor: numberField(form, "receiptAmountMinor"),
+          receiptEvidenceAssetId: receipt.assetId,
           allocatedCostMinor: numberField(form, "allocatedCostMinor"),
-          idempotencyKey: crypto.randomUUID(),
+          idempotencyKey: itemCreateIdempotencyKey,
           humanConfirmed: true,
           ...(pilotRunId && productFixtureId
             ? {
@@ -332,16 +388,29 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
             : {}),
         }),
       });
+      // 商品作成後の端末内削除に失敗しても、同じ作成操作を二重送信しない。
+      await clearCaptureUpload(receipt.key).catch(() => undefined);
       if (pilotRunId) {
         sessionStorage.setItem(
           pilotActiveMarkerKey(workspaceId),
           JSON.stringify({ pilotRunId, skuId: created.skuId, pageInstanceId }),
         );
       }
-      await refreshItems();
-      await refreshPilotRun();
+      setItems((current) =>
+        current.some((candidate) => candidate.skuId === created.skuId)
+          ? current
+          : [created, ...current],
+      );
       setSelectedSkuId(created.skuId);
       setStage("capture");
+      try {
+        await refreshItems();
+        await refreshPilotRun();
+      } catch {
+        setError(
+          "商品番号を作成しました。最新一覧を読み込めないため、更新ボタンで再確認してください。",
+        );
+      }
     });
   }
 
@@ -356,13 +425,43 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
       setError(requiredMeasurementMessage(activeMeasurementDefinitions));
       return;
     }
+    if (
+      activeMeasurementDefinitions.some(
+        (definition) => !measurementEvidence[definition.definitionId],
+      )
+    ) {
+      setError("各採寸項目の根拠写真を選んでください。掲載用の正面写真は使えません。");
+      return;
+    }
     await run(async () => {
+      // すべての画像を先に画面内メモリへ検証・準備してから、最初の通信を始める。
+      const stagedPhotos = await Promise.all(
+        photoRoles.map(async ({ id: role }) => {
+          const file = photos[role];
+          if (!file) throw new Error(requiredPhotoMessage());
+          return { role, pending: await prepareCaptureUpload(workspaceId, item.skuId, role, file) };
+        }),
+      );
+      const stagedEvidence = await Promise.all(
+        activeMeasurementDefinitions.map(async (definition) => {
+          const file = measurementEvidence[definition.definitionId];
+          if (!file) throw new Error("各採寸項目の根拠写真を選んでください。");
+          return {
+            definitionId: definition.definitionId,
+            pending: await prepareMeasurementEvidenceUpload(
+              workspaceId,
+              item.skuId,
+              definition.definitionId,
+              file,
+            ),
+          };
+        }),
+      );
+      if (!navigator.onLine)
+        throw new Error("通信がないため保存できません。写真は画面を開いている間だけ保持します。");
       if (activePilotItem) await ensurePilotEventsSynced();
       const assetIds: string[] = [];
-      for (const { id: role } of photoRoles) {
-        const file = photos[role];
-        if (!file) throw new Error(requiredPhotoMessage());
-        const pending = await prepareCaptureUpload(workspaceId, item.skuId, role, file);
+      for (const { role, pending } of stagedPhotos) {
         if (!pending.uploaded) {
           await requestJson(
             `/v1/workspaces/${workspaceId}/skus/${item.skuId}/media-uploads?assetId=${pending.assetId}&role=${role}`,
@@ -371,6 +470,17 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
           await markCaptureUploaded(pending.key);
         }
         assetIds.push(pending.assetId);
+      }
+      const measurementEvidenceAssetIds = new Map<string, string>();
+      for (const { definitionId, pending } of stagedEvidence) {
+        if (!pending.uploaded) {
+          await requestJson(
+            `/v1/workspaces/${workspaceId}/skus/${item.skuId}/media-uploads?assetId=${pending.assetId}&role=measurement_evidence&measurementDefinitionId=${encodeURIComponent(definitionId)}`,
+            { method: "POST", body: pending.file, headers: { "content-type": pending.file.type } },
+          );
+          await markCaptureUploaded(pending.key);
+        }
+        measurementEvidenceAssetIds.set(definitionId, pending.assetId);
       }
       const measuredAt = new Date().toISOString();
       const savedMeasurements: Array<{ requiresReview: boolean }> = [];
@@ -399,7 +509,7 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
               basis: definition.basis,
               state: definition.state,
               measuredAt,
-              evidenceAssetId: assetIds[0],
+              evidenceAssetId: measurementEvidenceAssetIds.get(definitionId),
               attempt: (previous?.attempt ?? 0) + 1,
               reviewReasonCode: measurementReviewReason || undefined,
               humanConfirmed: true,
@@ -422,6 +532,7 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
       }
       await advanceWorkflow(item.skuId, "confirm_capture", assetIds, false);
       await clearCaptureUploads(workspaceId, item.skuId);
+      setMeasurementEvidence({});
       await refreshItems();
       setStage("listing");
     });
@@ -431,20 +542,22 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
     if (
       !item ||
       item.listingCandidate.unconfirmedFields.length > 0 ||
-      item.listingCandidate.referenceIds.length === 0
+      item.listingCandidate.referenceIds.length === 0 ||
+      !hasListingExportPhotos(item)
     )
       return;
     const completingPilotItem = Boolean(activePilotItem?.completedAt === null);
     await run(async () => {
       if (activePilotItem) await ensurePilotEventsSynced();
-      await advanceWorkflow(
-        item.skuId,
-        "confirm_listing",
-        item.listingCandidate.referenceIds,
-        true,
-      );
+      await copyBeforeWorkflowHandoff(description, navigator.clipboard, async () => {
+        await advanceWorkflow(
+          item.skuId,
+          "confirm_listing",
+          item.listingCandidate.referenceIds,
+          true,
+        );
+      });
       if (activePilotItem) sessionStorage.removeItem(pilotActiveMarkerKey(workspaceId));
-      await navigator.clipboard?.writeText(description).catch(() => undefined);
       await refreshItems();
       await refreshPilotRun();
       setStage(completingPilotItem ? "purchase" : "order");
@@ -728,311 +841,478 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
     });
   }
 
-  if (loading) return <p role="status">実データを読み込んでいます…</p>;
+  if (loading)
+    return (
+      <WorkflowLiveLayout>
+        <p role="status">商品を読み込んでいます…</p>
+      </WorkflowLiveLayout>
+    );
 
   return (
-    <div className="workflowBoard">
-      {error ? (
-        <p className="accountingDisclaimer" role="alert">
-          {error}
-        </p>
-      ) : null}
-      <PilotPanel
-        busy={busy}
-        pilotRun={pilotRun}
-        pendingEventCount={pendingPilotEventCount}
-        resumeDecisionRequired={pilotResumeDecisionRequired}
-        nextFixture={nextPilotFixture}
-        nextProfile={nextPilotProfile}
-        onStart={startPilot}
-        onInvalidate={invalidatePilotRun}
-        onMarkReloadInvalid={() => void markReloadAsInvalidAttempt()}
-        onRetryPending={() => {
-          void run(async () => {
-            try {
-              await syncPendingPilotEvents(pilotRun?.runId);
-            } catch {
-              throw new PilotEventSyncPendingError(
-                "例外記録をまだ送信できません。通信を確認して、もう一度再送してください。",
-              );
-            }
-          });
-        }}
-      />
-      <nav className="workflowStages" aria-label="試験商品の工程">
-        {stages.map((entry, index) => (
-          <button
-            className={stage === entry.id ? "active" : completed[entry.id] ? "done" : ""}
-            disabled={
-              busy ||
-              pilotResumeDecisionRequired ||
-              (awaitingNextPilotItem && entry.id !== "purchase") ||
-              (entry.id !== "purchase" && !item) ||
-              (!stages.slice(0, index).every((previous) => completed[previous.id]) &&
-                entry.id !== "capture")
-            }
-            key={entry.id}
-            type="button"
-            onClick={() => setStage(entry.id)}
-          >
-            <span>{completed[entry.id] ? "✓" : index + 1}</span>
-            {entry.label}
-          </button>
-        ))}
-      </nav>
-
-      {items.length > 0 && !awaitingNextPilotItem ? (
-        <section className="workflowItemSummary panel">
-          <label>
-            対象商品
-            <select
-              value={item?.skuId ?? ""}
-              onChange={(event) => setSelectedSkuId(event.target.value)}
-            >
-              {items.map((entry) => (
-                <option key={entry.skuId} value={entry.skuId}>
-                  {entry.skuCode} / {entry.title}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div>
-            <span>在庫番号</span>
-            <strong>{item?.inventoryNumber}</strong>
-          </div>
-          <div>
-            <span>状態</span>
-            <strong>{item ? inventoryStatusLabel(item.inventoryStatus) : "—"}</strong>
-          </div>
-          <div>
-            <span>現在地</span>
-            <strong>{item?.locationCode ?? "未格納"}</strong>
-          </div>
-        </section>
-      ) : null}
-
-      {stage === "purchase" ? (
-        <PurchasePanel
-          key={nextPilotFixture ?? "standard-purchase"}
-          busy={busy}
-          onSubmit={createPurchase}
-          item={awaitingNextPilotItem ? null : item}
-          pilotRunId={pilotRun?.state === "active" ? pilotRun.runId : null}
-          pilotFixture={nextPilotFixture}
-          pilotProfile={nextPilotProfile}
-          pilotBlocked={
-            pilotResumeDecisionRequired ||
-            (pilotRun?.state === "active" && nextPilotFixture === null)
-          }
-        />
-      ) : null}
-
-      {stage === "capture" && item ? (
-        <section className="workflowPanel panel" aria-labelledby="capture-heading">
-          <div className="workflowPanelHead">
-            <div>
-              <p className="eyebrow">CAPTURE</p>
-              <h2 id="capture-heading">原本写真と平置き採寸</h2>
-            </div>
-            <span className={completed.capture ? "safeBadge" : "status"}>
-              {completed.capture ? "DB保存済み" : "確認待ち"}
-            </span>
-          </div>
-          <div className="photoChecklist">
-            {photoRoles.map(({ id, label }) => (
-              <label className={photos[id] ? "checked" : ""} key={id}>
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png"
-                  onChange={(event) =>
-                    setPhotos((current) => ({ ...current, [id]: event.target.files?.[0] }))
-                  }
-                />
-                <span aria-hidden="true">{photos[id] ? "✓" : "＋"}</span>
-                <strong>{label}</strong>
-                <small>実ファイルを非公開保存</small>
-              </label>
-            ))}
-          </div>
-          <div className="measurementGrid">
-            {activeMeasurementDefinitions.map((definition) => (
-              <label key={definition.definitionId}>
-                {definition.label}（{definition.basis}・{definition.state}）
-                <span>
-                  <input
-                    type="number"
-                    inputMode="decimal"
-                    min="0.1"
-                    max="250"
-                    step="0.1"
-                    value={measurements[definition.definitionId] ?? ""}
-                    onChange={(event) =>
-                      setMeasurements((current) => ({
-                        ...current,
-                        [definition.definitionId]: event.target.value,
-                      }))
-                    }
-                  />
-                  cm
-                </span>
-              </label>
-            ))}
-          </div>
-          <label className="fieldLabel">
-            再測定の確認理由（差が2cmを超えた場合のみ）
-            <select
-              value={measurementReviewReason}
-              onChange={(event) => setMeasurementReviewReason(event.target.value)}
-            >
-              <option value="">理由を選ばず初回保存</option>
-              <option value="previous_entry_error">前回の入力誤りを修正</option>
-              <option value="garment_stretch">伸縮素材を同じ方法で再確認</option>
-              <option value="measurement_definition_corrected">測る位置を定義どおりに修正</option>
-            </select>
-          </label>
-          <div className="humanGate">
-            <div>
-              <strong>写真4種と実測値を人が確認</strong>
-              <p>サーバーがハッシュと寸法を計算し、原本を上書きしません。</p>
-            </div>
+    <WorkflowLiveLayout>
+      <div className="workflowBoard" data-workflow-stage={stage}>
+        {error ? (
+          <div className="accountingDisclaimer" role="alert">
+            <p>{error}</p>
             <button
               type="button"
-              disabled={
-                busy ||
-                pilotResumeDecisionRequired ||
-                completed.capture ||
-                !measurementComplete ||
-                photoRoles.some(({ id }) => !photos[id])
+              disabled={busy}
+              onClick={() =>
+                void run(async () => {
+                  await refreshItems();
+                  await refreshPilotRun();
+                })
               }
-              onClick={() => void confirmCapture()}
             >
-              {completed.capture ? "保存済み" : "写真と採寸を保存"}
+              もう一度読み込む
             </button>
           </div>
-          <WorkflowNext
-            enabled={completed.capture}
-            label="出品準備へ"
-            onClick={() => setStage("listing")}
-          />
-        </section>
-      ) : null}
-
-      {stage === "listing" && item ? (
-        <section className="workflowPanel panel" aria-labelledby="listing-heading">
-          <div className="workflowPanelHead">
-            <div>
-              <p className="eyebrow">LISTING HANDOFF</p>
-              <h2 id="listing-heading">確認済み事実から作る文章候補</h2>
-            </div>
-            <span className={completed.listing ? "safeBadge" : "status"}>
-              {completed.listing ? "本人確認済み" : "候補"}
-            </span>
-          </div>
-          <div className="candidateNotice">
-            <strong>自動出品はしません</strong>
-            <p>公式画面への貼り付けと公開は本人が行います。外部費用は0円です。</p>
-          </div>
-          <textarea aria-label="商品説明候補" readOnly rows={7} value={description} />
-          {activePilotItem ? (
-            <div className="candidateNotice" role="note">
-              <strong>訂正できる範囲を確認してください</strong>
-              <p>
-                属性の再保存は訂正履歴として数えます。写真・採寸は撮影工程の確定後、文章は直接編集できません。事実を直しても文章が正しくならない場合は、このrunを不合格にして最初からやり直します。
-              </p>
-              <button
-                className="secondaryButton"
-                type="button"
-                disabled={busy || pilotResumeDecisionRequired}
-                onClick={() => void failPilotForUncorrectableContent()}
-              >
-                訂正不能を記録してrunをやり直す
-              </button>
-            </div>
-          ) : null}
-          <p className="candidateReferences">
-            参照: 写真 {item.capture.photoAssetIds.length}件・採寸
-            {item.capture.measurements.length}件
-            {item.listingCandidate.unconfirmedFields.length > 0
-              ? `／未確認: ${item.listingCandidate.unconfirmedFields.join("・")}`
-              : "／未確認なし"}
-          </p>
-          <ProductResearchPanel
-            workspaceId={workspaceId}
-            skuId={item.skuId}
-            attributeEvidence={item.capture.photoRoles.flatMap((role, index) => {
-              const assetId = item.capture.photoAssetIds[index];
-              return assetId && (role === "brand_tag" || role === "care_label")
-                ? [{ assetId, role }]
-                : [];
-            })}
-            pilotActive={pilotRun?.state === "active"}
-            pilotBlocked={pilotResumeDecisionRequired}
-            onChanged={async () => {
-              await refreshItems();
-              await refreshPilotRun();
+        ) : null}
+        <details open={pilotRun?.state === "active" || pilotResumeDecisionRequired}>
+          <summary>試験計測（通常作業では不要）</summary>
+          <PilotPanel
+            busy={busy}
+            pilotRun={pilotRun}
+            pendingEventCount={pendingPilotEventCount}
+            resumeDecisionRequired={pilotResumeDecisionRequired}
+            nextFixture={nextPilotFixture}
+            nextProfile={nextPilotProfile}
+            onStart={startPilot}
+            onInvalidate={invalidatePilotRun}
+            onMarkReloadInvalid={() => void markReloadAsInvalidAttempt()}
+            onRetryPending={() => {
+              void run(async () => {
+                try {
+                  await syncPendingPilotEvents(pilotRun?.runId);
+                } catch {
+                  throw new PilotEventSyncPendingError(
+                    "例外記録をまだ送信できません。通信を確認して、もう一度再送してください。",
+                  );
+                }
+              });
             }}
           />
-          <div className="humanGate">
-            <div>
-              <strong>コピー用内容を人が確認</strong>
-              <p>
-                {item.measurementProfile !== null && item.confirmedAttributes === null
-                  ? "新しい採寸プロフィールの商品は、ブランド・サイズ・色を人が確認して保存するまで確定できません。"
-                  : "未確認事実は自動補完しません。"}
-              </p>
-            </div>
+        </details>
+        {!items.length && !error ? (
+          <p role="status">
+            まだ商品がありません。仕入れ内容を確認して最初の1点を登録してください。
+          </p>
+        ) : null}
+        <nav className="workflowStages" aria-label="商品の工程">
+          {stages.map((entry, index) => (
             <button
-              type="button"
+              className={stage === entry.id ? "active" : completed[entry.id] ? "done" : ""}
               disabled={
                 busy ||
                 pilotResumeDecisionRequired ||
-                completed.listing ||
-                item.listingCandidate.unconfirmedFields.length > 0 ||
-                item.listingCandidate.referenceIds.length === 0 ||
-                (item.measurementProfile !== null && item.confirmedAttributes === null)
+                (awaitingNextPilotItem && entry.id !== "purchase") ||
+                (entry.id !== "purchase" && !item) ||
+                (!stages.slice(0, index).every((previous) => completed[previous.id]) &&
+                  entry.id !== "capture")
               }
-              onClick={() => void confirmListing()}
+              key={entry.id}
+              type="button"
+              onClick={() => setStage(entry.id)}
             >
-              {completed.listing ? "確認済み" : "確認してコピー"}
+              <span>{completed[entry.id] ? "✓" : index + 1}</span>
+              {entry.label}
             </button>
-          </div>
-          <WorkflowNext
-            enabled={completed.listing}
-            label={activePilotItem ? "次の固定商品へ" : "注文・発送へ"}
-            onClick={() => setStage(activePilotItem ? "purchase" : "order")}
+          ))}
+        </nav>
+
+        {items.length > 0 && !awaitingNextPilotItem ? (
+          <section className="workflowItemSummary panel">
+            <label>
+              対象商品
+              <select
+                value={item?.skuId ?? ""}
+                disabled={busy || pilotRun?.state === "active"}
+                onChange={(event) => {
+                  setSelectedSkuId(event.target.value);
+                  setListingStep("research");
+                }}
+              >
+                {items.map((entry) => (
+                  <option key={entry.skuId} value={entry.skuId}>
+                    {entry.skuCode} / {entry.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div>
+              <span>在庫番号</span>
+              <strong>{item?.inventoryNumber}</strong>
+            </div>
+            <div>
+              <span>状態</span>
+              <strong>{item ? inventoryStatusLabel(item.inventoryStatus) : "—"}</strong>
+            </div>
+            <div>
+              <span>現在地</span>
+              <strong>{item?.locationCode ?? "未格納"}</strong>
+            </div>
+          </section>
+        ) : null}
+
+        {stage === "purchase" ? (
+          <PurchasePanel
+            key={nextPilotFixture ?? "standard-purchase"}
+            busy={busy}
+            onSubmit={createPurchase}
+            workspaceId={workspaceId}
+            item={awaitingNextPilotItem ? null : item}
+            pilotRunId={pilotRun?.state === "active" ? pilotRun.runId : null}
+            pilotFixture={nextPilotFixture}
+            pilotProfile={nextPilotProfile}
+            pilotBlocked={
+              pilotResumeDecisionRequired ||
+              (pilotRun?.state === "active" && nextPilotFixture === null)
+            }
           />
-        </section>
-      ) : null}
+        ) : null}
 
-      {stage === "order" && item ? (
-        <OrderPanel
-          item={item}
-          busy={busy}
-          addressLeaseId={addressLeaseId}
-          shippingAddressView={shippingAddressView}
-          onCreate={createOrder}
-          onAssign={assignShipping}
-          assignmentMessage={assignmentMessage}
-          onProgress={progressOrder}
-          onIssueLease={() => {
-            const orderId = item.orderId;
-            if (orderId)
-              void run(async () => {
-                await issueAddressLease(orderId);
-              });
-          }}
-          onReveal={revealShippingAddress}
-          onNext={() => setStage("accounting")}
-        />
-      ) : null}
+        {stage === "capture" && item && !item.locationCode ? (
+          <section className="workflowPanel panel" data-workflow-screen={`putaway-${putawayStep}`}>
+            <h2>{putawayStep === "number" ? "在庫番号を確認" : "保管場所を決める"}</h2>
+            <p>商品: {item.title}</p>
+            <p>
+              在庫番号: <strong>{item.inventoryNumber}</strong>
+            </p>
+            {putawayStep === "number" ? (
+              <>
+                <p>現物の紙タグへ番号を書き、商品と照合してください。</p>
+                <button type="button" disabled={busy} onClick={() => setPutawayStep("location")}>
+                  番号を確認して保管場所へ
+                </button>
+              </>
+            ) : (
+              <>
+                <p>まだ格納されていません。商品と保管場所を人が確認してから撮影へ進みます。</p>
+                <p>
+                  <a href="/inventory">保管場所を決める</a>
+                </p>
+                <p>
+                  <a href="/mobile/scan">商品と場所を確認して格納する</a>
+                </p>
+                <button type="button" disabled={busy} onClick={() => void run(refreshItems)}>
+                  格納後に更新する
+                </button>
+                <button type="button" disabled={busy} onClick={() => setPutawayStep("number")}>
+                  ‹ 在庫番号に戻る
+                </button>
+              </>
+            )}
+          </section>
+        ) : null}
+        {stage === "capture" && item && item.locationCode ? (
+          <WorkflowCaptureSteps
+            key={item.skuId}
+            photos={photos}
+            setPhoto={(id, file) => setPhotos((current) => ({ ...current, [id]: file }))}
+            definitions={activeMeasurementDefinitions}
+            measurements={measurements}
+            setMeasurement={(id, value) =>
+              setMeasurements((current) => ({ ...current, [id]: value }))
+            }
+            measurementEvidence={measurementEvidence}
+            setMeasurementEvidence={(id, file) =>
+              setMeasurementEvidence((current) => ({ ...current, [id]: file }))
+            }
+            previousMeasurements={latestMeasurements(item.capture.measurements)}
+            reason={measurementReviewReason}
+            setReason={setMeasurementReviewReason}
+            completed={completed.capture}
+            disabled={busy || pilotResumeDecisionRequired}
+            canSave={
+              measurementComplete &&
+              photoRoles.every(({ id }) => photos[id]) &&
+              activeMeasurementDefinitions.every(
+                (definition) => measurementEvidence[definition.definitionId],
+              )
+            }
+            onSave={() => void confirmCapture()}
+            onNext={() => setStage("listing")}
+          />
+        ) : null}
 
-      {stage === "accounting" && item ? (
-        <AccountingWorkspace
-          workspaceId={workspaceId}
-          orderId={item.orderId}
-          preferredFormat="generic_journal_v1"
-        />
-      ) : null}
+        {stage === "listing" && item ? (
+          <section className="workflowPanel panel" aria-labelledby="listing-heading">
+            <div className="workflowPanelHead">
+              <div>
+                <h2 id="listing-heading">
+                  {listingStep === "research" ? "タグの文字・商品調査" : "商品説明の候補"}
+                </h2>
+              </div>
+              <span className={completed.listing ? "safeBadge" : "status"}>
+                {completed.listing ? "本人確認済み" : "候補"}
+              </span>
+            </div>
+            <div hidden={listingStep !== "description"} data-workflow-screen="description">
+              <div className="candidateNotice">
+                <strong>自動出品はしません</strong>
+                <p>公式画面への貼り付けと公開は本人が行います。外部費用は0円です。</p>
+              </div>
+              <textarea
+                aria-label="商品説明候補"
+                rows={7}
+                value={description}
+                disabled={busy || completed.listing}
+                onChange={(event) => setDescriptionDraft(event.target.value)}
+              />
+              <p>編集した文章はこの画面内のコピー用です。データベースの商品説明は変更しません。</p>
+              <div className="listingPhotoDownloads" aria-label="掲載写真を端末に保存">
+                <strong>掲載用4写真（非公開保存済み）を端末に保存</strong>
+                <p>
+                  出品前に、4種類の掲載写真を1枚ずつ保存してください。採寸の根拠写真は含めません。
+                </p>
+                <PrivateListingPhotoGallery
+                  workspaceId={workspaceId}
+                  skuId={item.skuId}
+                  photos={listingPhotos}
+                />
+                {photoRoles.map(({ id, label }) => {
+                  const assetId = item.capture.photoAssetIds[item.capture.photoRoles.indexOf(id)];
+                  return assetId ? (
+                    <a
+                      key={id}
+                      href={`/v1/workspaces/${workspaceId}/skus/${item.skuId}/product-photos/${assetId}/content`}
+                      download={`${item.skuCode}-${id}.jpg`}
+                    >
+                      {label}写真を保存
+                    </a>
+                  ) : (
+                    <span key={id}>{label}写真は未準備です</span>
+                  );
+                })}
+              </div>
+              {pilotRun?.state === "active" ? (
+                <p className="candidateNotice" data-implementation-state="WAITING_HUMAN">
+                  計測中は出品画面を開けません。計測を終え、結果を確認してから本人が開きます。
+                </p>
+              ) : (
+                <a href="https://jp.mercari.com/sell" target="_blank" rel="noopener noreferrer">
+                  メルカリ公式の出品画面を開く
+                </a>
+              )}
+              {activePilotItem ? (
+                <div className="candidateNotice" role="note">
+                  <strong>訂正できる範囲を確認してください</strong>
+                  <p>
+                    属性の再保存は訂正履歴として数えます。写真・採寸は撮影工程の確定後、文章は直接編集できません。事実を直しても文章が正しくならない場合は、このrunを不合格にして最初からやり直します。
+                  </p>
+                  <button
+                    className="secondaryButton"
+                    type="button"
+                    disabled={busy || pilotResumeDecisionRequired}
+                    onClick={() => void failPilotForUncorrectableContent()}
+                  >
+                    訂正不能を記録してrunをやり直す
+                  </button>
+                </div>
+              ) : null}
+              <p className="candidateReferences">
+                参照: 写真 {item.capture.photoAssetIds.length}件・採寸
+                {item.capture.measurements.length}件
+                {item.listingCandidate.unconfirmedFields.length > 0
+                  ? `／未確認: ${item.listingCandidate.unconfirmedFields.join("・")}`
+                  : "／未確認なし"}
+              </p>
+            </div>
+            <div hidden={listingStep !== "research"} data-workflow-screen="research">
+              <ProductResearchPanel
+                key={item.skuId}
+                workspaceId={workspaceId}
+                skuId={item.skuId}
+                attributeEvidence={item.capture.photoRoles.flatMap((role, index) => {
+                  const assetId = item.capture.photoAssetIds[index];
+                  return assetId && (role === "brand_tag" || role === "care_label")
+                    ? [{ assetId, role }]
+                    : [];
+                })}
+                pilotActive={pilotRun?.state === "active"}
+                pilotBlocked={pilotResumeDecisionRequired}
+                onChanged={async () => {
+                  await refreshItems();
+                  await refreshPilotRun();
+                }}
+              />
+              <button
+                type="button"
+                disabled={busy || pilotResumeDecisionRequired}
+                onClick={() => setListingStep("description")}
+              >
+                商品をまとめる
+              </button>
+            </div>
+            <div hidden={listingStep !== "description"}>
+              <div className="humanGate">
+                <div>
+                  <strong>コピー用内容を人が確認</strong>
+                  <p>
+                    {item.measurementProfile !== null && item.confirmedAttributes === null
+                      ? "新しい採寸プロフィールの商品は、ブランド・サイズ・色を人が確認して保存するまで確定できません。"
+                      : "未確認事実は自動補完しません。"}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={
+                    busy ||
+                    pilotResumeDecisionRequired ||
+                    completed.listing ||
+                    item.listingCandidate.unconfirmedFields.length > 0 ||
+                    item.listingCandidate.referenceIds.length === 0 ||
+                    !hasListingExportPhotos(item) ||
+                    (item.measurementProfile !== null && item.confirmedAttributes === null)
+                  }
+                  onClick={() => void confirmListing()}
+                >
+                  {completed.listing
+                    ? "確認済み"
+                    : hasListingExportPhotos(item)
+                      ? "確認してコピー"
+                      : "掲載写真を準備してください"}
+                </button>
+              </div>
+              <WorkflowNext
+                enabled={completed.listing}
+                label={activePilotItem ? "次の固定商品へ" : "注文・発送へ"}
+                onClick={() => setStage(activePilotItem ? "purchase" : "order")}
+              />
+              <button type="button" disabled={busy} onClick={() => setListingStep("research")}>
+                ‹ タグ・調査に戻る
+              </button>
+            </div>
+          </section>
+        ) : null}
+
+        {stage === "order" && item ? (
+          <OrderPanel
+            item={item}
+            busy={busy}
+            addressLeaseId={addressLeaseId}
+            shippingAddressView={shippingAddressView}
+            onCreate={createOrder}
+            onAssign={assignShipping}
+            assignmentMessage={assignmentMessage}
+            onProgress={progressOrder}
+            onIssueLease={() => {
+              const orderId = item.orderId;
+              if (orderId)
+                void run(async () => {
+                  await issueAddressLease(orderId);
+                });
+            }}
+            onReveal={revealShippingAddress}
+            onNext={() => setStage("accounting")}
+          />
+        ) : null}
+
+        {stage === "accounting" && item ? (
+          <AccountingWorkspace
+            workspaceId={workspaceId}
+            orderId={item.orderId}
+            preferredFormat="generic_journal_v1"
+          />
+        ) : null}
+      </div>
+    </WorkflowLiveLayout>
+  );
+}
+
+type ListingPhotoPreview = {
+  id: PhotoRole;
+  label: string;
+  assetId: string;
+};
+
+function PrivateListingPhotoGallery({
+  workspaceId,
+  skuId,
+  photos,
+}: {
+  workspaceId: string;
+  skuId: string;
+  photos: readonly ListingPhotoPreview[];
+}) {
+  const [previews, setPreviews] = useState<Array<ListingPhotoPreview & { url: string }>>([]);
+  const [previewError, setPreviewError] = useState("");
+  const [visibilityRevision, setVisibilityRevision] = useState(0);
+  const previewUrls = useRef<string[]>([]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let disposed = false;
+    const revokePreviews = () => {
+      for (const url of previewUrls.current) URL.revokeObjectURL(url);
+      previewUrls.current = [];
+    };
+    const clearForHiddenPage = () => {
+      controller.abort();
+      revokePreviews();
+      if (!disposed) setPreviews([]);
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") clearForHiddenPage();
+      if (document.visibilityState === "visible") setVisibilityRevision((current) => current + 1);
+    };
+    const loadPreviews = async () => {
+      revokePreviews();
+      setPreviews([]);
+      setPreviewError("");
+      const next: Array<ListingPhotoPreview & { url: string }> = [];
+      try {
+        for (const photo of photos) {
+          const response = await fetch(
+            `/v1/workspaces/${workspaceId}/skus/${skuId}/product-photos/${photo.assetId}/content`,
+            {
+              credentials: "same-origin",
+              cache: "no-store",
+              redirect: "error",
+              signal: controller.signal,
+            },
+          );
+          const contentType = response.headers.get("content-type") ?? "";
+          if (!response.ok || !/^image\/(?:jpeg|png)$/iu.test(contentType)) {
+            throw new Error("private photo preview unavailable");
+          }
+          next.push({ ...photo, url: URL.createObjectURL(await response.blob()) });
+        }
+        if (disposed) {
+          for (const preview of next) URL.revokeObjectURL(preview.url);
+          return;
+        }
+        previewUrls.current = next.map((preview) => preview.url);
+        setPreviews(next);
+      } catch (reason) {
+        for (const preview of next) URL.revokeObjectURL(preview.url);
+        if (!disposed && !(reason instanceof DOMException && reason.name === "AbortError")) {
+          setPreviewError(
+            "写真のプレビューを表示できません。保存ボタンから1枚ずつ確認してください。",
+          );
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    void loadPreviews();
+    return () => {
+      disposed = true;
+      controller.abort();
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      revokePreviews();
+    };
+  }, [photos, skuId, visibilityRevision, workspaceId]);
+
+  return (
+    <div className="listingPhotoGallery" aria-label="非公開の掲載写真プレビュー">
+      <p>保存前の確認用プレビュー（画面を隠すと消去します）</p>
+      {previewError ? <p role="status">{previewError}</p> : null}
+      {previews.map((preview) => (
+        <figure key={preview.id}>
+          <img src={preview.url} alt={`${preview.label}写真の非公開プレビュー`} />
+          <figcaption>{preview.label}</figcaption>
+        </figure>
+      ))}
     </div>
   );
 }
@@ -1273,14 +1553,15 @@ function PilotPanel({
 function PurchasePanel({
   busy,
   onSubmit,
-  item,
+  workspaceId,
   pilotRunId,
   pilotFixture,
   pilotProfile,
   pilotBlocked,
 }: {
   busy: boolean;
-  onSubmit: (form: FormData) => Promise<void>;
+  onSubmit: (form: FormData, receiptFile: File | null) => Promise<void>;
+  workspaceId: string;
   item: P0ItemResponse | null;
   pilotRunId: string | null;
   pilotFixture: (typeof listingPrepPilotFixtures)[number] | null;
@@ -1288,28 +1569,81 @@ function PurchasePanel({
   pilotBlocked: boolean;
 }) {
   const [category, setCategory] = useState<string>(pilotProfile?.category ?? "tops");
+  const [purchaseStep, setPurchaseStep] = useState<"receipt" | "item">("receipt");
+  const receiptFields = useRef<HTMLFieldSetElement>(null);
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
   const measurementTemplateId = pilotProfile?.templateId ?? templateForCategory(category);
   const pilotIdentifiers =
     pilotRunId && pilotFixture ? listingPrepPilotItemIdentifiers(pilotRunId, pilotFixture) : null;
+  useEffect(() => {
+    let cancelled = false;
+    void loadReceiptEvidenceUpload(workspaceId).then((pending) => {
+      if (!cancelled && pending) setReceiptFile(pending.file);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [workspaceId]);
+  useEffect(() => {
+    if (!receiptFile) {
+      setReceiptPreview(null);
+      return;
+    }
+    const url = URL.createObjectURL(receiptFile);
+    setReceiptPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [receiptFile]);
   return (
-    <section className="workflowPanel panel" aria-labelledby="purchase-heading">
+    <section
+      className="workflowPanel panel"
+      aria-labelledby="purchase-heading"
+      data-workflow-screen={`purchase-${purchaseStep}`}
+    >
       <div className="workflowPanelHead">
         <div>
-          <p className="eyebrow">PURCHASE</p>
-          <h2 id="purchase-heading">仕入証憑と現物1点を登録</h2>
+          <h2 id="purchase-heading">
+            {purchaseStep === "receipt" ? "仕入れ資料を確認" : "仕入れ内容"}
+          </h2>
         </div>
-        <span className={item ? "safeBadge" : "status"}>{item ? "DB保存済み" : "未登録"}</span>
+        <span className="status">入力中・未登録</span>
       </div>
-      <form action={onSubmit}>
+      <form action={(form) => onSubmit(form, receiptFile)}>
         {pilotRunId && pilotFixture ? (
           <>
             <input name="pilotRunId" type="hidden" value={pilotRunId} />
             <input name="productFixtureId" type="hidden" value={pilotFixture} />
           </>
         ) : null}
-        <div className="measurementGrid">
+        {purchaseStep === "receipt" ? (
+          <>
+            <p>請求書・レシートを手元で確認し、写真と内容を照らし合わせて入力してください。</p>
+            <label>
+              請求書・レシートの写真（必須）
+              <input
+                type="file"
+                accept="image/jpeg,image/png"
+                capture="environment"
+                required={!receiptFile}
+                disabled={busy || pilotBlocked}
+                onChange={(event) => setReceiptFile(event.target.files?.[0] ?? null)}
+              />
+            </label>
+            <p>
+              JPEGまたはPNG、25MB以下。選択中の写真は、この端末内で確認してから非公開で保存します。
+            </p>
+            {receiptPreview ? (
+              <img
+                className="receiptEvidencePreview"
+                src={receiptPreview}
+                alt="選択中の請求書・レシート"
+              />
+            ) : null}
+          </>
+        ) : null}
+        <fieldset className="measurementGrid" hidden={purchaseStep !== "item"}>
           <label>
-            SKUコード
+            商品管理コード
             <input
               name="skuCode"
               required
@@ -1329,7 +1663,7 @@ function PurchasePanel({
             />
           </label>
           <label>
-            カテゴリ
+            商品の種類
             <select
               name="category"
               required
@@ -1353,6 +1687,22 @@ function PurchasePanel({
             <input name="measurementTemplateId" type="hidden" value={measurementTemplateId ?? ""} />
           </label>
           <label>
+            この商品の仕入れ代（円）
+            <input
+              name="allocatedCostMinor"
+              type="number"
+              min="0"
+              required
+              defaultValue={pilotFixture ? "1500" : ""}
+            />
+          </label>
+        </fieldset>
+        <fieldset
+          ref={receiptFields}
+          className="measurementGrid"
+          hidden={purchaseStep !== "receipt"}
+        >
+          <label>
             仕入先
             <input
               name="supplierName"
@@ -1362,7 +1712,7 @@ function PurchasePanel({
             />
           </label>
           <label>
-            証憑参照番号
+            請求書・レシートの参照番号
             <input
               name="receiptReference"
               required
@@ -1381,7 +1731,7 @@ function PurchasePanel({
             />
           </label>
           <label>
-            証憑合計（円）
+            請求書・レシートの合計（円）
             <input
               name="receiptAmountMinor"
               type="number"
@@ -1390,20 +1740,27 @@ function PurchasePanel({
               defaultValue={pilotFixture ? "1500" : ""}
             />
           </label>
-          <label>
-            このSKUの原価（円）
-            <input
-              name="allocatedCostMinor"
-              type="number"
-              min="0"
-              required
-              defaultValue={pilotFixture ? "1500" : ""}
-            />
-          </label>
-        </div>
-        <div className="humanGate">
+        </fieldset>
+        {purchaseStep === "receipt" ? (
+          <button
+            type="button"
+            disabled={busy || pilotBlocked}
+            onClick={() => {
+              const fields = receiptFields.current?.querySelectorAll<HTMLInputElement>("input");
+              if (
+                receiptFile &&
+                fields &&
+                Array.from(fields).every((field) => field.reportValidity())
+              )
+                setPurchaseStep("item");
+            }}
+          >
+            写真と内容を確認した
+          </button>
+        ) : null}
+        <div className="humanGate" hidden={purchaseStep !== "item"}>
           <div>
-            <strong>証憑参照と金額を人が照合</strong>
+            <strong>資料の参照番号と金額を確認</strong>
             <p>AIは原価・税区分を確定しません。住所などの個人情報は入力しないでください。</p>
           </div>
           <button type="submit" disabled={busy || pilotBlocked}>
@@ -1411,9 +1768,14 @@ function PurchasePanel({
               ? "前の試験商品を完了してください"
               : pilotFixture
                 ? `${pilotFixture}の計測を開始`
-                : "仕入を確認して在庫番号を発行"}
+                : "仕入れを確認して商品番号を作る"}
           </button>
         </div>
+        {purchaseStep === "item" ? (
+          <button type="button" disabled={busy} onClick={() => setPurchaseStep("receipt")}>
+            ‹ 資料の確認に戻る
+          </button>
+        ) : null}
       </form>
     </section>
   );
@@ -1709,7 +2071,7 @@ function numberField(form: FormData, name: string): number {
   return value;
 }
 function errorMessage(reason: unknown): string {
-  return reason instanceof Error ? reason.message : "操作を確認できませんでした。";
+  return p0UserFacingErrorMessage(reason);
 }
 function externalInvalidationReasonLabel(reason: string | null): string {
   if (reason === "power_outage") return "停電";
@@ -1720,6 +2082,37 @@ function externalInvalidationReasonLabel(reason: string | null): string {
 function localDateTimeValue(): string {
   const now = new Date(Date.now() - new Date().getTimezoneOffset() * 60_000);
   return now.toISOString().slice(0, 16);
+}
+
+function isPhotoRole(value: string): value is PhotoRole {
+  return value === "front" || value === "back" || value === "brand_tag" || value === "care_label";
+}
+
+function hasListingExportPhotos(item: P0ItemResponse): boolean {
+  return (
+    item.capture.photoAssetIds.length === photoRoles.length &&
+    photoRoles.every((role) => {
+      const index = item.capture.photoRoles.indexOf(role.id);
+      return index >= 0 && Boolean(item.capture.photoAssetIds[index]);
+    })
+  );
+}
+
+function latestMeasurements(
+  measurements: readonly { definitionId: string; value: number; attempt: number }[],
+): Record<string, { value: number; attempt: number }> {
+  return measurements.reduce<Record<string, { value: number; attempt: number }>>(
+    (result, measurement) => {
+      const previous = result[measurement.definitionId];
+      if (!previous || previous.attempt < measurement.attempt)
+        result[measurement.definitionId] = {
+          value: measurement.value,
+          attempt: measurement.attempt,
+        };
+      return result;
+    },
+    {},
+  );
 }
 
 function workflowStateRank(state: P0ItemResponse["workflowState"] | undefined): number {

@@ -7,6 +7,10 @@ import type {
   P0ItemResponse,
 } from "@resale/contracts";
 import { useCallback, useEffect, useState } from "react";
+import styles from "./inventory-live.module.css";
+import { shortInventoryNumber } from "../lib/inventory-label";
+import { inventoryStateLabel } from "../lib/inventory-live-safety";
+import { PrivateInventoryPhoto } from "./mobile-scan-workflow";
 
 export type InventoryFocus = "all" | "pending-location-photo" | "disposal-candidate";
 
@@ -26,6 +30,9 @@ export function InventoryWorkspace({
   const [photoNotice, setPhotoNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [stage, setStage] = useState<"items" | "locations" | "photos" | "create">(
+    initialFocus === "pending-location-photo" ? "photos" : "items",
+  );
 
   const refresh = useCallback(async () => {
     const [nextSummary, nextLocations, nextItems] = await Promise.all([
@@ -56,8 +63,22 @@ export function InventoryWorkspace({
   }, [selectedLocationId, workspaceId]);
 
   useEffect(() => {
-    refreshLocationPhotos().catch((reason: unknown) => setError(errorMessage(reason)));
-  }, [refreshLocationPhotos]);
+    let cancelled = false;
+    setLocationPhotos([]);
+    if (!selectedLocationId) return;
+    void requestJson<LocationPhotoResponse[]>(
+      `/v1/workspaces/${workspaceId}/locations/${selectedLocationId}/photo-review-queue`,
+    )
+      .then((photos) => {
+        if (!cancelled) setLocationPhotos(photos);
+      })
+      .catch((reason: unknown) => {
+        if (!cancelled) setError(errorMessage(reason));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedLocationId, workspaceId]);
 
   useEffect(() => {
     if (initialFocus !== "pending-location-photo") {
@@ -114,11 +135,13 @@ export function InventoryWorkspace({
           canStoreInventory,
           singleItemOnly: form.get("singleItemOnly") === "on",
           allowMixedSku: form.get("allowMixedSku") === "on",
+          purpose: textField(form, "purpose"),
           maxUnits: canStoreInventory && maxUnitsText ? Number(maxUnitsText) : null,
           humanConfirmed: true,
         }),
       });
       await refresh();
+      setStage("locations");
     } catch (reason) {
       setError(errorMessage(reason));
     } finally {
@@ -127,12 +150,18 @@ export function InventoryWorkspace({
   }
 
   async function uploadLocationPhoto(form: FormData) {
-    if (!selectedLocationId) throw new Error("写真を登録する場所を選んでください。");
+    if (!selectedLocationId) {
+      setError("写真を登録する場所を選んでください。");
+      return;
+    }
     const file = form.get("photo");
-    if (!(file instanceof File) || file.size === 0)
-      throw new Error("JPEGまたはPNGを選んでください。");
+    if (!(file instanceof File) || file.size === 0) {
+      setError("JPEGまたはPNGを選んでください。");
+      return;
+    }
     if (!["image/jpeg", "image/png"].includes(file.type)) {
-      throw new Error("JPEGまたはPNGだけ登録できます。");
+      setError("JPEGまたはPNGだけ登録できます。");
+      return;
     }
     setBusy(true);
     setError("");
@@ -193,12 +222,43 @@ export function InventoryWorkspace({
       : items;
 
   return (
-    <>
+    <div className={styles.workspace} data-stage={stage}>
+      <nav className={styles.stages} aria-label="在庫の作業画面">
+        {(
+          [
+            ["items", "在庫一覧"],
+            ["locations", "保管場所"],
+            ["photos", "場所の写真"],
+            ["create", "場所を登録"],
+          ] as const
+        ).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            aria-pressed={stage === value}
+            disabled={busy}
+            onClick={() => setStage(value)}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
       {error ? (
         <p className="accountingDisclaimer" role="alert">
           {error}
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              setError("");
+              void refresh().catch((reason: unknown) => setError(errorMessage(reason)));
+            }}
+          >
+            在庫を再読み込み
+          </button>
         </p>
       ) : null}
+      {!summary && !error ? <p role="status">在庫と場所を読み込んでいます。</p> : null}
       {initialFocus === "pending-location-photo" ? (
         <p className="safeNotice" role="status">
           {pendingPhotoLocationIds === null
@@ -231,7 +291,7 @@ export function InventoryWorkspace({
       <div className="inventoryWorkbenchGrid">
         <section className="panel locationTree" aria-labelledby="location-tree-heading">
           <div className="panelHead">
-            <h2 id="location-tree-heading">場所ツリー</h2>
+            <h2 id="location-tree-heading">保管場所の一覧</h2>
             <span className="safeBadge">DB実データ</span>
           </div>
           {visibleLocations.length === 0 ? (
@@ -244,10 +304,15 @@ export function InventoryWorkspace({
             visibleLocations.map((location) => (
               <button
                 type="button"
+                disabled={busy}
                 className={`locationRow ${location.id === selectedLocationId ? "selected" : ""}`}
                 key={location.id}
                 style={{ paddingInlineStart: `${location.depth * 18 + 8}px` }}
-                onClick={() => setSelectedLocationId(location.id)}
+                onClick={() => {
+                  if (selectedLocationId !== location.id) setLocationPhotos([]);
+                  setSelectedLocationId(location.id);
+                  setStage("photos");
+                }}
               >
                 <div>
                   <strong>{location.name}</strong>
@@ -283,7 +348,14 @@ export function InventoryWorkspace({
                 <article className="locationPhotoCard" key={kind}>
                   <span>{photoKindLabel(kind)}</span>
                   {photo?.contentUrl ? (
-                    <img src={photo.contentUrl} alt={`${photoKindLabel(kind)}の確認済み写真`} />
+                    stage === "photos" ? (
+                      <PrivateInventoryPhoto
+                        key={`${selectedLocationId}:${photo.photoId}`}
+                        workspaceId={workspaceId}
+                        url={photo.contentUrl}
+                        label={`${photoKindLabel(kind)}の確認済み写真`}
+                      />
+                    ) : null
                   ) : (
                     <div className="locationPhotoEmpty" aria-hidden="true">
                       <span>▧</span>
@@ -344,9 +416,7 @@ export function InventoryWorkspace({
                       別担当で確認
                     </button>
                   ) : photo.contentUrl ? (
-                    <a href={photo.contentUrl} target="_blank" rel="noreferrer">
-                      写真を開く
-                    </a>
+                    <span>上の確認済み写真で確認</span>
                   ) : (
                     "—"
                   )}
@@ -385,13 +455,21 @@ export function InventoryWorkspace({
               <input name="name" required placeholder="洋室A / 棚03" />
             </label>
             <label>
+              場所の用途
+              <select name="purpose" defaultValue="general">
+                <option value="general">通常の商品保管</option>
+                <option value="return_quarantine">返品専用・検品前の隔離</option>
+              </select>
+            </label>
+            <label>
               <input name="canStoreInventory" type="checkbox" /> 商品を直接置ける
             </label>
             <label>
               <input name="singleItemOnly" type="checkbox" /> 1点専用
             </label>
             <label>
-              <input name="allowMixedSku" type="checkbox" defaultChecked /> 異なるSKUを混載可
+              <input name="allowMixedSku" type="checkbox" defaultChecked />{" "}
+              種類の異なる商品を一緒に置ける
             </label>
             <label>
               最大点数
@@ -430,29 +508,36 @@ export function InventoryWorkspace({
           >
             <div className="inventoryTableHead" role="row">
               <span>在庫番号</span>
-              <span>SKU</span>
+              <span>商品識別番号</span>
               <span>商品</span>
               <span>状態</span>
               <span>場所</span>
             </div>
             {visibleItems.map((item) => (
               <div role="row" key={item.inventoryUnitId}>
-                <strong>{item.inventoryNumber}</strong>
+                <div>
+                  <strong>{shortInventoryNumber(item.inventoryNumber)}</strong>
+                  <small>{item.inventoryNumber}</small>
+                </div>
                 <span>{item.skuCode}</span>
                 <span>{item.title}</span>
-                <span>{item.inventoryStatus}</span>
+                <span>{inventoryStateLabel(item.inventoryStatus)}</span>
                 <span>{item.locationCode ?? "未格納"}</span>
               </div>
             ))}
           </div>
         )}
       </section>
-    </>
+    </div>
   );
 }
 
 async function requestJson<T = unknown>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, { cache: "no-store", ...init });
+  const response = await fetch(url, {
+    cache: "no-store",
+    ...init,
+    headers: { accept: "application/json", "content-type": "application/json", ...init?.headers },
+  });
   const payload = (await response.json().catch(() => null)) as { message?: string } | T | null;
   if (!response.ok)
     throw new Error(

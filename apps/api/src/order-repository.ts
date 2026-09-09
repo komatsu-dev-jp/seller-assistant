@@ -2244,7 +2244,7 @@ export class PostgresOrderRepository implements OrderRepository {
         const destination = await transaction<Array<{ id: string }>>`
           select id from location_node
           where workspace_id = ${workspaceId} and code = ${input.locationCode}
-            and state = 'active' and can_store_inventory
+            and state = 'active' and can_store_inventory and purpose = 'return_quarantine'
         `;
         const destinationId = destination[0]?.id;
         if (!destinationId)
@@ -2318,7 +2318,9 @@ export class PostgresOrderRepository implements OrderRepository {
         return {
           state: "returned" as const,
           inventoryStatus:
-            input.resolution === "restock" ? ("available" as const) : ("disposal_pending" as const),
+            input.resolution === "restock"
+              ? ("putaway_pending" as const)
+              : ("disposal_pending" as const),
         };
       },
     );

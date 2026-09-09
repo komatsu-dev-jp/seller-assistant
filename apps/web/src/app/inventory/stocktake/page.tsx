@@ -1,6 +1,7 @@
 import { AppSidebar } from "../../../components/app-sidebar";
 import { StocktakeWorkspace, type StocktakeFocus } from "../../../components/stocktake-workspace";
 import { requirePageSession } from "../../../lib/server-session";
+import styles from "../../../components/inventory-live.module.css";
 
 export const dynamic = "force-dynamic";
 
@@ -15,17 +16,17 @@ export default async function StocktakePage({
   const { focus } = await searchParams;
   const initialFocus = stocktakeFocus(focus);
   return (
-    <main className="shell inventoryShell">
+    <main className={`shell inventoryShell ${styles.page}`}>
       <AppSidebar current="discrepancy" />
       <section className="content inventoryContent stocktakePage">
         <header className="topbar inventoryTopbar">
           <div>
             <p className="eyebrow">REVERSIBLE STOCKTAKE</p>
-            <h1>在庫差異・即時確認</h1>
+            <h1>棚卸し・数が合わない商品</h1>
             <p>現物と場所を再確認し、履歴を残したまま安全に復元します。</p>
           </div>
           <a className="secondaryButton" href="/inventory">
-            在庫ロケーションへ戻る
+            在庫と保管場所へ戻る
           </a>
         </header>
         <StocktakeWorkspace

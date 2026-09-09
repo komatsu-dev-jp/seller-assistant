@@ -922,7 +922,7 @@ describe("ten-product pilot contract", () => {
     } as const;
     expect(startPilotRunRequestSchema.safeParse(valid).success).toBe(true);
     expect(listingPrepPilotMigrationVersion).toBe("0033");
-    expect(latestMigrationVersion).toBe("0039");
+    expect(latestMigrationVersion).toBe("0046");
     expect(
       startPilotRunRequestSchema.safeParse({ ...valid, migrationVersion: "0028" }).success,
     ).toBe(false);

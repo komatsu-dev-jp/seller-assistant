@@ -1,0 +1,324 @@
+.page {
+  background: #f5f7fb;
+  color: #192d4b;
+}
+
+.page > :global(.content) {
+  min-width: 0;
+  padding: 24px 28px;
+}
+
+.page :global(.topbar) {
+  margin-bottom: 20px;
+}
+
+.page :global(.topbar) h1 {
+  font-size: 26px;
+}
+
+.board {
+  display: grid;
+  gap: 18px;
+  width: 100%;
+  min-width: 0;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.stages,
+.substages {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 8px;
+  background: white;
+  border: 1px solid #dce4ef;
+  border-radius: 12px;
+}
+
+.stages button,
+.substages button {
+  min-height: 48px;
+  min-width: 0;
+  padding: 10px;
+  background: white;
+  color: #536780;
+  border: 0;
+  border-radius: 8px;
+  white-space: normal;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.stages button span {
+  margin-right: 8px;
+}
+
+.stages button[aria-pressed="true"],
+.substages button[aria-pressed="true"] {
+  color: #145ade;
+  background: #eaf1ff;
+  font-weight: 700;
+}
+
+/* Scoped overrides deliberately replace the legacy compressed three-column
+   workbench. Keep mounted forms while selecting one purpose at every width. */
+.board :global(.accountingWorkspace),
+.board :global(.accountingSetupStack),
+.board :global(.accountingExportCard),
+.board :global(.accountingExportPrimary),
+.board :global(.accountingExportSupport) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: none;
+  gap: 18px;
+  min-width: 0;
+  position: static;
+  max-height: none;
+  overflow: visible;
+}
+
+.board :global(.accountingWorkspace) > *,
+.board :global(.accountingExportCard) > * {
+  grid-area: auto;
+}
+
+.board :global(.accountingSetupStack):not(:has(:global(.isActive))) {
+  display: none;
+}
+
+.board :global(.accountingWorkspace) > :global(.workflowPanelHead) {
+  display: flex;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.board :global(.workflowPanelHead) h2 {
+  font-size: 24px;
+}
+
+.board :global(.accountingMobilePanel):not(:global(.isActive)),
+.board [data-mobile-stage="export"] [data-accounting-step="file"],
+.board [data-mobile-stage="preview"] [data-accounting-step="export"],
+.board [data-mobile-stage="preview"] [data-accounting-step="import"],
+.board [data-mobile-stage="import"] [data-accounting-step="export"],
+.board [data-mobile-stage="import"] [data-accounting-step="preview"],
+.board [data-mobile-stage="history"] :global(.accountingExportPrimary),
+.board [data-mobile-stage]:not([data-mobile-stage="history"]) [data-accounting-step="history"] {
+  display: none !important;
+}
+
+.board :global(.accountingControlCard),
+.board :global(.accountingOrderPicker) {
+  background: white;
+  border: 1px solid #dce4ef;
+  border-radius: 14px;
+  padding: 24px;
+  min-width: 0;
+}
+
+.board :global(.accountingOrderPicker) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.board :global(.accountingDisclaimer) {
+  font-size: 13px;
+  line-height: 1.7;
+  padding: 12px 16px;
+  border-radius: 10px;
+}
+
+.board :global(.accountingFieldGrid),
+.board :global(.mappingDraftFields) {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px 24px;
+}
+
+.board :global(.mappingDraftFields) > p,
+.board :global(.mappingDraftFields) > button,
+.board :global(.mappingDraftFields) > :global(.confirmationCheck) {
+  grid-column: 1 / -1;
+}
+
+.board :global(.mappingTable) {
+  max-height: none;
+  overflow: visible;
+}
+
+.board :global(.mappingDraft) > summary,
+.board :global(.mappingRow) {
+  min-height: 64px;
+  grid-template-columns: minmax(100px, 0.6fr) minmax(0, 1fr) minmax(130px, 0.8fr);
+  padding: 14px;
+  gap: 14px;
+  white-space: normal;
+}
+
+.board label {
+  min-width: 0;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.board input:not([type="checkbox"]),
+.board select {
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  height: auto;
+  padding: 12px;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.board button,
+.board summary,
+.board :global(.confirmationCheck) {
+  min-height: 44px;
+  white-space: normal;
+}
+
+.board :global(.confirmationCheck) {
+  padding: 12px;
+  align-items: center;
+  gap: 12px;
+}
+
+.board :global(.confirmationCheck) input {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+}
+
+.board :global(.profitWaterfall) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+}
+
+.board :global(.profitWaterfall) > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 12px;
+  border-bottom: 1px solid #e6ebf3;
+  gap: 16px;
+  font-size: 16px;
+}
+
+.board :global(.accountingFormatTabs):global(.isActive) {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.board :global(.accountingFormatTabs) button {
+  padding: 16px;
+  min-height: 80px;
+  text-align: left;
+}
+
+.board :global(.accountingFormatTabs) small {
+  grid-column: 1 / -1;
+}
+
+.board :global(.accountingCsvPreviewScroll) {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.board :global(.accountingHistoryTable) > [role="row"] {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) 70px minmax(100px, 1fr);
+}
+
+.board :global(.accountingHistoryTable) [role="cell"],
+.board :global(.exportEvidenceDetails) {
+  overflow-wrap: anywhere;
+}
+
+.board button:focus-visible,
+.board a:focus-visible,
+.board summary:focus-visible {
+  outline: 3px solid #3678ff;
+  outline-offset: 3px;
+}
+
+@media (max-width: 700px) {
+  .page {
+    display: block;
+  }
+
+  .page > :global(.content) {
+    padding: max(12px, env(safe-area-inset-top)) 12px calc(96px + env(safe-area-inset-bottom));
+  }
+
+  .page :global(.topbar) {
+    margin-bottom: 14px;
+    margin-inline: -12px;
+    padding-inline: 12px;
+  }
+
+  .page :global(.topbar) h1 {
+    font-size: 22px;
+  }
+
+  .page :global(.topbar) p,
+  .page :global(.zeroCostBadge) {
+    display: none;
+  }
+
+  .board {
+    gap: 12px;
+  }
+
+  .stages {
+    gap: 2px;
+    padding: 4px;
+  }
+
+  .stages button {
+    font-size: 12px;
+    padding: 6px 2px;
+  }
+
+  .stages button span {
+    display: block;
+    margin: 0;
+  }
+
+  .substages {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .board :global(.accountingFieldGrid),
+  .board :global(.mappingDraftFields),
+  .board :global(.accountingFormatTabs):global(.isActive) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .board :global(.accountingControlCard),
+  .board :global(.accountingOrderPicker) {
+    padding: 16px;
+  }
+
+  .board :global(.workflowPanelHead) h2 {
+    font-size: 20px;
+  }
+
+  .board :global(.mappingDraft) > summary,
+  .board :global(.mappingRow) {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .board :global(.accountingHistoryTable) > [role="row"] {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .board :global(.accountingHistoryHeader) {
+    display: none;
+  }
+}

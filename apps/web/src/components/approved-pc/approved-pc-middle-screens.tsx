@@ -3,6 +3,7 @@ import { useState } from "react";
 import styles from "./approved-pc-middle-screens.module.css";
 import { PcCanvas } from "./pc-canvas";
 import { PcUiGlyph, pcNavGlyphs } from "./pc-ui-glyph";
+import { isP1ApprovedPcScreen } from "./approved-screen-scope";
 
 const names = [
   "商品の写真",
@@ -40,6 +41,7 @@ function StandardHeader({ n }: { n: number }) {
         <h1>{names[n - 17]}</h1>
         {n === 23 && <em className={styles.headerStatus}>候補・人が確認</em>}
       </div>
+      {isP1ApprovedPcScreen(n) ? <span className={styles.scopeBadge}>準備中・P0対象外</span> : null}
       <label className={styles.topbarSearch}>
         ⌕　<span>商品名・キーワード・メモを検索</span>
       </label>
@@ -97,6 +99,7 @@ function Shell({ n, children }: { n: number; children: React.ReactNode }) {
   const workDetail = n >= 21 && n <= 24;
   return (
     <PcCanvas
+      screenNumber={n}
       className={`${styles.app} ${utility ? styles.utilityApp : ""} ${workDetail ? styles.workDetailApp : ""} ${styles[`screen${n}`] ?? ""}`}
     >
       {utility ? <UtilityHeader /> : <StandardHeader n={n} />}

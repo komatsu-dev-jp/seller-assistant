@@ -6,7 +6,12 @@ import type {
   TeamAssignmentResponse,
   TeamMemberResponse,
   TeamStateResponse,
+  CreateTeamChangeRequest,
+  RecordTeamChangeEvent,
+  TeamChangeResponse,
+  TeamChangeListResponse,
 } from "@resale/contracts";
+import { teamChangeResponseSchema } from "@resale/contracts";
 import postgres from "postgres";
 
 import { hashPassword } from "./auth.js";
@@ -14,6 +19,18 @@ import { RepositoryError, type RequestActor } from "./repository.js";
 
 export interface TeamRepository {
   state(workspaceId: string, actor: RequestActor): Promise<TeamStateResponse>;
+  changes(workspaceId: string, actor: RequestActor): Promise<TeamChangeListResponse>;
+  requestChange(
+    workspaceId: string,
+    actor: RequestActor,
+    input: CreateTeamChangeRequest,
+  ): Promise<TeamChangeResponse>;
+  recordChangeEvent(
+    workspaceId: string,
+    requestId: string,
+    actor: RequestActor,
+    input: RecordTeamChangeEvent,
+  ): Promise<TeamChangeResponse>;
   createMember(
     workspaceId: string,
     actor: RequestActor,
@@ -35,6 +52,7 @@ export interface TeamRepository {
 
 interface AssignmentRow {
   assignment_id: string;
+  assignment_version: string;
   assignment_type: TeamAssignmentResponse["assignmentType"];
   identity_id: string;
   assignee_email: string;
@@ -202,6 +220,86 @@ export class PostgresTeamRepository implements TeamRepository {
   async close(): Promise<void> {
     await this.sql.end({ timeout: 5 });
   }
+
+  async changes(workspaceId: string, actor: RequestActor): Promise<TeamChangeListResponse> {
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId);
+        await requireManager(transaction, workspaceId, actor.identityId);
+        return { workspaceId, changes: await selectChanges(transaction, workspaceId) };
+      });
+    } catch (error) {
+      throw normalizeTeamError(error);
+    }
+  }
+
+  async requestChange(
+    workspaceId: string,
+    actor: RequestActor,
+    input: CreateTeamChangeRequest,
+  ): Promise<TeamChangeResponse> {
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId);
+        const rows = await transaction<
+          Array<{ id: string }>
+        >`select app_request_team_assignment_change(
+          ${workspaceId},${actor.identityId},${input.assignmentId},${input.assignmentType},
+          ${input.expectedAssignmentVersion},${input.reasonCode},${input.idempotencyKey}) as id`;
+        const result = (await selectChanges(transaction, workspaceId, rows[0]?.id))[0];
+        if (!result) throw new RepositoryError("database_error", "Team change request unavailable");
+        return result;
+      });
+    } catch (error) {
+      throw normalizeTeamError(error);
+    }
+  }
+
+  async recordChangeEvent(
+    workspaceId: string,
+    requestId: string,
+    actor: RequestActor,
+    input: RecordTeamChangeEvent,
+  ): Promise<TeamChangeResponse> {
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId);
+        await transaction`select app_record_team_assignment_change_event(${workspaceId},${actor.identityId},
+          ${requestId},${input.expectedRevision},${input.action},${input.commentCode},${input.idempotencyKey})`;
+        const result = (await selectChanges(transaction, workspaceId, requestId))[0];
+        if (!result) throw new RepositoryError("database_error", "Team change request unavailable");
+        return result;
+      });
+    } catch (error) {
+      throw normalizeTeamError(error);
+    }
+  }
+}
+
+async function selectChanges(
+  sql: postgres.TransactionSql,
+  workspaceId: string,
+  requestId?: string,
+): Promise<TeamChangeResponse[]> {
+  const rows = await sql<Array<{ response: unknown }>>`
+    select jsonb_build_object('requestId',request.id,'workspaceId',request.workspace_id,'action','revoke_assignment',
+      'state',request.state,'revision',request.revision,'targetVersion',request.target_version,
+      'requesterId',request.requester_id,'requesterName',app_team_change_actor_name(request.workspace_id,request.requester_id),
+      'approverId',request.decided_by,'approverName',app_team_change_actor_name(request.workspace_id,request.decided_by),'reasonCode',request.reason_code,
+      'requestedAt',to_char(request.requested_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+      'decidedAt',to_char(request.decided_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+      'before',request.before_snapshot,'after',request.after_snapshot,'evidence',null,
+      'events',coalesce(events.items,'[]'::jsonb)) as response
+    from team_assignment_change_request request
+    left join lateral (select jsonb_agg(jsonb_build_object('eventId',event.id,'revision',event.revision,
+      'actorId',event.actor_id,'actorName',app_team_change_actor_name(event.workspace_id,event.actor_id),'action',event.action,'commentCode',event.comment_code,
+      'occurredAt',to_char(event.occurred_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')) order by event.revision) as items
+      from team_assignment_change_event event
+      where event.workspace_id=request.workspace_id and event.request_id=request.id) events on true
+    where request.workspace_id=${workspaceId} and (${requestId ?? null}::uuid is null or request.id=${requestId ?? null}::uuid)
+    order by request.requested_at desc,request.id desc
+  `;
+  return rows.map((row) => teamChangeResponseSchema.parse(row.response));
 }
 
 async function selectAssignments(
@@ -214,7 +312,7 @@ async function selectAssignments(
       select assignment.id as assignment_id, 'capture'::text as assignment_type,
              assignment.identity_id, credential.email_normalized as assignee_email,
              assignment.sku_id as target_id, sku.sku_code as target_label,
-             assignment.starts_at, assignment.expires_at, assignment.revoked_at
+             assignment.starts_at, assignment.expires_at, assignment.revoked_at, to_jsonb(assignment) as raw_assignment
       from sku_work_assignment assignment
       join auth_credential credential on credential.identity_id = assignment.identity_id
       join product_sku sku
@@ -223,7 +321,7 @@ async function selectAssignments(
       union all
       select assignment.id, 'location_putaway', assignment.identity_id,
              credential.email_normalized, assignment.location_root_id, location.code,
-             assignment.starts_at, assignment.expires_at, assignment.revoked_at
+             assignment.starts_at, assignment.expires_at, assignment.revoked_at, to_jsonb(assignment)
       from work_assignment assignment
       join auth_credential credential on credential.identity_id = assignment.identity_id
       join location_node location
@@ -232,7 +330,7 @@ async function selectAssignments(
       union all
       select assignment.id, 'location_photo', assignment.identity_id,
              credential.email_normalized, assignment.location_root_id, location.code,
-             assignment.starts_at, assignment.expires_at, assignment.revoked_at
+             assignment.starts_at, assignment.expires_at, assignment.revoked_at, to_jsonb(assignment)
       from work_assignment assignment
       join auth_credential credential on credential.identity_id = assignment.identity_id
       join location_node location
@@ -241,7 +339,7 @@ async function selectAssignments(
       union all
       select assignment.id, 'inventory_putaway', assignment.identity_id,
              credential.email_normalized, assignment.inventory_unit_id, unit.inventory_number,
-             assignment.starts_at, assignment.expires_at, assignment.revoked_at
+             assignment.starts_at, assignment.expires_at, assignment.revoked_at, to_jsonb(assignment)
       from inventory_unit_assignment assignment
       join auth_credential credential on credential.identity_id = assignment.identity_id
       join inventory_unit unit
@@ -250,7 +348,7 @@ async function selectAssignments(
       union all
       select assignment.id, 'shipping', assignment.identity_id,
              credential.email_normalized, assignment.order_id, orders.order_number,
-             assignment.starts_at, assignment.expires_at, assignment.revoked_at
+             assignment.starts_at, assignment.expires_at, assignment.revoked_at, to_jsonb(assignment)
       from order_assignment assignment
       join auth_credential credential on credential.identity_id = assignment.identity_id
       join sales_order orders
@@ -258,7 +356,8 @@ async function selectAssignments(
       where assignment.workspace_id = ${workspaceId}
     )
     select assignment_id, assignment_type, identity_id, assignee_email,
-           target_id, target_label, starts_at, expires_at, revoked_at
+           target_id, target_label, starts_at, expires_at, revoked_at,
+           app_team_assignment_exact_version(assignment_type, raw_assignment) as assignment_version
     from assignments
     where (${assignmentId ?? null}::uuid is null or assignment_id = ${assignmentId ?? null}::uuid)
     order by revoked_at nulls first, expires_at desc
@@ -269,6 +368,7 @@ async function selectAssignments(
 function toAssignment(row: AssignmentRow): TeamAssignmentResponse {
   return {
     assignmentId: row.assignment_id,
+    assignmentVersion: row.assignment_version,
     assignmentType: row.assignment_type,
     identityId: row.identity_id,
     assigneeEmail: row.assignee_email,
@@ -320,6 +420,18 @@ async function insertAudit(
 
 function normalizeTeamError(error: unknown): RepositoryError {
   if (error instanceof RepositoryError) return error;
+  const code =
+    typeof error === "object" && error !== null && "code" in error ? String(error.code) : "";
+  if (code === "42501")
+    return new RepositoryError(
+      "forbidden",
+      "この変更を確認する権限がありません。自分の申請は別の管理担当に確認を依頼してください。",
+    );
+  if (["23514", "23505", "40001"].includes(code))
+    return new RepositoryError(
+      "conflict",
+      "変更対象または確認状況が更新されています。最新の内容を読み直してください。",
+    );
   const message = error instanceof Error ? error.message : String(error);
   if (/role is required|active field worker/u.test(message)) {
     return new RepositoryError("forbidden", "The team role or assignee is not allowed");

@@ -18,10 +18,14 @@
     "bootstrap:owner": "npm run bootstrap:owner --workspace @resale/api",
     "test:postgres": "npm run test:postgres --workspace @resale/api",
     "test:postgres-upgrade": "npm run test:postgres-upgrade --workspace @resale/api",
+    "test:postgres-restore": "npm run test:postgres-restore --workspace @resale/api",
     "pilot:fixtures:generate": "node scripts/generate-pilot-fixtures.mjs",
     "pilot:fixtures:check": "node scripts/generate-pilot-fixtures.mjs --check",
     "capture:approved-ui": "node scripts/capture-approved-ui.mjs",
     "lan:preview": "node scripts/start-lan-preview.mjs",
+    "security:secrets": "node scripts/secret-scan.mjs",
+    "security:dependencies": "npm audit --offline --omit=dev --audit-level=high",
+    "security:check": "npm run security:secrets && npm run security:dependencies",
     "build:packages": "npm run build --workspace @resale/domain && npm run build --workspace @resale/contracts",
     "lint": "npm run build:packages && eslint .",
     "format:check": "prettier --check \"apps/**/*.{js,ts,tsx,css,json,md}\" \"packages/**/*.{ts,tsx,json,md}\" \"scripts/**/*.mjs\" \"fixtures/listing-prep-pilot-v1.1/README.md\" \"fixtures/listing-prep-pilot-v1.1/manifest.json\" \"docs/implementation/**/*.md\" \"docs/specs/pilot-protocol-v1*.md\" \".github/**/*.yml\" package.json tsconfig.base.json vitest.config.ts eslint.config.mjs README.md",
@@ -30,7 +34,7 @@
     "test": "vitest run --coverage",
     "test:watch": "vitest",
     "build": "npm run build --workspace @resale/domain && npm run build --workspace @resale/contracts && npm run build --workspace @resale/api && npm run build --workspace @resale/web",
-    "check": "npm run pilot:fixtures:check && npm run format:check && npm run lint && npm run typecheck && npm run test && npm run build"
+    "check": "npm run pilot:fixtures:check && npm run format:check && npm run lint && npm run typecheck && npm run test && npm run security:check && npm run build"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

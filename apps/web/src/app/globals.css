@@ -2803,6 +2803,77 @@ a {
   font-size: 13px;
   line-height: 1.8;
 }
+.receiptEvidencePreview {
+  display: block;
+  width: min(100%, 420px);
+  max-height: 360px;
+  margin: 12px 0;
+  object-fit: contain;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: #fafbfd;
+}
+.listingPhotoDownloads {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0;
+  padding: 14px;
+  border: 1px solid #cdddf8;
+  border-radius: 11px;
+  background: #f5f8ff;
+}
+.listingPhotoDownloads p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.listingPhotoDownloads a,
+.listingPhotoDownloads span {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid #cdddf8;
+  border-radius: 8px;
+  color: var(--blue);
+  font-weight: 800;
+}
+.listingPhotoDownloads span {
+  color: var(--muted);
+}
+.listingPhotoGallery {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.listingPhotoGallery > p {
+  grid-column: 1 / -1;
+}
+.listingPhotoGallery figure {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid #cdddf8;
+  border-radius: 8px;
+  background: #fff;
+}
+.listingPhotoGallery img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+}
+.listingPhotoGallery figcaption {
+  padding: 6px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 800;
+}
+@media (max-width: 620px) {
+  .listingPhotoGallery {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
 .fieldLabel,
 .compactForm label {
   margin-top: 14px;

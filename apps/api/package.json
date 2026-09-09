@@ -9,6 +9,7 @@
     "seed:ui-evaluation": "tsx src/ui-evaluation-fixture.ts",
     "test:postgres": "tsx src/postgres-integration.ts",
     "test:postgres-upgrade": "tsx src/postgres-upgrade-integration.ts",
+    "test:postgres-restore": "tsx src/postgres-restore-integration.ts",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/server.js"

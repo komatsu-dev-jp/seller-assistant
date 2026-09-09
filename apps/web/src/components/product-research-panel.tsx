@@ -2,6 +2,12 @@
 
 import type { ProductResearchResponse } from "@resale/contracts";
 import { useCallback, useEffect, useState } from "react";
+import {
+  buildResearchSearchTerms,
+  buildMercariSearchUrl,
+  buildCodexResearchQuestion,
+  copyResearchText,
+} from "../lib/product-research-handoff";
 
 export function ProductResearchPanel({
   workspaceId,
@@ -231,6 +237,9 @@ export function ProductResearchPanel({
       ) : null}
       {!pilotActive ? (
         <>
+          {research && research.workspaceId === workspaceId && research.skuId === skuId ? (
+            <ResearchHandoff key={`${workspaceId}:${skuId}`} research={research} />
+          ) : null}
           <form className="compactForm" action={(form) => void addReference(form)}>
             <label>
               確認した公式画面のURL
@@ -289,6 +298,78 @@ export function ProductResearchPanel({
         </p>
       ) : null}
     </section>
+  );
+}
+
+function ResearchHandoff({ research }: { research: ProductResearchResponse }) {
+  const [terms, setTerms] = useState(() => buildResearchSearchTerms(research));
+  const [questionDraft, setQuestionDraft] = useState<string | null>(null);
+  const [copyStatus, setCopyStatus] = useState("");
+  const question = questionDraft ?? buildCodexResearchQuestion(terms);
+
+  async function handleCopyClick(value: string) {
+    setCopyStatus("");
+    const copied = await copyResearchText(value, (text) => navigator.clipboard.writeText(text));
+    setCopyStatus(
+      copied
+        ? "コピーしました。貼り付け先と内容を確認してください。"
+        : "コピーできませんでした。入力欄の文章を選択して手動でコピーしてください。",
+    );
+  }
+
+  function handleSearchClick() {
+    const url = buildMercariSearchUrl(terms);
+    if (!url) return;
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+
+  return (
+    <div className="compactForm">
+      <h4>販売価格を自分で調べる</h4>
+      <p className="accountingDisclaimer">
+        検索語と質問文はこの画面内だけで作る候補です。自由に編集・並べ替えできます。検索結果の自動取得やCodexへの自動送信はしません。予想価格は人が確認します。
+      </p>
+      <label>
+        検索語（候補）
+        <input
+          value={terms}
+          onChange={(event) => {
+            setTerms(event.target.value);
+            setCopyStatus("");
+          }}
+        />
+      </label>
+      <div className="inlineActions">
+        <button type="button" disabled={!terms.trim()} onClick={() => void handleCopyClick(terms)}>
+          検索語をコピー
+        </button>
+        <button type="button" disabled={!buildMercariSearchUrl(terms)} onClick={handleSearchClick}>
+          メルカリで検索を開く
+        </button>
+      </div>
+      <label>
+        Codex用の質問文（候補）
+        <textarea
+          rows={7}
+          value={question}
+          onChange={(event) => {
+            setQuestionDraft(event.target.value);
+            setCopyStatus("");
+          }}
+        />
+      </label>
+      <button
+        type="button"
+        disabled={!question.trim()}
+        onClick={() => void handleCopyClick(question)}
+      >
+        Codex用の質問文をコピー
+      </button>
+      <p className="accountingDisclaimer">
+        外部検索は上のボタンを押した時だけ、新しいタブで開きます。質問文は内容を確認し、自分でCodexへ貼り付けてください。編集内容は保存されず、この画面を離れると失われます。
+      </p>
+      {copyStatus ? <p role="status">{copyStatus}</p> : null}
+    </div>
   );
 }
 

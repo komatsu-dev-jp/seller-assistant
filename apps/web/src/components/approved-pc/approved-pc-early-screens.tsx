@@ -3,6 +3,7 @@
 import styles from "./approved-pc-early-screens.module.css";
 import { PcCanvas } from "./pc-canvas";
 import { PcUiGlyph, pcNavGlyphs } from "./pc-ui-glyph";
+import { isP1ApprovedPcScreen } from "./approved-screen-scope";
 
 const nav = ["ホーム", "作業", "仕入れ", "商品", "注文・発送", "在庫", "会計", "メンバー", "設定"];
 const storageNav = [
@@ -56,6 +57,9 @@ function Top({ screen, compact = false }: { screen: number; compact?: boolean })
         </b>
         <h1>{names[screen - 1]}</h1>
       </div>
+      {isP1ApprovedPcScreen(screen) ? (
+        <span className={styles.scopeBadge}>準備中・P0対象外</span>
+      ) : null}
       {!compact && (
         <>
           {screen <= 8 && (
@@ -176,6 +180,7 @@ function Shell({ screen, children }: { screen: number; children: React.ReactNode
   const inventoryShell = screen >= 9 && screen <= 12;
   return (
     <PcCanvas
+      screenNumber={screen}
       className={`${styles.app} ${legacyHeader ? styles.legacyApp : ""} ${inventoryShell ? styles.inventoryApp : ""} ${utility ? styles.utilityApp : ""}`}
     >
       {utility && <UtilityHeader screen={screen} />}

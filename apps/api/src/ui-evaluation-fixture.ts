@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   listingPrepPilotMeasurementTemplates,
   listingPrepPilotWarmupFixture,
+  listingPrepPilotFixtureProfiles,
   type ListingPrepPilotMeasurementTemplateId,
   type LocationNodeResponse,
   type MediaAssetResponse,
@@ -625,9 +626,36 @@ async function recordWarmupMeasurements(input: {
   skuId: string;
   evidenceAssetId: string;
   workflow: PostgresWorkflowRepository;
+  mediaStore: LocalPrivateMediaStore;
 }): Promise<MeasurementResponse[]> {
   const measurements: MeasurementResponse[] = [];
   for (const definition of listingPrepPilotWarmupFixture.measurements) {
+    const index = listingPrepPilotWarmupFixture.measurements.indexOf(definition);
+    const fixtureImage = listingPrepPilotFixtureProfiles[0]?.images[index];
+    if (!fixtureImage) throw new Error("Dedicated synthetic measurement fixture is unavailable");
+    const bytes = await readFile(resolve(REPOSITORY_ROOT, fixtureImage.relativePath));
+    const inspected = inspectImage(bytes);
+    const assetId = randomUUID();
+    const stored = await input.mediaStore.saveOriginal(
+      `workspaces/${input.account.workspaceId}/originals/${assetId}.png`,
+      bytes,
+    );
+    await input.workflow.registerMediaAsset(
+      input.account.workspaceId,
+      input.skuId,
+      actor(input.account),
+      {
+        assetId,
+        role: "measurement_evidence",
+        measurementDefinitionId: definition.definitionId,
+        originalSha256: stored.sha256,
+        originalStorageKey: stored.storageKey,
+        mimeType: inspected.mimeType,
+        sizeBytes: stored.sizeBytes,
+        width: inspected.width,
+        height: inspected.height,
+      },
+    );
     measurements.push(
       await input.workflow.recordMeasurement(
         input.account.workspaceId,
@@ -641,7 +669,7 @@ async function recordWarmupMeasurements(input: {
           basis: definition.basis,
           state: definition.state,
           measuredAt: iso(),
-          evidenceAssetId: input.evidenceAssetId,
+          evidenceAssetId: assetId,
           attempt: 1,
           humanConfirmed: true,
         },
@@ -685,6 +713,7 @@ async function prepareAccountingProduct(input: {
     skuId: product.item.skuId,
     evidenceAssetId: front.assetId,
     workflow: input.workflow,
+    mediaStore: input.mediaStore,
   });
   const attributes = await input.p0.confirmProductAttributes(
     input.account.workspaceId,
@@ -790,6 +819,19 @@ async function createAndShipOrder(input: {
     humanConfirmed: true,
     addressLeaseId: lease.leaseId,
   });
+  const photoPreflight = await input.orderRepository.evaluateShippingPhotoPreflight(
+    input.account.workspaceId,
+    orderId,
+    actor(input.account),
+    {
+      expectedDecisionRevision: null,
+      idempotencyKey: randomUUID(),
+      humanConfirmed: true,
+    },
+  );
+  if (photoPreflight.state !== "satisfied_without_photo") {
+    throw new Error("The UI evaluation order must satisfy the disabled photo policy");
+  }
   await input.orderRepository.packOrder(input.account.workspaceId, orderId, actor(input.account), {
     addressLeaseId: lease.leaseId,
     idempotencyKey: randomUUID(),
@@ -895,6 +937,20 @@ async function seedUiEvaluation(): Promise<UiEvaluationSummary> {
       skuCode: "UI-ACCT-READY",
       title: "架空商品 CSV作成確認用",
     });
+    const photoPolicy = await orderRepository.updateShippingPhotoPolicy(
+      accounts.accounting.workspaceId,
+      actor(accounts.accounting),
+      {
+        mode: "disabled",
+        highValueThresholdMinor: null,
+        expectedRevision: null,
+        idempotencyKey: randomUUID(),
+        humanConfirmed: true,
+      },
+    );
+    if (photoPolicy.mode !== "disabled") {
+      throw new Error("The UI evaluation shipping photo policy was not disabled");
+    }
     const cipherKey = randomBytes(32);
     const cipher = new AesGcmAddressCipher(cipherKey.toString("hex"));
     cipherKey.fill(0);

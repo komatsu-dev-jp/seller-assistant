@@ -4,7 +4,7 @@ export interface MediaAsset {
   id: string;
   workspaceId: string;
   skuId: string;
-  role: PhotoRole;
+  role: PhotoRole | "measurement_evidence";
   originalSha256: string;
   originalStorageKey: string;
   createdAt: string;

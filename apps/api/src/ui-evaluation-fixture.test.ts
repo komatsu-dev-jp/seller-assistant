@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -7,6 +8,8 @@ import {
 } from "./ui-evaluation-fixture.js";
 
 describe("UI evaluation fixture safety gates", () => {
+  const source = readFileSync(new URL("./ui-evaluation-fixture.ts", import.meta.url), "utf8");
+
   it("accepts only a loopback database with the dedicated prefix", () => {
     expect(
       parseUiEvaluationDatabaseUrl(
@@ -72,6 +75,16 @@ describe("UI evaluation fixture safety gates", () => {
     ).toBe("evaluation database is not empty");
     expect(safeUiEvaluationFailureMessage(new Error("secret internal detail"))).toBe(
       "safety gate or seed operation rejected",
+    );
+  });
+
+  it("satisfies the shipping-photo preflight before creating packed fixture orders", () => {
+    expect(source).toContain('mode: "disabled"');
+    expect(source).toContain("updateShippingPhotoPolicy(");
+    expect(source).toContain("evaluateShippingPhotoPreflight(");
+    expect(source).toContain('photoPreflight.state !== "satisfied_without_photo"');
+    expect(source.indexOf("evaluateShippingPhotoPreflight(")).toBeLessThan(
+      source.indexOf("packOrder("),
     );
   });
 });

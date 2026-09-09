@@ -73,6 +73,17 @@
   margin: 0;
   color: #101b37;
 }
+.scopeBadge {
+  flex: none;
+  padding: 5px 8px;
+  color: #805600;
+  background: #fff5d9;
+  border: 1px solid #e8c871;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+}
 .search {
   width: 230px;
   border: 1px solid #dce2eb;

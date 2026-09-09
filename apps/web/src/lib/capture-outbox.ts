@@ -1,13 +1,18 @@
 export type CaptureRole = "front" | "back" | "brand_tag" | "care_label";
+export type CaptureUploadRole = CaptureRole | "measurement_evidence" | "receipt_evidence";
 
 export interface CaptureUploadRecord {
   key: string;
   workspaceId: string;
   skuId: string;
-  role: CaptureRole;
+  role: CaptureUploadRole;
+  /** 採寸の根拠写真だけに結び付ける定義ID。掲載写真には使わない。 */
+  measurementDefinitionId: string | null;
+  /** レシート選択中にだけ使う、商品作成の再送キー。 */
+  purchaseIdempotencyKey: string | null;
   assetId: string;
-  file: File;
-  fileSha256: string;
+  /** FileはIndexedDBへ保存しない。現在の画面を開いている間だけ保持する。 */
+  file: File | null;
   uploaded: boolean;
   queuedAt: string;
 }
@@ -27,38 +32,95 @@ export interface CaptureDraftRecord {
 const DB_NAME = "resale-capture-outbox-v1";
 const STORE_NAME = "capture_uploads";
 const DRAFT_STORE_NAME = "capture_drafts";
-const DATABASE_VERSION = 3;
+const DATABASE_VERSION = 4;
+const filesInCurrentPage = new Map<string, File>();
+/** SHA-256は、画面を閉じるまで同じ画像かを確かめるためだけにメモリへ置く。 */
+const fingerprintsInCurrentPage = new Map<string, string>();
 
 export async function prepareCaptureUpload(
   workspaceId: string,
   skuId: string,
   role: CaptureRole,
   file: File,
-): Promise<CaptureUploadRecord> {
-  const key = `${workspaceId}:${skuId}:${role}`;
+): Promise<CaptureUploadRecord & { file: File }> {
+  return prepareUpload(workspaceId, skuId, role, file, null);
+}
+
+export async function prepareMeasurementEvidenceUpload(
+  workspaceId: string,
+  skuId: string,
+  measurementDefinitionId: string,
+  file: File,
+): Promise<CaptureUploadRecord & { file: File }> {
+  if (!/^[a-z][a-z0-9_]{1,63}$/u.test(measurementDefinitionId)) {
+    throw new Error("採寸項目を確認できません。画面を読み直してください。");
+  }
+  return prepareUpload(workspaceId, skuId, "measurement_evidence", file, measurementDefinitionId);
+}
+
+export async function prepareReceiptEvidenceUpload(
+  workspaceId: string,
+  file: File,
+): Promise<CaptureUploadRecord & { file: File }> {
+  const record = await prepareUpload(
+    workspaceId,
+    "purchase-receipt",
+    "receipt_evidence",
+    file,
+    null,
+  );
+  if (record.purchaseIdempotencyKey) return record;
+  const upgraded = { ...record, purchaseIdempotencyKey: crypto.randomUUID() };
+  await putRecord(upgraded);
+  return upgraded;
+}
+
+async function prepareUpload(
+  workspaceId: string,
+  skuId: string,
+  role: CaptureUploadRole,
+  file: File,
+  measurementDefinitionId: string | null,
+): Promise<CaptureUploadRecord & { file: File }> {
+  assertSupportedImage(file);
+  const key = `${workspaceId}:${skuId}:${role}${measurementDefinitionId ? `:${measurementDefinitionId}` : ""}`;
+  const fingerprint = await fingerprintImage(file);
   const existing = await readRecord(key);
-  const fileSha256 = await sha256File(file);
-  if (existing && existing.fileSha256 === fileSha256) return existing;
+  // 画像バイトやハッシュは端末DBへ残さない。同じ画面で同じ画像を選んだ時だけ再送できる。
+  if (existing && fingerprintsInCurrentPage.get(key) === fingerprint) {
+    filesInCurrentPage.set(key, file);
+    return { ...existing, file };
+  }
+  // 再読み込み後は既存の画像と同一だと確認できないため、新しい操作として扱う。
   const record: CaptureUploadRecord = {
     key,
     workspaceId,
     skuId,
     role,
+    measurementDefinitionId,
+    purchaseIdempotencyKey: role === "receipt_evidence" ? crypto.randomUUID() : null,
     assetId: crypto.randomUUID(),
     file,
-    fileSha256,
     uploaded: false,
     queuedAt: new Date().toISOString(),
   };
+  filesInCurrentPage.set(key, file);
+  fingerprintsInCurrentPage.set(key, fingerprint);
   await putRecord(record);
-  return record;
+  return { ...record, file };
 }
 
-async function sha256File(file: File): Promise<string> {
+async function fingerprintImage(file: File): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
-  return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join(
-    "",
-  );
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function assertSupportedImage(file: File): void {
+  if (file.type !== "image/jpeg" && file.type !== "image/png") {
+    throw new Error("写真はJPEGまたはPNGを選んでください。");
+  }
+  if (file.size <= 0) throw new Error("写真の内容を確認できません。");
+  if (file.size > 25 * 1024 * 1024) throw new Error("写真は25MB以下を選んでください。");
 }
 
 export async function markCaptureUploaded(key: string): Promise<void> {
@@ -77,10 +139,28 @@ export async function clearCaptureUploads(workspaceId: string, skuId: string): P
       const cursor = request.result;
       if (!cursor) return;
       const value = cursor.value as CaptureUploadRecord;
-      if (value.workspaceId === workspaceId && value.skuId === skuId) cursor.delete();
+      if (value.workspaceId === workspaceId && value.skuId === skuId) {
+        filesInCurrentPage.delete(value.key);
+        fingerprintsInCurrentPage.delete(value.key);
+        cursor.delete();
+      }
       cursor.continue();
     };
     transaction.objectStore(DRAFT_STORE_NAME).delete(`${workspaceId}:${skuId}`);
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () =>
+      reject(transaction.error ?? new Error("撮影保留を消去できません。"));
+  });
+  database.close();
+}
+
+export async function clearCaptureUpload(key: string): Promise<void> {
+  filesInCurrentPage.delete(key);
+  fingerprintsInCurrentPage.delete(key);
+  const database = await openDatabase();
+  await new Promise<void>((resolve, reject) => {
+    const transaction = database.transaction(STORE_NAME, "readwrite");
+    transaction.objectStore(STORE_NAME).delete(key);
     transaction.oncomplete = () => resolve();
     transaction.onerror = () =>
       reject(transaction.error ?? new Error("撮影保留を消去できません。"));
@@ -101,7 +181,15 @@ export async function clearUnassignedCaptureUploads(
       const cursor = request.result;
       if (!cursor) return;
       const value = cursor.value as CaptureUploadRecord;
-      if (value.workspaceId === workspaceId && !allowed.has(value.skuId)) cursor.delete();
+      if (
+        value.workspaceId === workspaceId &&
+        value.role !== "receipt_evidence" &&
+        !allowed.has(value.skuId)
+      ) {
+        filesInCurrentPage.delete(value.key);
+        fingerprintsInCurrentPage.delete(value.key);
+        cursor.delete();
+      }
       cursor.continue();
     };
     const draftRequest = transaction.objectStore(DRAFT_STORE_NAME).openCursor();
@@ -225,6 +313,8 @@ function isCaptureDraftRecord(value: unknown): value is CaptureDraftRecord {
 }
 
 export async function clearCaptureBusinessData(): Promise<void> {
+  filesInCurrentPage.clear();
+  fingerprintsInCurrentPage.clear();
   await new Promise<void>((resolve, reject) => {
     const request = indexedDB.deleteDatabase(DB_NAME);
     request.onsuccess = () => resolve();
@@ -244,14 +334,20 @@ export async function loadCaptureUploads(
     const request = database.transaction(STORE_NAME, "readonly").objectStore(STORE_NAME).getAll();
     request.onsuccess = () =>
       resolve(
-        (request.result as CaptureUploadRecord[]).filter(
-          (record) => record.workspaceId === workspaceId && record.skuId === skuId,
-        ),
+        (request.result as CaptureUploadRecord[])
+          .filter((record) => record.workspaceId === workspaceId && record.skuId === skuId)
+          .map((record) => ({ ...record, file: filesInCurrentPage.get(record.key) ?? null })),
       );
     request.onerror = () => reject(request.error ?? new Error("撮影保留を読めません。"));
   });
   database.close();
   return records;
+}
+
+export async function loadReceiptEvidenceUpload(
+  workspaceId: string,
+): Promise<CaptureUploadRecord | null> {
+  return readRecord(`${workspaceId}:purchase-receipt:receipt_evidence`);
 }
 
 async function readRecord(key: string): Promise<CaptureUploadRecord | null> {
@@ -262,14 +358,25 @@ async function readRecord(key: string): Promise<CaptureUploadRecord | null> {
     request.onerror = () => reject(request.error ?? new Error("撮影保留を読めません。"));
   });
   database.close();
-  return result ?? null;
+  return result ? { ...result, file: filesInCurrentPage.get(key) ?? null } : null;
 }
 
 async function putRecord(record: CaptureUploadRecord): Promise<void> {
   const database = await openDatabase();
   await new Promise<void>((resolve, reject) => {
     const transaction = database.transaction(STORE_NAME, "readwrite");
-    transaction.objectStore(STORE_NAME).put(record);
+    const persisted: Omit<CaptureUploadRecord, "file"> = {
+      key: record.key,
+      workspaceId: record.workspaceId,
+      skuId: record.skuId,
+      role: record.role,
+      measurementDefinitionId: record.measurementDefinitionId,
+      purchaseIdempotencyKey: record.purchaseIdempotencyKey,
+      assetId: record.assetId,
+      uploaded: record.uploaded,
+      queuedAt: record.queuedAt,
+    };
+    transaction.objectStore(STORE_NAME).put(persisted);
     transaction.oncomplete = () => resolve();
     transaction.onerror = () =>
       reject(transaction.error ?? new Error("撮影保留を保存できません。"));
@@ -280,9 +387,13 @@ async function putRecord(record: CaptureUploadRecord): Promise<void> {
 async function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DATABASE_VERSION);
-    request.onupgradeneeded = () => {
+    request.onupgradeneeded = (event) => {
       if (!request.result.objectStoreNames.contains(STORE_NAME)) {
         request.result.createObjectStore(STORE_NAME, { keyPath: "key" });
+      }
+      // v1〜v3はFile/Blobを含み得るため、アップグレード時に必ず消去する。
+      if (request.transaction && event.oldVersion < 4) {
+        request.transaction.objectStore(STORE_NAME).clear();
       }
       if (!request.result.objectStoreNames.contains(DRAFT_STORE_NAME)) {
         request.result.createObjectStore(DRAFT_STORE_NAME, { keyPath: "key" });

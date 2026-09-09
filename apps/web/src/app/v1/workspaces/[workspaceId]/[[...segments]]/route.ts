@@ -65,7 +65,11 @@ async function proxyWorkspaceRequest(
   }
 
   const { workspaceId, segments = [] } = await context.params;
-  if (!uuid.test(workspaceId) || !isAllowedPath(method, segments)) {
+  if (
+    !uuid.test(workspaceId) ||
+    !isAllowedPath(method, segments) ||
+    !hasAllowedReceiptEvidenceQuery(method, segments, request.nextUrl.searchParams)
+  ) {
     return apiError(404, "route_not_available", "この操作はPWAから利用できません。");
   }
   try {
@@ -76,10 +80,11 @@ async function proxyWorkspaceRequest(
       segments[2] === "shipping-photos";
     const binaryUpload =
       method === "POST" &&
-      ((segments.length === 3 &&
-        (segments[2] === "media-uploads" ||
-          (segments[0] === "locations" && segments[2] === "photos") ||
-          (segments[0] === "orders" && segments[2] === "shipping-photos"))) ||
+      ((segments.length === 1 && segments[0] === "receipt-evidence") ||
+        (segments.length === 3 &&
+          (segments[2] === "media-uploads" ||
+            (segments[0] === "locations" && segments[2] === "photos") ||
+            (segments[0] === "orders" && segments[2] === "shipping-photos"))) ||
         (segments.length === 5 &&
           segments[0] === "stocktakes" &&
           segments[2] === "discrepancies" &&
@@ -92,13 +97,7 @@ async function proxyWorkspaceRequest(
     const body: WorkspaceProxyRequestBody | undefined =
       method !== "GET"
         ? binaryUpload
-          ? shippingPhotoUpload
-            ? { kind: "binary", ...(await readShippingPhotoUpload(request)) }
-            : {
-                kind: "binary",
-                data: await request.arrayBuffer(),
-                contentType: request.headers.get("content-type") ?? "",
-              }
+          ? { kind: "binary", ...(await readShippingPhotoUpload(request)) }
           : { kind: "json", text: await request.text() }
         : undefined;
     const upstreamInit = createWorkspaceProxyRequestInit({
@@ -219,6 +218,14 @@ export function isAllowedPath(method: WorkspaceProxyMethod, segments: string[]):
     return true;
   }
   if (method === "GET" && segments.length === 1 && segments[0] === "team") return true;
+  if (
+    method === "GET" &&
+    segments.length === 2 &&
+    segments[0] === "team" &&
+    segments[1] === "change-requests"
+  ) {
+    return true;
+  }
   if (method === "GET" && segments.length === 1 && segments[0] === "capture-tasks") return true;
   if (segments.length === 1 && segments[0] === "stocktakes") return true;
   if (
@@ -257,7 +264,12 @@ export function isAllowedPath(method: WorkspaceProxyMethod, segments: string[]):
   if (
     method === "POST" &&
     segments[0] === "team" &&
-    ((segments.length === 2 && ["members", "assignments"].includes(segments[1] ?? "")) ||
+    ((segments.length === 2 &&
+      ["members", "assignments", "change-requests"].includes(segments[1] ?? "")) ||
+      (segments.length === 4 &&
+        segments[1] === "change-requests" &&
+        uuid.test(segments[2] ?? "") &&
+        segments[3] === "events") ||
       (segments.length === 4 &&
         segments[1] === "assignments" &&
         uuid.test(segments[2] ?? "") &&
@@ -272,7 +284,7 @@ export function isAllowedPath(method: WorkspaceProxyMethod, segments: string[]):
     method === "GET" &&
     segments.length === 2 &&
     segments[0] === "inventory" &&
-    ["summary", "putaway-catalog"].includes(segments[1] ?? "")
+    ["summary", "putaway-catalog", "return-catalog"].includes(segments[1] ?? "")
   ) {
     return true;
   }
@@ -297,6 +309,15 @@ export function isAllowedPath(method: WorkspaceProxyMethod, segments: string[]):
     );
   }
   if (method === "POST" && segments.length === 1 && segments[0] === "orders") return true;
+  if (method === "POST" && segments.length === 1 && segments[0] === "receipt-evidence") return true;
+  if (
+    method === "GET" &&
+    segments.length === 3 &&
+    segments[0] === "receipt-evidence" &&
+    uuid.test(segments[1] ?? "") &&
+    segments[2] === "content"
+  )
+    return true;
   if (
     method === "POST" &&
     segments.length === 3 &&
@@ -328,6 +349,17 @@ export function isAllowedPath(method: WorkspaceProxyMethod, segments: string[]):
     segments[0] === "skus" &&
     uuid.test(segments[1] ?? "") &&
     segments[2] === "capture-summary"
+  ) {
+    return true;
+  }
+  if (
+    method === "GET" &&
+    segments.length === 5 &&
+    segments[0] === "skus" &&
+    uuid.test(segments[1] ?? "") &&
+    segments[2] === "product-photos" &&
+    uuid.test(segments[3] ?? "") &&
+    segments[4] === "content"
   ) {
     return true;
   }
@@ -366,6 +398,21 @@ export function isAllowedPath(method: WorkspaceProxyMethod, segments: string[]):
   }
   if (method === "GET" && segments.length === 3 && segments[2] === "address") return true;
   return false;
+}
+
+function hasAllowedReceiptEvidenceQuery(
+  method: WorkspaceProxyMethod,
+  segments: string[],
+  query: URLSearchParams,
+): boolean {
+  if (!(method === "POST" && segments.length === 1 && segments[0] === "receipt-evidence")) {
+    return true;
+  }
+  return (
+    query.size === 2 &&
+    uuid.test(query.get("assetId") ?? "") &&
+    query.get("humanConfirmed") === "true"
+  );
 }
 
 function apiError(status: number, code: string, message: string): Response {

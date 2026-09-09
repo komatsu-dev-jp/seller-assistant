@@ -108,7 +108,18 @@ const initialMappingDrafts: Record<EventType, MappingDraft> = Object.fromEntries
   ]),
 ) as Record<EventType, MappingDraft>;
 
-export type AccountingMobileStage = "format" | "profile" | "mappings" | "export";
+export type AccountingMobileStage =
+  "format" | "profile" | "mappings" | "export" | "preview" | "import" | "history";
+
+export const accountingStageTitles: Record<AccountingMobileStage, string> = {
+  format: "売上の事実",
+  profile: "会計の基本設定",
+  mappings: "会計項目の候補",
+  export: "作成前の確認",
+  preview: "ファイル内容の確認",
+  import: "手動取込の結果",
+  history: "作成・取込履歴",
+};
 
 export function AccountingWorkspace({
   workspaceId,
@@ -421,6 +432,7 @@ export function AccountingWorkspace({
       );
       setSupersedeConfirmed(false);
       setMessage("版・列数・根拠ハッシュを固定したCSV候補を作成しました。");
+      onMobileStageChange?.("preview");
     });
   }
 
@@ -462,6 +474,7 @@ export function AccountingWorkspace({
         current.map((entry) => (entry.batchId === downloaded.batchId ? downloaded : entry)),
       );
       setMessage("CSVを端末へ保存しました。会計ソフトへの取込は人が行ってください。");
+      onMobileStageChange?.("import");
     });
   }
 
@@ -514,6 +527,7 @@ export function AccountingWorkspace({
       setPreview(null);
       setPreviewConfirmed(false);
       setMessage("手動取込の結果を監査履歴へ保存しました。");
+      onMobileStageChange?.("history");
     });
   }
 
@@ -525,8 +539,7 @@ export function AccountingWorkspace({
     >
       <div className="workflowPanelHead">
         <div>
-          <p className="eyebrow">ACCOUNTING READINESS</p>
-          <h2 id="accounting-heading">会計プロフィール・対応ルール・版固定CSV</h2>
+          <h2 id="accounting-heading">{accountingStageTitles[mobileStage ?? "export"]}</h2>
         </div>
         <span className={batch?.state === "import_confirmed" ? "safeBadge" : "status"}>
           {batch?.state === "import_confirmed" ? "手動取込確認済み" : "候補・未確定"}
@@ -537,6 +550,79 @@ export function AccountingWorkspace({
         記録整理とCSV受け渡しを支援する画面です。税額・申告方法・勘定科目を自動確定せず、
         必要に応じて税理士などの専門家へ確認してください。
       </p>
+
+      <section
+        className={`accountingControlCard accountingMobilePanel ${mobileStage === undefined || mobileStage === "format" ? "isActive" : ""}`}
+        aria-label="売上と費用の記録"
+      >
+        <h3>売上と費用を別々に確認</h3>
+        {financial ? (
+          <>
+            <div className="profitWaterfall">
+              <Money
+                label="販売額"
+                value={
+                  financial.missingInputs.includes("orderPrice") ? null : financial.saleAmountMinor
+                }
+              />
+              <Money label="返金（個別金額はこの画面では未取得）" value={null} />
+              <Money
+                label="商品原価"
+                value={
+                  financial.missingInputs.includes("costOfGoods")
+                    ? null
+                    : -financial.costAmountMinor
+                }
+              />
+              <Money
+                label="販売手数料"
+                value={
+                  financial.missingInputs.includes("sellingFeeCharged")
+                    ? null
+                    : -financial.sellingFeeMinor
+                }
+              />
+              <Money
+                label="送料"
+                value={
+                  financial.missingInputs.includes("sellerShipping")
+                    ? null
+                    : -financial.shippingCostMinor
+                }
+              />
+              <Money
+                label="梱包費"
+                value={
+                  financial.missingInputs.includes("packagingCost")
+                    ? null
+                    : -financial.packagingCostMinor
+                }
+              />
+              <Money
+                label="費用を差し引いた参考額"
+                value={financial.contributionProfitMinor}
+                total
+              />
+            </div>
+            <p className="candidateReferences">
+              {financial.missingInputs.length > 0
+                ? `未確認: ${financial.missingInputs.map((input) => financialMissingLabels[input]).join("・")}`
+                : "必要な金額が登録されています。"}
+            </p>
+            <p>運用分析の参考値です。会計上の利益・所得・税額を示すものではありません。</p>
+          </>
+        ) : (
+          <p>対象取引を選び、保存済みの金額を読み込んでください。</p>
+        )}
+        <button type="button" disabled={busy || !orderId} onClick={() => void loadFinancials()}>
+          売上と費用を読み込む
+        </button>
+        {onMobileStageChange ? (
+          <button type="button" onClick={() => onMobileStageChange("profile")}>
+            会計の基本設定へ
+          </button>
+        ) : null}
+      </section>
 
       <div className="accountingSetupStack">
         {profile ? (
@@ -551,7 +637,7 @@ export function AccountingWorkspace({
                 <span>1</span>
                 <h3>本人が事業・申告状況を選択</h3>
               </div>
-              <small>revision {profile.revision}</small>
+              <small>設定の版 {profile.revision}</small>
             </div>
             <div className="termHelp">
               <button
@@ -642,9 +728,9 @@ export function AccountingWorkspace({
               選択内容を本人確認して保存
             </button>
           </form>
-        ) : (
+        ) : mobileStage === undefined || mobileStage === "profile" ? (
           <p role="status">会計設定を読み込んでいます…</p>
-        )}
+        ) : null}
 
         <section
           className={`accountingControlCard accountingMappingCard accountingMobilePanel ${
@@ -916,25 +1002,32 @@ export function AccountingWorkspace({
 
       <section
         className={`accountingControlCard accountingExportCard accountingMobilePanel ${
-          mobileStage === undefined || mobileStage === "export" ? "isActive" : ""
+          mobileStage === undefined ||
+          ["export", "preview", "import", "history"].includes(mobileStage)
+            ? "isActive"
+            : ""
         }`}
         aria-labelledby="export-heading"
       >
         <div className="sectionTitle">
           <div>
             <span>3</span>
-            <h3 id="export-heading">収支確認とCSV候補</h3>
+            <h3 id="export-heading">{accountingStageTitles[mobileStage ?? "export"]}</h3>
           </div>
           <small>外部送信 0件</small>
         </div>
         <div className="accountingExportPrimary">
-          <div className="accountingPreflight" aria-label="CSV出力前チェック">
+          <div
+            className="accountingPreflight"
+            data-accounting-step="export"
+            aria-label="CSV出力前チェック"
+          >
             <strong>出力前チェック</strong>
             <span className={profileReady ? "pass" : "blocked"}>
-              {profileReady ? "✓" : "!"} 会計プロフィール
+              {profileReady ? "✓" : "!"} 会計の基本設定
             </span>
             <span className={activeEventTypes.size === 7 ? "pass" : "blocked"}>
-              {activeEventTypes.size === 7 ? "✓" : "!"} 対応ルール {activeEventTypes.size}/7
+              {activeEventTypes.size === 7 ? "✓" : "!"} 確認済みの会計項目 {activeEventTypes.size}/7
             </span>
             <span className={financial?.missingInputs.length === 0 ? "pass" : "blocked"}>
               {financial?.missingInputs.length === 0 ? "✓" : "!"} 原資料・必須列
@@ -955,31 +1048,12 @@ export function AccountingWorkspace({
                   : "! 出力できる根拠を確認中"}
             </span>
           </div>
-          {financial ? (
-            <>
-              <div className="profitWaterfall">
-                <Money label="販売額" value={financial.saleAmountMinor} />
-                <Money label="商品原価" value={-financial.costAmountMinor} />
-                <Money label="販売手数料" value={-financial.sellingFeeMinor} />
-                <Money label="送料" value={-financial.shippingCostMinor} />
-                <Money label="梱包費" value={-financial.packagingCostMinor} />
-                <Money label="取引貢献利益" value={financial.contributionProfitMinor} total />
-              </div>
-              <p className="candidateReferences">
-                計算版: {financial.formulaVersion}
-                {financial.missingInputs.length > 0
-                  ? ` / 未確認: ${financial.missingInputs
-                      .map((input) => financialMissingLabels[input])
-                      .join("・")}`
-                  : " / 必須入力の欠損なし"}
-              </p>
-            </>
-          ) : (
+          {!financial ? (
             <button type="button" disabled={busy || !orderId} onClick={() => void loadFinancials()}>
-              DBから運用収支を読み込む
+              売上と費用を読み込む
             </button>
-          )}
-          <div className="accountingActionRow">
+          ) : null}
+          <div className="accountingActionRow" data-accounting-step="export">
             <button
               type="button"
               disabled={
@@ -998,7 +1072,7 @@ export function AccountingWorkspace({
             </button>
           </div>
           {replacementBatch ? (
-            <div className="exportEvidenceDetails">
+            <div className="exportEvidenceDetails" data-accounting-step="export">
               <label className="confirmationCheck">
                 <input
                   type="checkbox"
@@ -1028,7 +1102,7 @@ export function AccountingWorkspace({
             </div>
           ) : null}
           {batch ? (
-            <details className="exportEvidence" open>
+            <details className="exportEvidence" data-accounting-step="file" open>
               <summary>
                 <strong>作成済みCSV</strong>
                 <span>
@@ -1036,87 +1110,97 @@ export function AccountingWorkspace({
                 </span>
               </summary>
               <div className="exportEvidenceDetails">
-                <button type="button" disabled={busy} onClick={() => void loadPreview()}>
-                  保存済みCSVを出力前に確認
-                </button>
-                {preview?.batchId === batch.batchId ? (
-                  <section className="accountingCsvPreview" aria-labelledby="csv-preview-heading">
-                    <div className="panelHead">
-                      <div>
-                        <strong id="csv-preview-heading">CSVプレビュー</strong>
-                        <p>
-                          全{preview.columnCount}列 / 先頭{preview.previewRowCount}行
-                          {preview.truncated ? `（全${preview.totalRowCount}行）` : ""}
-                        </p>
+                <div data-accounting-step="preview">
+                  <button type="button" disabled={busy} onClick={() => void loadPreview()}>
+                    保存済みCSVを出力前に確認
+                  </button>
+                  {preview?.batchId === batch.batchId ? (
+                    <section className="accountingCsvPreview" aria-labelledby="csv-preview-heading">
+                      <div className="panelHead">
+                        <div>
+                          <strong id="csv-preview-heading">CSVプレビュー</strong>
+                          <p>
+                            全{preview.columnCount}列 / 先頭{preview.previewRowCount}行
+                            {preview.truncated ? `（全${preview.totalRowCount}行）` : ""}
+                          </p>
+                        </div>
+                        <span>読み取り専用・外部送信0件</span>
                       </div>
-                      <span>読み取り専用・外部送信0件</span>
-                    </div>
-                    <div className="accountingCsvPreviewScroll" tabIndex={0}>
-                      <table>
-                        <thead>
-                          <tr>
-                            {preview.headers.map((header, index) => (
-                              <th key={`${index}-${header}`} scope="col">
-                                {header}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {preview.rows.map((row, rowIndex) => (
-                            <tr key={rowIndex}>
-                              {row.map((cell, cellIndex) => (
-                                <td key={cellIndex}>{cell || "—"}</td>
+                      <div className="accountingCsvPreviewScroll" tabIndex={0}>
+                        <table>
+                          <thead>
+                            <tr>
+                              {preview.headers.map((header, index) => (
+                                <th key={`${index}-${header}`} scope="col">
+                                  {header}
+                                </th>
                               ))}
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                          </thead>
+                          <tbody>
+                            {preview.rows.map((row, rowIndex) => (
+                              <tr key={rowIndex}>
+                                {row.map((cell, cellIndex) => (
+                                  <td key={cellIndex}>{cell || "—"}</td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <label className="confirmationCheck">
+                        <input
+                          type="checkbox"
+                          checked={previewConfirmed}
+                          onChange={(event) => setPreviewConfirmed(event.target.checked)}
+                        />
+                        <span>
+                          保存済み正本CSVの列名と先頭行を確認しました。画面表示だけではダウンロード済みに変わりません。
+                        </span>
+                      </label>
+                    </section>
+                  ) : null}
+                  <details className="accountingExportMetadata">
+                    <summary>版・SHA・置換の詳細</summary>
+                    <div className="exportEvidenceDetails">
+                      <span>版: {batch.formatVersion}</span>
+                      <span>SHA-256: {batch.sha256}</span>
                     </div>
-                    <label className="confirmationCheck">
-                      <input
-                        type="checkbox"
-                        checked={previewConfirmed}
-                        onChange={(event) => setPreviewConfirmed(event.target.checked)}
-                      />
-                      <span>
-                        保存済み正本CSVの列名と先頭行を確認しました。画面表示だけではダウンロード済みに変わりません。
-                      </span>
-                    </label>
-                  </section>
-                ) : null}
-                <details className="accountingExportMetadata">
-                  <summary>版・SHA・置換の詳細</summary>
-                  <div className="exportEvidenceDetails">
-                    <span>版: {batch.formatVersion}</span>
-                    <span>SHA-256: {batch.sha256}</span>
-                  </div>
-                </details>
-                <button
-                  type="button"
-                  disabled={busy || !previewConfirmed || preview?.batchId !== batch.batchId}
-                  onClick={() => void downloadExport()}
-                >
-                  人がCSVをダウンロード
-                </button>
-                {batch.state === "downloaded" ? (
-                  <div className="accountingActionRow">
-                    <button
-                      type="button"
-                      disabled={isAccountingImportActionDisabled(batch, busy)}
-                      onClick={() => void confirmImport("success")}
-                    >
-                      手動取込の成功を記録
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isAccountingImportActionDisabled(batch, busy)}
-                      onClick={() => void confirmImport("failed")}
-                    >
-                      手動取込の失敗を記録
-                    </button>
-                  </div>
-                ) : null}
+                  </details>
+                  <button
+                    type="button"
+                    disabled={busy || !previewConfirmed || preview?.batchId !== batch.batchId}
+                    onClick={() => void downloadExport()}
+                  >
+                    人がCSVをダウンロード
+                  </button>
+                </div>
+                <div data-accounting-step="import">
+                  <p>
+                    会計ソフトの公式画面で、このファイルを本人が取り込んでください。取込後に結果を記録します。
+                  </p>
+                  {batch.state === "downloaded" ? (
+                    <div className="accountingActionRow">
+                      <button
+                        type="button"
+                        disabled={isAccountingImportActionDisabled(batch, busy)}
+                        onClick={() => void confirmImport("success")}
+                      >
+                        手動取込の成功を記録
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isAccountingImportActionDisabled(batch, busy)}
+                        onClick={() => void confirmImport("failed")}
+                      >
+                        手動取込の失敗を記録
+                      </button>
+                    </div>
+                  ) : null}
+                  {batch.state !== "downloaded" ? (
+                    <p>先にファイル内容を確認し、ダウンロードしてください。</p>
+                  ) : null}
+                </div>
               </div>
             </details>
           ) : (
@@ -1125,7 +1209,7 @@ export function AccountingWorkspace({
             </p>
           )}
         </div>
-        <div className="accountingExportSupport">
+        <div className="accountingExportSupport" data-accounting-step="history">
           <aside className="accountingHelpSummary">
             <strong>この画面で行わないこと</strong>
             <p>税務判断、申告・提出、外部サービスへの自動送信は行いません。</p>
@@ -1152,7 +1236,17 @@ export function AccountingWorkspace({
                     <strong role="cell">{entry.filename}</strong>
                     <span role="cell">{entry.formatVersion}</span>
                     <span role="cell">{entry.rowCount}行</span>
-                    <span role="cell">{entry.state}</span>
+                    <span role="cell">
+                      {
+                        {
+                          ready: "作成済み",
+                          downloaded: "ダウンロード済み",
+                          import_confirmed: "取込確認済み",
+                          voided: "無効",
+                          superseded: "置換済み",
+                        }[entry.state]
+                      }
+                    </span>
                   </div>
                 ))}
               </div>

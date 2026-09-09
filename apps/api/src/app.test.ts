@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -615,6 +616,13 @@ describe("P0 workspace API", () => {
     ] as const;
     const measurementIds: string[] = [];
     for (const [definitionId, value] of definitions) {
+      const measurementAssetId = await registerTestMeasurementEvidence(
+        repository,
+        workspaceId,
+        skuId,
+        actorId,
+        definitionId,
+      );
       const measurement = await repository.recordMeasurement(
         workspaceId,
         skuId,
@@ -627,7 +635,7 @@ describe("P0 workspace API", () => {
           basis: definitionId === "chest_width" ? "flat_width" : "length",
           state: "natural",
           measuredAt: "2026-08-15T00:00:00.000Z",
-          evidenceAssetId: assetIds[0]!,
+          evidenceAssetId: measurementAssetId,
           attempt: 1,
           humanConfirmed: true,
         },
@@ -725,7 +733,8 @@ describe("P0 workspace API", () => {
   it("registers immutable photo evidence and human measurements for capture readiness", async () => {
     const mediaRoot = await mkdtemp(join(tmpdir(), "resale-app-media-"));
     mediaRoots.push(mediaRoot);
-    const app = buildTestApp(new LocalPrivateMediaStore(mediaRoot));
+    const repository = new InMemoryWorkflowRepository();
+    const app = buildTestApp(new LocalPrivateMediaStore(mediaRoot), repository);
     apps.push(app);
     const created = await app.inject({
       method: "POST",
@@ -776,6 +785,13 @@ describe("P0 workspace API", () => {
       ["body_length", 70],
     ] as const;
     for (const [definitionId, value] of definitions) {
+      const measurementAssetId = await registerTestMeasurementEvidence(
+        repository,
+        workspaceId,
+        skuId,
+        actorId,
+        definitionId,
+      );
       const response = await app.inject({
         method: "POST",
         url: `/v1/workspaces/${workspaceId}/skus/${skuId}/measurements`,
@@ -788,7 +804,7 @@ describe("P0 workspace API", () => {
           basis: definitionId === "chest_width" ? "flat_width" : "length",
           state: "natural",
           measuredAt: "2026-08-15T00:00:00.000Z",
-          evidenceAssetId: assetIds[0],
+          evidenceAssetId: measurementAssetId,
           attempt: 1,
           humanConfirmed: true,
         },
@@ -810,6 +826,13 @@ describe("P0 workspace API", () => {
       readyForHumanReview: true,
     });
 
+    const repeatEvidence = await registerTestMeasurementEvidence(
+      repository,
+      workspaceId,
+      skuId,
+      actorId,
+      "chest_width",
+    );
     const repeat = await app.inject({
       method: "POST",
       url: `/v1/workspaces/${workspaceId}/skus/${skuId}/measurements`,
@@ -822,7 +845,7 @@ describe("P0 workspace API", () => {
         basis: "flat_width",
         state: "natural",
         measuredAt: "2026-08-15T00:05:00.000Z",
-        evidenceAssetId: assetIds[0],
+        evidenceAssetId: repeatEvidence,
         attempt: 2,
         humanConfirmed: true,
       },
@@ -1858,4 +1881,31 @@ function jpegWithGpsMetadata(): Buffer {
   ]);
   const scan = Buffer.from([0xff, 0xda, 0x00, 0x02, 0x11, 0x22, 0xff, 0xd9]);
   return Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe1]), app1Length, exif, dimensions, scan]);
+}
+
+async function registerTestMeasurementEvidence(
+  repository: InMemoryWorkflowRepository,
+  workspaceId: string,
+  skuId: string,
+  identityId: string,
+  definitionId: string,
+): Promise<string> {
+  const assetId = randomUUID();
+  await repository.registerMediaAsset(
+    workspaceId,
+    skuId,
+    { identityId },
+    {
+      assetId,
+      role: "measurement_evidence",
+      measurementDefinitionId: definitionId,
+      originalSha256: createHash("sha256").update(assetId).digest("hex"),
+      originalStorageKey: `workspaces/${workspaceId}/originals/${assetId}.jpg`,
+      mimeType: "image/jpeg",
+      sizeBytes: 128,
+      width: 16,
+      height: 16,
+    },
+  );
+  return assetId;
 }

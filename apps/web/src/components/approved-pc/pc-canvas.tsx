@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
+import { getApprovedPcLiveRoute, isP1ApprovedPcScreen } from "./approved-screen-scope";
+
 /**
  * The approved route is one 768x512 desktop screen (each approved board is a
  * 2x2 composite containing four of these screens). Route styles use the same
@@ -11,9 +13,11 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
 export function PcCanvas({
   className,
   children,
+  screenNumber,
 }: {
   className: string | undefined;
   children: ReactNode;
+  screenNumber: number;
 }) {
   const [scale, setScale] = useState(1);
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -63,11 +67,19 @@ export function PcCanvas({
     transform: `scale(${scale})`,
     transformOrigin: "top left",
   };
+  const liveRoute = getApprovedPcLiveRoute(screenNumber);
 
   return (
     <div ref={viewportRef} style={viewportStyle} data-pc-canvas="768x512">
       <div style={canvasViewportStyle}>
-        <main className={className} style={canvasStyle}>
+        <main
+          className={className}
+          style={canvasStyle}
+          data-implementation-scope={
+            isP1ApprovedPcScreen(screenNumber) ? "p1-preview" : "p0-live-mapped"
+          }
+          data-live-route={liveRoute ?? undefined}
+        >
           {children}
         </main>
       </div>

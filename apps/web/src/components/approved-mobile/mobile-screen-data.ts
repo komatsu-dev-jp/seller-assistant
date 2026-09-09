@@ -1,5 +1,7 @@
 export type MobileScreenFlow = "canonical" | "photo" | "box" | "sales" | "genre-suit";
 
+export type MobileFooterSection = "home" | "work" | "product" | "inventory" | "accounting";
+
 export type MobileScreen = {
   readonly id: string;
   readonly title: string;
@@ -71,7 +73,7 @@ const groupFor = (number: number): string => {
   if (number <= 28) return "採寸";
   if (number <= 33) return "写真受け渡し";
   if (number <= 38) return "注文・発送";
-  if (number <= 43) return "在庫確認";
+  if (number <= 42) return "在庫確認";
   return "会計";
 };
 
@@ -83,7 +85,7 @@ const sourceFor = (number: number): string => {
   if (number <= 28) return "mobile-ios-redesign-b-board-05-photo-measure-v1.png";
   if (number <= 33) return "mobile-ios-redesign-b-board-06-product-info-v6.png";
   if (number <= 38) return "mobile-ios-redesign-b-board-07-shipping-v4.png";
-  if (number <= 43) return "mobile-ios-redesign-b-board-08-exceptions-v2.png";
+  if (number <= 42) return "mobile-ios-redesign-b-board-08-exceptions-v2.png";
   return "mobile-ios-redesign-b-board-09-accounting-v1.png";
 };
 
@@ -369,4 +371,43 @@ export function getMobilePrevious(id: string): string | undefined {
 export function getMobileNext(id: string): string | undefined {
   const index = getMobileScreenIndex(id);
   return index >= 0 && index < mobileScreens.length - 1 ? mobileScreens[index + 1]?.id : undefined;
+}
+
+export function getMobileFooterSection(screen: MobileScreen): MobileFooterSection {
+  if (screen.flow === "photo" || screen.flow === "box" || screen.flow === "sales") {
+    return "product";
+  }
+  if (screen.flow === "genre-suit") return "work";
+
+  const number = Number(screen.id);
+  if (number === 4) return "home";
+  if (number <= 6) return "work";
+  if (number <= 11) return "product";
+  if (number <= 14) return "inventory";
+  if (number === 15) return "product";
+  if (number <= 28) return "work";
+  if (number <= 33) return "product";
+  if (number <= 38) return "work";
+  if (number <= 42) return "inventory";
+  return "accounting";
+}
+
+export function isP1MobileReviewScreen(screen: MobileScreen): boolean {
+  return screen.flow === "photo" || screen.flow === "box" || screen.flow === "sales";
+}
+
+export function getMobileLiveRoute(screen: MobileScreen): string | null {
+  if (isP1MobileReviewScreen(screen)) return null;
+  if (screen.flow === "genre-suit") return "/workflow";
+
+  const number = Number(screen.id);
+  if (number === 1) return "/login";
+  if (number === 2 || number === 3) return "/team";
+  if (number <= 6) return "/";
+  if (number <= 11) return "/workflow";
+  if (number <= 14) return "/mobile/scan";
+  if (number <= 33) return "/workflow";
+  if (number <= 38) return "/shipping";
+  if (number <= 42) return "/inventory/stocktake";
+  return "/accounting";
 }

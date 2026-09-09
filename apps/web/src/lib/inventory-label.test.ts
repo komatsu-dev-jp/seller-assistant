@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { encodeCode128Bits } from "./code128";
 import {
   buildInventoryBarcodePayload,
+  inventoryCodeKindLabel,
   parseInventoryBarcodePayload,
   parseInventoryLookup,
   shortInventoryNumber,
@@ -45,5 +46,17 @@ describe("inventory label", () => {
     expect(bits.length).toBeGreaterThan(100);
     expect(bits).toMatch(/^[01]+$/u);
     expect(bits.startsWith("110100")).toBe(true);
+  });
+
+  it("keeps the app-owned number distinct from unconfirmed GS1 identifiers", () => {
+    const payload = buildInventoryBarcodePayload(first, 1);
+    expect(inventoryCodeKindLabel).toBe("自社内部コード");
+    expect(payload.startsWith("RESALE|")).toBe(true);
+
+    for (const gs1Identifier of ["GLN", "SSCC", "GRAI"]) {
+      expect(payload).not.toContain(gs1Identifier);
+      expect(parseInventoryBarcodePayload(`${gs1Identifier}|${first}|V1`)).toBeNull();
+      expect(parseInventoryLookup(`${gs1Identifier}|${first}|V1`)).toBeNull();
+    }
   });
 });
