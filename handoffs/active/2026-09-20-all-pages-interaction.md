@@ -645,7 +645,7 @@ Codex右サイドパネルの初回GETでPWA中継の許可漏れによる404を
 
 Codex右サイドパネルでITM-0006へ架空素材を選択し、ITM-0005へ移動して画像が混ざらないこと、ITM-0006へ戻ると再表示されることを確認。1536×1024と768×1024で確認し、768pxはclient/scroll幅一致、画面外操作0、操作部品の重なり0、console error/warning 0。対象3ファイル・12テスト、Web型、対象整形はPASS。
 
-全体`npm run check`は105ファイル・798テスト、整形、静的解析、型、coverage、安全確認、API/Web build（86 routes）までPASS。別実行のAstra low独立レビューはP1=0、P2=0でPASSし、P3として一時URLライフサイクルの動作テスト強化余地だけを記録した。証拠は`output/playwright/live-pc26-local-image-preview-evidence.md`。
+全体`npm run check`は105ファイル・801テスト、整形、静的解析、型、coverage、安全確認、API/Web build（86 routes）までPASS。別実行のAstra low初回レビューはP1=0、P2=0。初回P3だった一時URLライフサイクルについて、差し替え・削除・画面終了・古い通知を実行するテストを追加し、再レビューはP1=0、P2=0、P3=0でPASS。証拠は`output/playwright/live-pc26-local-image-preview-evidence.md`。
 
 チェックリスト317/341（93.0%）、実用完成度は約96%。Obsidian正本へ同期し、更新前バックアップと更新後の1回だけの追記を照合した。OCR、数値候補、数値保存、実iPhoneは未完了で、Goal activeのまま。
 

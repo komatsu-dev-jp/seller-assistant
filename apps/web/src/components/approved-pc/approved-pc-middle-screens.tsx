@@ -23,7 +23,11 @@ import {
   updateSalesCheckDraft,
 } from "../../lib/sales-check-draft";
 import {
+  isCurrentSalesCheckImagePreview,
+  releaseSalesCheckImagePreviews,
+  replaceSalesCheckImagePreview,
   SALES_CHECK_IMAGE_ACCEPT,
+  type SalesCheckImagePreview,
   validateSalesCheckImageDimensions,
   validateSalesCheckImageFile,
 } from "../../lib/sales-check-image";
@@ -1529,17 +1533,15 @@ function SalesCheck() {
   const [selectedId, setSelectedId] = useState(items[0]?.id ?? "");
   const [drafts, setDrafts] = useState(() => createSalesCheckDrafts(SALES_CHECK_ITEMS));
   const imageInput = useRef<HTMLInputElement>(null);
-  const imagePreviewsRef = useRef<
-    Record<string, { previewUrl: string; state: "loading" | "ready" }>
-  >({});
+  const imagePreviewsRef = useRef<Record<string, SalesCheckImagePreview>>({});
   const [imagePreviews, setImagePreviews] = useState(imagePreviewsRef.current);
   const [imageErrors, setImageErrors] = useState<Record<string, string>>({});
   const selectedItem = items.find((item) => item.id === selectedId) ?? items[0];
   useEffect(
     () => () => {
-      for (const preview of Object.values(imagePreviewsRef.current)) {
-        URL.revokeObjectURL(preview.previewUrl);
-      }
+      releaseSalesCheckImagePreviews(imagePreviewsRef.current, (previewUrl) =>
+        URL.revokeObjectURL(previewUrl),
+      );
       imagePreviewsRef.current = {};
     },
     [],
@@ -1563,17 +1565,13 @@ function SalesCheck() {
     setDrafts((current) => updateSalesCheckDraft(current, selectedItemId, field, value));
   }
 
-  function replaceImagePreview(
-    itemId: string,
-    preview: { previewUrl: string; state: "loading" | "ready" } | null,
-  ) {
-    const current = imagePreviewsRef.current[itemId];
-    if (current && current.previewUrl !== preview?.previewUrl) {
-      URL.revokeObjectURL(current.previewUrl);
-    }
-    const next = { ...imagePreviewsRef.current };
-    if (preview) next[itemId] = preview;
-    else delete next[itemId];
+  function replaceImagePreview(itemId: string, preview: SalesCheckImagePreview | null) {
+    const next = replaceSalesCheckImagePreview(
+      imagePreviewsRef.current,
+      itemId,
+      preview,
+      (previewUrl) => URL.revokeObjectURL(previewUrl),
+    );
     imagePreviewsRef.current = next;
     setImagePreviews(next);
   }
@@ -1602,8 +1600,8 @@ function SalesCheck() {
   }
 
   function finishImagePreview(itemId: string, previewUrl: string, image: HTMLImageElement) {
-    const current = imagePreviewsRef.current[itemId];
-    if (!current || current.previewUrl !== previewUrl || current.state !== "loading") return;
+    if (!isCurrentSalesCheckImagePreview(imagePreviewsRef.current, itemId, previewUrl, "loading"))
+      return;
     const validationError = validateSalesCheckImageDimensions(
       image.naturalWidth,
       image.naturalHeight,
@@ -1620,8 +1618,7 @@ function SalesCheck() {
   }
 
   function rejectImagePreview(itemId: string, previewUrl: string) {
-    const current = imagePreviewsRef.current[itemId];
-    if (!current || current.previewUrl !== previewUrl) return;
+    if (!isCurrentSalesCheckImagePreview(imagePreviewsRef.current, itemId, previewUrl)) return;
     replaceImagePreview(itemId, null);
     setImageErrors((errors) => ({
       ...errors,

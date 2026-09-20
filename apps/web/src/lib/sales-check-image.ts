@@ -11,6 +11,51 @@ export type SalesCheckImageFileFact = {
   type: string;
 };
 
+export type SalesCheckImagePreview = {
+  previewUrl: string;
+  state: "loading" | "ready";
+};
+
+export type SalesCheckImagePreviews = Readonly<Record<string, SalesCheckImagePreview>>;
+
+export function replaceSalesCheckImagePreview(
+  current: SalesCheckImagePreviews,
+  itemId: string,
+  preview: SalesCheckImagePreview | null,
+  revokeObjectUrl: (previewUrl: string) => void,
+): Record<string, SalesCheckImagePreview> {
+  const previous = current[itemId];
+  if (previous && previous.previewUrl !== preview?.previewUrl) {
+    revokeObjectUrl(previous.previewUrl);
+  }
+
+  const next = { ...current };
+  if (preview) next[itemId] = preview;
+  else delete next[itemId];
+  return next;
+}
+
+export function releaseSalesCheckImagePreviews(
+  current: SalesCheckImagePreviews,
+  revokeObjectUrl: (previewUrl: string) => void,
+): void {
+  for (const previewUrl of new Set(Object.values(current).map((preview) => preview.previewUrl))) {
+    revokeObjectUrl(previewUrl);
+  }
+}
+
+export function isCurrentSalesCheckImagePreview(
+  current: SalesCheckImagePreviews,
+  itemId: string,
+  previewUrl: string,
+  state?: SalesCheckImagePreview["state"],
+): boolean {
+  const preview = current[itemId];
+  return Boolean(
+    preview && preview.previewUrl === previewUrl && (!state || preview.state === state),
+  );
+}
+
 export function validateSalesCheckImageFile(file: SalesCheckImageFileFact): string | null {
   if (!supportedSalesCheckImageTypes.has(file.type)) {
     return "JPEG・PNG・WebPの画像を選んでください。";

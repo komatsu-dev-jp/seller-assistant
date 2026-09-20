@@ -61,8 +61,9 @@ describe("approved PC sales check controls", () => {
   });
 
   it("keeps image previews separated by item and ignores stale load events", () => {
-    expect(salesSource).toContain("imagePreviewsRef.current[itemId]");
-    expect(salesSource).toContain("current.previewUrl !== previewUrl");
+    expect(salesSource).toContain("replaceSalesCheckImagePreview(");
+    expect(salesSource).toContain("releaseSalesCheckImagePreviews(");
+    expect(salesSource).toContain("isCurrentSalesCheckImagePreview(");
     expect(salesSource).toContain("selectedImagePreview = imagePreviews[selectedItemId]");
     expect(salesSource).toContain("selectedImageError = imageErrors[selectedItemId]");
   });

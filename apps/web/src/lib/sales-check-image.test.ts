@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  isCurrentSalesCheckImagePreview,
+  releaseSalesCheckImagePreviews,
+  replaceSalesCheckImagePreview,
   SALES_CHECK_IMAGE_MAX_BYTES,
   validateSalesCheckImageDimensions,
   validateSalesCheckImageFile,
@@ -24,5 +27,63 @@ describe("sales-check image safety", () => {
     expect(validateSalesCheckImageDimensions(0, 2556)).toMatch(/表示できません/u);
     expect(validateSalesCheckImageDimensions(10_001, 100)).toMatch(/大きすぎ/u);
     expect(validateSalesCheckImageDimensions(8000, 6000)).toMatch(/4,000万画素/u);
+  });
+
+  it("replaces and removes only the selected item's temporary URL", () => {
+    const revoked: string[] = [];
+    const initial = {
+      "ITM-0006": { previewUrl: "blob:pants-old", state: "ready" as const },
+      "ITM-0005": { previewUrl: "blob:shirt", state: "ready" as const },
+    };
+
+    const replaced = replaceSalesCheckImagePreview(
+      initial,
+      "ITM-0006",
+      { previewUrl: "blob:pants-new", state: "loading" },
+      (url) => revoked.push(url),
+    );
+    expect(revoked).toEqual(["blob:pants-old"]);
+    expect(replaced["ITM-0005"]).toEqual(initial["ITM-0005"]);
+    expect(replaced["ITM-0006"]?.previewUrl).toBe("blob:pants-new");
+
+    const ready = replaceSalesCheckImagePreview(
+      replaced,
+      "ITM-0006",
+      { previewUrl: "blob:pants-new", state: "ready" },
+      (url) => revoked.push(url),
+    );
+    expect(revoked).toEqual(["blob:pants-old"]);
+
+    const removed = replaceSalesCheckImagePreview(ready, "ITM-0005", null, (url) =>
+      revoked.push(url),
+    );
+    expect(revoked).toEqual(["blob:pants-old", "blob:shirt"]);
+    expect(removed["ITM-0005"]).toBeUndefined();
+    expect(removed["ITM-0006"]?.previewUrl).toBe("blob:pants-new");
+  });
+
+  it("releases each remaining temporary URL once on screen exit", () => {
+    const revoked: string[] = [];
+    releaseSalesCheckImagePreviews(
+      {
+        "ITM-0006": { previewUrl: "blob:shared", state: "ready" },
+        "ITM-0005": { previewUrl: "blob:shared", state: "ready" },
+        "ITM-0004": { previewUrl: "blob:backpack", state: "loading" },
+      },
+      (url) => revoked.push(url),
+    );
+    expect(revoked).toEqual(["blob:shared", "blob:backpack"]);
+  });
+
+  it("rejects stale URL and stale loading-state callbacks", () => {
+    const current = {
+      "ITM-0006": { previewUrl: "blob:current", state: "ready" as const },
+    };
+    expect(isCurrentSalesCheckImagePreview(current, "ITM-0006", "blob:current")).toBe(true);
+    expect(isCurrentSalesCheckImagePreview(current, "ITM-0006", "blob:old")).toBe(false);
+    expect(isCurrentSalesCheckImagePreview(current, "ITM-0006", "blob:current", "loading")).toBe(
+      false,
+    );
+    expect(isCurrentSalesCheckImagePreview(current, "ITM-0005", "blob:current")).toBe(false);
   });
 });
