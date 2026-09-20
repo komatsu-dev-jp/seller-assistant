@@ -105,6 +105,7 @@ const workspaceProtectedTables = [
   "product_identity_candidate",
   "product_attribute_confirmation",
   "product_measurement_profile",
+  "published_product_page",
   "product_sku",
   "purchase_batch",
   "packing_evidence",
@@ -218,6 +219,19 @@ try {
     Array.from(shippingSaleBasisGrants, (row) => ({ ...row })),
     [{ privilege_type: "SELECT" }],
     "Runtime may only SELECT the private sale basis through owner/accounting RLS",
+  );
+  const publishedProductPageGrants = await catalog<Array<{ privilege_type: string }>>`
+    select privilege_type
+    from information_schema.role_table_grants
+    where grantee = 'resale_app_runtime'
+      and table_schema = 'public'
+      and table_name = 'published_product_page'
+    order by privilege_type
+  `;
+  assert.deepEqual(
+    Array.from(publishedProductPageGrants, (row) => ({ ...row })),
+    [{ privilege_type: "INSERT" }, { privilege_type: "SELECT" }],
+    "Runtime may read and append confirmed product pages but never mutate or delete them",
   );
   const [shippingWorkspaceLockFunction] = await catalog<
     Array<{
@@ -12195,6 +12209,7 @@ try {
     },
   });
   assert.equal(interruptedPilotItem.statusCode, 201, interruptedPilotItem.body);
+  const interruptedPilotSkuId = interruptedPilotItem.json<{ skuId: string }>().skuId;
   const invalidPilotEventKey = randomUUID();
   const invalidPilotEventPayload = {
     eventType: "invalid_attempt",
@@ -12224,6 +12239,197 @@ try {
   assert.equal(failedPilot.summary.itemCount, 2);
   assert.equal(failedPilot.summary.invalidAttemptCount, 1);
   assert.equal(failedPilot.summary.passed, false);
+
+  const publishedProductPagePath = `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/published-product-page`;
+  const emptyPublishedPage = await app.inject({
+    method: "GET",
+    url: publishedProductPagePath,
+    headers: { cookie },
+  });
+  assert.equal(emptyPublishedPage.statusCode, 200, emptyPublishedPage.body);
+  assert.equal(emptyPublishedPage.json<{ page: unknown }>().page, null);
+
+  const invalidPublishedPage = await app.inject({
+    method: "POST",
+    url: publishedProductPagePath,
+    headers: { cookie },
+    payload: {
+      salesChannelKey: "mercari",
+      salesChannelName: "メルカリ",
+      productId: "m123456789",
+      productUrl: "https://example.test/item/m123456789",
+      idempotencyKey: randomUUID(),
+      humanConfirmed: true,
+    },
+  });
+  assert.equal(invalidPublishedPage.statusCode, 400, invalidPublishedPage.body);
+
+  const publishedPageKey = randomUUID();
+  const publishedPagePayload = {
+    salesChannelKey: "mercari",
+    salesChannelName: "メルカリ",
+    productId: "m123456789",
+    productUrl: "https://jp.mercari.com/item/m123456789",
+    idempotencyKey: publishedPageKey,
+    humanConfirmed: true,
+  } as const;
+  const concurrentPublishedPages = await Promise.all([
+    app.inject({
+      method: "POST",
+      url: publishedProductPagePath,
+      headers: { cookie },
+      payload: publishedPagePayload,
+    }),
+    app.inject({
+      method: "POST",
+      url: publishedProductPagePath,
+      headers: { cookie },
+      payload: publishedPagePayload,
+    }),
+  ]);
+  for (const response of concurrentPublishedPages) {
+    assert.equal(response.statusCode, 201, response.body);
+  }
+  assert.deepEqual(concurrentPublishedPages[0]?.json(), concurrentPublishedPages[1]?.json());
+  const savedPublishedPage = concurrentPublishedPages[0].json<{
+    registrationId: string;
+    skuId: string;
+    productId: string;
+    productUrl: string;
+    confirmedBy: string;
+    confirmedAt: string;
+  }>();
+  assert.equal(savedPublishedPage.skuId, acquiredItem.skuId);
+  assert.equal(savedPublishedPage.productId, publishedPagePayload.productId);
+  assert.equal(savedPublishedPage.productUrl, publishedPagePayload.productUrl);
+  assert.equal(savedPublishedPage.confirmedBy, owner.identityId);
+  assert.ok(Number.isFinite(Date.parse(savedPublishedPage.confirmedAt)));
+
+  const samePublishedPageWithNewKey = await app.inject({
+    method: "POST",
+    url: publishedProductPagePath,
+    headers: { cookie },
+    payload: { ...publishedPagePayload, idempotencyKey: randomUUID() },
+  });
+  assert.equal(samePublishedPageWithNewKey.statusCode, 201, samePublishedPageWithNewKey.body);
+  assert.equal(
+    samePublishedPageWithNewKey.json<{ registrationId: string }>().registrationId,
+    savedPublishedPage.registrationId,
+  );
+  const reloadedPublishedPage = await app.inject({
+    method: "GET",
+    url: publishedProductPagePath,
+    headers: { cookie },
+  });
+  assert.equal(reloadedPublishedPage.statusCode, 200, reloadedPublishedPage.body);
+  assert.deepEqual(
+    reloadedPublishedPage.json<{ page: unknown }>().page,
+    concurrentPublishedPages[0]?.json(),
+  );
+
+  const conflictingPublishedPage = await app.inject({
+    method: "POST",
+    url: publishedProductPagePath,
+    headers: { cookie },
+    payload: {
+      ...publishedPagePayload,
+      productId: "m987654321",
+      productUrl: "https://jp.mercari.com/item/m987654321",
+      idempotencyKey: randomUUID(),
+    },
+  });
+  assert.equal(conflictingPublishedPage.statusCode, 409, conflictingPublishedPage.body);
+
+  const preListingPublishedPage = await app.inject({
+    method: "POST",
+    url: `/v1/workspaces/${owner.workspaceId}/skus/${interruptedPilotSkuId}/published-product-page`,
+    headers: { cookie },
+    payload: {
+      ...publishedPagePayload,
+      productId: "m111111111",
+      productUrl: "https://jp.mercari.com/item/m111111111",
+      idempotencyKey: randomUUID(),
+    },
+  });
+  assert.equal(preListingPublishedPage.statusCode, 409, preListingPublishedPage.body);
+
+  const workerPublishedPage = await app.inject({
+    method: "GET",
+    url: publishedProductPagePath,
+    headers: { cookie: workerCookie },
+  });
+  assert.equal(workerPublishedPage.statusCode, 403, workerPublishedPage.body);
+
+  const duplicatePublishedPageSkuId = randomUUID();
+  const publishedPageAdmin = postgres(adminUrl, { max: 1 });
+  try {
+    await publishedPageAdmin.begin(async (transaction) => {
+      await transaction`
+        insert into product_sku (id, workspace_id, sku_code, title, category)
+        values (
+          ${duplicatePublishedPageSkuId}, ${owner.workspaceId}, 'SKU-PUBLISHED-PAGE-DUPLICATE',
+          '商品ページ重複確認用の架空商品', 'トップス'
+        )
+      `;
+      await transaction`
+        insert into p0_workflow (workspace_id, sku_id, state, last_action, version)
+        values (
+          ${owner.workspaceId}, ${duplicatePublishedPageSkuId}, 'listing_confirmed',
+          'confirm_listing', 4
+        )
+      `;
+    });
+    const duplicatePublishedPage = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/skus/${duplicatePublishedPageSkuId}/published-product-page`,
+      headers: { cookie },
+      payload: { ...publishedPagePayload, idempotencyKey: randomUUID() },
+    });
+    assert.equal(duplicatePublishedPage.statusCode, 409, duplicatePublishedPage.body);
+
+    const [publishedPageCounts] = await publishedPageAdmin<
+      Array<{ page_count: number; audit_count: number; leaked: boolean }>
+    >`
+      select
+        (select count(*)::integer from published_product_page
+         where workspace_id = ${owner.workspaceId}) as page_count,
+        (select count(*)::integer from audit_event
+         where workspace_id = ${owner.workspaceId}
+           and action = 'listing.product_page.confirmed') as audit_count,
+        exists (
+          select 1 from audit_event
+          where workspace_id = ${owner.workspaceId}
+            and action = 'listing.product_page.confirmed'
+            and (redacted_changes::text like ${`%${publishedPagePayload.productId}%`}
+              or redacted_changes::text like ${`%${publishedPagePayload.productUrl}%`})
+        ) as leaked
+    `;
+    assert.deepEqual({ ...publishedPageCounts }, { page_count: 1, audit_count: 1, leaked: false });
+    await assert.rejects(
+      publishedPageAdmin`
+        update published_product_page set product_id = 'm222222222'
+        where workspace_id = ${owner.workspaceId} and id = ${savedPublishedPage.registrationId}
+      `,
+      /published product page is immutable/u,
+    );
+    await assert.rejects(
+      publishedPageAdmin`
+        delete from published_product_page
+        where workspace_id = ${owner.workspaceId} and id = ${savedPublishedPage.registrationId}
+      `,
+      /published product page is immutable/u,
+    );
+    await publishedPageAdmin`
+      delete from p0_workflow
+      where workspace_id = ${owner.workspaceId} and sku_id = ${duplicatePublishedPageSkuId}
+    `;
+    await publishedPageAdmin`
+      delete from product_sku
+      where workspace_id = ${owner.workspaceId} and id = ${duplicatePublishedPageSkuId}
+    `;
+  } finally {
+    await publishedPageAdmin.end({ timeout: 5 });
+  }
 
   const externalPilotStarted = await app.inject({
     method: "POST",
@@ -12692,7 +12898,7 @@ try {
 }
 
 process.stdout.write(
-  "postgres-integration: PASS (restricted role, 65-table RLS matrix, P14 collision-free server order numbering, managed shipping-method revisions, assigned minimal shipping context, order-scoped assigned zero-GPS location derivative, explicit missing-information acknowledgement and frozen shipment fee, assigned inspection concerns with deferred latest-state exact-set consistency, terminal human dismissal, separate prior-recorder review, P13 three-mode shipping-photo policy, immutable private sale-basis snapshots, exact-set private photo confirmation, server packing and separate shipment confirmation, non-probeable session-bound access and denied cross-workspace/role/expired assignment access, append-only server-timed pilot exceptions, purchase-to-versioned-accounting order flow, encrypted 5-minute address lease, checked inventory/location codes, persisted capture/research/listing evidence, reviewed zero-GPS location photo, double scan, immutable stocktake snapshot, complete read evidence, post-start movement separation, audited stale-label rejection, DB-enforced mode-aware solo/dual stocktake approval, approved dual candidate restored by its original owner at the same or a moved location without direct scan UPDATE, exact 27-column accounting CSV, return quarantine, stocktake and label reissue, logout)\n",
+  "postgres-integration: PASS (restricted role, 66-table RLS matrix, immutable human-confirmed published-product pages, P14 collision-free server order numbering, managed shipping-method revisions, assigned minimal shipping context, order-scoped assigned zero-GPS location derivative, explicit missing-information acknowledgement and frozen shipment fee, assigned inspection concerns with deferred latest-state exact-set consistency, terminal human dismissal, separate prior-recorder review, P13 three-mode shipping-photo policy, immutable private sale-basis snapshots, exact-set private photo confirmation, server packing and separate shipment confirmation, non-probeable session-bound access and denied cross-workspace/role/expired assignment access, append-only server-timed pilot exceptions, purchase-to-versioned-accounting order flow, encrypted 5-minute address lease, checked inventory/location codes, persisted capture/research/listing evidence, reviewed zero-GPS location photo, double scan, immutable stocktake snapshot, complete read evidence, post-start movement separation, audited stale-label rejection, DB-enforced mode-aware solo/dual stocktake approval, approved dual candidate restored by its original owner at the same or a moved location without direct scan UPDATE, exact 27-column accounting CSV, return quarantine, stocktake and label reissue, logout)\n",
 );
 
 async function uploadDedicatedMeasurement(

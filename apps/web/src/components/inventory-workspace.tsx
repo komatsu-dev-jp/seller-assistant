@@ -16,9 +16,11 @@ export type InventoryFocus = "all" | "pending-location-photo" | "disposal-candid
 
 export function InventoryWorkspace({
   workspaceId,
+  identityId,
   initialFocus = "all",
 }: {
   workspaceId: string;
+  identityId: string;
   initialFocus?: InventoryFocus;
 }) {
   const [summary, setSummary] = useState<InventorySummary | null>(null);
@@ -140,10 +142,18 @@ export function InventoryWorkspace({
           humanConfirmed: true,
         }),
       });
-      await refresh();
       setStage("locations");
+      try {
+        await refresh();
+      } catch {
+        setError(
+          "場所の登録は完了しましたが、最新の一覧を読み込めませんでした。「在庫を再読み込み」で確認してください。もう一度登録する必要はありません。",
+        );
+      }
+      return true;
     } catch (reason) {
       setError(errorMessage(reason));
+      return false;
     } finally {
       setBusy(false);
     }
@@ -188,6 +198,7 @@ export function InventoryWorkspace({
   }
 
   async function approveLocationPhoto(photo: LocationPhotoResponse) {
+    if (busy || photo.capturedBy === identityId) return;
     setBusy(true);
     setError("");
     setPhotoNotice("");
@@ -278,7 +289,7 @@ export function InventoryWorkspace({
           ["在庫中", summary?.available ?? "—", "stable"],
           ["未格納", summary?.putawayPending ?? "—", "warning"],
           ["引当済み", summary?.reserved ?? "—", "success"],
-          ["差異", summary?.discrepancies ?? "—", "danger"],
+          ["未解決の差異", summary?.discrepancies ?? "—", "danger"],
           ["90日超", summary?.olderThan90Days ?? "—", "neutral"],
         ].map(([label, value, tone]) => (
           <article className={`inventoryKpi ${tone}`} key={label}>
@@ -406,7 +417,9 @@ export function InventoryWorkspace({
                 <span>{photo.reviewState === "approved" ? "確認済み" : "別担当の確認待ち"}</span>
                 <span>{new Date(photo.capturedAt).toLocaleString("ja-JP")}</span>
                 <span>
-                  {photo.reviewState === "pending" ? (
+                  {photo.reviewState === "pending" && photo.capturedBy === identityId ? (
+                    <span>別の担当者による確認待ち</span>
+                  ) : photo.reviewState === "pending" ? (
                     <button
                       type="button"
                       className="tinyButton"
@@ -433,7 +446,16 @@ export function InventoryWorkspace({
           <div className="panelHead">
             <h2 id="location-create-heading">場所を登録</h2>
           </div>
-          <form action={createLocation} className="inventoryFormGrid">
+          <form
+            className="inventoryFormGrid"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const form = event.currentTarget;
+              void createLocation(new FormData(form)).then((created) => {
+                if (created) form.reset();
+              });
+            }}
+          >
             <label>
               親の場所
               <select name="parentId" defaultValue="">

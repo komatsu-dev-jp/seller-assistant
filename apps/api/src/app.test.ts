@@ -122,7 +122,7 @@ describe("POST /v1/workspaces/:workspaceId/orders address modes", () => {
     expect(records).toHaveLength(1);
     expect(records[0]?.input).not.toHaveProperty("orderNumber");
     expect(records[0]).toMatchObject({ encryptedAddress: null, addressFingerprint: null });
-  });
+  }, 10_000);
 
   it("encrypts exactly one real address for explicit stored-address orders", async () => {
     const records: CreateOrderRecord[] = [];

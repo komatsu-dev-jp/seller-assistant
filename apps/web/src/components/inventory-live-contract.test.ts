@@ -13,11 +13,160 @@ import {
   isPrivateInventoryPhotoUrl,
   createPrivateInventoryPhotoSession,
   isReturnQuarantineLocation,
+  inventoryOperationErrorMessage,
+  labelReissueSuccessMessage,
 } from "../lib/inventory-live-safety";
 
 const read = (name: string) => readFileSync(new URL(name, import.meta.url), "utf8");
 
 describe("inventory live stages", () => {
+  it("explains a return quarantine race in Japanese", () => {
+    expect(
+      inventoryOperationErrorMessage(
+        new Error("Return quarantine requires the shipped allocated item"),
+      ),
+    ).toBe("この返品は、ほかの画面ですでに隔離されたか、状態が変わりました。");
+  });
+  it("removes desktop minimum width from mobile inventory cards", () => {
+    const css = read("./inventory-live.module.css");
+    expect(css).toMatch(
+      /\.workspace :global\(\.inventoryTable\) > \[role="row"\]:not\(:global\(\.inventoryTableHead\)\) \{\s*min-width: 0;\s*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/u,
+    );
+  });
+  it("explains revoked capture permissions in Japanese", () => {
+    const source = read("./mobile-capture-workspace.tsx");
+    const formatter = source.slice(source.indexOf("function errorMessage("));
+    expect(formatter).toContain("if (isAssignmentRevokedError(reason))");
+    expect(formatter).toContain("この商品の撮影・採寸は現在の担当範囲に含まれません。");
+    expect(source).toContain("!loading && !task && !error ? (");
+    expect(source).toContain("今は撮影・採寸できる商品がありません");
+    expect(source).toContain("管理者が商品を割り当てると、この画面から撮影・採寸できます。");
+    expect(source).toContain("今日の作業へ戻る");
+  });
+  it("resets the native evidence picker when moving to another measurement", () => {
+    const source = read("./workflow-live-layout.tsx");
+    expect(source).toMatch(/採寸写真を撮る・選ぶ\s*<input\s+key=\{definition.definitionId\}/u);
+  });
+  it("binds private photo requests to the browser window rather than the session options", () => {
+    const source = read("./mobile-scan-workflow.tsx");
+    expect(source).toContain("fetchImage: (input, init) => window.fetch(input, init)");
+    expect(source).not.toContain("fetchImage: fetch,");
+  });
+  it("keeps field staff home navigation in scope and exposes safe mobile logout", () => {
+    const source = read("../app/mobile/page.tsx");
+    expect(source).toContain('href={canViewManagement ? "/" : "/mobile"}');
+    expect(source).toContain('aria-label={canViewManagement ? "PCホームへ" : "作業ホームへ"}');
+    expect(source).toContain("<LogoutButton />");
+    expect(source).toContain("<MobileCaptureTaskAction workspaceId={session.workspaceId} />");
+    const action = read("./mobile-capture-task-action.tsx");
+    expect(action).toContain("/capture-tasks");
+    expect(action).toContain("assignedCaptureTasks(await response.json(), workspaceId)");
+    expect(action).toContain('<button className="mobileWorkflowAction" type="button" disabled>');
+  });
+  it("resets hold confirmation after a settled request for a fresh three-second retry", () => {
+    const source = read("./stocktake-workspace.tsx");
+    const hold = source.slice(source.indexOf("function HoldToConfirmButton("));
+    expect(hold).toMatch(
+      /await onConfirm\(\);\s*\}\s*finally\s*\{\s*setMode\("idle"\);\s*setRemaining\(3\);/u,
+    );
+    expect(hold.match(/void submitConfirmation\(\);/gu)).toHaveLength(2);
+  });
+  it("requires fresh inventory and location checks when a discrepancy changes state", () => {
+    const source = read("./stocktake-workspace.tsx");
+    expect(source).toContain("key={`${difference.discrepancyId}:${difference.state}`}");
+  });
+  it("explains self-captured photos without offering a forbidden approval action", () => {
+    const source = read("./inventory-workspace.tsx");
+    expect(read("../app/inventory/page.tsx")).toContain("identityId={session.identityId}");
+    expect(source).toContain('photo.reviewState === "pending" && photo.capturedBy === identityId');
+    expect(source).toContain("別の担当者による確認待ち");
+    const approval = source.slice(source.indexOf("async function approveLocationPhoto("));
+    const guardIndex = approval.indexOf("if (busy || photo.capturedBy === identityId) return;");
+    const requestIndex = approval.indexOf("await requestJson(");
+    expect(guardIndex).toBeGreaterThanOrEqual(0);
+    expect(requestIndex).toBeGreaterThanOrEqual(0);
+    expect(guardIndex).toBeLessThan(requestIndex);
+  });
+  it("allows explicit approved stocktake history selection and resets unfinished count input", () => {
+    const source = read("./stocktake-workspace.tsx");
+    expect(source).toContain("確認する棚卸し");
+    expect(source).toContain('value={selectedStocktakeId ?? ""}');
+    expect(source).toContain("setPendingChallenge(null)");
+    expect(source).toContain("setSelectedEvidence([])");
+    expect(source).toMatch(/<CountingPanel\s+key=\{active.stocktakeId\}/u);
+    expect(source).toContain("進行中の棚卸し・新しく始める");
+  });
+  it("waits for a valid current-workspace catalog before manual or barcode resolution", () => {
+    const source = read("./mobile-scan-workflow.tsx");
+    const accept = source.slice(
+      source.indexOf("function acceptValue("),
+      source.indexOf('if (step === "saved")'),
+    );
+    expect(accept.indexOf("if (!catalogReady || !catalog) return;")).toBeGreaterThan(-1);
+    expect(accept.indexOf("if (!catalogReady || !catalog) return;")).toBeLessThan(
+      accept.indexOf("resolveInventoryCatalog("),
+    );
+    expect(source).toContain("catalogWorkspaceId === workspaceId");
+    expect(source).toContain("disabled={!catalogReady}");
+    expect(source).toContain("{catalogReady ? (");
+    expect(source).toContain("商品と場所の一覧を読み込んでいます。");
+    expect(accept).not.toContain("catalog?.inventory ?? []");
+  });
+
+  it("offers catalog retry and cancels late updates on disposal", () => {
+    const source = read("./mobile-scan-workflow.tsx");
+    const load = source.slice(
+      source.indexOf("const controller = new AbortController()"),
+      source.indexOf("const title = useMemo"),
+    );
+    expect(load).toContain("signal: controller.signal");
+    expect(load).toContain("putawayCatalogResponseSchema.safeParse(payload)");
+    expect(load).toContain("if (cancelled) return;");
+    expect(load).toContain("if (!cancelled)");
+    expect(load).toContain("if (!cancelled) setCatalogLoading(false)");
+    expect(load).toContain("cancelled = true;");
+    expect(load).toContain("controller.abort()");
+    expect(load).toContain("[workspaceId, catalogRetry]");
+    expect(source).toContain("setCatalogRetry((current) => current + 1)");
+    expect(source).toContain("商品と場所の一覧を再読み込み");
+  });
+  it("ignores stale capture-task responses before clearing local work or changing the screen", () => {
+    const source = read("./mobile-capture-workspace.tsx");
+    const refresh = source.slice(
+      source.indexOf("const refresh = useCallback"),
+      source.indexOf("useEffect(() => {", source.indexOf("const refresh = useCallback")),
+    );
+    expect(source).toContain("const refreshRequest = useRef(0)");
+    expect(refresh).toContain("const request = ++refreshRequest.current");
+    const firstGuard = refresh.indexOf("if (request !== refreshRequest.current) return false;");
+    const cleanup = refresh.indexOf("await clearUnassignedCaptureUploads(");
+    const tasks = refresh.indexOf("setTasks(loaded)");
+    const secondGuard = refresh.indexOf(
+      "if (request !== refreshRequest.current) return false;",
+      cleanup,
+    );
+    expect(firstGuard).toBeGreaterThan(-1);
+    expect(firstGuard).toBeLessThan(cleanup);
+    expect(secondGuard).toBeGreaterThan(cleanup);
+    expect(secondGuard).toBeLessThan(tasks);
+    expect(source).toContain("refreshRequest.current += 1");
+    expect(source).toContain("if (request === refreshRequest.current) setLoading(false)");
+  });
+  it("uses the shared Japanese recovery message for saved-photo conflicts", () => {
+    const source = read("./mobile-capture-workspace.tsx");
+    expect(source).toContain(
+      'import { p0UserFacingErrorMessage } from "../lib/p0-user-facing-error"',
+    );
+    expect(source).toContain("return p0UserFacingErrorMessage(reason)");
+  });
+  it("replaces the scan form with a clear assignment message when no valid work exists", () => {
+    const source = read("./mobile-scan-workflow.tsx");
+    expect(source).toContain("getPutawayActionState(");
+    expect(source).toContain("if (catalogReady && !catalogAction.enabled)");
+    expect(source).toContain("今は読み取れる作業がありません");
+    expect(source).toContain("管理者が商品と保管場所を割り当てると、この画面から読み取れます。");
+    expect(source).toContain("<p>{catalogAction.detail}。</p>");
+  });
   it("blocks quarantine and legacy locations before normal putaway confirmation", () => {
     const place = { code: appendCodeCheckDigit("ROOM-A"), name: "通常棚", labelVersion: 1 };
     const general = { ...place, purpose: "general" as const };
@@ -59,6 +208,24 @@ describe("inventory live stages", () => {
     expect(css).toContain(":not(:global(.isActive))");
   });
 
+  it("keeps the location draft after a failed save and resets it only after success", () => {
+    const source = read("./inventory-workspace.tsx");
+    const create = source.slice(
+      source.indexOf("async function createLocation("),
+      source.indexOf("async function uploadLocationPhoto("),
+    );
+    expect(create).toContain("return true;");
+    expect(create).toContain("setError(errorMessage(reason));\n      return false;");
+    expect(create).toContain("場所の登録は完了しましたが、最新の一覧を読み込めませんでした。");
+    expect(create.indexOf('setStage("locations")')).toBeLessThan(create.indexOf("await refresh()"));
+    expect(create.indexOf("await refresh()")).toBeLessThan(create.indexOf("return true;"));
+    expect(source).toContain("event.preventDefault();");
+    expect(source).toContain("const form = event.currentTarget;");
+    expect(source).toContain("void createLocation(new FormData(form)).then((created) => {");
+    expect(source).toContain("if (created) form.reset();");
+    expect(source).not.toContain('<form action={createLocation} className="inventoryFormGrid">');
+  });
+
   it("defaults to handwritten internal numbers and keeps print optional", () => {
     const source = read("./inventory-label-workspace.tsx");
     expect(source).toContain('useState<"manual" | "barcode">("manual")');
@@ -72,7 +239,7 @@ describe("inventory live stages", () => {
     const source = read("./mobile-scan-workflow.tsx");
     expect(source).toContain("setInventoryScannedAt(new Date().toISOString())");
     expect(source).toContain("setLocationScannedAt(new Date().toISOString())");
-    expect(source).toContain("resolveInventoryCatalog(normalized, catalog?.inventory ?? [])");
+    expect(source).toContain("resolveInventoryCatalog(normalized, catalog.inventory)");
     expect(source).toContain("savePutawayOnlineFirst(operation)");
     expect(source).toContain("一致を確認して保存");
     expect(source).toContain("競合時は自動上書きしません");
@@ -96,6 +263,15 @@ describe("inventory live stages", () => {
     expect(source).toContain("別担当者でログインし");
     expect(source).toContain("clearTimers");
     expect(source).not.toContain("/disposal/confirm");
+  });
+
+  it("explains product and location label reissues with the correct next step", () => {
+    expect(labelReissueSuccessMessage("inventory_unit", "INV-000006-2", 2)).toBe(
+      "商品ラベルをV2として再発行しました。古い商品ラベルは無効です。「商品番号・ラベル」でV2を確認してください。",
+    );
+    expect(labelReissueSuccessMessage("location", "UI-CAP-SHELF-4", 3)).toBe(
+      "場所ラベルをV3として再発行しました。古い場所ラベルは無効です。場所コード UI-CAP-SHELF-4 の新しい場所ラベルを使ってください。",
+    );
   });
 
   it("resolves handwritten/full/barcode values uniquely and rejects absent/ambiguous/stale values", () => {

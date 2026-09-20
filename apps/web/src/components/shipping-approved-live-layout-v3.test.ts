@@ -36,6 +36,27 @@ const mobileMessagesSource = source.slice(
 const pcShipSource = source.slice(source.indexOf("function PcShip("));
 
 describe("ShippingApprovedLiveLayout v3", () => {
+  it("shows the missing fields and explicit acknowledgement on mobile and PC review", () => {
+    expect(source.match(/<MissingInformationReview \{\.\.\.props\} \/>/gu)).toHaveLength(2);
+    expect(source).toContain('aria-label="未入力の注文情報"');
+    expect(source).toContain("props.missingInformationLabels.map");
+    expect(source).toContain("props.onMissingInformationAcknowledged?.(event.target.checked)");
+    const workspace = readFileSync(resolve(componentRoot, "shipping-workspace.tsx"), "utf8");
+    expect(workspace).toContain("missingInformationAcknowledgement === missingInformationKey");
+    expect(workspace).toContain("if (!missingInformationAcknowledged)");
+    expect(workspace).toContain(
+      'setMissingInformationAcknowledgement(checked ? missingInformationKey : "")',
+    );
+  });
+  it("makes the catalog close button visibly unavailable while saving and keeps focus inside", () => {
+    expect(source).toContain(
+      "<ShippingCatalogDialog onClose={closeShippingCatalog} busy={props.busy}>",
+    );
+    expect(source).toContain("if (props.busy) return;");
+    expect(source).toContain('event.key === "Escape" && onClose && !busy');
+    expect(source).toContain('disabled={busy} aria-label="送料一覧を閉じる"');
+    expect(source).toContain('{busy ? "保存中…" : "閉じる"}');
+  });
   it("uses the frozen approved mobile and PC shells rather than a parallel design", () => {
     expect(source).toContain("approved-mobile/approved-mobile-demo.module.css");
     expect(source).toContain("approved-pc/approved-pc-middle-screens.module.css");
@@ -69,6 +90,23 @@ describe("ShippingApprovedLiveLayout v3", () => {
     expect(approvedMobileStyles).not.toMatch(
       /\.(?:statusBar|dynamicIsland|statusBarRight|signalIcon|wifiIcon|batteryIcon)\b/u,
     );
+  });
+
+  it("keeps the mobile shipping review clear of fixed actions and the iPhone safe area", () => {
+    expect(source).toContain('props.stage === "review" && liveStyles.mobileReviewScrollArea');
+    expect(styles).toMatch(
+      /\.page \.mobile \.mobileReviewScrollArea\s*\{[^}]*padding-bottom:\s*calc\(231px \+ max\(8px, env\(safe-area-inset-bottom\)\)\);[^}]*\}/su,
+    );
+    expect(styles).toMatch(
+      /\.page \.mobile \.mobileReviewScrollArea \.mobileActionBar\s*\{[^}]*bottom:\s*calc\(65px \+ max\(8px, env\(safe-area-inset-bottom\)\)\);[^}]*\}/su,
+    );
+    expect(styles).toMatch(
+      /@media \(max-width: 620px\)\s*\{[^}]*\.page \.mobile \.mobileReviewScrollArea\s*\{[^}]*padding-bottom:\s*calc\(254px \+ max\(10px, env\(safe-area-inset-bottom\)\)\);/su,
+    );
+    expect(styles).toMatch(
+      /@media \(max-width: 620px\)[\s\S]*?\.page \.mobile \.mobileReviewScrollArea \.mobileActionBar\s*\{[^}]*bottom:\s*calc\(87px \+ max\(10px, env\(safe-area-inset-bottom\)\)\);[^}]*\}/u,
+    );
+    expect(styles).not.toMatch(/\.page \.mobile \.mobileActionBar\s*\{/u);
   });
 
   it("keeps approved Mobile 34-38 and PC 29-32 content in the correct sequence", () => {

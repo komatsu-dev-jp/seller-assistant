@@ -41,6 +41,20 @@
   flex: 1;
   min-width: 0;
 }
+.headerAction {
+  appearance: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+.headerAction:focus-visible {
+  outline: 2px solid #075de4;
+  outline-offset: 2px;
+}
 .top {
   height: 56px;
   border-bottom: 1px solid #dfe5ee;
@@ -530,6 +544,11 @@
   color: #075bdc;
   margin-top: 25px;
 }
+.currentViewLink {
+  color: #607089;
+  font-size: 10px;
+  font-weight: 700;
+}
 .check i {
   float: right;
   color: #09853b;
@@ -604,14 +623,20 @@
   font-size: 12px;
   margin: 10px;
 }
-.drop a {
+.drop a,
+.drop button {
   display: block;
+  width: 100%;
+  box-sizing: border-box;
+  border: 0;
   background: #075be7;
   color: #fff;
   text-decoration: none;
   padding: 11px;
   border-radius: 5px;
   font-size: 14px;
+  font-family: inherit;
+  cursor: pointer;
 }
 .receipt {
   background: #fff;
@@ -661,20 +686,31 @@
 .plus,
 .count .outline {
   display: block;
+  width: 100%;
+  box-sizing: border-box;
   text-align: center;
   text-decoration: none;
   margin-top: 12px;
 }
 .plus {
+  border: 0;
   background: #075be7;
   color: #fff;
   padding: 22px;
   font-size: 42px;
   font-weight: bold;
   border-radius: 5px;
+  cursor: pointer;
+  font-family: inherit;
 }
 .count .outline {
   font-size: 19px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.count button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 .bottomRow {
   display: flex;
@@ -748,14 +784,33 @@
   grid-template-columns: 1.25fr 1fr 1fr;
   gap: 15px;
 }
-.priceSearch section > a {
+.priceSearch section > :is(a, button) {
   display: block;
+  width: 100%;
+  box-sizing: border-box;
   border: 1px solid #c7d9ff;
   color: #075be7;
   text-decoration: none;
   padding: 6px;
   margin: 5px 0;
   border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+.copyStatus {
+  display: block;
+  margin: 1px 0 4px;
+  color: #176e35;
+  font-size: 9px;
+  font-weight: 700;
+}
+.inlineLinkButton {
+  color: #075be7;
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
 }
 .chips {
   background: #f1f6ff;
@@ -922,20 +977,26 @@
 .labels .card h3 {
   margin-bottom: 9px;
 }
-.labels .card > a {
+.labels .card > :is(a, button) {
   display: block;
+  width: 100%;
+  box-sizing: border-box;
   text-decoration: none;
   color: #142650;
   border: 1px solid #e1e7ef;
   padding: 12px;
   border-radius: 5px;
   margin: 8px 0;
+  background: #fff;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
 }
-.labels .card a small {
+.labels .card :is(a, button) small {
   display: block;
   padding: 6px 24px;
 }
-.labels .card a em {
+.labels .card :is(a, button) em {
   float: right;
   font-style: normal;
   border: 1px solid #9ac2ff;
@@ -1146,13 +1207,21 @@
   display: flex;
   gap: 8px;
 }
-.inspect td a {
+.inspect td :is(a, button) {
   flex: 1;
   border: 1px solid #dce2ec;
   border-radius: 4px;
   padding: 10px;
   text-decoration: none;
   color: #6a768a;
+  background: #fff;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+.inspect td button[aria-pressed="true"] {
+  background: #eef4ff;
+  box-shadow: inset 0 0 0 2px currentColor;
 }
 .inspect td .ok {
   border-color: #87c29d;
@@ -1270,6 +1339,8 @@
   border-radius: 5px;
   text-decoration: none;
   font-weight: bold;
+  border: 0;
+  cursor: not-allowed;
 }
 .disabled::after {
   content: "　♙";
@@ -1641,7 +1712,7 @@
   color: #5a6b83;
   font-size: 12px;
 }
-.utilityTools > span:not(.utilityUser) {
+.utilityTools > :not(.utilityUser) {
   display: grid;
   place-items: center;
   width: 30px;
@@ -1747,9 +1818,13 @@
 .summary table td {
   padding: 5px;
 }
-.inspect td a {
+.inspect td :is(a, button) {
   padding: 5px 7px;
   font-size: 9px;
+}
+
+.zoomTarget {
+  transition: transform 120ms ease-out;
 }
 .inspect footer,
 .summary footer {
@@ -1974,7 +2049,8 @@
   margin: 5px;
   font-size: 10px;
 }
-.drop a {
+.drop a,
+.drop button {
   padding: 7px;
   font-size: 11px;
 }
@@ -2095,11 +2171,11 @@
 .printPreview {
   grid-template-columns: minmax(0, 1fr) 126px;
 }
-.labels .card > a {
+.labels .card > :is(a, button) {
   padding: 7px;
   margin: 5px 0;
 }
-.labels .card a small {
+.labels .card :is(a, button) small {
   padding: 4px 16px;
 }
 .labelSummary p {
@@ -2138,7 +2214,7 @@
 .priceSearch > div {
   gap: 8px;
 }
-.priceSearch section > a {
+.priceSearch section > :is(a, button) {
   padding: 3px 5px;
   margin: 3px 0;
 }
@@ -2271,8 +2347,10 @@
   min-width: 0;
   overflow: hidden;
 }
-.labelActions a {
+.labelActions :is(a, button) {
   display: block;
+  width: 100%;
+  box-sizing: border-box;
   color: #23426c;
   text-decoration: none;
   text-align: center;
@@ -2280,6 +2358,16 @@
   border-radius: 4px;
   padding: 5px 2px;
   margin: 4px 0;
+  background: #fff;
+  cursor: pointer;
+  font: inherit;
+}
+
+.labelPreviewStatus {
+  display: block;
+  color: #607089;
+  font-size: 8px;
+  text-align: center;
 }
 
 .putTop > .card:nth-child(3) {
@@ -2351,7 +2439,7 @@
 .bell {
   border: 0;
 }
-.utilityTools > span {
+.utilityTools > * {
   color: #53617a;
 }
 
@@ -2873,7 +2961,7 @@
   padding: 6px 8px;
 }
 
-.utilityApp .inspect td a {
+.utilityApp .inspect td :is(a, button) {
   padding: 8px 10px;
   font-size: 10px;
 }
@@ -3011,7 +3099,7 @@
   padding: 5px 6px;
 }
 
-.utilityApp .inspect td a {
+.utilityApp .inspect td :is(a, button) {
   padding: 5px 7px;
   font-size: 9px;
 }
@@ -3081,12 +3169,20 @@
 .legacyApp .metrics .card {
   padding: 15px 11px;
   overflow: hidden;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  grid-template-rows: 28px auto auto;
+  align-content: start;
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 8px;
 }
 
 .legacyApp .metrics b,
 .legacyApp .metrics span {
-  margin-left: 42px;
-  white-space: nowrap;
+  margin: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .legacyApp .metrics b {
@@ -3095,33 +3191,34 @@
 }
 
 .legacyApp .metrics strong {
-  margin: 10px 0 4px 42px;
+  grid-column: 1 / -1;
+  margin: 0;
   font-size: 23px;
   line-height: 1.12;
   white-space: nowrap;
 }
 
 .legacyApp .metrics span {
+  grid-column: 1 / -1;
   font-size: 10px;
   line-height: 1.2;
   margin-left: 0;
-  text-align: center;
+  text-align: left;
 }
 
 .legacyApp .metrics .card:has(.metricInventory) strong {
-  margin-left: 35px;
+  margin-left: 0;
   font-size: 20px;
 }
 
 .legacyApp .metrics .card:has(.metricSales) strong {
   margin-left: 0;
   font-size: 20px;
-  text-align: center;
+  text-align: left;
 }
 
 .legacyApp .metricIcon {
-  left: 13px;
-  top: 43px;
+  position: static;
 }
 
 .legacyApp .homeLower {
@@ -3290,6 +3387,8 @@
 }
 
 .receiptControls {
+  position: relative;
+  z-index: 1;
   display: flex;
   width: 100%;
   max-width: 178px;
@@ -3502,14 +3601,31 @@
   height: 180px;
 }
 
+.putaway .putTop > .card:nth-child(3) label {
+  margin: 0;
+}
+
+.putaway .putTop > .card:nth-child(3) label input {
+  width: 12px;
+  height: 12px;
+  margin: 0 4px 0 0;
+  vertical-align: -2px;
+}
+
 .putaway .putTop > .card:nth-child(1) p {
   margin: 4px 0;
 }
 
 .putaway .putTop > .card:nth-child(3) textarea {
+  box-sizing: border-box;
+  width: 100%;
   height: 38px;
   min-height: 38px;
   margin-top: 3px;
+  padding: 4px 6px;
+  font-size: 9px;
+  line-height: 1.2;
+  resize: none;
 }
 
 .putaway .match {

@@ -2,6 +2,7 @@
 import { useState } from "react";
 import styles from "./approved-pc-late-screens.module.css";
 import { PcCanvas } from "./pc-canvas";
+import { PcLiveRouteLink } from "./pc-preview-action-button";
 import { isP1ApprovedPcScreen } from "./approved-screen-scope";
 const titles = [
   "在庫と保管場所",
@@ -38,6 +39,10 @@ const navGlyphs = [
   "settings",
 ] as const;
 const go = (n: number) => `/pc/${n}`;
+const accountingRoute = (
+  stage: "format" | "profile" | "mappings" | "export" | "preview" | "import" | "history",
+  format?: "money_forward_journal_v1" | "generic_journal_v1",
+) => `/accounting?stage=${stage}${format ? `&format=${format}` : ""}`;
 
 function PcGlyph({
   name,
@@ -145,6 +150,22 @@ function PcGlyph({
   );
 }
 
+function OutlineShield({ className = "" }: { className?: string | undefined }) {
+  const common = {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2.2,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+  };
+  return (
+    <svg className={`${styles.outlineShield} ${className}`} viewBox="0 0 36 42" aria-hidden="true">
+      <path {...common} d="M18 2.5 31 7v11.5c0 8.7-5.2 15.4-13 20.5C10.2 33.9 5 27.2 5 18.5V7Z" />
+      <path {...common} d="m11.5 20.5 4.2 4.2 8.8-9.2" />
+    </svg>
+  );
+}
+
 type MetricGlyphName =
   "shirt" | "checklist" | "chart" | "bag" | "truck" | "coins" | "cart" | "yen" | "tag" | "box";
 
@@ -239,21 +260,44 @@ function UtilityHeader({ n }: { n: number }) {
   return (
     <header className={styles.utilityHeader}>
       <b className={styles.utilityScreenNo}>{String(n).padStart(2, "0")}</b>
-      <button type="button" aria-label="サイドバーを開く">
+      <button
+        type="button"
+        aria-label="サイドバーを開く"
+        aria-controls="approved-pc-header-panel"
+        data-pc-header-action="sidebar"
+      >
         ☰
       </button>
       <div className={styles.utilityTools}>
-        <span className={styles.notificationIcon} aria-label="通知">
+        <button
+          type="button"
+          className={`${styles.notificationIcon} ${styles.headerAction}`}
+          aria-label="通知を開く"
+          aria-controls="approved-pc-header-panel"
+          data-pc-header-action="notifications"
+        >
           <PcGlyph name="bell" />
-        </span>
-        <span aria-label="ヘルプ">
+        </button>
+        <button
+          type="button"
+          className={styles.headerAction}
+          aria-label="ヘルプを開く"
+          aria-controls="approved-pc-header-panel"
+          data-pc-header-action="help"
+        >
           <PcGlyph name="help" />
-        </span>
-        <span className={styles.utilityUser}>
+        </button>
+        <button
+          type="button"
+          className={`${styles.utilityUser} ${styles.headerAction}`}
+          aria-label="担当者メニューを開く"
+          aria-controls="approved-pc-header-panel"
+          data-pc-header-action="account"
+        >
           <PcGlyph name="user" />
           {n >= 37 && n <= 40 ? "担当A" : "担当A"}
           <small>⌄</small>
-        </span>
+        </button>
       </div>
     </header>
   );
@@ -274,6 +318,7 @@ function Shell({ n, children }: { n: number; children: React.ReactNode }) {
             className={x === active ? styles.active : ""}
             key={x}
             href={go([2, 3, 5, 9, 29, 33, 45, 37, 49][i] ?? 2)}
+            aria-current={x === active ? "page" : undefined}
           >
             <i>
               <PcGlyph name={navGlyphs[i] ?? "home"} />
@@ -290,10 +335,34 @@ function Shell({ n, children }: { n: number; children: React.ReactNode }) {
             <span className={styles.scopeBadge}>準備中・P0対象外</span>
           ) : null}
           <span className={styles.frameTools}>
-            <PcGlyph name="bell" />
-            <PcGlyph name="help" />
-            <PcGlyph name="user" />
-            担当A⌄
+            <button
+              type="button"
+              className={styles.headerAction}
+              aria-label="通知を開く"
+              aria-controls="approved-pc-header-panel"
+              data-pc-header-action="notifications"
+            >
+              <PcGlyph name="bell" />
+            </button>
+            <button
+              type="button"
+              className={styles.headerAction}
+              aria-label="ヘルプを開く"
+              aria-controls="approved-pc-header-panel"
+              data-pc-header-action="help"
+            >
+              <PcGlyph name="help" />
+            </button>
+            <button
+              type="button"
+              className={`${styles.frameUserAction} ${styles.headerAction}`}
+              aria-label="担当者メニューを開く"
+              aria-controls="approved-pc-header-panel"
+              data-pc-header-action="account"
+            >
+              <PcGlyph name="user" />
+              担当A⌄
+            </button>
           </span>
         </header>
         {children}
@@ -348,12 +417,19 @@ function Inventory() {
       <div className={`${styles.pad} ${styles.inventoryPad}`}>
         <h2>在庫と保管場所</h2>
         <div className={styles.screenActions}>
-          <p>保管場所の構造・収容状況・在庫・履歴を確認できます。</p>
-          <Btn n={33}>保管場所を開く</Btn>
+          <p>承認デザインの見本です。架空データのため実在庫・履歴は更新しません。</p>
+          <span className={styles.previewHeaderActions}>
+            <a className={styles.previewLink} href={go(34)}>
+              棚卸し画面の見本を見る
+            </a>
+            <button type="button" className={`${styles.btn} ${styles.previewDisabled}`} disabled>
+              保管場所を開く（準備中）
+            </button>
+          </span>
         </div>
         <div className={styles.inventoryTop}>
           <Card>
-            <h3>保管場所の構造</h3>
+            <h3>保管場所の構造（表示例）</h3>
             {[
               "⌄ 倉庫A",
               "　⌄ 1F",
@@ -373,7 +449,7 @@ function Inventory() {
             ))}
           </Card>
           <Card>
-            <h3>選択中の位置</h3>
+            <h3>選択中の位置（表示例）</h3>
             <p>倉庫A　&gt; 1F　&gt; 部屋1　&gt; 棚A　&gt; 中段</p>
             <div className={styles.photos}>
               <Shelf asset="/approved-assets/storage/room-wide.png">部屋の様子</Shelf>
@@ -382,7 +458,7 @@ function Inventory() {
             </div>
           </Card>
           <Card>
-            <h3>収容状況</h3>
+            <h3>収容状況（表示例）</h3>
             <div className={styles.donut}>64%</div>
             <p>使用中　32 / 50</p>
             <p>空き　18</p>
@@ -391,7 +467,7 @@ function Inventory() {
         </div>
         <div className={styles.inventoryBottom}>
           <Card>
-            <h3>直近の移動履歴</h3>
+            <h3>直近の移動履歴（表示例）</h3>
             <p>
               05/25 10:12　<span className={styles.ok}>入庫</span>　INV-000125　+6
             </p>
@@ -401,13 +477,17 @@ function Inventory() {
             <p>
               05/24 11:20　<span className={styles.bad}>出庫</span>　INV-000128　-1
             </p>
-            <a className={styles.historyLink} href={go(40)}>
-              すべての履歴を見る
-            </a>
+            <button
+              type="button"
+              className={`${styles.historyLink} ${styles.previewTextButton}`}
+              disabled
+            >
+              履歴表示は準備中
+            </button>
           </Card>
           <Card className={styles.tableCard}>
             <h3>
-              在庫一覧 <small>（この位置の在庫）</small>
+              在庫一覧 <small>（この位置の表示例）</small>
             </h3>
             <table className={styles.inventoryTable}>
               <thead>
@@ -438,22 +518,31 @@ function Stocktake() {
     <Shell n={34}>
       <div className={styles.pad}>
         <h2>
-          棚卸し{" "}
-          <Btn n={34} className={styles.playAction}>
-            棚卸しを始める
-          </Btn>
+          棚卸し
+          <span className={styles.previewHeaderActions}>
+            <a className={styles.previewLink} href={go(35)}>
+              数が合わない商品の見本を見る
+            </a>
+            <button
+              type="button"
+              className={`${styles.btn} ${styles.playAction} ${styles.previewDisabled}`}
+              disabled
+            >
+              棚卸し開始は準備中
+            </button>
+          </span>
         </h2>
         <p className={styles.warn}>
-          ▲　オフライン状態です。読み取りは保存され、オンライン時に同期されます。
+          ▲　オフライン時の表示例です。この見本画面では読み取りを保存・同期しません。
         </p>
         <div className={styles.stockTop}>
           <Card>
-            <h3>固定開始時点</h3>
+            <h3>固定開始時点（表示例）</h3>
             <b>2025/05/25 10:00</b>
             <p>担当者：担当A</p>
           </Card>
           <Card>
-            <h3>選択中のエリア</h3>
+            <h3>選択中のエリア（表示例）</h3>
             <p>● 倉庫A / 1F / 部屋1 / 棚A / 中段</p>
             <p>◇ 収容枠数：50</p>
           </Card>
@@ -478,7 +567,7 @@ function Stocktake() {
         </div>
         <div className={styles.stockBottom}>
           <Card>
-            <h3>直近のスキャン履歴</h3>
+            <h3>直近のスキャン履歴（表示例）</h3>
             <table className={styles.scanHistoryTable}>
               <thead>
                 <tr>
@@ -514,10 +603,11 @@ function Mismatch() {
     <Shell n={35}>
       <div className={styles.pad}>
         <h2>数が合わない商品</h2>
-        <p>棚卸しで数が合わない商品を確認・記録します。</p>
+        <p>承認デザインの見本です。架空データのため実在庫・履歴は更新しません。</p>
         <p className={styles.danger}>▲　自動で在庫数を変えません。確認後に担当者が判断します。</p>
-        <nav className={styles.tabs}>
+        <nav className={styles.tabs} aria-label="差異タブの表示見本">
           見つからない　<b>5</b>　　 別の棚　<b>3</b>　　 予定外に発見　<b>2</b>
+          <small className={styles.previewInlineNote}>切替は準備中</small>
         </nav>
         <div className={styles.mismatch}>
           <Card>
@@ -537,26 +627,29 @@ function Mismatch() {
             <h3>現在の確認内容</h3>
             <label>
               見つからない理由
-              <select>
+              <select disabled>
                 <option>見つからない</option>
               </select>
             </label>
             <label>
               確認した場所の再読み
               <span className={styles.selectActionRow}>
-                <select>
+                <select disabled>
                   <option>場所を再選択</option>
                 </select>
-                <button type="button" className={styles.secondaryAction}>
-                  再読み直す
+                <button type="button" className={styles.secondaryAction} disabled>
+                  再読取は準備中
                 </button>
               </span>
             </label>
             <label className={styles.notesLabel}>備考</label>
             <textarea defaultValue="棚Aの上下段、棚Bも確認しました。" />
+            <small className={styles.previewFieldNote}>
+              備考はこの見本画面だけで、保存されません。
+            </small>
           </Card>
           <Card>
-            <h3>証拠（写真）</h3>
+            <h3>証拠写真の表示見本</h3>
             <div className={styles.gridPhotos}>
               {["inventory-shelf-01.png", "inventory-shelf-02.png"].map((asset) => (
                 <Shelf asset={`/approved-assets/storage/${asset}`} key={asset}>
@@ -564,17 +657,24 @@ function Mismatch() {
                 </Shelf>
               ))}
             </div>
-            <a className={styles.photoAdd} href={go(35)}>
+            <button type="button" className={styles.photoAdd} disabled>
               <b>＋</b>
-              写真を追加
-            </a>
+              写真追加は準備中
+            </button>
           </Card>
         </div>
         <div className={styles.mismatchFooter}>
           <a className={styles.secondaryAction} href={go(33)}>
             一覧に戻る
           </a>
-          <Btn n={35}>この商品を確認</Btn>
+          <span className={styles.previewFooterActions}>
+            <a className={styles.previewLink} href={go(36)}>
+              状態変更の見本を見る
+            </a>
+            <button type="button" className={`${styles.btn} ${styles.previewDisabled}`} disabled>
+              確認保存は準備中
+            </button>
+          </span>
         </div>
       </div>
     </Shell>
@@ -585,7 +685,7 @@ function Status() {
     <Shell n={36}>
       <div className={styles.pad}>
         <h2>仮状態・復元・返品</h2>
-        <p>在庫の整合性を保つための安全な運用ルールです。</p>
+        <p>承認デザインの見本です。実在庫・履歴は更新せず、安全な運用ルールを示します。</p>
         <div className={styles.statuses}>
           {[
             {
@@ -593,8 +693,8 @@ function Status() {
               description:
                 "棚卸しや確認の途中で、在庫を一時的に仮状態にします。元の状態に簡単に戻せます。",
               features: ["1人の操作で完了します", "いつでも元に戻せます", "履歴が残ります"],
-              operation: ["下のボタンを3秒間長押ししてください。", "3秒経つと仮状態になります。"],
-              button: "3秒押して仮状態にする",
+              operation: true,
+              button: "仮状態への変更は準備中",
             },
             {
               title: "復元（在庫に戻す）",
@@ -604,7 +704,7 @@ function Status() {
                 "必ず元の数量に復元されます",
                 "履歴が残ります",
               ],
-              button: "在庫に戻す",
+              button: "在庫への復元は準備中",
             },
             {
               title: "返品（確認保留として保管）",
@@ -614,7 +714,7 @@ function Status() {
                 "販売不可として分離します",
                 "原因と対応を記録します",
               ],
-              button: "返品保留にする",
+              button: "返品保留への変更は準備中",
             },
           ].map((card, i) => (
             <Card key={card.title}>
@@ -629,20 +729,20 @@ function Status() {
               {card.operation && (
                 <div className={styles.operationBox}>
                   <b>操作方法</b>
-                  {card.operation.map((instruction) => (
-                    <p key={instruction}>{instruction}</p>
-                  ))}
+                  <p>実業務画面では、実物を再確認後に3秒間長押しします。</p>
+                  <p>この見本画面では操作しません。</p>
                 </div>
               )}
-              <a
+              <button
+                type="button"
                 className={
                   i === 0 ? styles.provisionalBtn : i === 2 ? styles.redBtn : styles.greenBtn
                 }
-                href={go(36)}
+                disabled
               >
                 {card.button}
-              </a>
-              {card.operation && <small className={styles.holdTimer}>長押し中：0秒</small>}
+              </button>
+              {card.operation && <small className={styles.holdTimer}>未実行（見本画面）</small>}
             </Card>
           ))}
         </div>
@@ -673,9 +773,9 @@ function Status() {
           <Card className={styles.deleteGuard}>
             <h3>削除はしません</h3>
             <p>在庫データは削除せず、状態を変えて管理します。すべての履歴が残ります。</p>
-            <a className={styles.btn} href={go(37)}>
-              確認結果を保存　›
-            </a>
+            <button type="button" className={`${styles.btn} ${styles.previewDisabled}`} disabled>
+              確認結果の保存は準備中
+            </button>
           </Card>
         </div>
       </div>
@@ -687,14 +787,24 @@ function Members() {
     <Shell n={37}>
       <div className={styles.pad}>
         <h2>
-          メンバー{" "}
-          <Btn n={37} className={styles.memberAction}>
-            メンバーを招待
-          </Btn>
+          メンバー
+          <span className={styles.teamPreviewHeaderActions}>
+            <button
+              type="button"
+              className={`${styles.btn} ${styles.memberAction} ${styles.previewDisabled}`}
+              disabled
+            >
+              メンバー招待は準備中
+            </button>
+            <a className={styles.previewLink} href={go(38)}>
+              担当割当画面の見本を見る
+            </a>
+          </span>
         </h2>
-        <p>メンバー登録、招待、ステータスの管理を行います。</p>
+        <p>承認デザインの表示見本です。架空メンバーの招待・停止・権限は変更しません。</p>
         <nav className={styles.tabs}>
           すべて　<b>5</b>　　有効 4　　招待中 1　　停止中 0
+          <span className={styles.previewInlineNote}>絞り込みは準備中</span>
         </nav>
         <Card className={styles.memberTable}>
           <table>
@@ -726,10 +836,16 @@ function Members() {
                   </td>
                   <td>{login}</td>
                   <td>
-                    <a href={go(38)}>{status === "招待中" ? "再送信" : "詳細"}</a>
-                    <a className={styles.memberStop} href={go(37)}>
-                      停止
-                    </a>
+                    <button type="button" className={styles.memberPreviewAction} disabled>
+                      {status === "招待中" ? "再送信（準備中）" : "詳細（準備中）"}
+                    </button>
+                    <button
+                      type="button"
+                      className={`${styles.memberPreviewAction} ${styles.memberStop}`}
+                      disabled
+                    >
+                      停止（準備中）
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -738,10 +854,12 @@ function Members() {
         </Card>
         <div className={styles.pagination} aria-label="メンバー一覧のページ">
           <span>5人中 1〜5人</span>
-          <button type="button" className={styles.pageCurrent}>
+          <button type="button" className={styles.pageCurrent} aria-current="page" disabled>
             1
           </button>
-          <button type="button">›</button>
+          <button type="button" disabled aria-label="次のページはありません">
+            ›
+          </button>
         </div>
       </div>
     </Shell>
@@ -752,12 +870,15 @@ function Assignment() {
     <Shell n={38}>
       <div className={styles.pad}>
         <h2>担当を割り当てる</h2>
-        <p>対象に担当者を割り当て、対応期間と閲覧できる情報を設定します。</p>
+        <p>承認デザインの表示見本です。架空データのため担当・期間・閲覧権限は保存しません。</p>
         <div className={styles.assignment}>
           <section className={styles.assignmentForm}>
             <h3>1. 対象を選択</h3>
             <Card className={styles.assignmentItem}>
-              <nav className={styles.tabs}>商品　　保管場所　　写真　　注文</nav>
+              <nav className={styles.tabs}>
+                商品　　保管場所　　写真　　注文
+                <span className={styles.previewInlineNote}>切替は準備中</span>
+              </nav>
               <div className={styles.pickItem}>
                 <Shelf asset="/approved-assets/pc-fidelity/team/sneaker-black.png">
                   スニーカー
@@ -770,29 +891,31 @@ function Assignment() {
               </div>
             </Card>
             <h3>2. 担当者を選択</h3>
-            <select>
+            <select disabled aria-label="担当者の表示見本">
               <option>担当B</option>
             </select>
             <h3>3. 期間を設定</h3>
             <label className={styles.dateField}>
               開始日時
-              <input defaultValue="2025/05/21 09:00" />
+              <input defaultValue="2025/05/21 09:00" disabled />
             </label>
             <label className={styles.dateField}>
               終了日時
-              <input defaultValue="2025/05/27 18:00" />
+              <input defaultValue="2025/05/27 18:00" disabled />
             </label>
             <h3>4. 閲覧できる情報の範囲</h3>
             <label>
-              <input type="radio" defaultChecked /> 基本情報のみ（コスト・住所などは非表示）
+              <input type="radio" name="assignment-scope-preview" checked readOnly disabled />
+              基本情報のみ（コスト・住所などは非表示）
             </label>
             <label>
-              <input type="radio" /> すべての情報（コスト・住所などを含む）
+              <input type="radio" name="assignment-scope-preview" disabled />
+              すべての情報（コスト・住所などを含む・切替は準備中）
             </label>
           </section>
           <section className={styles.assignmentSide}>
             <Card className={styles.preview}>
-              <h3>担当者の閲覧情報（プレビュー）</h3>
+              <h3>担当者の閲覧情報（基本情報のみの表示例）</h3>
               <b>表示される情報</b>
               {[
                 "商品情報（商品コード、商品名、カテゴリ、状態、在庫数）",
@@ -817,7 +940,14 @@ function Assignment() {
                 </p>
               </div>
             </Card>
-            <Btn n={38}>この担当を割り当てる</Btn>
+            <div className={styles.teamPreviewActions}>
+              <button type="button" className={`${styles.btn} ${styles.previewDisabled}`} disabled>
+                担当割当の保存は準備中
+              </button>
+              <a className={styles.previewLink} href={go(39)}>
+                変更確認画面の見本を見る
+              </a>
+            </div>
           </section>
         </div>
       </div>
@@ -829,9 +959,9 @@ function Approval() {
     <Shell n={39}>
       <div className={styles.pad}>
         <h2>変更を確認</h2>
-        <p>変更内容を確認し、承認または差し戻しを行います。</p>
+        <p>承認デザインの表示見本です。架空の申請で、承認・差し戻し・送信は行いません。</p>
         <p className={styles.pending}>
-          変更ID：CHG-2505-00078　　確認待ち　　申請日時：2025/05/20 11:20
+          変更IDの表示例：CHG-2505-00078　　確認待ち　　申請日時：2025/05/20 11:20
         </p>
         <div className={styles.approval}>
           <section>
@@ -856,14 +986,17 @@ function Approval() {
             </Card>
             <Card>
               <h3>2. 証拠写真</h3>
+              <p className={styles.evidencePreviewNote}>
+                同じ素材画像を配置したレイアウト見本です。実際の4方向の証拠写真ではありません。
+              </p>
               <div className={styles.sneakerEvidence}>
                 {["正面", "背面", "靴底", "側面"].map((label, index) => (
                   <figure className={styles[`sneakerView${index + 1}`]} key={label}>
                     <img
                       src="/approved-assets/pc-fidelity/team/sneaker-black.png"
-                      alt={`黒いスニーカーの${label}写真`}
+                      alt={`同じ黒いスニーカー素材を使った${label}配置の見本`}
                     />
-                    <figcaption>{label}</figcaption>
+                    <figcaption>{label}の配置見本</figcaption>
                   </figure>
                 ))}
               </div>
@@ -884,17 +1017,25 @@ function Approval() {
             </Card>
           </section>
         </div>
-        <footer>
-          <a href={go(39)}>コメント</a>
-          <a href={go(39)}>差し戻す</a>
-          <Btn n={39}>承認</Btn>
+        <footer className={styles.approvalPreviewFooter}>
+          <button type="button" className={styles.approvalPreviewAction} disabled>
+            コメントは準備中
+          </button>
+          <button type="button" className={styles.approvalPreviewAction} disabled>
+            差し戻しは準備中
+          </button>
+          <button type="button" className={`${styles.btn} ${styles.previewDisabled}`} disabled>
+            承認は準備中
+          </button>
+          <a className={styles.previewLink} href={go(40)}>
+            変更履歴の見本を見る
+          </a>
         </footer>
       </div>
     </Shell>
   );
 }
 function History() {
-  const [page, setPage] = useState(1);
   const rows = [
     [
       "2025/05/20\n11:20",
@@ -978,23 +1119,38 @@ function History() {
     <Shell n={40}>
       <div className={styles.pad}>
         <h2>
-          変更履歴 <Btn n={40}>↓ 履歴を書き出す</Btn>
+          変更履歴
+          <span className={styles.teamPreviewHeaderActions}>
+            <button type="button" className={`${styles.btn} ${styles.previewDisabled}`} disabled>
+              履歴の書き出しは準備中
+            </button>
+            <a className={styles.previewLink} href={go(41)}>
+              箱の見込み画面の見本を見る
+            </a>
+          </span>
         </h2>
-        <p>すべての変更履歴を時系列で確認できます。履歴は追加のみで削除できません。</p>
+        <p>
+          架空履歴の表示見本です。この画面では履歴の検索・出力・変更を行いません。履歴は削除しません。
+        </p>
         <div className={styles.filters}>
           対象　
-          <select>
+          <select disabled aria-label="対象の表示例">
             <option>すべて</option>
           </select>
           　期間　
-          <select>
+          <select disabled aria-label="期間の表示例">
             <option>過去30日間</option>
           </select>
           　変更区分　
-          <select>
+          <select disabled aria-label="変更区分の表示例">
             <option>すべて</option>
           </select>
-          <input className={styles.filterSearch} placeholder="対象名・変更IDで検索" />
+          <input
+            className={styles.filterSearch}
+            placeholder="検索は準備中"
+            aria-label="履歴検索は準備中"
+            disabled
+          />
         </div>
         <Card className={styles.history}>
           <table>
@@ -1020,8 +1176,8 @@ function History() {
                 <tr key={row[1]}>
                   {row.map((cell, columnIndex) => (
                     <td key={`${row[1]}-${columnIndex}`}>
-                      {columnIndex === 1 ? (
-                        <a href={go(39)}>{cell}</a>
+                      {columnIndex === 1 && row[1] === "CHG-2505-00078" ? (
+                        <a href={go(39)}>{cell}（対応見本）</a>
                       ) : columnIndex === 8 ? (
                         <span
                           className={
@@ -1043,13 +1199,13 @@ function History() {
             <span>
               {rows.length}件中 1〜{rows.length}件を表示
             </span>
-            <button type="button" onClick={() => setPage(Math.max(1, page - 1))}>
+            <button type="button" disabled aria-label="前のページはありません">
               ‹
             </button>
-            <button type="button" className={styles.pageCurrent}>
-              {page}
+            <button type="button" className={styles.pageCurrent} aria-current="page" disabled>
+              1
             </button>
-            <button type="button" onClick={() => setPage(page + 1)}>
+            <button type="button" disabled aria-label="次のページはありません">
               ›
             </button>
           </div>
@@ -1085,8 +1241,10 @@ function Forecast() {
       <div className={`${styles.pad} ${styles.forecastPad}`}>
         <h2>箱の見込み</h2>
         <div className={styles.forecastActions}>
-          <p className={styles.yellow}>♙　見込み・人が確認</p>
-          <Btn n={41}>販売後の実績を見る</Btn>
+          <p className={styles.yellow}>♙　準備中・架空データの見込み例・人が確認</p>
+          <a className={styles.btn} href={go(42)}>
+            販売後の実績の見本を見る　›
+          </a>
         </div>
         <div className={styles.metrics}>
           {metrics.map((x) => (
@@ -1113,15 +1271,20 @@ function Actual() {
     <Shell n={42}>
       <div className={styles.pad}>
         <h2>
-          販売後の実績 <Btn n={42}>月別KPIを見る</Btn>
+          販売後の実績
+          <a className={styles.btn} href={go(43)}>
+            月別KPIの見本を見る　›
+          </a>
         </h2>
-        <p className={styles.greenNotice}>● 実績・人が確認</p>
+        <p className={styles.greenNotice}>● 準備中・架空データの実績例・人が確認</p>
         <div className={styles.metrics}>
           {metrics.map((x) => (
             <Metric key={x[0]} label={x[0]} value={x[1]} icon={x[2]} />
           ))}
         </div>
-        <Notice>見込みと実績は分けて管理しています。数値は締め時点の集計です。</Notice>
+        <Notice>
+          見込みと実績を分ける承認デザインの見本です。この数値は実際の締め集計ではありません。
+        </Notice>
       </div>
     </Shell>
   );
@@ -1131,12 +1294,22 @@ function Kpi() {
     <Shell n={43}>
       <div className={styles.pad}>
         <h2>
-          月別KPI <Btn n={43}>対象月を確認</Btn>
+          月別KPI
+          <span
+            className={`${styles.teamPreviewHeaderActions} ${styles.analyticsPreviewHeaderActions}`}
+          >
+            <button type="button" className={`${styles.btn} ${styles.previewDisabled}`} disabled>
+              対象月の切替は準備中
+            </button>
+            <a className={styles.previewLink} href={go(44)}>
+              仕入先比較の見本を見る
+            </a>
+          </span>
         </h2>
-        <p className={styles.blueNote}>ⓘ　運用上の参考</p>
+        <p className={styles.blueNote}>ⓘ　準備中・架空データの表示見本（実集計ではありません）</p>
         <div className={styles.period}>
-          <b>対象月　‹　2025年5月　›</b>
-          <span>集計期間　2025/05/01 〜 2025/05/31（31日間）</span>
+          <b>対象月の表示例　2025年5月</b>
+          <span>集計期間の表示例　2025/05/01 〜 2025/05/31（31日間）</span>
         </div>
         <div className={styles.kpis}>
           {[
@@ -1176,7 +1349,7 @@ function Kpi() {
             <div
               className={styles.chartPlot}
               role="img"
-              aria-label="販売率、売上見込み、粗利見込みの推移"
+              aria-label="架空データによる販売率、売上見込み、粗利見込みの推移例"
             >
               <div className={styles.chartFrame}>
                 <div className={`${styles.chartScale} ${styles.chartScaleLeft}`} aria-hidden="true">
@@ -1281,7 +1454,7 @@ function Kpi() {
             </Card>
           </div>
         </Card>
-        <p>※ 本KPIは運用上の参考です。会計上の利益・税金の計算には使用しません。</p>
+        <p>※ 架空データによる表示見本です。会計上の利益・税金の計算には使用しません。</p>
       </div>
     </Shell>
   );
@@ -1348,9 +1521,19 @@ function Suppliers() {
     <Shell n={44}>
       <div className={styles.pad}>
         <h2>
-          仕入先・在庫の比較 <Btn n={44}>不足データを確認</Btn>
+          仕入先・在庫の比較
+          <span
+            className={`${styles.teamPreviewHeaderActions} ${styles.analyticsPreviewHeaderActions}`}
+          >
+            <button type="button" className={`${styles.btn} ${styles.previewDisabled}`} disabled>
+              不足データ確認は準備中
+            </button>
+            <a className={styles.previewLink} href={go(45)}>
+              売上の事実画面の見本を見る
+            </a>
+          </span>
         </h2>
-        <p className={styles.yellow}>♙　継続・停止は人が判断</p>
+        <p className={styles.yellow}>♙　準備中・架空データの比較例／継続・停止は人が判断</p>
         <Card className={styles.supplier}>
           <table>
             <thead>
@@ -1407,7 +1590,7 @@ function Suppliers() {
           </span>
         </div>
         <Notice>
-          ・数値は運用データの集計です。会計データではありません。
+          ・仕入先名と数値は架空データの表示例です。実運用データの集計ではありません。
           <br />
           ・サンプル数が少ない場合や観察期間が短い場合は、判断を保留してください。
         </Notice>
@@ -1421,8 +1604,10 @@ function Facts() {
       <div className={`${styles.pad} ${styles.factsPad}`}>
         <h2>売上の事実</h2>
         <div className={styles.screenActions}>
-          <p>売上に関する事実（税抜）を項目ごとに確認します。</p>
-          <Btn n={44}>最新に更新</Btn>
+          <p>承認デザインの架空データ例です。この画面では実会計データを更新しません。</p>
+          <PcLiveRouteLink className={styles.previewLink} href={accountingRoute("format")}>
+            実データを確認・更新する
+          </PcLiveRouteLink>
         </div>
         <Card className={styles.factStats}>
           <b>対象期間　2025/04/01 〜 2025/04/30</b>
@@ -1435,7 +1620,7 @@ function Facts() {
             <b>項目</b>
             <b>金額</b>
             <b>主な証拠・出所</b>
-            <b>確認状態</b>
+            <b>確認状態（見本）</b>
             <b>最終更新</b>
           </div>
           {[
@@ -1493,9 +1678,11 @@ function Facts() {
           ))}
         </Card>
         <Notice>
-          上記は会計の結論ではなく、事実の確認です。税区分や利益はここでは計算しません。
+          上記は架空データの表示見本です。会計の結論ではなく、税区分や利益はここでは計算しません。
         </Notice>
-        <Btn n={45}>会計の基本設定へ</Btn>
+        <a className={styles.btn} href={go(46)}>
+          会計の基本設定の見本へ　›
+        </a>
       </div>
     </Shell>
   );
@@ -1508,9 +1695,10 @@ function BasicAccounting() {
         <div className={styles.accountingHeading}>
           <div>
             <h2>会計の基本設定</h2>
-            <p>会計に必要な基本ルールを設定します。</p>
+            <p>架空設定の表示見本です。この画面では設定を保存しません。</p>
           </div>
           <div className={styles.accountingActions}>
+            <PcLiveRouteLink href={accountingRoute("profile")}>実データを開く</PcLiveRouteLink>
             <button type="button" onClick={() => setShowHelp((visible) => !visible)}>
               {showHelp ? "ヘルプを閉じる" : "ヘルプを表示"}
             </button>
@@ -1549,8 +1737,16 @@ function BasicAccounting() {
             ].map((x) => (
               <Card key={x[0]}>
                 <h3>
-                  {x[0]}　<span className={styles.infoMark}>?</span>
-                  <a href={go(46)}>変更</a>
+                  {x[0]}　
+                  <button
+                    type="button"
+                    className={styles.infoMark}
+                    aria-label={`${x[0]}の説明を表示`}
+                    onClick={() => setShowHelp(true)}
+                  >
+                    ?
+                  </button>
+                  <PcLiveRouteLink href={accountingRoute("profile")}>変更</PcLiveRouteLink>
                 </h3>
                 <b>{x[1]}</b>
                 <p>
@@ -1584,8 +1780,15 @@ function BasicAccounting() {
             </Card>
           )}
         </div>
-        <Notice>設定は人の確認が必要です。自動計算は行いません。</Notice>
-        <Btn n={46}>内容を確認して保存</Btn>
+        <Notice>設定は人の確認が必要です。この見本では保存せず、自動計算も行いません。</Notice>
+        <div className={styles.accountingPreviewFooter}>
+          <PcLiveRouteLink className={styles.btn} href={accountingRoute("profile")}>
+            実データを確認して保存する　›
+          </PcLiveRouteLink>
+          <a className={styles.previewLink} href={go(47)}>
+            会計項目の候補の見本を見る
+          </a>
+        </div>
       </div>
     </Shell>
   );
@@ -1652,12 +1855,13 @@ function Mapping() {
     <Shell n={47}>
       <div className={styles.pad}>
         <h2>会計項目の候補</h2>
-        <p>設定と承認済みルールに基づき、勘定科目の候補を提案します。</p>
+        <p>承認デザインの架空候補です。この画面では採用・変更・保存を行いません。</p>
         <p className={styles.mappingRuleSet}>
-          自動提案ルールセット：標準ルール v1.2　<span aria-label="候補ルールの説明">?</span>
+          表示例のルールセット：標準ルール v1.2　
+          <span aria-label="候補ルールの表示例">?</span>
         </p>
-        <nav className={styles.tabs}>
-          すべて 5　　採用済み 3　　変更あり 1　　要確認 1　　ブロック 0
+        <nav className={styles.tabs} aria-label="架空候補の分類表示例">
+          すべて 5　　採用可能 3　　要確認 1　　ブロック 1
         </nav>
         <Card className={styles.mapTable}>
           <table>
@@ -1719,9 +1923,19 @@ function Mapping() {
                     {row.status === "ブロック" ? (
                       <span className={styles.mappingBlockedAction}>—</span>
                     ) : (
-                      <a href={go(47)}>採用</a>
+                      <PcLiveRouteLink
+                        href={accountingRoute("mappings")}
+                        ariaLabel={`${row.item}を実データ画面で採用`}
+                      >
+                        採用
+                      </PcLiveRouteLink>
                     )}
-                    <a href={go(47)}>変更</a>
+                    <PcLiveRouteLink
+                      href={accountingRoute("mappings")}
+                      ariaLabel={`${row.item}を実データ画面で変更`}
+                    >
+                      変更
+                    </PcLiveRouteLink>
                   </td>
                 </tr>
               ))}
@@ -1743,7 +1957,14 @@ function Mapping() {
               低：保存前に修正
             </span>
           </div>
-          <Btn n={47}>確認した項目を保存</Btn>
+          <div className={styles.mappingPreviewActions}>
+            <PcLiveRouteLink className={styles.btn} href={accountingRoute("mappings")}>
+              実データを確認して保存　›
+            </PcLiveRouteLink>
+            <a className={styles.previewLink} href={go(48)}>
+              ファイル作成画面の見本を見る
+            </a>
+          </div>
         </div>
       </div>
     </Shell>
@@ -1751,22 +1972,33 @@ function Mapping() {
 }
 function FileHistory() {
   const [format, setFormat] = useState<"moneyForward" | "csv">("moneyForward");
+  const [showFileHelp, setShowFileHelp] = useState(false);
+  const liveFormat = format === "moneyForward" ? "money_forward_journal_v1" : "generic_journal_v1";
   return (
     <Shell n={48}>
       <div className={styles.pad}>
         <div className={styles.fileHeading}>
           <div>
             <h2>ファイル作成・履歴</h2>
-            <p>会計データのファイル作成と履歴を管理します。</p>
+            <p>架空データの表示見本です。この画面では実ファイルを作成しません。</p>
           </div>
           <div className={styles.fileActions}>
-            <a href={go(48)}>履歴を更新　↻</a>
-            <a href={go(48)}>ヘルプ　?</a>
+            <PcLiveRouteLink href={accountingRoute("history", liveFormat)}>
+              実データの履歴　↻
+            </PcLiveRouteLink>
+            <button type="button" onClick={() => setShowFileHelp((visible) => !visible)}>
+              {showFileHelp ? "ヘルプを閉じる" : "ヘルプ　?"}
+            </button>
           </div>
         </div>
+        {showFileHelp ? (
+          <p className={styles.fileHelp} role="status">
+            形式を選んだあと、本物の会計画面で元資料と内容を確認してから作成・ダウンロードします。外部サービスへ自動送信しません。
+          </p>
+        ) : null}
         <div className={styles.fileTop}>
           <Card>
-            <h3>作成チェックリスト</h3>
+            <h3>作成チェックリスト（表示例）</h3>
             {[
               "基本設定の保存",
               "合計項目の確認（ブロックなし）",
@@ -1779,8 +2011,8 @@ function FileHistory() {
             ))}
           </Card>
           <Card>
-            <h3 className={styles.bad}>▲ ブロッカー一覧</h3>
-            <p>現在ブロックはありません。</p>
+            <h3 className={styles.bad}>▲ ブロッカー一覧（表示例）</h3>
+            <p>この架空例ではブロックなしです。</p>
             <p>
               すべてのブロックが解除されると
               <br />
@@ -1790,36 +2022,48 @@ function FileHistory() {
           <Card>
             <h3>作成形式を選択</h3>
             <div
-              role="button"
-              tabIndex={0}
               className={`${styles.formatChoice} ${format === "moneyForward" ? styles.formatSelected : ""}`}
-              onClick={() => setFormat("moneyForward")}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") setFormat("moneyForward");
-              }}
             >
-              <b>◉　Money Forward向け</b>
-              <small>勘定科目コードを含む（推奨）</small>
-              <a href={go(48)}>作成する</a>
+              <button
+                type="button"
+                className={styles.formatSelect}
+                aria-pressed={format === "moneyForward"}
+                onClick={() => setFormat("moneyForward")}
+              >
+                <b>{format === "moneyForward" ? "◉" : "○"}　Money Forward向け</b>
+                <small>勘定科目コードを含む（推奨）</small>
+              </button>
+              <PcLiveRouteLink
+                href={accountingRoute("export", "money_forward_journal_v1")}
+                ariaLabel="Money Forward形式を実データで作成する画面へ"
+              >
+                実画面へ
+              </PcLiveRouteLink>
             </div>
             <div
-              role="button"
-              tabIndex={0}
               className={`${styles.formatChoice} ${format === "csv" ? styles.formatSelected : ""}`}
-              onClick={() => setFormat("csv")}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") setFormat("csv");
-              }}
             >
-              <b>○　汎用（CSV）</b>
-              <small>汎用形式（コードなし）</small>
-              <a href={go(48)}>作成する</a>
+              <button
+                type="button"
+                className={styles.formatSelect}
+                aria-pressed={format === "csv"}
+                onClick={() => setFormat("csv")}
+              >
+                <b>{format === "csv" ? "◉" : "○"}　汎用（CSV）</b>
+                <small>汎用形式（コードなし）</small>
+              </button>
+              <PcLiveRouteLink
+                href={accountingRoute("export", "generic_journal_v1")}
+                ariaLabel="汎用CSVを実データで作成する画面へ"
+              >
+                実画面へ
+              </PcLiveRouteLink>
             </div>
           </Card>
         </div>
         <div className={styles.fileBottom}>
           <Card>
-            <h3>作成ファイルの発行（読み取り専用プレビュー）</h3>
+            <h3>作成ファイルの発行（架空プレビュー）</h3>
             <table className={styles.exportPreview}>
               <thead>
                 <tr>
@@ -1852,24 +2096,26 @@ function FileHistory() {
             <Card className={styles.downloadCard}>
               <h3>手動ダウンロード</h3>
               <p>作成したファイルをダウンロードします。</p>
-              <a className={styles.btn} href={go(48)}>
-                確認してダウンロード　↓
-              </a>
+              <PcLiveRouteLink className={styles.btn} href={accountingRoute("preview", liveFormat)}>
+                実データを確認してダウンロード　↓
+              </PcLiveRouteLink>
             </Card>
             <Card className={styles.importCard}>
-              <h3>手動インポート結果（最新）</h3>
+              <h3>手動インポート結果（表示例）</h3>
               <p>実行日時　2025/05/06 15:20</p>
               <p>形式　　　Money Forward向け</p>
               <p>
-                ステータス　<span className={styles.importSuccess}>成功</span>
+                ステータス　<span className={styles.importSuccess}>成功例</span>
               </p>
               <p>件数　　　1,520 件</p>
-              <a href={go(48)}>詳細を確認</a>
+              <PcLiveRouteLink href={accountingRoute("import", liveFormat)}>
+                実データの詳細を確認
+              </PcLiveRouteLink>
             </Card>
           </div>
         </div>
         <Card>
-          <h3>差し替え・キャンセル履歴</h3>
+          <h3>差し替え・キャンセル履歴（表示例）</h3>
           <table className={styles.exportHistory}>
             <thead>
               <tr>
@@ -1885,7 +2131,7 @@ function FileHistory() {
             <tbody>
               <tr>
                 <td>2025/05/06 15:20</td>
-                <td>作成（確定）</td>
+                <td>作成（確定例）</td>
                 <td>Money Forward向け</td>
                 <td>2025/04/01〜04/30</td>
                 <td>1,520</td>
@@ -1894,7 +2140,7 @@ function FileHistory() {
               </tr>
               <tr>
                 <td>2025/05/04 11:05</td>
-                <td>作成（キャンセル）</td>
+                <td>作成（キャンセル例）</td>
                 <td>汎用（CSV）</td>
                 <td>2025/04/01〜04/30</td>
                 <td>—</td>
@@ -1905,27 +2151,36 @@ function FileHistory() {
           </table>
         </Card>
         <Notice>
-          ファイルは手動で作成・ダウンロードしてください。自動送信や自動連携は行いません。
+          架空の表示例です。実ファイルは本物の会計画面で人が確認して作成・ダウンロードし、自動送信しません。
         </Notice>
       </div>
     </Shell>
   );
 }
 function Settings() {
+  const shippingColumns = [
+    "配送方法",
+    "基本料金（円）",
+    "追加料金（円）",
+    "サイズ上限（cm）",
+    "重量上限（kg）",
+  ] as const;
   return (
     <Shell n={49}>
       <div className={`${styles.pad} ${styles.settingsBoard}`}>
         <h2>アプリの基本設定</h2>
         <Card className={styles.settings}>
+          <p className={styles.settingsPreviewCaption}>
+            架空設定の表示見本です。この画面では実際の料金を変更・保存しません。
+          </p>
           <h3>配送方法</h3>
           <table>
             <thead>
               <tr>
-                <th>配送方法</th>
-                <th>基本料金（円）</th>
-                <th>追加料金（円）</th>
-                <th>サイズ上限（cm）</th>
-                <th>重量上限（kg）</th>
+                {shippingColumns.map((column) => (
+                  <th key={column}>{column}</th>
+                ))}
+                <th aria-label="編集" />
               </tr>
             </thead>
             <tbody>
@@ -1935,16 +2190,22 @@ function Settings() {
                 "配送方法C　1,350　500　200　30",
               ].map((x) => (
                 <tr key={x}>
-                  {x.split("　").map((y) => (
+                  {x.split("　").map((y, index) => (
                     <td key={y}>
-                      <input defaultValue={y} />
+                      <input
+                        aria-label={`${x.split("　")[0]} ${shippingColumns[index] ?? "値"}`}
+                        defaultValue={y}
+                        readOnly
+                      />
                     </td>
                   ))}
                   <td>
                     <button
                       type="button"
-                      className={styles.editIcon}
+                      className={`${styles.editIcon} ${styles.previewDisabled}`}
                       aria-label={`${x.split("　")[0]}を編集`}
+                      title="設定の保存機能は準備中です"
+                      disabled
                     >
                       ✎
                     </button>
@@ -1955,19 +2216,35 @@ function Settings() {
           </table>
           <h3>手数料</h3>
           <table>
+            <thead>
+              <tr>
+                <th>項目</th>
+                <th>手数料率（%）</th>
+                <th>最低手数料（円）</th>
+                <th aria-label="編集" />
+              </tr>
+            </thead>
             <tbody>
               {["販売手数料　10.00　100", "決済手数料　3.00　50"].map((x) => (
                 <tr key={x}>
-                  {x.split("　").map((y) => (
+                  {x.split("　").map((y, cellIndex) => (
                     <td key={y}>
-                      <input defaultValue={y} />
+                      <input
+                        aria-label={`${x.split("　")[0]} ${
+                          ["項目名", "手数料率（%）", "最低手数料（円）"][cellIndex]
+                        }`}
+                        defaultValue={y}
+                        readOnly
+                      />
                     </td>
                   ))}
                   <td>
                     <button
                       type="button"
-                      className={styles.editIcon}
+                      className={`${styles.editIcon} ${styles.previewDisabled}`}
                       aria-label={`${x.split("　")[0]}を編集`}
+                      title="設定の保存機能は準備中です"
+                      disabled
                     >
                       ✎
                     </button>
@@ -1977,8 +2254,15 @@ function Settings() {
             </tbody>
           </table>
           <div className={styles.settingsFooter}>
-            <Notice>実際の料金は人が確認して更新します</Notice>
-            <Btn n={49}>変更を保存</Btn>
+            <Notice>実料金は人が確認します。この見本の値は保存されません。</Notice>
+            <div className={styles.settingsPreviewActions}>
+              <button type="button" className={`${styles.btn} ${styles.previewDisabled}`} disabled>
+                変更保存は準備中
+              </button>
+              <a className={styles.previewLink} href={go(50)}>
+                写真保存先の見本へ
+              </a>
+            </div>
           </div>
         </Card>
       </div>
@@ -1994,12 +2278,16 @@ function Storage() {
         <Card className={styles.storage}>
           <section>
             <h3>保存先の場所</h3>
+            <p id="storage-preview-note" className={styles.settingsPreviewCaption}>
+              架空の保存先見本です。選択はこの画面内だけで、実際の保存先を変更しません。
+            </p>
             <label className={styles.radioOption}>
               <input
                 type="radio"
                 name="storage-destination"
                 checked={destination === "pc"}
                 onChange={() => setDestination("pc")}
+                aria-describedby="storage-preview-note"
               />
               このPC内に保存
             </label>
@@ -2009,28 +2297,43 @@ function Storage() {
                 name="storage-destination"
                 checked={destination === "other"}
                 onChange={() => setDestination("other")}
+                aria-describedby="storage-preview-note"
               />
               他の場所に保存
             </label>
             <h3>保存先フォルダー</h3>
             <div className={styles.storagePathRow}>
-              <input defaultValue="商品写真フォルダー" />
+              <input
+                aria-label="保存先フォルダーの表示例"
+                defaultValue="商品写真フォルダー"
+                readOnly
+              />
               <span>
-                <a href={go(50)}>保存先を選ぶ</a>
-                <a href={go(50)}>保存先を確認</a>
+                <button type="button" disabled title="フォルダー選択は準備中です">
+                  保存先を選ぶ
+                </button>
+                <button type="button" disabled title="フォルダー確認は準備中です">
+                  保存先を確認
+                </button>
+                <small>保存先機能は準備中</small>
               </span>
             </div>
           </section>
           <div className={styles.noSend}>
-            <span className={styles.shield} aria-hidden="true">
-              ✓
+            <OutlineShield />
+            <span>
+              外部サービスへ
+              <br />
+              自動送信しません
             </span>
-            外部サービスへ
-            <br />
-            自動送信しません
           </div>
         </Card>
-        <Notice>画像編集は将来追加予定。今は手動で編集して戻します。</Notice>
+        <div className={styles.storagePreviewFooter}>
+          <Notice>画像編集・保存先変更は準備中です。今は手動で編集して戻します。</Notice>
+          <a className={styles.previewLink} href={go(51)}>
+            書き出し画面の見本へ
+          </a>
+        </div>
       </div>
     </Shell>
   );
@@ -2045,13 +2348,14 @@ function Backup() {
         <div className={styles.backup}>
           <Card>
             <h3>データを書き出す</h3>
-            <p>現在のデータをファイルに書き出します。</p>
+            <p>架空データの表示見本です。実ファイルは作成しません。</p>
             <p>ファイル形式</p>
             <div className={styles.formatButtons} role="group" aria-label="書き出し形式">
               <button
                 type="button"
                 className={exportFormat === "csv" ? styles.formatButtonActive : ""}
                 onClick={() => setExportFormat("csv")}
+                aria-pressed={exportFormat === "csv"}
               >
                 CSV
               </button>
@@ -2059,23 +2363,25 @@ function Backup() {
                 type="button"
                 className={exportFormat === "json" ? styles.formatButtonActive : ""}
                 onClick={() => setExportFormat("json")}
+                aria-pressed={exportFormat === "json"}
               >
                 JSON
               </button>
             </div>
-            <a className={styles.btn} href={go(51)}>
-              CSVで保存
-            </a>
+            <button type="button" className={`${styles.btn} ${styles.previewDisabled}`} disabled>
+              {exportFormat.toUpperCase()}で保存は準備中
+            </button>
           </Card>
           <Card>
             <h3>バックアップを作る</h3>
-            <p>データのバックアップファイルを作成します。</p>
+            <p>架空データの表示見本です。実バックアップは作成しません。</p>
             <p>ファイル形式</p>
             <div className={styles.formatButtons} role="group" aria-label="バックアップ形式">
               <button
                 type="button"
                 className={backupFormat === "csv" ? styles.formatButtonActive : ""}
                 onClick={() => setBackupFormat("csv")}
+                aria-pressed={backupFormat === "csv"}
               >
                 CSV
               </button>
@@ -2083,17 +2389,18 @@ function Backup() {
                 type="button"
                 className={backupFormat === "json" ? styles.formatButtonActive : ""}
                 onClick={() => setBackupFormat("json")}
+                aria-pressed={backupFormat === "json"}
               >
                 JSON
               </button>
             </div>
-            <a className={styles.btn} href={go(51)}>
-              バックアップを作成
-            </a>
+            <button type="button" className={`${styles.btn} ${styles.previewDisabled}`} disabled>
+              {backupFormat.toUpperCase()}バックアップは準備中
+            </button>
           </Card>
         </div>
         <Card className={styles.backHistory}>
-          <h3>履歴</h3>
+          <h3>履歴（表示例）</h3>
           <table>
             <thead>
               <tr>
@@ -2108,7 +2415,7 @@ function Backup() {
                 <td>書き出し（CSV）</td>
                 <td>export_20250520_1030.csv</td>
                 <td>2025/05/20 10:30</td>
-                <td>完了</td>
+                <td>完了例</td>
               </tr>
               <tr>
                 <td>バックアップ（JSON）</td>
@@ -2118,7 +2425,12 @@ function Backup() {
               </tr>
             </tbody>
           </table>
-          <Notice>選んだファイルを人が確認して使います</Notice>
+          <div className={styles.backupPreviewFooter}>
+            <Notice>架空の履歴例です。実ファイルは作成していません。</Notice>
+            <a className={styles.previewLink} href={go(52)}>
+              外部連携状態の見本へ
+            </a>
+          </div>
         </Card>
       </div>
     </Shell>
@@ -2130,24 +2442,22 @@ function Connections() {
       <div className={`${styles.pad} ${styles.connectionsBoard}`}>
         <h2>外部連携の状態</h2>
         <Card className={styles.banner}>
-          <span className={styles.shield} aria-hidden="true">
-            ✓
+          <OutlineShield />
+          <span>
+            接続状態の表示例：外部連携なし・無料
+            <small>実際の接続・料金を確認した結果ではありません</small>
           </span>
-          　現在：外部連携なし・無料
         </Card>
         <div className={styles.connections}>
           {["GitHub", "Slack", "Notion"].map((x) => (
             <Card key={x}>
               <h3>{x}</h3>
-              <span>未接続</span>
+              <span>未接続（表示例）</span>
             </Card>
           ))}
         </div>
         <Card className={styles.protect}>
-          <span className={styles.shield} aria-hidden="true">
-            ✓
-          </span>
-          　<b>許可なく外部へ接続しません</b>
+          <OutlineShield />　<b>許可なく外部へ接続しません</b>
           <p>必要になったときだけ、内容を確認して接続します</p>
         </Card>
       </div>

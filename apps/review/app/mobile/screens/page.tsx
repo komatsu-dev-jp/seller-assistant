@@ -1,5 +1,3 @@
-import Link from "next/link";
-
 import { mobileScreenIds } from "../../../../web/src/components/approved-mobile/mobile-screen-data";
 
 export default function MobileScreenIndexPage() {
@@ -9,7 +7,7 @@ export default function MobileScreenIndexPage() {
       <ul>
         {mobileScreenIds.map((screen) => (
           <li key={screen}>
-            <Link href={`/mobile/screens/${screen}`}>{screen}</Link>
+            <a href={`/mobile/screens/${screen}`}>{screen}</a>
           </li>
         ))}
       </ul>

@@ -45,6 +45,9 @@ export type ShippingApprovedLiveLayoutProps = {
   saleAmount?: string | undefined;
   saleAmountReadOnly?: boolean | undefined;
   missingInformationCount?: number | undefined;
+  missingInformationLabels?: readonly string[] | undefined;
+  missingInformationAcknowledged?: boolean | undefined;
+  onMissingInformationAcknowledged?: ((checked: boolean) => void) | undefined;
   inventoryNumber?: string | undefined;
   locationCode?: string | undefined;
   locationPhotoUrl?: string | undefined;
@@ -175,6 +178,7 @@ export function ShippingApprovedLiveLayout(props: ShippingApprovedLiveLayoutProp
     props.onEditShippingCatalog?.();
   };
   const closeShippingCatalog = () => {
+    if (props.busy) return;
     const returnFocus = catalogReturnFocusRef.current;
     props.onCloseShippingCatalog?.();
     window.requestAnimationFrame(() => {
@@ -233,7 +237,7 @@ export function ShippingApprovedLiveLayout(props: ShippingApprovedLiveLayoutProp
         <PcShippingSafetyDialog {...resolvedProps} onClose={closePcSafety} />
       ) : null}
       {props.catalogDialogOpen ? (
-        <ShippingCatalogDialog onClose={closeShippingCatalog}>
+        <ShippingCatalogDialog onClose={closeShippingCatalog} busy={props.busy}>
           {props.catalogDialogControl}
         </ShippingCatalogDialog>
       ) : null}
@@ -253,7 +257,10 @@ function LiveMobileShipping(props: ShippingApprovedLiveLayoutProps) {
       <div className={mobileStyles.phoneShell}>
         <LiveMobileHeader title={title} onBack={props.onSecondary} />
         <div
-          className={mobileStyles.scrollArea}
+          className={cn(
+            mobileStyles.scrollArea,
+            props.stage === "review" && liveStyles.mobileReviewScrollArea,
+          )}
           aria-hidden={operationalOverlay || undefined}
           inert={operationalOverlay || undefined}
         >
@@ -511,10 +518,35 @@ function MobileMethod(props: ShippingApprovedLiveLayoutProps) {
   );
 }
 
+function MissingInformationReview(props: ShippingApprovedLiveLayoutProps) {
+  if (!props.missingInformationLabels?.length) return null;
+  return (
+    <section className={liveStyles.missingInformationReview} aria-label="未入力の注文情報">
+      <strong>まだ入力されていない項目</strong>
+      <ul>
+        {props.missingInformationLabels.map((label) => (
+          <li key={label}>{label}</li>
+        ))}
+      </ul>
+      <p>未入力でも発送は続けられます。会計の記録には、後で金額の確認が必要です。</p>
+      <label>
+        <input
+          type="checkbox"
+          checked={props.missingInformationAcknowledged ?? false}
+          disabled={props.busy}
+          onChange={(event) => props.onMissingInformationAcknowledged?.(event.target.checked)}
+        />
+        未入力の項目を確認しました
+      </label>
+    </section>
+  );
+}
+
 function MobileReview(props: ShippingApprovedLiveLayoutProps) {
   return (
     <section className={mobileStyles.contentStack}>
       <p className={mobileStyles.boardInstruction}>内容を確認してください</p>
+      <MissingInformationReview {...props} />
       <div className={cn(mobileStyles.summaryRows, mobileStyles.shippingReviewRows)}>
         <DataRow label="商品" value={valueOrMissing(props.productTitle)} />
         <DataRow label="販売先" value={valueOrMissing(props.salesChannel)} />
@@ -663,7 +695,7 @@ function LiveMobileActionBar({
 }: { screen: MobileScreen | null } & ShippingApprovedLiveLayoutProps) {
   const label = props.primaryLabel ?? screen?.primary ?? "確認して次へ";
   return (
-    <div className={mobileStyles.actionBar}>
+    <div className={cn(mobileStyles.actionBar, liveStyles.mobileActionBar)}>
       <button
         type="button"
         className={cn(mobileStyles.primaryButton, liveStyles.actionButton)}
@@ -790,9 +822,11 @@ function useDialogFocus() {
 function ShippingCatalogDialog({
   children,
   onClose,
+  busy,
 }: {
   children: ReactNode;
   onClose?: (() => void) | undefined;
+  busy?: boolean | undefined;
 }) {
   const { dialogRef, onKeyDown } = useDialogFocus();
   return (
@@ -803,7 +837,7 @@ function ShippingCatalogDialog({
       aria-modal="true"
       aria-labelledby="shipping-catalog-dialog-title"
       onKeyDown={(event) => {
-        if (event.key === "Escape" && onClose) {
+        if (event.key === "Escape" && onClose && !busy) {
           event.preventDefault();
           onClose();
           return;
@@ -818,8 +852,8 @@ function ShippingCatalogDialog({
             送料一覧
           </h2>
         </div>
-        <button type="button" onClick={onClose} aria-label="送料一覧を閉じる">
-          閉じる
+        <button type="button" onClick={onClose} disabled={busy} aria-label="送料一覧を閉じる">
+          {busy ? "保存中…" : "閉じる"}
         </button>
       </header>
       {children}
@@ -1568,7 +1602,7 @@ function PcShip(props: ShippingApprovedLiveLayoutProps) {
             <b>{valueOrMissing(props.pcShippingFee ?? props.shippingFee)}</b>
           </p>
         </PcCard>
-        <PcCard>
+        <PcCard className={liveStyles.shippingInformationCard}>
           <h3>発送情報</h3>
           <label>
             発送予定日 <small>（人のチェック必須）</small>
@@ -1594,6 +1628,7 @@ function PcShip(props: ShippingApprovedLiveLayoutProps) {
             />
           </label>
           {props.addressControl}
+          {props.stage === "review" && <MissingInformationReview {...props} />}
         </PcCard>
       </div>
       <PcNotice>

@@ -4,7 +4,7 @@ import styles from "./navigation-home-team.module.css";
 const desktopLinks = [
   ["/", "ホーム", "home", "⌂"],
   ["/mobile", "作業", "mobile", "✓"],
-  ["/workflow", "仕入れ", "workflow", "＋"],
+  ["/workflow?new=1", "仕入れ", "workflow", "＋"],
   ["/workflow", "商品", "product", "▣"],
   ["/shipping", "注文・発送", "orders", "▱"],
   ["/inventory", "在庫", "inventory", "◇"],

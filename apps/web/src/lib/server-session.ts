@@ -8,21 +8,26 @@ import {
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
+import { safeInternalReturnPath } from "./login-return";
+
 export async function requirePageSession(
   allowedRoles: readonly WorkspaceRole[],
+  returnTo?: string,
 ): Promise<SessionContextResponse> {
-  const apiOrigin = process.env.API_INTERNAL_ORIGIN;
-  const appOrigin = process.env.APP_ORIGIN;
-  if (!apiOrigin || !appOrigin) {
-    throw new Error("認証サービスの接続設定を確認できません。");
-  }
-
   const cookieStore = await cookies();
   const cookieHeader = cookieStore
     .getAll()
     .map(({ name, value }) => `${name}=${value}`)
     .join("; ");
-  if (!cookieHeader) redirect("/login");
+  const safeReturnTo = safeInternalReturnPath(returnTo);
+  const loginPath = safeReturnTo ? `/login?returnTo=${encodeURIComponent(safeReturnTo)}` : "/login";
+  if (!cookieHeader) redirect(loginPath);
+
+  const apiOrigin = process.env.API_INTERNAL_ORIGIN;
+  const appOrigin = process.env.APP_ORIGIN;
+  if (!apiOrigin || !appOrigin) {
+    throw new Error("認証サービスの接続設定を確認できません。");
+  }
 
   let response: Response;
   try {
@@ -36,7 +41,7 @@ export async function requirePageSession(
     throw new Error("認証サービスへ接続できません。");
   }
 
-  if (response.status === 401 || response.status === 403) redirect("/login");
+  if (response.status === 401 || response.status === 403) redirect(loginPath);
   if (!response.ok) throw new Error("認証サービスから安全な応答を受け取れませんでした。");
 
   const parsed = sessionContextResponseSchema.safeParse(await response.json().catch(() => null));

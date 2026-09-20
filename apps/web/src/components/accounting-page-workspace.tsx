@@ -5,15 +5,23 @@ import { useCallback, useEffect, useState } from "react";
 import { AccountingWorkspace, type AccountingMobileStage } from "./accounting-workspace";
 import styles from "./accounting-live-layout.module.css";
 
-export function AccountingPageWorkspace({ workspaceId }: { workspaceId: string }) {
+export type AccountingPageFormat = "money_forward_journal_v1" | "generic_journal_v1";
+
+export function AccountingPageWorkspace({
+  workspaceId,
+  initialStage = "format",
+  initialFormat = "money_forward_journal_v1",
+}: {
+  workspaceId: string;
+  initialStage?: AccountingMobileStage;
+  initialFormat?: AccountingPageFormat;
+}) {
   const [orders, setOrders] = useState<AccountingOrderOptionResponse[]>([]);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [mobileStage, setMobileStage] = useState<AccountingMobileStage>("format");
-  const [format, setFormat] = useState<"money_forward_journal_v1" | "generic_journal_v1">(
-    "money_forward_journal_v1",
-  );
+  const [mobileStage, setMobileStage] = useState<AccountingMobileStage>(initialStage);
+  const [format, setFormat] = useState<AccountingPageFormat>(initialFormat);
 
   const reload = useCallback(async () => {
     setLoading(true);

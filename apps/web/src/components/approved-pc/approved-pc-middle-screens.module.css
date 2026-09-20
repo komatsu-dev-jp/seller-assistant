@@ -43,6 +43,20 @@
   flex: 1;
   min-width: 0;
 }
+.headerAction {
+  appearance: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+.headerAction:focus-visible {
+  outline: 2px solid #075de4;
+  outline-offset: 2px;
+}
 .frame > header {
   height: 56px;
   background: #fff;
@@ -104,6 +118,7 @@
   margin: 0 0 10px;
 }
 .card a,
+.card .previewInlineAction,
 .outline {
   color: #075be6;
   text-decoration: none;
@@ -270,12 +285,14 @@
   text-align: center;
   padding: 25px;
 }
-.uploadCard a {
+.uploadCard a,
+.uploadCard button {
   color: #075be6;
   text-decoration: none;
   font-size: 16px;
 }
-.uploadCard a::before {
+.uploadCard a::before,
+.uploadCard button::before {
   content: "▣";
   margin-right: 8px;
 }
@@ -1150,19 +1167,72 @@
   gap: 10px;
 }
 .reply article {
+  position: relative;
   border: 1px solid #e2e7ef;
   border-radius: 5px;
   padding: 9px;
   margin: 7px 0;
 }
-.reply article p {
+.reply article[data-selected="true"] {
+  border-color: #76a9f5;
+  box-shadow: 0 0 0 1px #d8e8ff;
+}
+.replyTemplateText {
+  display: block;
+  box-sizing: border-box;
+  width: calc(100% - 58px);
+  height: 40px;
+  min-height: 0 !important;
+  margin: 3px 0 0;
+  padding: 0 3px 0 0 !important;
+  overflow: hidden;
+  resize: none;
+  border: 0 !important;
+  background: transparent;
+  color: inherit;
+  font: inherit;
   font-size: 11px;
   line-height: 1.4;
 }
-.reply article a {
-  float: right;
-  margin-top: -40px;
+.replyTemplateText:focus {
+  overflow: auto;
+  outline: 2px solid #1769d5;
+  outline-offset: 1px;
+}
+.replyCopyButton {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
   padding: 4px 8px;
+  color: #075be6;
+  border: 1px solid #a9c8ff;
+  border-radius: 4px;
+  background: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+.replyCopyButton:disabled,
+.screen28 .replyFooter > .primary:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.replyFooter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.replyCopyNotice {
+  flex: 1 1 360px;
+  max-width: 620px;
+  margin: 0;
+  padding: 7px 10px;
+  border: 1px solid #8db4ef;
+  border-radius: 6px;
+  background: #f4f8ff;
+  color: #17365f;
+  font-weight: 700;
 }
 .reply .outline {
   display: block;
@@ -1517,7 +1587,7 @@
   color: #5a6b83;
   font-size: 12px;
 }
-.utilityTools > span:not(.utilityUser) {
+.utilityTools > :not(.utilityUser) {
   display: grid;
   place-items: center;
   width: 30px;
@@ -1824,6 +1894,10 @@
   gap: 8px;
 }
 
+.previewTopbar .topbarTitle {
+  flex-basis: 270px;
+}
+
 .topbarTitle b {
   width: 40px;
   height: 32px;
@@ -1975,7 +2049,9 @@
   margin: -1px 0 6px;
 }
 
-.photoHeaderActions a {
+.photoHeaderActions a,
+.photoHeaderActions button,
+.photoHeaderActions .confirmedAction {
   box-sizing: border-box;
   padding: 4px 8px;
   border: 1px solid #a9c8ff;
@@ -2032,7 +2108,8 @@
   padding: 16px 9px;
 }
 
-.uploadCard a {
+.uploadCard a,
+.uploadCard button {
   font-size: 12px;
 }
 
@@ -2460,10 +2537,79 @@
   resize: none;
 }
 
-.screen24 .official .card > a {
+.screen24 .official .card > a,
+.screen24 .official .card > .officialTextCopy {
   margin-top: 6px;
   padding: 4px 5px;
   font-size: 8px;
+}
+
+.officialTextCopy {
+  cursor: pointer;
+  font: inherit;
+}
+
+.officialTextCopy:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.officialCopyError {
+  display: block;
+  margin-top: 3px;
+  color: #a33b3b;
+  font-size: 7px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.officialDraftError {
+  display: block;
+  margin-top: 3px;
+  color: #9a4c00;
+  font-size: 7px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.officialPendingAction {
+  box-sizing: border-box;
+  width: 100%;
+  cursor: not-allowed;
+  font: inherit;
+  font-size: 7px;
+  opacity: 0.58;
+  white-space: nowrap;
+}
+
+.officialPendingNote {
+  display: block;
+  margin-top: 3px;
+  color: #68778e;
+  font-size: 7px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.officialSavePending {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.officialSavePending > small {
+  max-width: 210px;
+  color: #68778e;
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1.25;
+  text-align: right;
+}
+
+.officialSavePending > .primary:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
 }
 
 .browser {
@@ -2847,8 +2993,34 @@
   line-height: 1.25;
 }
 
-.screen27 .pad > .primary {
+.screen27 .pad > .priceFooter > .primary {
   margin-top: 2px;
+}
+
+.priceFooter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.priceFooter > .primary {
+  cursor: pointer;
+  font: inherit;
+}
+
+.priceCopyNotice {
+  flex: 1 1 320px;
+  margin: 0;
+  padding: 7px 9px;
+  color: #23446f;
+  background: #f4f8ff;
+  border: 1px solid #b8d2ff;
+  border-radius: 5px;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.3;
 }
 
 /* 28: all four templates, memo, and record CTA remain visible. */
@@ -2873,14 +3045,17 @@
   overflow: hidden;
 }
 
-.screen28 .reply article p {
+.screen28 .replyTemplateText {
+  width: calc(100% - 46px);
+  height: 31px;
   margin: 3px 0;
   font-size: 8px;
   line-height: 1.2;
 }
 
-.screen28 .reply article a {
-  margin-top: -24px;
+.screen28 .replyCopyButton {
+  right: 4px;
+  bottom: 4px;
   padding: 3px 5px;
   font-size: 8px;
 }
@@ -2900,14 +3075,14 @@
   font-size: 8px;
 }
 
-.screen28 .reply textarea {
+.screen28 .reply > .card:last-child textarea {
   height: 45px;
   min-height: 0;
   padding: 5px;
   font-size: 8px;
 }
 
-.screen28 .pad > .primary {
+.screen28 .replyFooter {
   margin-top: 5px;
 }
 
@@ -2975,13 +3150,13 @@
   font-size: 10px;
 }
 
-.utilityApp .utilityTools > span:not(.utilityUser) {
+.utilityApp .utilityTools > :not(.utilityUser) {
   width: 24px;
   height: 24px;
   font-size: 11px;
 }
 
-.utilityApp .utilityTools > span:not(.utilityUser) svg {
+.utilityApp .utilityTools > :not(.utilityUser) svg {
   width: 14px;
   height: 14px;
 }
@@ -3949,6 +4124,107 @@
   text-align: center;
 }
 
+.descriptionActions {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 7px;
+  font-size: 9px;
+}
+
+.descriptionActions > button {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #075bc8;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.descriptionActions > small {
+  float: none;
+  margin-left: auto;
+}
+
+.descriptionStatus {
+  display: block;
+  float: none !important;
+  margin-top: 4px;
+  color: #9a4c00 !important;
+  line-height: 1.3;
+}
+
+.primaryDisabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
+.descriptionPreview {
+  box-sizing: border-box;
+  width: min(680px, calc(100vw - 32px));
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+  border: 1px solid #d8e0ea;
+  border-radius: 12px;
+  padding: 22px;
+  color: #172033;
+  background: #ffffff;
+  box-shadow: 0 18px 55px rgb(21 35 58 / 24%);
+}
+
+.descriptionPreview::backdrop {
+  background: rgb(20 32 52 / 36%);
+}
+
+.descriptionPreview h2 {
+  margin: 0 0 5px;
+  font-size: 19px;
+}
+
+.descriptionPreview p {
+  margin: 0 0 14px;
+  color: #68758a;
+  font-size: 12px;
+}
+
+.descriptionPreview pre {
+  max-height: min(520px, calc(100vh - 190px));
+  overflow: auto;
+  margin: 0 0 16px;
+  border: 1px solid #e2e7ef;
+  border-radius: 8px;
+  padding: 16px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: #20293a;
+  background: #f8fafc;
+  font:
+    14px/1.75 system-ui,
+    sans-serif;
+}
+
+.descriptionPreview > button {
+  display: block;
+  min-width: 140px;
+  margin-left: auto;
+}
+
+.descriptionReset {
+  width: min(480px, calc(100vw - 32px));
+}
+
+.descriptionResetActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.descriptionResetActions > button {
+  min-width: 140px;
+}
+
 .screen24 .pad {
   padding: 10px 25px 8px 18px;
 }
@@ -3982,7 +4258,9 @@
   height: 140px;
 }
 
-.screen24 .official .card > a {
+.screen24 .official .card > a,
+.screen24 .official .card > .officialTextCopy,
+.screen24 .official .card > .officialPendingAction {
   margin-top: 13px;
 }
 
@@ -4020,11 +4298,65 @@
 }
 
 .screen25 .toggle {
+  display: flex;
+  align-items: center;
+  gap: 3px;
   margin-top: 8px;
 }
 
+.screen25 .toggle > button {
+  appearance: none;
+  flex: 1;
+  border: 0;
+  border-radius: 11px;
+  padding: 5px 7px;
+  color: #49627f;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.screen25 .toggle > .toggleActive {
+  color: #ffffff;
+  background: #075be6;
+  font-weight: 700;
+}
+
 .screen25 .filter {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   margin-top: 9px;
+}
+
+.screen25 .filter > button {
+  appearance: none;
+  border: 1px solid #cdd9e9;
+  border-radius: 11px;
+  padding: 3px 7px;
+  color: #3566ae;
+  background: #ffffff;
+  font: inherit;
+  cursor: pointer;
+}
+
+.screen25 .filter > .filterActive {
+  border-color: #075be6;
+  color: #ffffff;
+  background: #075be6;
+  font-weight: 700;
+}
+
+.screen25 .filter > button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.galleryUrlNotice {
+  margin: 4px 0 0;
+  color: #68778e;
+  font-size: 8px;
+  font-weight: 700;
 }
 
 .screen25 .gallery {
@@ -4051,8 +4383,98 @@
   font-size: 7px;
 }
 
+.galleryUrlAction {
+  display: grid;
+  justify-items: end;
+  gap: 1px;
+}
+
+.galleryUrlAction > button {
+  appearance: none;
+  border: 0;
+  padding: 2px 3px;
+  color: #68778e;
+  background: transparent;
+  font: inherit;
+  font-size: 7px;
+  text-decoration: underline;
+}
+
+.galleryUrlAction > button:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.galleryUrlAction > small {
+  margin: 0 !important;
+  color: #8b4b19;
+  font-size: 6px !important;
+  font-weight: 700;
+}
+
+.screen25 .galleryList {
+  grid-template-columns: minmax(0, 1fr);
+  row-gap: 5px;
+}
+
+.screen25 .galleryList .card {
+  display: grid;
+  grid-template-columns: 70px 55px minmax(100px, 1.4fr) 62px 70px 90px minmax(120px, 0.9fr);
+  align-items: center;
+  gap: 4px;
+  height: 50px;
+  min-height: 0;
+  padding: 4px 6px;
+}
+
+.screen25 .galleryList .galleryArt {
+  width: 58px;
+  height: 42px;
+  margin: 0;
+}
+
+.screen25 .galleryList h3,
+.screen25 .galleryList p,
+.screen25 .galleryList small,
+.screen25 .galleryList footer {
+  margin: 0;
+}
+
+.screen25 .galleryList footer {
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+}
+
 .screen25 .galleryPagination {
-  margin-top: 14px;
+  margin-top: 12px;
+}
+
+.screen25 .galleryPagination > button {
+  appearance: none;
+  min-width: 22px;
+  height: 22px;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  border: 1px solid #d7e0eb;
+  border-radius: 5px;
+  color: #284266;
+  background: #ffffff;
+  font: inherit;
+  font-size: 9px;
+}
+
+.screen25 .galleryPagination > button:disabled:not(.pageActive) {
+  opacity: 0.45;
+}
+
+.screen25 .galleryPagination > .pageActive {
+  border-color: #075de4;
+  color: #ffffff;
+  background: #075de4;
+  font-weight: 700;
+  opacity: 1;
 }
 
 /* 26: six list rows, four direct-entry fields, and the uploaded reference all
@@ -4150,7 +4572,7 @@
   margin: 11px 0;
 }
 
-.screen27 .pad > .primary {
+.screen27 .pad > .priceFooter > .primary {
   margin-top: 4px;
 }
 
@@ -4173,11 +4595,11 @@
   height: 56px;
 }
 
-.screen28 .reply textarea {
+.screen28 .reply > .card:last-child textarea {
   height: 73px;
 }
 
-.screen28 .pad > .primary {
+.screen28 .replyFooter {
   margin-top: 9px;
 }
 
@@ -4204,7 +4626,8 @@
 }
 
 .screen29 .order {
-  height: 296px;
+  min-height: 296px;
+  height: auto;
 }
 
 .screen29 .order h3 {
@@ -4247,7 +4670,7 @@
 }
 
 .screen29 .order .warn {
-  margin-top: 27px;
+  margin-top: 16px;
   padding: 8px 9px;
 }
 
@@ -4257,6 +4680,165 @@
 
 .screen29 .pad > footer {
   margin-top: 10px;
+}
+
+.orderDetailsButton {
+  border: 0;
+  padding: 0;
+  color: #075be6;
+  background: transparent;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.orderDetails {
+  margin: -2px 0 8px;
+  padding: 7px 9px;
+  border: 1px solid #c9dcf7;
+  border-radius: 5px;
+  color: #23466f;
+  background: #f3f8ff;
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.orderLocalStatus {
+  margin: 7px 0 0;
+  color: #76520c;
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+.orderPreviewNotice {
+  margin: 8px 0 0;
+  color: #5b6879;
+  font-size: 9px;
+  line-height: 1.35;
+  text-align: right;
+}
+
+.pendingFooter {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.pendingFooter > .outline {
+  box-sizing: border-box;
+  padding: 7px 12px;
+  font-size: 10px;
+  line-height: 1.15;
+}
+
+.pendingPrimaryAction {
+  display: flex;
+  max-width: 205px;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.pendingPrimaryAction > .primary {
+  width: 100%;
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
+.pendingPrimaryAction small {
+  color: #5b6879;
+  font-size: 8px;
+  line-height: 1.25;
+}
+
+.secondaryAction {
+  box-sizing: border-box;
+  border: 1px solid #d4dce8;
+  border-radius: 5px;
+  padding: 7px 12px;
+  color: #203559;
+  background: #ffffff;
+  font: inherit;
+  font-size: 10px;
+  line-height: 1.15;
+  cursor: pointer;
+}
+
+.packPhotoAction {
+  float: right;
+  margin-top: -22px;
+  border: 1px solid #dce3ec;
+  border-radius: 4px;
+  padding: 3px 5px;
+  color: #657287;
+  background: #ffffff;
+  font: inherit;
+  font-size: 8px;
+  cursor: not-allowed;
+}
+
+.packChecklistStatus {
+  display: block;
+  margin-top: 5px;
+  color: #657287;
+  font-size: 7px;
+  line-height: 1.15;
+}
+
+.packPreviewFooter {
+  justify-content: space-between;
+}
+
+.shipMethodChoice {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  margin: 3px 0;
+  border: 1px solid #dce4ee;
+  border-radius: 4px;
+  padding: 5px;
+  color: #1d3153;
+  background: #ffffff;
+  font: inherit;
+  font-size: 8px;
+  line-height: 1.1;
+  text-align: left;
+  cursor: pointer;
+}
+
+.shipMethodChoice span,
+.shipMethodChoice small,
+.shipMethodChoice b {
+  display: block;
+}
+
+.catalogEditButton {
+  float: right;
+  border: 0;
+  padding: 0;
+  color: #657287;
+  background: transparent;
+  font: inherit;
+  font-size: 7px;
+  cursor: not-allowed;
+}
+
+.screen32 .ship .shipTotalPreview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 5px;
+}
+
+.screen32 .ship .shipTotalPreview b {
+  float: none;
+  flex: none;
+  font-size: 10px;
+}
+
+.shipLocalStatus {
+  display: block;
+  color: #657287;
+  font-size: 7px;
+  line-height: 1.2;
 }
 
 .screen30.utilityApp {
@@ -4291,6 +4873,10 @@
 
 .screen30 .pickBottom {
   margin-top: 22px;
+}
+
+.pendingResult {
+  color: #9a6400;
 }
 
 .screen30 .pad > footer {
@@ -4524,13 +5110,11 @@
   font-size: 7px;
 }
 
-.screen28 .reply article p {
-  padding-right: 45px;
+.screen28 .replyTemplateText {
   white-space: pre-line;
 }
 
-.screen28 .reply article a {
-  position: relative;
+.screen28 .replyCopyButton {
   z-index: 1;
 }
 
@@ -4584,4 +5168,215 @@
 .screen32 .ship label small {
   color: #a66000;
   font-size: 7px;
+}
+
+/* PC26 keeps each product's unsaved values separate and makes every pending
+   external/save action explicit.  The compact grid preserves the approved
+   board while fitting the additional search/source facts. */
+.salesReferenceDate {
+  display: block;
+  margin: 2px 0 4px;
+  color: #6a7890;
+  font-size: 7px;
+  font-weight: 500;
+}
+
+.screen26 .sales > .card > button {
+  height: 50px;
+  margin: 2px 0;
+}
+
+.screen26 .sales > section {
+  padding-top: 8px;
+}
+
+.screen26 .sales > section > h3 {
+  margin-bottom: 12px;
+}
+
+.screen26 .sales > section > .card {
+  height: 308px;
+  overflow: hidden;
+}
+
+.screen26 .sales section > .card > .directEntry {
+  box-sizing: border-box;
+  float: none;
+  width: 100%;
+  padding-top: 5px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px 7px;
+}
+
+.screen26 .sales section > .card > .screenshotCandidateFields {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+  padding-top: 4px;
+}
+
+.screen26 .directEntry label,
+.screen26 .salesMetaFields label {
+  clear: none;
+  min-width: 0;
+  padding-top: 0;
+  color: #334b6d;
+  font-size: 7px;
+  font-weight: 700;
+}
+
+.screen26 .directEntry input {
+  height: 21px;
+  padding: 3px 4px;
+  font-size: 8px;
+}
+
+.screen26 .directEntry i {
+  font-size: 7px;
+}
+
+.salesScreenshotPending {
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+  gap: 7px;
+  height: 82px;
+  margin-bottom: 2px;
+}
+
+.salesScreenshotPending figure {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  min-width: 0;
+  height: 82px;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid #d9e1ec;
+  border-radius: 4px;
+  background: #ffffff;
+}
+
+.salesScreenshotPending figure img {
+  width: 100%;
+  height: 62px;
+  object-fit: contain;
+}
+
+.salesScreenshotPending figcaption {
+  padding: 2px 3px;
+  overflow: hidden;
+  color: #6a7890;
+  font-size: 6px;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.salesScreenshotPending > div {
+  min-width: 0;
+  padding: 2px 0;
+}
+
+.salesScreenshotPending > div > b {
+  display: block;
+  margin: 4px 0 2px;
+  color: #2a3f60;
+  font-size: 8px;
+}
+
+.salesScreenshotPending > div > p:not(.candidate) {
+  margin: 0 0 4px;
+  color: #68778e;
+  font-size: 7px;
+  line-height: 1.2;
+}
+
+.salesPendingActions button {
+  border: 1px solid #c7d3e2;
+  border-radius: 4px;
+  background: #f4f6f9;
+  color: #8290a3;
+  font-size: 7px;
+}
+
+.salesScreenshotPending button {
+  padding: 3px 5px;
+  border: 1px solid #9dbcea;
+  border-radius: 4px;
+  background: #edf4ff;
+  color: #155fd3;
+  font-size: 7px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.salesScreenshotFileInput {
+  display: none;
+}
+
+.salesScreenshotPending > div > .salesScreenshotError {
+  margin: -2px 0 2px;
+  color: #b42318;
+  font-size: 6px;
+  font-weight: 700;
+}
+
+.salesMetaFields {
+  clear: both;
+  display: grid;
+  grid-template-columns: 0.75fr 1.35fr 0.75fr;
+  gap: 7px;
+  padding-top: 7px;
+}
+
+.screen26 .salesMetaFields input,
+.screen26 .salesMetaFields select {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  height: 23px;
+  min-width: 0;
+  margin-top: 3px;
+  padding: 3px;
+  border: 1px solid #d7dfe9;
+  border-radius: 3px;
+  background: #ffffff;
+  color: #263957;
+  font-size: 7px;
+}
+
+.salesDraftNotice {
+  clear: both;
+  margin: 5px 0 0;
+  color: #a66000;
+  font-size: 7px;
+  line-height: 1.2;
+}
+
+.screen26 .sales .salesPendingActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+  padding-top: 5px;
+}
+
+.salesPendingActions > span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.salesPendingActions button,
+.screen26 .sales .salesPendingActions .primary {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 25px;
+  padding: 4px 6px;
+  opacity: 1;
+  cursor: not-allowed;
+}
+
+.salesPendingActions small {
+  color: #6a7890;
+  font-size: 6px;
+  line-height: 1.15;
 }

@@ -33,6 +33,25 @@ export function isReturnQuarantineLocation(place: {
   return place.canStoreInventory && place.purpose === "return_quarantine";
 }
 
+export function inventoryOperationErrorMessage(reason: unknown): string {
+  if (
+    reason instanceof Error &&
+    reason.message === "Return quarantine requires the shipped allocated item"
+  )
+    return "この返品は、ほかの画面ですでに隔離されたか、状態が変わりました。";
+  return reason instanceof Error ? reason.message : "操作を確認できませんでした。";
+}
+
+export function labelReissueSuccessMessage(
+  targetType: "inventory_unit" | "location",
+  shortCode: string,
+  version: number,
+): string {
+  if (targetType === "location")
+    return `場所ラベルをV${version}として再発行しました。古い場所ラベルは無効です。場所コード ${shortCode} の新しい場所ラベルを使ってください。`;
+  return `商品ラベルをV${version}として再発行しました。古い商品ラベルは無効です。「商品番号・ラベル」でV${version}を確認してください。`;
+}
+
 export function createPrivateInventoryPhotoSession(options: {
   url: string | null | undefined;
   workspaceId: string;

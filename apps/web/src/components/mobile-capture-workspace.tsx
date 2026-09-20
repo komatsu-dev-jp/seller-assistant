@@ -1,7 +1,7 @@
 "use client";
 
 import type { CaptureTaskResponse, MeasurementResponse } from "@resale/contracts";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   clearCaptureBusinessData,
   clearCaptureUploads,
@@ -11,10 +11,12 @@ import {
   markCaptureUploaded,
   prepareCaptureUpload,
   prepareMeasurementEvidenceUpload,
+  assertDedicatedMeasurementPhotos,
   saveCaptureDraft,
   type CaptureRole,
 } from "../lib/capture-outbox";
 import { completeMeasurements, measurementDefinitionsFor } from "../lib/measurement-profile";
+import { p0UserFacingErrorMessage } from "../lib/p0-user-facing-error";
 import { WorkflowCaptureSteps, WorkflowLiveLayout } from "./workflow-live-layout";
 import { assignedCaptureTasks } from "./workflow-capture-data";
 
@@ -38,6 +40,7 @@ export function MobileCaptureWorkspace({ workspaceId }: { workspaceId: string })
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [draftReadyFor, setDraftReadyFor] = useState("");
+  const refreshRequest = useRef(0);
   const task = tasks.find((entry) => entry.skuId === selectedId) ?? tasks[0] ?? null;
   const definitions = measurementDefinitionsFor(task?.measurementProfile ?? null);
   const draftTemplate = useMemo(
@@ -52,40 +55,59 @@ export function MobileCaptureWorkspace({ workspaceId }: { workspaceId: string })
   );
 
   const refresh = useCallback(async () => {
-    const loaded = assignedCaptureTasks(
-      await requestJson<unknown>(`/v1/workspaces/${workspaceId}/capture-tasks`),
-      workspaceId,
-    );
-    await clearUnassignedCaptureUploads(
-      workspaceId,
-      loaded.map((entry) => entry.skuId),
-    );
-    setTasks(loaded);
-    setSelectedId((current) => {
-      return current && loaded.some((entry) => entry.skuId === current)
-        ? current
-        : (loaded[0]?.skuId ?? "");
-    });
+    const request = ++refreshRequest.current;
+    try {
+      const loaded = assignedCaptureTasks(
+        await requestJson<unknown>(`/v1/workspaces/${workspaceId}/capture-tasks`),
+        workspaceId,
+      );
+      if (request !== refreshRequest.current) return false;
+      await clearUnassignedCaptureUploads(
+        workspaceId,
+        loaded.map((entry) => entry.skuId),
+      );
+      if (request !== refreshRequest.current) return false;
+      setTasks(loaded);
+      setSelectedId((current) => {
+        return current && loaded.some((entry) => entry.skuId === current)
+          ? current
+          : (loaded[0]?.skuId ?? "");
+      });
+      return true;
+    } catch (reason) {
+      if (request !== refreshRequest.current) return false;
+      throw reason;
+    }
   }, [workspaceId]);
 
   useEffect(() => {
-    refresh()
+    const operation = refresh();
+    const request = refreshRequest.current;
+    operation
       .catch(async (reason: unknown) => {
+        if (request !== refreshRequest.current) return;
         if (isAssignmentRevokedError(reason)) {
           try {
             await clearCaptureBusinessData();
           } catch (cleanupError) {
-            setError(`担当は解除済みですが、${errorMessage(cleanupError)}`);
+            if (request === refreshRequest.current)
+              setError(`担当は解除済みですが、${errorMessage(cleanupError)}`);
             return;
           }
+          if (request !== refreshRequest.current) return;
           setFiles({});
           setTasks([]);
           setValues({});
           setTagText("");
         }
-        setError(errorMessage(reason));
+        if (request === refreshRequest.current) setError(errorMessage(reason));
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (request === refreshRequest.current) setLoading(false);
+      });
+    return () => {
+      refreshRequest.current += 1;
+    };
   }, [refresh]);
 
   useEffect(() => {
@@ -149,6 +171,13 @@ export function MobileCaptureWorkspace({ workspaceId }: { workspaceId: string })
     setError("");
     setMessage("");
     try {
+      await assertDedicatedMeasurementPhotos(
+        roles.map(({ id, label }) => ({ label, file: files[id] })),
+        definitions.map(({ definitionId, label }) => ({
+          label,
+          file: measurementEvidence[definitionId],
+        })),
+      );
       const roleToAsset = new Map<CaptureRole, string>();
       task.photoRoles.forEach((role, index) => {
         const assetId = task.photoAssetIds[index];
@@ -244,7 +273,7 @@ export function MobileCaptureWorkspace({ workspaceId }: { workspaceId: string })
           ),
         );
       }
-      await refresh();
+      if (!(await refresh())) return;
       if (saved.some((entry) => entry.requiresReview)) {
         throw new Error("2cmを超える差があります。再測定し、正しい場合は理由を選んでください。");
       }
@@ -277,7 +306,7 @@ export function MobileCaptureWorkspace({ workspaceId }: { workspaceId: string })
       setTagText("");
       setMessage("写真・採寸を保存しました。商品候補は管理者の確認待ちです。");
       setCompletedSkuId(task.skuId);
-      await refresh();
+      if (!(await refresh())) return;
     } catch (reason) {
       if (isAssignmentRevokedError(reason)) {
         try {
@@ -300,9 +329,12 @@ export function MobileCaptureWorkspace({ workspaceId }: { workspaceId: string })
   async function retry() {
     setLoading(true);
     setError("");
+    const operation = refresh();
+    const request = refreshRequest.current;
     try {
-      await refresh();
+      await operation;
     } catch (reason) {
+      if (request !== refreshRequest.current) return;
       if (isAssignmentRevokedError(reason)) {
         setTasks([]);
         setFiles({});
@@ -310,9 +342,9 @@ export function MobileCaptureWorkspace({ workspaceId }: { workspaceId: string })
         setTagText("");
         await clearCaptureBusinessData().catch(() => undefined);
       }
-      setError(errorMessage(reason));
+      if (request === refreshRequest.current) setError(errorMessage(reason));
     } finally {
-      setLoading(false);
+      if (request === refreshRequest.current) setLoading(false);
     }
   }
 
@@ -328,7 +360,15 @@ export function MobileCaptureWorkspace({ workspaceId }: { workspaceId: string })
         </div>
       ) : null}
       {message ? <p role="status">{message}</p> : null}
-      {!loading && !task ? <p>現在の撮影割当はありません。担当を確認してください。</p> : null}
+      {!loading && !task && !error ? (
+        <section className="panel" role="status">
+          <h1>今は撮影・採寸できる商品がありません</h1>
+          <p>管理者が商品を割り当てると、この画面から撮影・採寸できます。</p>
+          <a className="primaryButton" href="/mobile">
+            今日の作業へ戻る
+          </a>
+        </section>
+      ) : null}
       {task && !loading ? (
         <>
           <section className="panel">
@@ -450,7 +490,10 @@ function isAssignmentRevokedError(reason: unknown): boolean {
 }
 
 function errorMessage(reason: unknown): string {
-  return reason instanceof Error ? reason.message : "処理に失敗しました。";
+  if (isAssignmentRevokedError(reason)) {
+    return "この商品の撮影・採寸は現在の担当範囲に含まれません。管理者に担当を確認してください。";
+  }
+  return p0UserFacingErrorMessage(reason);
 }
 
 function latestMeasurements(

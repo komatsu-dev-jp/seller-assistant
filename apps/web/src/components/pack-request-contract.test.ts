@@ -2,10 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const operationCallers = [
-  "apps/web/src/components/p0-workspace.tsx",
-  "apps/web/src/components/shipping-workspace.tsx",
-] as const;
+const operationCallers = ["apps/web/src/components/shipping-workspace.tsx"] as const;
 
 const operations = [
   { route: "pack", requestType: "PackOrderRequest" },
@@ -13,6 +10,19 @@ const operations = [
 ] as const;
 
 describe("pack and ship request callers follow the strict public contracts", () => {
+  it("routes legacy workflow orders through the verified shipping screen instead of inventing scans", () => {
+    const source = readFileSync(resolve("apps/web/src/components/p0-workspace.tsx"), "utf8");
+    expect(source).toContain("/shipping?order=${encodeURIComponent(item.orderId)}");
+    expect(source).toContain("/shipping?sku=${encodeURIComponent(item.skuId)}");
+    expect(source).not.toContain("async function createOrder");
+    expect(source).not.toContain('shippingAddress: textField(form, "shippingAddress")');
+    expect(source).not.toContain("async function progressOrder");
+    expect(source).not.toContain("inventoryScannedAt:");
+    expect(source).not.toContain("locationScannedAt:");
+    expect(source).not.toContain("/address-leases");
+    for (const operation of ["pick", "pack", "ship"])
+      expect(source).not.toContain(`/${operation}\``);
+  });
   it.each(operationCallers)("keeps server-owned evidence fields out of %s", (path) => {
     const source = readFileSync(resolve(path), "utf8");
 

@@ -812,3 +812,82 @@
     display: none;
   }
 }
+.missingInformationReview {
+  padding: 12px;
+  border: 1px solid #e8c66a;
+  border-radius: 12px;
+  background: #fff9e8;
+  color: #423715;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.missingInformationReview label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-height: 44px;
+}
+
+.missingInformationReview input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.mobile .mobileActionBar {
+  padding: 8px 0;
+  background: #fff;
+  box-shadow: 0 0 0 10px #fff;
+}
+
+/* The approved review composition uses a two-row fixed action area. Reserve
+   its full height when the body must scroll (short Safari viewport or live
+   missing-information rows), so the final fee warning can clear the action.
+   The safe-area term keeps the same gap above an iPhone home indicator. */
+.page .mobile .mobileReviewScrollArea {
+  padding-bottom: calc(231px + max(8px, env(safe-area-inset-bottom)));
+}
+
+.page .mobile .mobileReviewScrollArea .mobileActionBar {
+  bottom: calc(65px + max(8px, env(safe-area-inset-bottom)));
+}
+
+@media (max-width: 620px) {
+  .page .mobile .mobileReviewScrollArea {
+    padding-bottom: calc(254px + max(10px, env(safe-area-inset-bottom)));
+  }
+
+  .page .mobile .mobileReviewScrollArea .mobileActionBar {
+    bottom: calc(87px + max(10px, env(safe-area-inset-bottom)));
+  }
+}
+
+.pc .shippingInformationCard {
+  overflow-y: auto;
+}
+
+.pc .missingInformationReview {
+  padding: 6px;
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+.pc .missingInformationReview ul {
+  margin: 4px 0;
+  padding-left: 16px;
+}
+
+.pc .missingInformationReview label {
+  display: flex;
+  min-height: 24px;
+  margin: 6px 0 0;
+  gap: 4px;
+}
+
+.pc .missingInformationReview input[type="checkbox"] {
+  width: 12px;
+  height: 12px;
+  margin: 0;
+  padding: 0;
+}

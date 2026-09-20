@@ -6,10 +6,12 @@ import type {
   P0ItemResponse,
   SessionContextResponse,
 } from "@resale/contracts";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { OfflineSyncStatus } from "./offline-sync-status";
 import { loadCaptureUploads } from "../lib/capture-outbox";
 import styles from "./navigation-home-team.module.css";
+import { workflowItemHref } from "../lib/workflow-item-selection";
+import { PUTAWAY_SYNC_CHANGED } from "../lib/offline-events";
 
 type HomeRole = SessionContextResponse["role"];
 type FlowState = "完了" | "進行中" | "未着手" | "要確認";
@@ -24,7 +26,9 @@ export function HomeWorkspace({ workspaceId, role }: { workspaceId: string; role
   const [mode, setMode] = useState<HomeMode>("home");
   const [capturePending, setCapturePending] = useState<number | null>(null);
   const [outboxError, setOutboxError] = useState("");
+  const refreshGeneration = useRef(0);
   const refresh = useCallback(async () => {
+    const generation = ++refreshGeneration.current;
     setLoading(true);
     setError("");
     try {
@@ -35,19 +39,27 @@ export function HomeWorkspace({ workspaceId, role }: { workspaceId: string; role
           ? requestJson<OwnerPulseResponse>(`/v1/workspaces/${workspaceId}/owner-pulse`)
           : Promise.resolve(null),
       ]);
+      if (generation !== refreshGeneration.current) return;
       setSummary(nextSummary);
       setItems(nextItems);
       setPulse(nextPulse);
     } catch (reason) {
+      if (generation !== refreshGeneration.current) return;
       setError(errorMessage(reason));
       throw reason;
     } finally {
-      setLoading(false);
+      if (generation === refreshGeneration.current) setLoading(false);
     }
   }, [role, workspaceId]);
 
   useEffect(() => {
     void refresh().catch(() => undefined);
+    const afterSync = () => void refresh().catch(() => undefined);
+    window.addEventListener(PUTAWAY_SYNC_CHANGED, afterSync);
+    return () => {
+      refreshGeneration.current += 1;
+      window.removeEventListener(PUTAWAY_SYNC_CHANGED, afterSync);
+    };
   }, [refresh]);
 
   useEffect(() => {
@@ -372,7 +384,7 @@ export function HomeWorkspace({ workspaceId, role }: { workspaceId: string; role
                   <div className="ownerSupplierEmpty">
                     <strong>仕入先データはまだありません</strong>
                     <p>商品登録後、原価・格納・撮影の基本データ充足率を表示します。</p>
-                    <a href="/workflow">仕入商品を登録</a>
+                    <a href="/workflow?new=1">仕入商品を登録</a>
                   </div>
                 )}
                 <p className="ownerSupplierNote">
@@ -431,7 +443,9 @@ export function HomeWorkspace({ workspaceId, role }: { workspaceId: string; role
                       <a
                         className="primaryButton"
                         href={
-                          requiresInventoryReview(current) ? "/inventory/stocktake" : "/workflow"
+                          requiresInventoryReview(current)
+                            ? "/inventory/stocktake"
+                            : workflowItemHref(current.skuId)
                         }
                       >
                         {requiresInventoryReview(current) ? "差異・隔離を確認" : "商品作業を開く"}
@@ -651,7 +665,7 @@ function workItemHref(item: P0ItemResponse): string {
     return item.inventoryStatus === "putaway_pending" ? "/mobile/scan" : "/inventory/stocktake";
   }
   if (stage === "shipping") return "/shipping";
-  return "/workflow";
+  return workflowItemHref(item.skuId);
 }
 
 function money(value: number | null | undefined): string {

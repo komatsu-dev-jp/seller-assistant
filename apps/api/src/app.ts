@@ -64,6 +64,8 @@ import {
   productMediaUploadResponseSchema,
   productAttributeConfirmationResponseSchema,
   productResearchResponseSchema,
+  publishedProductPageResponseSchema,
+  publishedProductPageSummarySchema,
   putawayInventoryRequestSchema,
   putawayInventoryResponseSchema,
   putawayCatalogResponseSchema,
@@ -75,6 +77,7 @@ import {
   recordMeasurementRequestSchema,
   recordOrderSaleAmountRequestSchema,
   recordOrderSaleAmountResponseSchema,
+  registerPublishedProductPageRequestSchema,
   reviewLocationPhotoRequestSchema,
   revokeTeamAssignmentRequestSchema,
   resolveStocktakeDiscrepancyRequestSchema,
@@ -1977,6 +1980,75 @@ export function buildApp(options: BuildAppOptions = {}) {
           ),
         ),
       );
+    } catch (error) {
+      const mapped = mapRepositoryError(error, request.id);
+      return reply.code(mapped.status).send(mapped.payload);
+    }
+  });
+
+  app.get<{
+    Params: { workspaceId: string; skuId: string };
+    Reply: ReturnType<typeof publishedProductPageSummarySchema.parse> | ApiError;
+  }>("/v1/workspaces/:workspaceId/skus/:skuId/published-product-page", async (request, reply) => {
+    const context = await skuRequestContext(
+      request.params,
+      request.headers,
+      request.id,
+      authenticate,
+    );
+    if (context.error) return reply.code(context.status).send(context.error);
+    if (!options.p0ItemRepository)
+      return reply.code(503).send(p0ItemServiceUnavailable(request.id));
+    try {
+      return reply
+        .header("cache-control", "private, no-store")
+        .header("pragma", "no-cache")
+        .send(
+          publishedProductPageSummarySchema.parse(
+            await options.p0ItemRepository.publishedProductPage(
+              context.workspaceId,
+              context.skuId,
+              context.actor,
+            ),
+          ),
+        );
+    } catch (error) {
+      const mapped = mapRepositoryError(error, request.id);
+      return reply.code(mapped.status).send(mapped.payload);
+    }
+  });
+
+  app.post<{
+    Params: { workspaceId: string; skuId: string };
+    Body: unknown;
+    Reply: ReturnType<typeof publishedProductPageResponseSchema.parse> | ApiError;
+  }>("/v1/workspaces/:workspaceId/skus/:skuId/published-product-page", async (request, reply) => {
+    const context = await skuRequestContext(
+      request.params,
+      request.headers,
+      request.id,
+      authenticate,
+    );
+    const input = registerPublishedProductPageRequestSchema.safeParse(request.body);
+    if (context.error) return reply.code(context.status).send(context.error);
+    if (!input.success) return reply.code(400).send(invalidP0ItemInput(request.id));
+    if (!options.p0ItemRepository)
+      return reply.code(503).send(p0ItemServiceUnavailable(request.id));
+    try {
+      return reply
+        .header("cache-control", "private, no-store")
+        .header("pragma", "no-cache")
+        .code(201)
+        .send(
+          publishedProductPageResponseSchema.parse(
+            await options.p0ItemRepository.registerPublishedProductPage(
+              context.workspaceId,
+              context.skuId,
+              context.actor,
+              input.data,
+            ),
+          ),
+        );
     } catch (error) {
       const mapped = mapRepositoryError(error, request.id);
       return reply.code(mapped.status).send(mapped.payload);

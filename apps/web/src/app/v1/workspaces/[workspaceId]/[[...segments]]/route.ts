@@ -330,6 +330,15 @@ export function isAllowedPath(method: WorkspaceProxyMethod, segments: string[]):
     return true;
   }
   if (
+    (method === "GET" || method === "POST") &&
+    segments.length === 3 &&
+    segments[0] === "skus" &&
+    uuid.test(segments[1] ?? "") &&
+    segments[2] === "published-product-page"
+  ) {
+    return true;
+  }
+  if (
     segments[0] === "skus" &&
     uuid.test(segments[1] ?? "") &&
     ((method === "GET" && segments.length === 3 && segments[2] === "research") ||

@@ -6,6 +6,7 @@ import type {
   DiscrepancyEvidenceResponse,
   LocationNodeResponse,
   P0ItemResponse,
+  ReissuedInventoryLabelResponse,
   StocktakeResponse,
   ReturnCatalogResponse,
 } from "@resale/contracts";
@@ -29,6 +30,8 @@ import {
   validateReturnInventoryNumber,
   isReturnQuarantineLocation,
   inventoryStateLabel,
+  inventoryOperationErrorMessage,
+  labelReissueSuccessMessage,
 } from "../lib/inventory-live-safety";
 import styles from "./inventory-live.module.css";
 
@@ -71,7 +74,9 @@ export function StocktakeWorkspace({
   const active =
     initialFocus === "approval-pending"
       ? selectFocusedStocktake(stocktakes, selectedStocktakeId)
-      : (stocktakes.find((stocktake) => stocktake.state !== "approved") ?? null);
+      : selectedStocktakeId
+        ? (stocktakes.find((stocktake) => stocktake.stocktakeId === selectedStocktakeId) ?? null)
+        : (stocktakes.find((stocktake) => stocktake.state !== "approved") ?? null);
   const isApprovalActorEligible =
     active !== null &&
     (active.confirmationMode === "solo_reversible"
@@ -117,7 +122,6 @@ export function StocktakeWorkspace({
 
   useEffect(() => {
     if (initialFocus !== "approval-pending") {
-      setSelectedStocktakeId(null);
       return;
     }
     const selected = selectFocusedStocktake(stocktakes, selectedStocktakeId);
@@ -342,6 +346,36 @@ export function StocktakeWorkspace({
             </div>
             <span className="safeBadge">自動で在庫数を変更しません</span>
           </div>
+          {initialFocus === "all" && stocktakes.length > 0 ? (
+            <label className="operationsFormGrid">
+              確認する棚卸し
+              <select
+                value={selectedStocktakeId ?? ""}
+                disabled={busy}
+                onChange={(event) => {
+                  const targetId = event.target.value;
+                  setSelectedStocktakeId(targetId || null);
+                  setSelectedDiscrepancyId(null);
+                  setPendingChallenge(null);
+                  setSelectedEvidence([]);
+                  setMessage("");
+                  setMobileStage(
+                    stocktakes.find((entry) => entry.stocktakeId === targetId)?.state === "approved"
+                      ? "audit"
+                      : "mode",
+                  );
+                }}
+              >
+                <option value="">進行中の棚卸し・新しく始める</option>
+                {stocktakes.map((entry) => (
+                  <option key={entry.stocktakeId} value={entry.stocktakeId}>
+                    {entry.locationCode} / {stateLabel(entry.state)} /{" "}
+                    {entry.stocktakeId.slice(0, 8)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           <ol className="stocktakeJourney" aria-label="棚卸差異の確認手順">
             {["運用モード", "商品再読取", "場所再読取", "証拠と理由", "最終確認", "復元と監査"].map(
               (step, index) => (
@@ -507,6 +541,7 @@ export function StocktakeWorkspace({
                     >
                       {active.state === "counting" ? (
                         <CountingPanel
+                          key={active.stocktakeId}
                           busy={busy}
                           active={active}
                           onAct={act}
@@ -566,7 +601,7 @@ export function StocktakeWorkspace({
                         if (difference.kind === "missing_candidate") {
                           return (
                             <MissingCandidateCard
-                              key={difference.discrepancyId}
+                              key={`${difference.discrepancyId}:${difference.state}`}
                               busy={busy}
                               stocktake={active}
                               discrepancy={difference}
@@ -685,11 +720,27 @@ export function StocktakeWorkspace({
             <form
               action={(form) => {
                 const [targetType, targetId] = formText(form, "target").split(":");
-                return act(`/v1/workspaces/${workspaceId}/inventory-labels/reissue`, {
-                  targetType,
-                  targetId,
-                  reasonCode: form.get("reasonCode"),
-                  humanConfirmed: true,
+                return run(async () => {
+                  const reissued = await requestJson<ReissuedInventoryLabelResponse>(
+                    `/v1/workspaces/${workspaceId}/inventory-labels/reissue`,
+                    {
+                      method: "POST",
+                      body: JSON.stringify({
+                        targetType,
+                        targetId,
+                        reasonCode: form.get("reasonCode"),
+                        humanConfirmed: true,
+                      }),
+                    },
+                  );
+                  await reload();
+                  setMessage(
+                    labelReissueSuccessMessage(
+                      reissued.targetType,
+                      reissued.shortCode,
+                      reissued.version,
+                    ),
+                  );
                 });
               }}
               className={`operationsFormGrid stocktakeMobilePanel ${
@@ -1503,6 +1554,16 @@ function HoldToConfirmButton({
 
   useEffect(() => clearTimers, [clearTimers]);
 
+  async function submitConfirmation() {
+    setMode("submitting");
+    try {
+      await onConfirm();
+    } finally {
+      setMode("idle");
+      setRemaining(3);
+    }
+  }
+
   function start(nextMode: "pointer" | "keyboard") {
     if (busy || mode !== "idle") return;
     clearTimers();
@@ -1516,8 +1577,7 @@ function HoldToConfirmButton({
       clearTimers();
       setRemaining(0);
       if (nextMode === "pointer") {
-        setMode("submitting");
-        void onConfirm();
+        void submitConfirmation();
       } else {
         setMode("ready");
       }
@@ -1550,8 +1610,7 @@ function HoldToConfirmButton({
     if (mode === "idle") {
       start("keyboard");
     } else if (mode === "ready") {
-      setMode("submitting");
-      void onConfirm();
+      void submitConfirmation();
     }
   }
 
@@ -1630,7 +1689,7 @@ function formText(form: FormData, key: string): string {
 }
 
 function errorMessage(reason: unknown): string {
-  return reason instanceof Error ? reason.message : "操作を確認できませんでした。";
+  return inventoryOperationErrorMessage(reason);
 }
 
 function stateLabel(state: StocktakeResponse["state"]): string {

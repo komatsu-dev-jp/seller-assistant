@@ -588,7 +588,8 @@ describe("zero-cost PWA contract", () => {
     expect(guard).toContain('import "server-only"');
     expect(guard).toContain('cache: "no-store"');
     expect(guard).toContain("sessionContextResponseSchema.safeParse");
-    expect(guard).toContain('redirect("/login")');
+    expect(guard).toContain("encodeURIComponent(safeReturnTo)");
+    expect(guard).toContain("redirect(loginPath)");
     expect(guard).toContain('redirect("/forbidden")');
     expect(guard).not.toMatch(/console\.|localStorage|sessionStorage/u);
     for (const source of [home, inventory, stocktake, workflow]) {

@@ -9,6 +9,14 @@ describe("p0UserFacingErrorMessage", () => {
     ).toBe("発送担当には、チームに参加中の「発送担当」メンバーを指定してください。");
   });
 
+  it("explains how to recover when a saved photo is reused for another measurement", () => {
+    expect(
+      p0UserFacingErrorMessage(new Error("Dedicated measurement media cannot reuse another photo")),
+    ).toBe(
+      "この商品ですでに使った写真は、別の採寸項目や掲載用写真には使えません。別の写真を選んでください。",
+    );
+  });
+
   it("keeps an already user-facing validation message", () => {
     expect(p0UserFacingErrorMessage(new Error("注文番号を入力してください。"))).toBe(
       "注文番号を入力してください。",

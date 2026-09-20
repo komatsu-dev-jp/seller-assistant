@@ -989,6 +989,81 @@ export const salesChannelKeySchema = z
 
 export const salesChannelNameSchema = z.string().trim().min(1).max(80);
 
+export const publishedProductPageProductIdSchema = z
+  .string()
+  .trim()
+  .regex(/^m[0-9]{9,20}$/u);
+
+const mercariPublishedProductUrlSchema = z.string().trim().url().max(2048);
+
+export const registerPublishedProductPageRequestSchema = z
+  .object({
+    salesChannelKey: z.literal("mercari"),
+    salesChannelName: z.literal("メルカリ"),
+    productId: publishedProductPageProductIdSchema,
+    productUrl: mercariPublishedProductUrlSchema,
+    idempotencyKey: z.string().uuid(),
+    humanConfirmed: z.literal(true),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    let parsed: URL;
+    try {
+      parsed = new URL(value.productUrl);
+    } catch {
+      return;
+    }
+    const expectedPath = `/item/${value.productId}`;
+    if (
+      parsed.protocol !== "https:" ||
+      parsed.hostname !== "jp.mercari.com" ||
+      parsed.port !== "" ||
+      parsed.username !== "" ||
+      parsed.password !== "" ||
+      parsed.pathname !== expectedPath ||
+      parsed.search !== "" ||
+      parsed.hash !== "" ||
+      value.productUrl !== `https://jp.mercari.com${expectedPath}`
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["productUrl"],
+        message: "The product URL must be the matching canonical Mercari item URL",
+      });
+    }
+  });
+
+export const publishedProductPageResponseSchema = z
+  .object({
+    registrationId: z.string().uuid(),
+    workspaceId: workspaceIdSchema,
+    skuId: z.string().uuid(),
+    salesChannelKey: z.literal("mercari"),
+    salesChannelName: z.literal("メルカリ"),
+    productId: publishedProductPageProductIdSchema,
+    productUrl: mercariPublishedProductUrlSchema,
+    confirmedBy: z.string().uuid(),
+    confirmedAt: z.iso.datetime(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (value.productUrl !== `https://jp.mercari.com/item/${value.productId}`) {
+      context.addIssue({
+        code: "custom",
+        path: ["productUrl"],
+        message: "The stored product URL must match its Mercari item ID",
+      });
+    }
+  });
+
+export const publishedProductPageSummarySchema = z
+  .object({
+    workspaceId: workspaceIdSchema,
+    skuId: z.string().uuid(),
+    page: publishedProductPageResponseSchema.nullable(),
+  })
+  .strict();
+
 export const orderAddressModeSchema = z.enum(["anonymous", "stored"]);
 
 export const createOrderRequestSchema = z
@@ -2792,6 +2867,11 @@ export type CreateMarketplaceReferenceRequest = z.infer<
 export type MarketplaceReferenceResponse = z.infer<typeof marketplaceReferenceResponseSchema>;
 export type ProductResearchResponse = z.infer<typeof productResearchResponseSchema>;
 export type CaptureSummary = z.infer<typeof captureSummarySchema>;
+export type RegisterPublishedProductPageRequest = z.infer<
+  typeof registerPublishedProductPageRequestSchema
+>;
+export type PublishedProductPageResponse = z.infer<typeof publishedProductPageResponseSchema>;
+export type PublishedProductPageSummary = z.infer<typeof publishedProductPageSummarySchema>;
 export type CreateOrderRequest = z.infer<typeof createOrderRequestSchema>;
 export type CreateP0ItemRequest = z.infer<typeof createP0ItemRequestSchema>;
 export type P0ItemResponse = z.infer<typeof p0ItemResponseSchema>;

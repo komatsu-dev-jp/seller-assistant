@@ -19,6 +19,7 @@ import type {
   ShippingTaskResponse,
 } from "@resale/contracts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { parseShippingCatalogFee } from "../lib/shipping-catalog-fee";
 
 import {
   assertOrderSwitchAllowed,
@@ -160,15 +161,28 @@ function shippingPolicyModeForReadOnly(
 export function ShippingWorkspace({
   workspaceId,
   role,
+  requestedOrderId,
+  requestedSkuId,
 }: {
   workspaceId: string;
   role: ShippingRole;
+  requestedOrderId?: string | undefined;
+  requestedSkuId?: string | undefined;
 }) {
   const canManage = canRecordShippingSale(role);
   const isOwner = role === "owner";
   const [tasks, setTasks] = useState<ShippingTaskResponse[]>([]);
-  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
-  const [creatingOrder, setCreatingOrder] = useState(canManage);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(requestedOrderId ?? null);
+  const [explicitOrderTarget, setExplicitOrderTarget] = useState(requestedOrderId !== undefined);
+  const explicitOrderTargetRef = useRef(requestedOrderId !== undefined);
+  const [explicitSkuTarget, setExplicitSkuTarget] = useState(
+    requestedSkuId !== undefined && requestedOrderId === undefined,
+  );
+  const explicitSkuTargetRef = useRef(
+    requestedSkuId !== undefined && requestedOrderId === undefined,
+  );
+  const skuPresetApplied = useRef(false);
+  const [creatingOrder, setCreatingOrder] = useState(canManage && requestedOrderId === undefined);
   const [orderCandidates, setOrderCandidates] = useState<P0ItemResponse[]>([]);
   const [selectedSkuId, setSelectedSkuId] = useState("");
   const [selectedInventoryUnitId, setSelectedInventoryUnitId] = useState("");
@@ -201,6 +215,7 @@ export function ShippingWorkspace({
   const [shippingCatalogError, setShippingCatalogError] = useState("");
   const [selectedShippingMethodId, setSelectedShippingMethodId] = useState("");
   const [readiness, setReadiness] = useState<OrderShippingReadinessResponse | null>(null);
+  const [missingInformationAcknowledgement, setMissingInformationAcknowledgement] = useState("");
   const [shippingContextOrderId, setShippingContextOrderId] = useState<string | null>(null);
   const [shippingContextError, setShippingContextError] = useState("");
   const [shippingOccurredAtInput, setShippingOccurredAtInput] = useState("");
@@ -250,8 +265,8 @@ export function ShippingWorkspace({
     result: ShippingTaskResponse[];
   } | null>(null);
   const revalidateRef = useRef<() => void>(() => undefined);
-  const currentOrderId = useRef<string | null>(null);
-  const creatingOrderRef = useRef(canManage);
+  const currentOrderId = useRef<string | null>(requestedOrderId ?? null);
+  const creatingOrderRef = useRef(canManage && requestedOrderId === undefined);
   const pendingCreatedOrderId = useRef<string | null>(null);
   const locationPhotoAbort = useRef<AbortController | null>(null);
   const locationPhotoGeneration = useRef(0);
@@ -259,9 +274,11 @@ export function ShippingWorkspace({
 
   const task = creatingOrder
     ? null
-    : selectedOrderId
+    : selectedOrderId !== null
       ? (tasks.find((entry) => entry.orderId === selectedOrderId) ?? null)
-      : (tasks[0] ?? null);
+      : explicitOrderTarget || explicitSkuTarget
+        ? null
+        : (tasks[0] ?? null);
   const activePreflight = preflight?.orderId === task?.orderId ? preflight : null;
   const activePendingUpload = belongsToOrder(pendingUpload, task?.orderId ?? null)
     ? pendingUpload
@@ -288,6 +305,16 @@ export function ShippingWorkspace({
   );
   const activeRegistration = shippingContextOrderId === task?.orderId ? registration : null;
   const activeReadiness = shippingContextOrderId === task?.orderId ? readiness : null;
+  const missingInformationKey = JSON.stringify([
+    workspaceId,
+    task?.orderId,
+    activeReadiness?.registrationRevision,
+    activeReadiness?.selectedMethod?.revision,
+    activeReadiness?.missingInformation,
+  ]);
+  const missingInformationAcknowledged =
+    !activeReadiness?.missingInformation.length ||
+    missingInformationAcknowledgement === missingInformationKey;
   const activeShippingMethods = shippingContextOrderId === task?.orderId ? shippingMethods : [];
   const activeCompletedShipment =
     completedShipment?.orderId === task?.orderId ? completedShipment : null;
@@ -691,7 +718,13 @@ export function ShippingWorkspace({
       const previous = currentOrderId.current;
       const transition = decideShippingTaskTransition(
         previous,
-        validTasks.map((entry) => entry.orderId),
+        validTasks
+          .filter(
+            (entry) =>
+              !explicitSkuTargetRef.current &&
+              (!explicitOrderTargetRef.current || entry.orderId === requestedOrderId),
+          )
+          .map((entry) => entry.orderId),
         mutations.current.pendingSlot,
       );
       const { nextOrderId } = transition;
@@ -719,7 +752,7 @@ export function ShippingWorkspace({
         nextOrderId ? reauthGate.current.allowAfterValidAssignment() : reauthGate.current.hide(),
       );
     },
-    [canManage, clearPrivateForAutomaticTransition],
+    [canManage, clearPrivateForAutomaticTransition, requestedOrderId],
   );
 
   useEffect(() => {
@@ -756,18 +789,25 @@ export function ShippingWorkspace({
       )
         return;
       if (candidates) {
-        setOrderCandidates(
-          candidates.filter(
-            (entry) =>
-              entry.orderId === null &&
-              entry.inventoryStatus === "available" &&
-              entry.workflowState === "listing_confirmed",
-          ),
+        const eligibleCandidates = candidates.filter(
+          (entry) =>
+            entry.orderId === null &&
+            entry.inventoryStatus === "available" &&
+            entry.workflowState === "listing_confirmed",
         );
+        setOrderCandidates(eligibleCandidates);
+        if (explicitSkuTargetRef.current && !skuPresetApplied.current) {
+          const matches = eligibleCandidates.filter((entry) => entry.skuId === requestedSkuId);
+          if (matches.length === 1) {
+            setSelectedSkuId(matches[0]!.skuId);
+            setSelectedInventoryUnitId(matches[0]!.inventoryUnitId);
+            skuPresetApplied.current = true;
+          }
+        }
       }
       applyTaskResult(result, token);
     },
-    [applyTaskResult, canManage, workspaceId],
+    [applyTaskResult, canManage, workspaceId, requestedSkuId],
   );
 
   useEffect(() => {
@@ -1126,6 +1166,11 @@ export function ShippingWorkspace({
     taskRequestGate.current.invalidate();
     const previous = currentOrderId.current;
     clearOrderScopeForSwitch(previous);
+    explicitOrderTargetRef.current = false;
+    setExplicitOrderTarget(false);
+    explicitSkuTargetRef.current = false;
+    setExplicitSkuTarget(false);
+    window.history.replaceState(null, "", `/shipping?order=${encodeURIComponent(orderId)}`);
     creatingOrderRef.current = false;
     pendingCreatedOrderId.current = null;
     setCreatingOrder(false);
@@ -1143,6 +1188,11 @@ export function ShippingWorkspace({
     }
     const previous = currentOrderId.current;
     clearOrderScopeForSwitch(previous);
+    explicitOrderTargetRef.current = false;
+    setExplicitOrderTarget(false);
+    explicitSkuTargetRef.current = false;
+    setExplicitSkuTarget(false);
+    window.history.replaceState(null, "", "/shipping");
     creatingOrderRef.current = true;
     pendingCreatedOrderId.current = null;
     currentOrderId.current = null;
@@ -1237,10 +1287,7 @@ export function ShippingWorkspace({
   async function saveShippingCatalogEntry() {
     const sessionToken = privateSessionGate.current.capture();
     if (!isOwner) throw new Error("送料一覧を変更できるのは管理者だけです。");
-    const feeMinor = Number(shippingCatalogDraft.feeYen);
-    if (!Number.isInteger(feeMinor) || feeMinor < 0) {
-      throw new Error("送料は0円以上の整数で入力してください。");
-    }
+    const feeMinor = parseShippingCatalogFee(shippingCatalogDraft.feeYen);
     const salesChannelKeyValue = shippingCatalogDraft.salesChannelKey.trim();
     const salesChannelNameValue = shippingCatalogDraft.salesChannelName.trim();
     const methodNameValue = shippingCatalogDraft.methodName.trim();
@@ -1627,6 +1674,13 @@ export function ShippingWorkspace({
         }),
       () => settleOperation(operation),
       async (created) => {
+        explicitSkuTargetRef.current = false;
+        setExplicitSkuTarget(false);
+        window.history.replaceState(
+          null,
+          "",
+          `/shipping?order=${encodeURIComponent(created.orderId)}`,
+        );
         pendingCreatedOrderId.current = created.orderId;
         creatingOrderRef.current = false;
         currentOrderId.current = created.orderId;
@@ -1689,6 +1743,9 @@ export function ShippingWorkspace({
     }
     if (activeReadiness.blockingIssues.length > 0) {
       throw new Error("画面に表示された未確認項目を先に解消してください。");
+    }
+    if (!missingInformationAcknowledged) {
+      throw new Error("未入力の項目を確認し、確認欄にチェックしてください。");
     }
     const orderId = task.orderId;
     const operation = `shipping-readiness:${orderId}`;
@@ -2163,6 +2220,13 @@ export function ShippingWorkspace({
   ) : null;
   const orderCreationControl = creatingOrder ? (
     <div className={liveStyles.orderCreationControl}>
+      {!loading && !error && orderCandidates.length === 0 ? (
+        <div role="status">
+          <p>注文に使える商品がありません。</p>
+          <p>先に商品の出品準備を完了し、保管場所へ格納してください。</p>
+          <a href="/workflow">商品の準備へ進む</a>
+        </div>
+      ) : null}
       <label>
         商品（必須）
         <select
@@ -2170,6 +2234,21 @@ export function ShippingWorkspace({
           value={selectedSkuId}
           disabled={orderFormLocked}
           onChange={(event) => {
+            try {
+              assertOrderSwitchAllowed(mutations.current, executionGate.current);
+            } catch (reason) {
+              setError(errorMessage(reason));
+              return;
+            }
+            explicitSkuTargetRef.current = false;
+            setExplicitSkuTarget(false);
+            window.history.replaceState(
+              null,
+              "",
+              event.target.value
+                ? `/shipping?sku=${encodeURIComponent(event.target.value)}`
+                : "/shipping",
+            );
             setSelectedSkuId(event.target.value);
             setSelectedInventoryUnitId("");
           }}
@@ -2285,7 +2364,8 @@ export function ShippingWorkspace({
       p14ShippingRequired &&
       (activeReadiness?.selectedMethod == null ||
         activeReadiness.blockingIssues.length > 0 ||
-        activeReadiness.registrationRevision === null)) ||
+        activeReadiness.registrationRevision === null ||
+        !missingInformationAcknowledged)) ||
     (displayedApprovedStage === "ship" &&
       p14ShippingRequired &&
       (activeReadiness?.humanConfirmation.state !== "confirmed" ||
@@ -2321,6 +2401,43 @@ export function ShippingWorkspace({
       {busy?.startsWith("retry-") ? "同じ内容を再送しています…" : "同じ操作を再試行"}
     </button>
   ) : null;
+  if (
+    sessionAuthorized &&
+    !loading &&
+    explicitSkuTarget &&
+    (!canManage || orderCandidates.filter((entry) => entry.skuId === requestedSkuId).length !== 1)
+  ) {
+    return (
+      <main className="shippingWorkspace">
+        <section className="panel" role="alert">
+          <h1>指定された商品から注文を登録できません</h1>
+          <p>
+            {canManage
+              ? "未割当・出品準備済みの商品を確認できません。別の商品は選んでいません。"
+              : "この担当では新しい注文を登録できません。管理者へ確認してください。"}
+          </p>
+          {error ? <p>{error}</p> : null}
+          <a href="/shipping">注文・発送へ戻って対象を選ぶ</a>
+        </section>
+      </main>
+    );
+  }
+
+  if (sessionAuthorized && !loading && explicitOrderTarget && !task) {
+    return (
+      <main className="shippingWorkspace">
+        <section className="panel" role="alert">
+          <h1>指定された注文を開けません</h1>
+          <p>
+            現在の担当・権限で確認できる注文に見つかりません。別の注文や新規登録は開いていません。
+          </p>
+          {error ? <p>{error}</p> : null}
+          <a href="/shipping">注文・発送へ戻って対象を選ぶ</a>
+        </section>
+      </main>
+    );
+  }
+
   if (sessionAuthorized && !loading && canManage && creatingOrder) {
     return (
       <ShippingApprovedLiveLayout
@@ -2756,6 +2873,13 @@ export function ShippingWorkspace({
         saleAmount={activeReadiness?.saleAmountStatus === "present" ? "確認済み" : undefined}
         saleAmountReadOnly
         missingInformationCount={activeReadiness?.missingInformation.length ?? 0}
+        missingInformationLabels={activeReadiness?.missingInformation.map((field) =>
+          field === "sale_amount" ? "販売金額" : "販売先の取引ID",
+        )}
+        missingInformationAcknowledged={missingInformationAcknowledged}
+        onMissingInformationAcknowledged={(checked) =>
+          setMissingInformationAcknowledgement(checked ? missingInformationKey : "")
+        }
         inventoryNumber={inventoryInput || task.inventoryNumber}
         locationCode={locationInput || task.locationCode}
         locationPhotoUrl={locationPhotoUrl}
@@ -2871,10 +2995,7 @@ export function ShippingWorkspace({
         onContinue={
           approvedScreen.stage === "complete"
             ? () => {
-                void run("reload", async () => {
-                  await refresh();
-                  setCompletedShipment(null);
-                });
+                if (busy === null) window.location.assign("/shipping");
               }
             : undefined
         }

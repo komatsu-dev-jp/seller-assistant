@@ -32,7 +32,7 @@ export function WorkflowLiveLayout({
               {icon} {label}
             </a>
           ))}
-          <a href="/workflow">＋ 仕入れ</a>
+          <a href="/workflow?new=1">＋ 仕入れ</a>
           <a href="/workflow" aria-current="page">
             ▣ 商品
           </a>
@@ -323,12 +323,12 @@ export function WorkflowCaptureSteps({
         </>
       )}
       {step === "measure" && definition && (
-        <>
-          <p>
+        <div className={styles.measureEntry}>
+          <p className={styles.measureProgress}>
             {measurementIndex + 1} / {definitions.length} 項目
           </p>
           <h3>{definition.label}</h3>
-          <p>
+          <p className={styles.measureBasis}>
             測り方:{" "}
             {
               {
@@ -358,6 +358,33 @@ export function WorkflowCaptureSteps({
                 ? " 生地は伸ばしません。"
                 : " 自然に置いた状態で測ります。"}
           </p>
+          <div className={styles.measureEvidence}>
+            <strong>この採寸の写真</strong>
+            <p>メジャーの数値と測る位置を写します。掲載用とは別の写真です。</p>
+            <div className={styles.evidencePreview}>
+              {evidencePreview ? (
+                <img src={evidencePreview} alt={`${definition.label}の採寸根拠写真`} />
+              ) : (
+                <span>
+                  ▧<br />
+                  採寸の根拠写真
+                </span>
+              )}
+            </div>
+            <label className={styles.fileLabel}>
+              採寸写真を撮る・選ぶ
+              <input
+                key={definition.definitionId}
+                type="file"
+                accept="image/jpeg,image/png"
+                capture="environment"
+                disabled={disabled || completed}
+                onChange={(event) =>
+                  setMeasurementEvidence(definition.definitionId, event.target.files?.[0])
+                }
+              />
+            </label>
+          </div>
           <label className={styles.measureInput}>
             {definition.label}（cm）
             <input
@@ -380,35 +407,9 @@ export function WorkflowCaptureSteps({
           ) : (
             <p className={styles.measureComparison}>前回の記録はありません。今回が1回目です。</p>
           )}
-          <div className={styles.measureEvidence}>
-            <strong>この採寸の写真</strong>
-            <p>メジャーの数値と測る位置が見えるように撮ってください。掲載写真には含めません。</p>
-            <div className={styles.evidencePreview}>
-              {evidencePreview ? (
-                <img src={evidencePreview} alt={`${definition.label}の採寸根拠写真`} />
-              ) : (
-                <span>
-                  ▧<br />
-                  採寸の根拠写真
-                </span>
-              )}
-            </div>
-            <label className={styles.fileLabel}>
-              <span className={styles.offlineNotice}>
-                選んだ写真はこの画面を開いている間だけ使えます。画面を読み直した場合は、もう一度選んでください。
-              </span>
-              採寸写真を撮る・選ぶ
-              <input
-                type="file"
-                accept="image/jpeg,image/png"
-                capture="environment"
-                disabled={disabled || completed}
-                onChange={(event) =>
-                  setMeasurementEvidence(definition.definitionId, event.target.files?.[0])
-                }
-              />
-            </label>
-          </div>
+          <p className={styles.offlineNotice} role="note">
+            写真は最後に保存します。画面を読み直すと、選び直しになります。
+          </p>
           <label>
             測り直しの理由（前回との差が2cmを超える場合）
             <select
@@ -422,7 +423,9 @@ export function WorkflowCaptureSteps({
               <option value="measurement_definition_corrected">測る位置を定義どおりに修正</option>
             </select>
           </label>
-          <p>入力中です。最後のまとめ画面で保存します。</p>
+          <p className={styles.measureSaveNotice}>
+            {completed ? "保存済みの採寸です。" : "入力中です。最後のまとめ画面で保存します。"}
+          </p>
           <button
             type="button"
             disabled={
@@ -441,7 +444,7 @@ export function WorkflowCaptureSteps({
           >
             入力して次へ
           </button>
-        </>
+        </div>
       )}
       {step === "tags" && (
         <>

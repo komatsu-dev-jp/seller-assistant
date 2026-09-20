@@ -35,10 +35,14 @@ export default async function InventoryPage({
             <a className="secondaryButton" href="/mobile/scan">
               商品＋場所を読取
             </a>
-            <a href="/workflow">＋ 仕入商品を登録</a>
+            <a href="/workflow?new=1">＋ 仕入商品を登録</a>
           </div>
         </header>
-        <InventoryWorkspace workspaceId={session.workspaceId} initialFocus={initialFocus} />
+        <InventoryWorkspace
+          workspaceId={session.workspaceId}
+          identityId={session.identityId}
+          initialFocus={initialFocus}
+        />
       </section>
     </main>
   );

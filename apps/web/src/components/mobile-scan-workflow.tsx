@@ -2,6 +2,7 @@
 
 import {
   hasValidCodeCheckDigit,
+  putawayCatalogResponseSchema,
   type PutawayCatalogResponse,
   type WorkspaceRole,
   type LocationNodeResponse,
@@ -18,6 +19,7 @@ import {
 } from "../lib/inventory-live-safety";
 import { createPendingPutaway, savePutawayOnlineFirst } from "../lib/offline-outbox";
 import { LocalBarcodeScanner } from "./local-barcode-scanner";
+import { getPutawayActionState } from "./mobile-assignment-action";
 import styles from "./inventory-live.module.css";
 
 type Step = "inventory" | "location" | "confirm" | "saved";
@@ -41,20 +43,50 @@ export function MobileScanWorkflow({
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [catalog, setCatalog] = useState<PutawayCatalogResponse | null>(null);
+  const [catalogLoading, setCatalogLoading] = useState(true);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [catalogRetry, setCatalogRetry] = useState(0);
+  const [catalogWorkspaceId, setCatalogWorkspaceId] = useState<string | null>(null);
+  const catalogReady = !catalogLoading && catalog !== null && catalogWorkspaceId === workspaceId;
   const [inventoryLabelVersion, setInventoryLabelVersion] = useState<number | null>(null);
   const [locationLabelVersion, setLocationLabelVersion] = useState<number | null>(null);
 
   useEffect(() => {
-    fetch(`/v1/workspaces/${workspaceId}/inventory/putaway-catalog`, { cache: "no-store" })
+    const controller = new AbortController();
+    let cancelled = false;
+    setCatalog(null);
+    setCatalogLoading(true);
+    setCatalogError(null);
+    fetch(`/v1/workspaces/${workspaceId}/inventory/putaway-catalog`, {
+      cache: "no-store",
+      signal: controller.signal,
+    })
       .then(async (response) => {
         const payload = (await response.json()) as PutawayCatalogResponse | { message?: string };
         if (!response.ok) throw new Error("message" in payload ? payload.message : undefined);
-        setCatalog(payload as PutawayCatalogResponse);
+        const parsed = putawayCatalogResponseSchema.safeParse(payload);
+        if (!parsed.success)
+          throw new Error("商品と場所の一覧を確認できません。もう一度読み込んでください。");
+        if (cancelled) return;
+        setCatalog(parsed.data);
+        setCatalogWorkspaceId(workspaceId);
       })
-      .catch((reason: unknown) =>
-        setError(reason instanceof Error ? reason.message : "有効なラベル版を取得できません。"),
-      );
-  }, [workspaceId]);
+      .catch((reason: unknown) => {
+        if (!cancelled)
+          setCatalogError(
+            reason instanceof Error && reason.message
+              ? reason.message
+              : "商品と場所の一覧を取得できません。もう一度読み込んでください。",
+          );
+      })
+      .finally(() => {
+        if (!cancelled) setCatalogLoading(false);
+      });
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [workspaceId, catalogRetry]);
 
   const title = useMemo(() => {
     if (step === "inventory") return "商品ラベルを確認";
@@ -62,8 +94,15 @@ export function MobileScanWorkflow({
     if (step === "confirm") return "現物を人が確認";
     return "同期待ちに保存";
   }, [step]);
+  const catalogAction = getPutawayActionState(
+    catalogLoading,
+    catalog?.inventory.length ?? 0,
+    catalog?.locations.length ?? 0,
+  );
 
   function acceptValue(candidate = value) {
+    // Both manual entry and barcode detection must wait for the same catalog.
+    if (!catalogReady || !catalog) return;
     let normalized = candidate.trim().toUpperCase();
     if (normalized.length > 256 || /address|token|secret/iu.test(normalized)) {
       setError("ラベルに保存できない情報が含まれています。");
@@ -79,7 +118,7 @@ export function MobileScanWorkflow({
     if (step === "inventory") {
       let match: PutawayCatalogResponse["inventory"][number];
       try {
-        match = resolveInventoryCatalog(normalized, catalog?.inventory ?? []);
+        match = resolveInventoryCatalog(normalized, catalog.inventory);
       } catch (reason) {
         setError(reason instanceof Error ? reason.message : "番号を確認できません。");
         return;
@@ -95,7 +134,7 @@ export function MobileScanWorkflow({
     } else {
       let match: PutawayCatalogResponse["locations"][number];
       try {
-        match = resolvePutawayLocationCatalog(normalized, catalog?.locations ?? []);
+        match = resolvePutawayLocationCatalog(normalized, catalog.locations);
       } catch (reason) {
         setError(reason instanceof Error ? reason.message : "通常の保管場所を確認してください。");
         return;
@@ -123,6 +162,31 @@ export function MobileScanWorkflow({
         <a className="primaryButton" href="/mobile">
           今日の作業へ戻る
         </a>
+        <InventoryMobileFooter role={role} />
+      </main>
+    );
+  }
+
+  if (catalogReady && !catalogAction.enabled) {
+    return (
+      <main className={`mobileScanPage ${styles.page} ${styles.scan}`}>
+        <header>
+          <a href="/mobile" aria-label="戻る">
+            ‹
+          </a>
+          <div>
+            <p className="eyebrow">PUTAWAY</p>
+            <h1>今は読み取れる作業がありません</h1>
+          </div>
+        </header>
+        <section className="scanInput panel" role="status">
+          <h2>先に割当が必要です</h2>
+          <p>{catalogAction.detail}。</p>
+          <p>管理者が商品と保管場所を割り当てると、この画面から読み取れます。</p>
+          <a className="primaryButton" href="/mobile">
+            今日の作業へ戻る
+          </a>
+        </section>
         <InventoryMobileFooter role={role} />
       </main>
     );
@@ -174,6 +238,23 @@ export function MobileScanWorkflow({
 
       {step !== "confirm" ? (
         <section className="scanInput panel">
+          {catalogLoading ? (
+            <p role="status">
+              商品と場所の一覧を読み込んでいます。番号の確認は読み込み後にできます。
+            </p>
+          ) : null}
+          {catalogError ? (
+            <div role="alert">
+              <p>{catalogError}</p>
+              <button
+                type="button"
+                disabled={catalogLoading}
+                onClick={() => setCatalogRetry((current) => current + 1)}
+              >
+                商品と場所の一覧を再読み込み
+              </button>
+            </div>
+          ) : null}
           <label>
             {step === "inventory" ? "手書きラベルの在庫番号を入力" : "場所の番号を入力"}
             <input
@@ -186,7 +267,7 @@ export function MobileScanWorkflow({
             />
           </label>
           {error ? <p className="formError">{error}</p> : null}
-          <button type="button" onClick={() => acceptValue()}>
+          <button type="button" disabled={!catalogReady} onClick={() => acceptValue()}>
             この番号を確認
           </button>
           <p className="fieldHelp">
@@ -194,11 +275,15 @@ export function MobileScanWorkflow({
           </p>
           <details>
             <summary>印刷バーコードで読み取る（任意）</summary>
-            <LocalBarcodeScanner
-              key={step}
-              label={step === "inventory" ? "商品バーコード" : "場所バーコード"}
-              onDetected={acceptValue}
-            />
+            {catalogReady ? (
+              <LocalBarcodeScanner
+                key={step}
+                label={step === "inventory" ? "商品バーコード" : "場所バーコード"}
+                onDetected={acceptValue}
+              />
+            ) : (
+              <p>一覧の読み込みが完了すると、バーコードを読み取れます。</p>
+            )}
           </details>
         </section>
       ) : (
@@ -423,7 +508,7 @@ export function PrivateInventoryPhoto({
       workspaceId,
       url,
       origin: window.location.origin,
-      fetchImage: fetch,
+      fetchImage: (input, init) => window.fetch(input, init),
       createObjectUrl: (blob) => URL.createObjectURL(blob),
       revokeObjectUrl: (objectUrl) => URL.revokeObjectURL(objectUrl),
       onChange: (state) => {
