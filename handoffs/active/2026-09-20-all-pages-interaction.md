@@ -647,4 +647,6 @@ Codex右サイドパネルでITM-0006へ架空素材を選択し、ITM-0005へ�
 
 全体`npm run check`は105ファイル・798テスト、整形、静的解析、型、coverage、安全確認、API/Web build（86 routes）までPASS。別実行のAstra low独立レビューはP1=0、P2=0でPASSし、P3として一時URLライフサイクルの動作テスト強化余地だけを記録した。証拠は`output/playwright/live-pc26-local-image-preview-evidence.md`。
 
-チェックリスト317/341（93.0%）、実用完成度は約96%。ObsidianとIssue #11更新はこの後に実施する。OCR、数値候補、数値保存、実iPhoneは未完了で、Goal activeのまま。
+チェックリスト317/341（93.0%）、実用完成度は約96%。Obsidian正本へ同期し、更新前バックアップと更新後の1回だけの追記を照合した。OCR、数値候補、数値保存、実iPhoneは未完了で、Goal activeのまま。
+
+全ページ操作修正129ファイルをcommit `8f654ad`（`feat: complete all-pages interaction pass`）として保存し、`origin/codex/all-pages-interaction-fixes`へpushした。GitHubは`komatsu-dev-jp/seller-assistant`へ移転済み。GitHub CLIの保存済み認証が失効し、右サイドパネルのPR作成URLもログイン画面になったため、PR作成・Issue #11・Project #1更新・mergeはGitHub再ログイン後に続行する。ローカルのIssue本文下書きは最新化済み。
