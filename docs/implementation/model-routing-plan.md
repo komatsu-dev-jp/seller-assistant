@@ -374,3 +374,18 @@
 - 検証結果: 画像差し替え・削除・画面終了・古い読込通知を実行するテストを追加し、対象テスト、Web型、対象整形、全体`npm run check`（105ファイル・801テスト、全gateと86 routes build）をPASS。
 - 独立判定: 別実行のAstra lowがコード、テスト、契約、証拠を直接読み、初回P1=0、P2=0でPASS。初回P3だった一時URLライフサイクルの動作テストを追加し、再レビューはP1=0、P2=0、P3=0でPASS。
 - 状態: P22の承認済み範囲は完了。OCR、数値候補、数値保存、実iPhoneは別工程として残し、全体Goalは継続する。
+
+## 2026-09-21 P23 販売状況の本人手入力保存
+
+- 目的と参照: 公開商品URLを登録済みの実SKUへ、本人が公式ページで確認した販売状況と次回確認日を追記保存し、再読込できるようにする。正本は`docs/implementation/sales-check-persistence-packet.md`。
+- リスク: 重大。新規migration、認証済みAPI、workspace分離、追記履歴、再送制御、実運用Webを横断するため。
+- 実装担当: 別実行の`gpt-6-astra` / `medium` / `sales_check_persistence_impl`を唯一のsource writerとする。
+- 確認担当: 実装担当とは別実行の`gpt-6-astra` / `medium`による読み取り専用レビュー。ルート担当が自動試験、実PostgreSQL、右サイドパネルの画面確認を行う。
+- 実装運転モード: `astra-centric`。定型抽出だけの追加担当は増やさず、実費・トークン消費は未計測とする。
+- 変更可能: 新規0048、contracts、P0 repository、API route/test、fresh/upgrade/schema試験、`/workflow`の専用パネル・helper・CSS・test、PWA中継、今回の計画・handoff・証拠。
+- 変更禁止: 既存migration、会計・注文・発送・在庫repository、静的PC26、商品URL訂正、OCR・画像upload、外部取得、自動反映、実データ、GitHub／Pages／PR操作、有料サービス。
+- 受け入れ条件: パケット文書の全条件、対象テスト、fresh/upgrade PostgreSQL、root `npm run check`、`git diff --check`、右サイドパネル1440/390px、独立レビューP1/P2 0件。保存後GETと再読み込みで最新値が残り、過去記録、業務状態、監査秘匿を証明する。
+- 停止・昇格条件: 必須性・意味・権限の矛盾、他販売先・画像由来入力・商品URL訂正・会計等の状態変更、migration重複、原因不明のDB失敗、対象外競合を検出したら変更を広げずルートへ戻す。
+- 実行結果: Astra medium writerが0048、契約、repository/API、PWA中継、実運用Web、fresh/upgrade試験を実装した。ルート担当が右サイドパネルで保存・再読込・503復旧・1440/390pxを確認し、最終`npm run check`は111ファイル・829テスト、全gateと86 routes buildをPASSした。
+- 独立判定: 別実行のAstra mediumが最終差分を読み取り専用で再確認し、P1=0、P2=0、P3=0でPASSした。実費・トークン消費は取得できないため未計測。
+- 状態: P23の承認済み範囲は完了。実iPhone、実メルカリ値照合、OCR、画像候補、他販売先、複数実端末は別工程として残し、全体Goalは継続する。

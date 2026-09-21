@@ -2987,3 +2987,4 @@ export type AccountingExportPreflightResponse = z.infer<
 >;
 export type AccountingExportPreviewResponse = z.infer<typeof accountingExportPreviewResponseSchema>;
 export type ConfirmAccountingImportRequest = z.infer<typeof confirmAccountingImportRequestSchema>;
+export * from "./sales-check.js";

@@ -903,7 +903,7 @@ describe("ten-product pilot contract", () => {
     expect(() => listingPrepPilotItemIdentifiers("not-a-run-id", "TOP-01")).toThrow();
   });
 
-  it("keeps v1.1 starts on their verified 0033 snapshot after additive P12/P13/P14 migrations", () => {
+  it("keeps v1.1 starts on their verified 0033 snapshot after later additive migrations", () => {
     const latestMigrationVersion = readdirSync(new URL("../../db/migrations/", import.meta.url))
       .filter((name) => /^\d{4}_.+\.sql$/u.test(name))
       .sort()
@@ -922,7 +922,7 @@ describe("ten-product pilot contract", () => {
     } as const;
     expect(startPilotRunRequestSchema.safeParse(valid).success).toBe(true);
     expect(listingPrepPilotMigrationVersion).toBe("0033");
-    expect(latestMigrationVersion).toBe("0047");
+    expect(latestMigrationVersion).toBe("0048");
     expect(
       startPilotRunRequestSchema.safeParse({ ...valid, migrationVersion: "0028" }).success,
     ).toBe(false);

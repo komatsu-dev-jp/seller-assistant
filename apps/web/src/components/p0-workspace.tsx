@@ -40,6 +40,7 @@ import {
 import { AccountingWorkspace } from "./accounting-workspace";
 import { ProductResearchPanel } from "./product-research-panel";
 import { PublishedProductPagePanel } from "./published-product-page-panel";
+import { SalesCheckPanel } from "./sales-check-panel";
 import { WorkflowLiveLayout, WorkflowCaptureSteps } from "./workflow-live-layout";
 import { copyBeforeWorkflowHandoff } from "./workflow-copy-handoff";
 import { refreshedWorkflowSelection, workflowItemHref } from "../lib/workflow-item-selection";
@@ -1149,6 +1150,11 @@ export function P0Workspace({
               workspaceId={workspaceId}
               skuId={item.skuId}
               listingConfirmed={completed.listing}
+              pilotActive={pilotRun?.state === "active"}
+            />
+            <SalesCheckPanel
+              workspaceId={workspaceId}
+              skuId={item.skuId}
               pilotActive={pilotRun?.state === "active"}
             />
             <OrderPanel

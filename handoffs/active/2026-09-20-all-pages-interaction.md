@@ -650,3 +650,15 @@ Codex右サイドパネルでITM-0006へ架空素材を選択し、ITM-0005へ�
 チェックリスト317/341（93.0%）、実用完成度は約96%。Obsidian正本へ同期し、更新前バックアップと更新後の1回だけの追記を照合した。OCR、数値候補、数値保存、実iPhoneは未完了で、Goal activeのまま。
 
 全ページ操作修正129ファイルをcommit `8f654ad`（`feat: complete all-pages interaction pass`）として保存し、`origin/codex/all-pages-interaction-fixes`へpushした。GitHubは`komatsu-dev-jp/seller-assistant`へ移転済み。GitHub CLIの保存済み認証が失効し、右サイドパネルのPR作成URLもログイン画面になったため、PR作成・Issue #11・Project #1更新・mergeはGitHub再ログイン後に続行する。ローカルのIssue本文下書きは最新化済み。
+
+## 2026-09-21 09:04 JST P23 販売状況の本人手入力保存
+
+公開商品URLを登録済みの実SKUへ、本人が公式ページで確認した販売状況を追記保存するP23を実装した。新規0048、契約、repository、認証済みGET/POST、PWA中継、実運用`/workflow`の専用パネルを追加。数値6項目の空欄と0を区別し、確認日・次回確認日、固定入力元、サーバー確定の確認者／保存日時を保存する。PC26の架空商品、外部メルカリ取得、OCR、自動価格反映、会計・在庫・発送状態は変更していない。
+
+独立レビューでSKUをA→B→Aと切り替えた後の古い応答による二重保存P2を検出し修正。実ブラウザーで連続入力時の状態上書きも検出し、関数形式の更新と回帰テストを追加した。最終の別Astra mediumレビューはP1=0、P2=0、P3=0でPASS。
+
+隔離PostgreSQL 18.6のfresh DBで47 migration・66-table RLS、別の空upgrade DBで`0001`〜`0048`をPASS。右サイドパネルで保存、ページ再読み込み、履歴5件、空欄と0、API停止後の失敗表示と再起動後の再試行を確認した。1440×900と390×844で横はみ出し0、販売状況欄の操作部品9件の欄外0・重なり0、console error / warning 0。商品URL欄も再試行後に保存済みへ復帰した。外部ページは開いていない。
+
+最終`npm run check`は111ファイル・829テスト、整形、静的解析、型、coverage、安全確認、API/Web build（86 routes）までPASS。`git diff --check`もPASS。証拠は`output/playwright/live-sales-check-persistence-evidence.md`。
+
+チェックリスト322/346（93.1%）、実用完成度は約97%。実iPhone、実メルカリ値との照合、OCR、複数実端末、会計不足補完は未完了で、Goal activeのまま。P23差分は未commit・未push・未公開。GitHub Issue #11、Project #1、PR、外部Obsidian正本はP23分未更新。

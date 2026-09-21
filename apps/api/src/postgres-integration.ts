@@ -106,6 +106,7 @@ const workspaceProtectedTables = [
   "product_attribute_confirmation",
   "product_measurement_profile",
   "published_product_page",
+  "sales_check_observation",
   "product_sku",
   "purchase_batch",
   "packing_evidence",
@@ -232,6 +233,15 @@ try {
     Array.from(publishedProductPageGrants, (row) => ({ ...row })),
     [{ privilege_type: "INSERT" }, { privilege_type: "SELECT" }],
     "Runtime may read and append confirmed product pages but never mutate or delete them",
+  );
+  const salesCheckGrants = await catalog<Array<{ privilege_type: string }>>`
+    select privilege_type from information_schema.role_table_grants
+    where grantee = 'resale_app_runtime' and table_schema = 'public'
+      and table_name = 'sales_check_observation' order by privilege_type
+  `;
+  assert.deepEqual(
+    Array.from(salesCheckGrants, (row) => ({ ...row })),
+    [{ privilege_type: "INSERT" }, { privilege_type: "SELECT" }],
   );
   const [shippingWorkspaceLockFunction] = await catalog<
     Array<{
@@ -12363,6 +12373,166 @@ try {
   const duplicatePublishedPageSkuId = randomUUID();
   const publishedPageAdmin = postgres(adminUrl, { max: 1 });
   try {
+    const salesPath = `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/sales-checks`;
+    const salesInput = {
+      listingDays: null,
+      currentPriceYen: "9987",
+      viewCount: "0",
+      searchCount: "123",
+      likeCount: null,
+      priceReductionRequestCount: "2",
+      checkedOn: "2026-09-21",
+      nextCheckOn: "2026-09-23",
+      inputSource: "official_page_human_checked",
+      idempotencyKey: randomUUID(),
+    };
+    const businessSnapshot = async () => {
+      const result: Record<string, unknown> = {};
+      for (const table of [
+        "product_sku",
+        "published_product_page",
+        "p0_workflow",
+        "inventory_unit",
+        "inventory_movement",
+        "sales_order",
+        "financial_event",
+        "journal_candidate",
+        "accounting_export",
+        "shipment_human_confirmation",
+        "shipping_sale_basis_snapshot",
+      ]) {
+        result[table] = await publishedPageAdmin.unsafe(
+          `select to_jsonb(t) as row from ${table} t order by to_jsonb(t)::text`,
+        );
+      }
+      return JSON.stringify(result);
+    };
+    const businessBeforeSales = await businessSnapshot();
+    const salesBefore = await app.inject({ url: salesPath, headers: { cookie } });
+    assert.equal(salesBefore.statusCode, 200);
+    assert.deepEqual(salesBefore.json(), {
+      workspaceId: owner.workspaceId,
+      skuId: acquiredItem.skuId,
+      eligible: true,
+      latest: null,
+      recordCount: 0,
+    });
+    const salesPosts = await Promise.all(
+      [1, 2].map(() =>
+        app.inject({ method: "POST", url: salesPath, headers: { cookie }, payload: salesInput }),
+      ),
+    );
+    for (const response of salesPosts) assert.equal(response.statusCode, 201, response.body);
+    assert.deepEqual(salesPosts[0]?.json(), salesPosts[1]?.json());
+    const firstSales = salesPosts[0]!.json<{
+      observationId: string;
+      currentPriceYen: number;
+      listingDays: null;
+      viewCount: number;
+      confirmedBy: string;
+    }>();
+    assert.equal(firstSales.currentPriceYen, 9987);
+    assert.equal(firstSales.listingDays, null);
+    assert.equal(firstSales.viewCount, 0);
+    assert.equal(firstSales.confirmedBy, owner.identityId);
+    const conflictingSales = await app.inject({
+      method: "POST",
+      url: salesPath,
+      headers: { cookie },
+      payload: { ...salesInput, currentPriceYen: "9988" },
+    });
+    assert.equal(conflictingSales.statusCode, 409);
+    const secondSales = await app.inject({
+      method: "POST",
+      url: salesPath,
+      headers: { cookie: managerCookie },
+      payload: { ...salesInput, currentPriceYen: "9976", idempotencyKey: randomUUID() },
+    });
+    assert.equal(secondSales.statusCode, 201, secondSales.body);
+    assert.equal(secondSales.json<{ confirmedBy: string }>().confirmedBy, managerId);
+    const salesReload = await app.inject({ url: salesPath, headers: { cookie } });
+    assert.deepEqual(salesReload.json(), {
+      workspaceId: owner.workspaceId,
+      skuId: acquiredItem.skuId,
+      eligible: true,
+      latest: secondSales.json<unknown>(),
+      recordCount: 2,
+    });
+    const oldReplay = await app.inject({
+      method: "POST",
+      url: salesPath,
+      headers: { cookie },
+      payload: salesInput,
+    });
+    assert.deepEqual(oldReplay.json(), firstSales);
+    assert.equal(
+      await businessSnapshot(),
+      businessBeforeSales,
+      "Observations must not change any business facts or published URL",
+    );
+    for (const method of ["GET", "POST"] as const) {
+      const denied = await app.inject({
+        method,
+        url: salesPath,
+        headers: { cookie: workerCookie },
+        ...(method === "POST" ? { payload: salesInput } : {}),
+      });
+      assert.equal(denied.statusCode, 403);
+    }
+    const missingPage = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${owner.workspaceId}/skus/${interruptedPilotSkuId}/sales-checks`,
+      headers: { cookie },
+      payload: { ...salesInput, idempotencyKey: randomUUID() },
+    });
+    assert.equal(missingPage.statusCode, 409);
+    const [salesCounts] = await publishedPageAdmin`
+      select (select count(*)::integer from sales_check_observation where workspace_id=${owner.workspaceId}) as records,
+        (select count(*)::integer from audit_event where workspace_id=${owner.workspaceId} and action='listing.sales_check.recorded') as audits
+    `;
+    assert.deepEqual({ ...salesCounts }, { records: 2, audits: 2 });
+    const salesAudits =
+      await publishedPageAdmin`select redacted_changes, field_names, reason_code from audit_event where workspace_id=${owner.workspaceId} and action='listing.sales_check.recorded'`;
+    for (const audit of salesAudits) {
+      assert.deepEqual(audit.redacted_changes, { after: { status: "human_checked" } });
+      assert.deepEqual(audit.field_names, ["observation"]);
+      assert.equal(audit.reason_code, "official_page_human_checked");
+    }
+    const salesHistory = await publishedPageAdmin<
+      Array<{ current_price_yen: number | null }>
+    >`select current_price_yen from sales_check_observation where workspace_id=${owner.workspaceId} order by saved_at, id`;
+    assert.deepEqual(
+      salesHistory.map((row) => row.current_price_yen),
+      [9987, 9976],
+    );
+    await assert.rejects(
+      publishedPageAdmin`update sales_check_observation set view_count=1 where workspace_id=${owner.workspaceId}`,
+      /sales check observation is immutable/u,
+    );
+    await assert.rejects(
+      publishedPageAdmin`delete from sales_check_observation where workspace_id=${owner.workspaceId}`,
+      /sales check observation is immutable/u,
+    );
+    // A rejected audit must roll back the observation in the same transaction.
+    await publishedPageAdmin.unsafe(`create function test_reject_sales_audit() returns trigger language plpgsql as $$
+      begin if new.action='listing.sales_check.recorded' then raise exception 'test audit rejected'; end if; return new; end $$;
+      create trigger test_reject_sales_audit before insert on audit_event for each row execute function test_reject_sales_audit()`);
+    try {
+      const rejected = await app.inject({
+        method: "POST",
+        url: salesPath,
+        headers: { cookie },
+        payload: { ...salesInput, idempotencyKey: randomUUID() },
+      });
+      assert.equal(rejected.statusCode, 503);
+      const [count] =
+        await publishedPageAdmin`select count(*)::integer as total from sales_check_observation where workspace_id=${owner.workspaceId}`;
+      assert.equal(count?.total, 2);
+    } finally {
+      await publishedPageAdmin.unsafe(
+        "drop trigger test_reject_sales_audit on audit_event; drop function test_reject_sales_audit()",
+      );
+    }
     await publishedPageAdmin.begin(async (transaction) => {
       await transaction`
         insert into product_sku (id, workspace_id, sku_code, title, category)

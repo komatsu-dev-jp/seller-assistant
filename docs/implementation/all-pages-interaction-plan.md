@@ -673,3 +673,25 @@
 開始契約: `docs/implementation/sales-check-image-preview-packet.md`。証拠: `output/playwright/live-pc26-local-image-preview-evidence.md`。
 
 この時点のチェックリストは317/341項目（93.0%）。PC26の画像選択は安全なローカル一時表示まで閉じたが、OCR、販売状況保存、実iPhone、会計不足補完、複数端末などは残るため、製品全体の実用完成度は約96%のままとし、全体Goalを継続する。
+
+### 2026-09-21 販売状況の本人手入力保存 開始契約
+
+- [x] 承認済みPC07、既存の商品URL保存、残項目を再照合し、実運用`/workflow`の登録済み商品だけへ販売状況を追記保存する範囲を固定した。
+- [x] 数値の空欄と0を区別し、自動取得・OCR・画像upload・外部通信・価格反映・会計反映を行わない安全境界を固定した。
+- [x] PC26の架空商品はDBへ接続せず、実SKUの認証済み画面と公開確認版を分離する。
+- [x] 契約、0048 migration、repository、API、PWA中継、実運用Web、fresh/upgrade試験を実装し、保存と再読込を通した。
+- [x] 1440px／390pxの右サイドパネル確認、全体`npm run check`、実装担当と別実行のAstra mediumレビューを合格させた。
+
+開始契約: `docs/implementation/sales-check-persistence-packet.md`。実iPhone、実メルカリ値との照合、OCR、画像候補、他販売先、複数実端末は今回に含めない。
+
+### 2026-09-21 販売状況の本人手入力保存 完了証拠
+
+- 新規0048、契約、追記専用repository、認証済みAPI、PWA中継、実運用`/workflow`の販売状況パネルを実装した。PC26の架空商品はDBへ接続していない。
+- 空欄と0を区別し、本人確認済みの6数値、確認日、次回確認日を保存。再読み込み後も最新値と履歴5件が残ることを右サイドパネルで確認した。
+- APIを意図的に停止して503相当の失敗表示を確認し、再起動後の「もう一度読み込む」で履歴を重複させず復帰した。
+- fresh PostgreSQLの47 migration・66-table RLS、upgrade `0001`〜`0048`、最終`npm run check`の111ファイル・829テスト、API/Web build（86 routes）をPASSした。
+- 1440×900と390×844で横はみ出し0、販売状況欄の操作部品9件の欄外0・重なり0、console error / warning 0。別Astra mediumの最終レビューはP1=0、P2=0、P3=0でPASSした。
+
+証拠: `output/playwright/live-sales-check-persistence-evidence.md`。
+
+この時点のチェックリストは322/346項目（93.1%）。販売状況のサーバー保存と失敗復旧を閉じたため、実データ保存を含む製品全体の実用完成度は約97%と見積もる。実iPhone、実メルカリ値との照合、OCR、複数実端末、会計不足補完は残るため、全体Goalは継続する。

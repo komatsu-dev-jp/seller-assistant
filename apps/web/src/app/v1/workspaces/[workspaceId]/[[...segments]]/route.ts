@@ -334,7 +334,7 @@ export function isAllowedPath(method: WorkspaceProxyMethod, segments: string[]):
     segments.length === 3 &&
     segments[0] === "skus" &&
     uuid.test(segments[1] ?? "") &&
-    segments[2] === "published-product-page"
+    (segments[2] === "published-product-page" || segments[2] === "sales-checks")
   ) {
     return true;
   }

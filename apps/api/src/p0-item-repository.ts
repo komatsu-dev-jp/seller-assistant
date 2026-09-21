@@ -1,5 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
+  recordSalesCheckRequestSchema,
+  type RecordSalesCheckRequest,
+  type SalesCheckResponse,
+  type SalesCheckSummary,
+} from "@resale/contracts";
+import {
   appendCodeCheckDigit,
   listingPrepPilotFixtureManifestSha256,
   listingPrepPilotFixtureProfiles,
@@ -51,6 +57,13 @@ export interface RegisterReceiptEvidence {
 }
 
 export interface P0ItemRepository {
+  salesCheck(workspaceId: string, skuId: string, actor: RequestActor): Promise<SalesCheckSummary>;
+  recordSalesCheck(
+    workspaceId: string,
+    skuId: string,
+    actor: RequestActor,
+    input: RecordSalesCheckRequest,
+  ): Promise<SalesCheckResponse>;
   createItem(
     workspaceId: string,
     actor: RequestActor,
@@ -1855,9 +1868,155 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
     }
   }
 
+  async salesCheck(
+    workspaceId: string,
+    skuId: string,
+    actor: RequestActor,
+  ): Promise<SalesCheckSummary> {
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId);
+        await requireManagementRole(transaction, workspaceId, actor.identityId);
+        await requireManagedSku(transaction, workspaceId, skuId);
+        const pages = await selectPublishedProductPage(transaction, workspaceId, skuId);
+        // A single statement gives the latest observation and count the same snapshot.
+        const rows = await transaction<SalesCheckRow[]>`
+          select id, workspace_id, sku_id, listing_days, current_price_yen, view_count,
+                 search_count, like_count, price_reduction_request_count,
+                 checked_on::text as checked_on, next_check_on::text as next_check_on,
+                 input_source, confirmed_by, saved_at, payload_hash,
+                 count(*) over()::integer as record_count
+          from sales_check_observation
+          where workspace_id = ${workspaceId} and sku_id = ${skuId}
+          order by saved_at desc, id desc limit 1
+        `;
+        return {
+          workspaceId,
+          skuId,
+          eligible: Boolean(pages[0]),
+          latest: rows[0] ? toSalesCheck(rows[0]) : null,
+          recordCount: rows[0]?.record_count ?? 0,
+        };
+      });
+    } catch (error) {
+      throw normalizeP0ItemError(error);
+    }
+  }
+
+  async recordSalesCheck(
+    workspaceId: string,
+    skuId: string,
+    actor: RequestActor,
+    input: RecordSalesCheckRequest,
+  ): Promise<SalesCheckResponse> {
+    const parsed = recordSalesCheckRequestSchema.safeParse(input);
+    if (!parsed.success) throw new RepositoryError("conflict", "Invalid sales check input");
+    const { idempotencyKey, ...values } = parsed.data;
+    const payloadHash = createHash("sha256")
+      .update(JSON.stringify({ skuId, ...values }), "utf8")
+      .digest("hex");
+    const integer = (value: string | null) => (value === null ? null : Number(value));
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId);
+        await requireManagementRole(transaction, workspaceId, actor.identityId);
+        // Serialize a workspace key across SKUs as well as observations for the same SKU.
+        await transaction`select pg_advisory_xact_lock(hashtext(${workspaceId}), hashtext(${idempotencyKey}))`;
+        await transaction`select pg_advisory_xact_lock(hashtext(${workspaceId}), hashtext(${skuId}))`;
+        await requireManagedSku(transaction, workspaceId, skuId);
+        const pages = await selectPublishedProductPage(transaction, workspaceId, skuId);
+        if (!pages[0])
+          throw new RepositoryError("conflict", "Register the confirmed product page first");
+        const replay = await transaction<SalesCheckRow[]>`
+          select id, workspace_id, sku_id, listing_days, current_price_yen, view_count,
+                 search_count, like_count, price_reduction_request_count,
+                 checked_on::text as checked_on, next_check_on::text as next_check_on,
+                 input_source, confirmed_by, saved_at, payload_hash
+          from sales_check_observation
+          where workspace_id = ${workspaceId} and idempotency_key = ${idempotencyKey}
+        `;
+        if (replay[0]) {
+          if (replay[0].payload_hash !== payloadHash || replay[0].sku_id !== skuId)
+            throw new RepositoryError("conflict", "The sales check key has another payload");
+          return toSalesCheck(replay[0]);
+        }
+        await requirePublishedProductPageEligible(transaction, workspaceId, skuId);
+        const id = randomUUID();
+        const rows = await transaction<SalesCheckRow[]>`
+          insert into sales_check_observation (
+            id, workspace_id, sku_id, listing_days, current_price_yen, view_count,
+            search_count, like_count, price_reduction_request_count,
+            checked_on, next_check_on, input_source, confirmed_by, idempotency_key, payload_hash
+          ) values (
+            ${id}, ${workspaceId}, ${skuId}, ${integer(values.listingDays)}, ${integer(values.currentPriceYen)},
+            ${integer(values.viewCount)}, ${integer(values.searchCount)}, ${integer(values.likeCount)},
+            ${integer(values.priceReductionRequestCount)}, ${values.checkedOn}, ${values.nextCheckOn},
+            ${values.inputSource}, ${actor.identityId}, ${idempotencyKey}, ${payloadHash}
+          ) returning id, workspace_id, sku_id, listing_days, current_price_yen, view_count,
+                      search_count, like_count, price_reduction_request_count,
+                      checked_on::text as checked_on, next_check_on::text as next_check_on,
+                      input_source, confirmed_by, saved_at, payload_hash
+        `;
+        if (!rows[0]) throw new RepositoryError("database_error", "Sales check was not stored");
+        await transaction`
+          insert into audit_event (
+            workspace_id, actor_id, action, target_type, target_id,
+            field_names, redacted_changes, reference_ids, reason_code, approved_by
+          ) values (
+            ${workspaceId}, ${actor.identityId}, 'listing.sales_check.recorded',
+            'sales_check_observation', ${id}, ${["observation"]},
+            ${transaction.json({ after: { status: "human_checked" } })},
+            ${[skuId, id]}, 'official_page_human_checked', ${actor.identityId}
+          )
+        `;
+        return toSalesCheck(rows[0]);
+      });
+    } catch (error) {
+      throw normalizeP0ItemError(error);
+    }
+  }
+
   async close(): Promise<void> {
     await this.sql.end({ timeout: 5 });
   }
+}
+
+interface SalesCheckRow {
+  id: string;
+  workspace_id: string;
+  sku_id: string;
+  listing_days: number | null;
+  current_price_yen: number | null;
+  view_count: number | null;
+  search_count: number | null;
+  like_count: number | null;
+  price_reduction_request_count: number | null;
+  checked_on: string;
+  next_check_on: string;
+  input_source: "official_page_human_checked";
+  confirmed_by: string;
+  saved_at: Date;
+  payload_hash: string;
+  record_count?: number;
+}
+
+function toSalesCheck(row: SalesCheckRow): SalesCheckResponse {
+  return {
+    observationId: row.id,
+    workspaceId: row.workspace_id,
+    skuId: row.sku_id,
+    listingDays: row.listing_days,
+    currentPriceYen: row.current_price_yen,
+    viewCount: row.view_count,
+    searchCount: row.search_count,
+    likeCount: row.like_count,
+    priceReductionRequestCount: row.price_reduction_request_count,
+    checkedOn: row.checked_on,
+    nextCheckOn: row.next_check_on,
+    inputSource: row.input_source,
+    confirmedBy: row.confirmed_by,
+    savedAt: row.saved_at.toISOString(),
+  };
 }
 
 async function selectLocations(
