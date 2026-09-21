@@ -674,3 +674,11 @@ PC23／24のsessionStorage一時保存に失敗した時、本文と補足メモ
 最終`npm run check`は112ファイル・841テスト、整形、静的解析、型、coverage、安全確認、API/Web build（86 routes）までPASS。`git diff --check`もPASS。証拠は`output/playwright/live-pc23-description-draft-recovery-evidence.md`。
 
 チェックリスト329/354（92.9%）、実用完成度は約97%。実iPhone、実メルカリ値照合、OCR、複数実端末、会計不足補完、特殊な保存拒否状態のサイドパネル目視は未完了で、Goal activeのまま。GitHub Issue #11、Project #1、PR、mergeはGitHub再ログイン後に実施する。ObsidianはWindows正本へP24を追記し、iPhone用コピーは未統合差分保護のため更新しない。
+
+## 2026-09-21 PR #12 再送確認のレビュー修正
+
+GitHubのCodexレビューで、保存成功後に応答だけ失われ、その間にv1.1 pilotが始まると、同じ再送キーと同じ内容でも保存済み結果の確認前に409となるP2を検出した。商品URL登録と販売状況保存の両方で、管理権限と対象SKUの確認を先に維持し、保存済み再送だけをworkflow／pilotの可変な新規書込み条件より前に返すよう修正した。同じキーで異なる内容は409、新しい書込みはpilot中409、workerは403のまま維持した。
+
+実repositoryの処理順テストと実PostgreSQL結合試験を追加した。`template0`由来の新規DBへ48 migrationを適用し、66-table RLS、pilot開始後の両経路の201再送、元応答との完全一致、異内容409、新規キー409、worker403、商品URL1行・監査1行・販売状況2行・監査2行で重複なしをPASS。最終`npm run check`は113ファイル・851テスト、整形、静的解析、型、coverage、秘密情報検査、依存関係検査、API／Web build（86 routes）までPASSした。
+
+別実行のAstra lowレビューで初回P3だったpilot後の件数アサート不足を補い、再レビューはP1=0、P2=0、P3=0。製品機能の追加ではないため、チェックリスト329/354（92.9%）と実用完成度約97%は変更しない。PR #12は修正commitのpushと再確認後にmerge判断する。

@@ -12371,21 +12371,22 @@ try {
   assert.equal(workerPublishedPage.statusCode, 403, workerPublishedPage.body);
 
   const duplicatePublishedPageSkuId = randomUUID();
+  const salesPath = `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/sales-checks`;
+  const salesInput = {
+    listingDays: null,
+    currentPriceYen: "9987",
+    viewCount: "0",
+    searchCount: "123",
+    likeCount: null,
+    priceReductionRequestCount: "2",
+    checkedOn: "2026-09-21",
+    nextCheckOn: "2026-09-23",
+    inputSource: "official_page_human_checked",
+    idempotencyKey: randomUUID(),
+  };
+  let savedSalesResponse: unknown;
   const publishedPageAdmin = postgres(adminUrl, { max: 1 });
   try {
-    const salesPath = `/v1/workspaces/${owner.workspaceId}/skus/${acquiredItem.skuId}/sales-checks`;
-    const salesInput = {
-      listingDays: null,
-      currentPriceYen: "9987",
-      viewCount: "0",
-      searchCount: "123",
-      likeCount: null,
-      priceReductionRequestCount: "2",
-      checkedOn: "2026-09-21",
-      nextCheckOn: "2026-09-23",
-      inputSource: "official_page_human_checked",
-      idempotencyKey: randomUUID(),
-    };
     const businessSnapshot = async () => {
       const result: Record<string, unknown> = {};
       for (const table of [
@@ -12435,6 +12436,7 @@ try {
     assert.equal(firstSales.listingDays, null);
     assert.equal(firstSales.viewCount, 0);
     assert.equal(firstSales.confirmedBy, owner.identityId);
+    savedSalesResponse = firstSales;
     const conflictingSales = await app.inject({
       method: "POST",
       url: salesPath,
@@ -12618,6 +12620,81 @@ try {
     },
   });
   assert.equal(externalPilotStarted.statusCode, 201, externalPilotStarted.body);
+  // Model a committed POST whose response was lost before a local-only pilot began.
+  // Replays return the exact original result; new writes remain prohibited.
+  for (const scenario of [
+    {
+      path: publishedProductPagePath,
+      payload: publishedPagePayload,
+      saved: savedPublishedPage,
+      changed: {
+        ...publishedPagePayload,
+        productId: "m987654321",
+        productUrl: "https://jp.mercari.com/item/m987654321",
+      },
+    },
+    {
+      path: salesPath,
+      payload: salesInput,
+      saved: savedSalesResponse,
+      changed: { ...salesInput, currentPriceYen: "9988" },
+    },
+  ]) {
+    const replay = await app.inject({
+      method: "POST",
+      url: scenario.path,
+      headers: { cookie },
+      payload: scenario.payload,
+    });
+    assert.equal(replay.statusCode, 201, replay.body);
+    assert.deepEqual(replay.json(), scenario.saved);
+    const changed = await app.inject({
+      method: "POST",
+      url: scenario.path,
+      headers: { cookie },
+      payload: scenario.changed,
+    });
+    assert.equal(changed.statusCode, 409, changed.body);
+    assert.match(changed.body, /another payload/iu);
+    const newWrite = await app.inject({
+      method: "POST",
+      url: scenario.path,
+      headers: { cookie },
+      payload: { ...scenario.payload, idempotencyKey: randomUUID() },
+    });
+    assert.equal(newWrite.statusCode, 409, newWrite.body);
+    assert.match(newWrite.body, /disabled during the local-only pilot/iu);
+    const forbiddenReplay = await app.inject({
+      method: "POST",
+      url: scenario.path,
+      headers: { cookie: workerCookie },
+      payload: scenario.payload,
+    });
+    assert.equal(forbiddenReplay.statusCode, 403, forbiddenReplay.body);
+  }
+  const replayVerificationAdmin = postgres(adminUrl, { max: 1 });
+  try {
+    const [replayCounts] = await replayVerificationAdmin`
+      select
+        (select count(*)::integer from published_product_page
+         where workspace_id = ${owner.workspaceId}) as pages,
+        (select count(*)::integer from audit_event
+         where workspace_id = ${owner.workspaceId}
+           and action = 'listing.product_page.confirmed') as page_audits,
+        (select count(*)::integer from sales_check_observation
+         where workspace_id = ${owner.workspaceId}) as sales_checks,
+        (select count(*)::integer from audit_event
+         where workspace_id = ${owner.workspaceId}
+           and action = 'listing.sales_check.recorded') as sales_audits
+    `;
+    assert.deepEqual(
+      { ...replayCounts },
+      { pages: 1, page_audits: 1, sales_checks: 2, sales_audits: 2 },
+      "Committed replays must not duplicate business or audit records after pilot start",
+    );
+  } finally {
+    await replayVerificationAdmin.end({ timeout: 5 });
+  }
   const externalPilotRunId = externalPilotStarted.json<{ runId: string }>().runId;
   const externalRestartIdentifiers = listingPrepPilotItemIdentifiers(externalPilotRunId, "TOP-01");
   const externalRestartPayload = {

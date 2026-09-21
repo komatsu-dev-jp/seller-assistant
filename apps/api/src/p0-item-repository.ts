@@ -1795,8 +1795,6 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
         await setWorkspace(transaction, workspaceId);
         await requireManagementRole(transaction, workspaceId, actor.identityId);
         await transaction`select pg_advisory_xact_lock(hashtext(${workspaceId}), hashtext(${skuId}))`;
-        await requirePublishedProductPageEligible(transaction, workspaceId, skuId);
-
         const replayRows = await transaction<PublishedProductPageRow[]>`
           select id, workspace_id, sku_id, sales_channel_key, sales_channel_name,
                  product_id, product_url, confirmed_by, confirmed_at,
@@ -1814,6 +1812,8 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
           return toPublishedProductPage(replayRows[0]);
         }
 
+        // A committed replay is read-only; mutable workflow/pilot gates apply only to new writes.
+        await requirePublishedProductPageEligible(transaction, workspaceId, skuId);
         const existingRows = await selectPublishedProductPage(transaction, workspaceId, skuId);
         if (existingRows[0]) {
           if (
@@ -1924,9 +1924,6 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
         await transaction`select pg_advisory_xact_lock(hashtext(${workspaceId}), hashtext(${idempotencyKey}))`;
         await transaction`select pg_advisory_xact_lock(hashtext(${workspaceId}), hashtext(${skuId}))`;
         await requireManagedSku(transaction, workspaceId, skuId);
-        const pages = await selectPublishedProductPage(transaction, workspaceId, skuId);
-        if (!pages[0])
-          throw new RepositoryError("conflict", "Register the confirmed product page first");
         const replay = await transaction<SalesCheckRow[]>`
           select id, workspace_id, sku_id, listing_days, current_price_yen, view_count,
                  search_count, like_count, price_reduction_request_count,
@@ -1940,6 +1937,10 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
             throw new RepositoryError("conflict", "The sales check key has another payload");
           return toSalesCheck(replay[0]);
         }
+        // Preserve authorization above, but do not revalidate write eligibility for a replay.
+        const pages = await selectPublishedProductPage(transaction, workspaceId, skuId);
+        if (!pages[0])
+          throw new RepositoryError("conflict", "Register the confirmed product page first");
         await requirePublishedProductPageEligible(transaction, workspaceId, skuId);
         const id = randomUUID();
         const rows = await transaction<SalesCheckRow[]>`
