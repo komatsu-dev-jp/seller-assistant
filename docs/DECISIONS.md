@@ -552,3 +552,13 @@ APIキー、トークン、個人情報、生ログ、会話全文、一時的�
 - Safety boundary: GitHub Pagesは静的ホスティングのため、認証Cookie、API、PostgreSQL、実データ保存は公開しない。公開版は架空データの操作確認に限定し、外部API、有料サービス、自動出品、自動価格変更を追加しない。
 - Verification: ルートの端末別遷移、base path、Service Worker更新、旧文言不在を契約テストで固定し、Pages用production build、公開後のスマホ幅表示とcommit一致を確認する。
 - Applies to: `apps/review/app/page.tsx`、`public-app-entry.tsx`、PWA metadata／manifest、Service Worker、GitHub Pages公開。
+
+### 2026-09-22 — 公開モバイル確認版は端末内だけに保存する
+
+- Type: public review runtime and zero-cost boundary
+- Context: GitHub Pagesの公開画面は承認デザインの静的見本で、ボタン操作や再読み込み後の保存を実際には確認できなかった。利用者は無料のまま、スマホから現在実装できている操作を試したいと希望した。
+- Decision or rule: 公開確認版では架空の商品1件に限り、承認済み順の保管→検品→撮影→採寸をブラウザー内へ保存する。文字・数値は専用localStorage、写真Blobは専用IndexedDBを使い、成功した保存だけを完了表示する。保存キーはこの確認版専用とし、全消去は行わない。
+- Why: 静的なGitHub Pagesだけで無料運用を維持しながら、スマホで入力、写真選択、画面移動、再読み込み復元を確認できるようにするため。
+- Safety boundary: API、サーバー、PostgreSQL、外部サービス、実商品、個人情報、複数端末同期、自動出品・自動値下げは使用しない。端末内確認版を実データ共有版または完成した全機能として表示しない。
+- Verification: 純粋関数と保存失敗のテスト、review production build、390×844の実ブラウザー、通信記録、再読み込み復元、独立レビュー。実iPhoneのカメラとホーム画面起動は公開後に本人が確認する。
+- Applies to: `apps/web/src/components/approved-mobile/`、`apps/review`、P25のテスト・証拠・公開説明。

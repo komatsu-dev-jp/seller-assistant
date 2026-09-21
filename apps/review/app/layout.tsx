@@ -8,7 +8,8 @@ const basePath = process.env.NEXT_PUBLIC_REVIEW_BASE_PATH ?? "";
 
 export const metadata: Metadata = {
   title: "フリマ物販業務アプリ",
-  description: "スマホとPCで実装済みの業務フローを確認できる無料のWebアプリ",
+  description:
+    "無料の操作確認版。モバイルの架空商品1件の入力・写真はこの端末のブラウザー内だけに保存します。実データ共有版ではありません。",
   applicationName: "フリマ物販業務",
   manifest: `${basePath}/manifest.webmanifest`,
   appleWebApp: {
