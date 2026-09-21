@@ -468,7 +468,7 @@
 - [x] 対象2ファイル・5テスト、Web型、整形、Astra low独立レビューに合格。レビューでP1/P2相当の指摘なし。
 - [x] 全体 `npm run check` は82ファイル・706テスト、整形・静的解析・型・coverage・秘密情報検査・依存関係検査・API/Web build（86 routes）まで合格。全体負荷で5秒を僅かに超えた既存scryptテストは、内容を変えず該当1件の上限だけ10秒へ変更し、独立レビューPASS。
 - [x] 認証済み `/workflow` へ、実際の商品URLの1回登録・永続保存・本人確認後の公式商品ページ表示を実装。PC25の架空6商品へは接続せず、実SKUだけを扱う。
-- [ ] PC26の販売状況保存、写真ZIP、出品情報保存、P1全体は未完了として区別する。
+- [ ] PC26の写真ZIP、出品情報保存、P1全体は未完了として区別する。実SKUの販売状況保存は認証済み `/workflow` で完了済み。
 
 証拠: `output/playwright/live-pc25-gallery-controls-evidence.md`。
 
@@ -482,7 +482,7 @@
 - [x] 対象2ファイル・5テスト、Web型、対象ESLint、Astra low独立レビューに合格。全体 `npm run check` は84ファイル・711テスト、整形・静的解析・型・coverage・安全確認・API/Web build（86 routes）まで合格。
 - [x] 再読込後も残る実商品URL保存と、本人確認後の公式ページ表示は認証済み `/workflow` へ実装。PC26の架空商品へ実データは混ぜない。
 - [x] JPEG・PNG・WebP画像を本人が選び、商品ごとにPC内だけで一時表示できる。別商品へ移動して戻っても混ざらず、再選択・画面終了時に不要な一時URLを解放する。10MB、縦横10,000px、4,000万画素の上限を設けた。
-- [ ] OCR、画像からの数値候補作成、数値のサーバー保存は未実装。基準日と6商品は画面確認用データで、P1全体の完了とは扱わない。
+- [ ] OCR、画像からの数値候補作成は未実装。基準日と6商品は画面確認用データでDBへ接続しない。実SKUの本人手入力値は認証済み `/workflow` で保存できるが、P1全体の完了とは扱わない。
 
 証拠: `output/playwright/live-pc26-sales-check-evidence.md`、`output/playwright/live-pc26-local-image-preview-evidence.md`。
 
@@ -668,7 +668,7 @@
 - [x] 10MB超、未対応形式、空ファイル、縦横10,000px超、4,000万画素超、表示失敗を日本語で拒否する。画像の差し替えと画面終了時は一時URLを解放する。
 - [x] 1536×1024と768×1024を右サイドパネルで確認。768pxで横はみ出し0、画面外操作0、操作部品の重なり0、最終console error/warning 0。
 - [x] 画像差し替え・削除・画面終了・古い読込通知の動作テストを追加。対象テストとWeb型・対象整形、全体`npm run check`（105ファイル・801テスト）、Astra low独立再レビュー（P1=0、P2=0、P3=0）に合格。
-- [ ] OCR、画像からの数値候補、数値のサーバー保存、実iPhoneでの写真選択は別工程として残す。
+- [ ] OCR、画像からの数値候補、実iPhoneでの写真選択は別工程として残す。実SKUの本人手入力値のサーバー保存はP23で完了済み。
 
 開始契約: `docs/implementation/sales-check-image-preview-packet.md`。証拠: `output/playwright/live-pc26-local-image-preview-evidence.md`。
 
