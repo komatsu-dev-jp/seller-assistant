@@ -54,11 +54,11 @@ describe("approved PC description review flow", () => {
   });
 
   it("loads the PC23 draft in PC24 and keeps later edits for the back action", () => {
-    expect(officialSource).toContain("readApprovedPcListingDraft(getApprovedPcListingStorage())");
+    expect(officialSource).toContain("loadApprovedPcListingDraft(getApprovedPcListingStorage())");
     expect(officialSource).toContain("setListingDescription(saved.description)");
     expect(officialSource).toContain("note: listingNote.current");
     expect(officialSource).toContain("const saved = writeApprovedPcListingDraft");
-    expect(officialSource).toContain("if (!descriptionDraftStatus) return");
+    expect(officialSource).toContain("if (saveListingDraft(listingDescription)) return");
     expect(officialSource).toContain("event.preventDefault()");
     expect(officialSource).toContain("戻る操作を止めました");
     expect(officialSource).not.toMatch(/localStorage|fetch\(|requestJson\(/u);

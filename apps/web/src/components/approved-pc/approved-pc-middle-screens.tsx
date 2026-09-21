@@ -3,7 +3,7 @@ import { type ChangeEvent, useEffect, useRef, useState } from "react";
 import {
   APPROVED_PC_LISTING_DESCRIPTION,
   getApprovedPcListingStorage,
-  readApprovedPcListingDraft,
+  loadApprovedPcListingDraft,
   writeApprovedPcListingDraft,
 } from "../../lib/approved-listing-draft";
 import { copyResearchText } from "../../lib/product-research-handoff";
@@ -984,31 +984,51 @@ function Description() {
   const [description, setDescription] = useState(APPROVED_PC_LISTING_DESCRIPTION);
   const [note, setNote] = useState("");
   const [descriptionStatus, setDescriptionStatus] = useState("");
+  const [draftSaveFailed, setDraftSaveFailed] = useState(false);
+  const [draftReadFailed, setDraftReadFailed] = useState(false);
+  const draftLoaded = useRef(false);
   const descriptionInput = useRef<HTMLTextAreaElement>(null);
   const previewDialog = useRef<HTMLDialogElement>(null);
   const resetDialog = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
-    const saved = readApprovedPcListingDraft(getApprovedPcListingStorage());
+    const result = loadApprovedPcListingDraft(getApprovedPcListingStorage());
+    draftLoaded.current = result.status === "read";
+    setDraftReadFailed(!draftLoaded.current);
+    const saved = result.draft;
     if (!saved) return;
     setDescription(saved.description);
     setNote(saved.note);
   }, []);
 
   function saveDraft(nextDescription: string, nextNote: string) {
+    if (!draftLoaded.current) {
+      const result = loadApprovedPcListingDraft(getApprovedPcListingStorage());
+      if (result.status === "unavailable") return false;
+      draftLoaded.current = true;
+      setDraftReadFailed(false);
+      if (result.draft) {
+        nextDescription = result.draft.description;
+        nextNote = result.draft.note;
+        setDescription(nextDescription);
+        setNote(nextNote);
+        setDescriptionStatus(
+          "一時保存した内容を読み込みました。内容を確認してから進んでください。",
+        );
+        return false;
+      }
+    }
     const saved = writeApprovedPcListingDraft(getApprovedPcListingStorage(), {
       description: nextDescription,
       note: nextNote,
     });
-    if (!saved) {
-      setDescriptionStatus(
-        "このタブ内に文章を保持できませんでした。内容を選択して手動で控えてください。",
-      );
-    }
+    setDraftSaveFailed(!saved);
+    setDescriptionStatus("");
     return saved;
   }
 
   function requestDescriptionReset() {
+    if (!draftLoaded.current) return;
     if (description === APPROVED_PC_LISTING_DESCRIPTION && note === "") {
       setDescriptionStatus("すでに元の候補です。");
       return;
@@ -1049,7 +1069,9 @@ function Description() {
               aria-label="編集する商品説明"
               ref={descriptionInput}
               value={description}
+              disabled={draftReadFailed}
               onChange={(event) => {
+                if (!draftLoaded.current) return;
                 const nextDescription = event.target.value;
                 setDescription(nextDescription);
                 setDescriptionStatus("");
@@ -1060,7 +1082,7 @@ function Description() {
               <button type="button" onClick={() => previewDialog.current?.showModal()}>
                 プレビュー
               </button>
-              <button type="button" onClick={requestDescriptionReset}>
+              <button type="button" disabled={draftReadFailed} onClick={requestDescriptionReset}>
                 リセット
               </button>
               <small>改行はそのまま反映・このタブ内だけ保持</small>
@@ -1069,6 +1091,18 @@ function Description() {
               <small className={styles.descriptionStatus} role="status">
                 {descriptionStatus}
               </small>
+            ) : null}
+            {draftSaveFailed || draftReadFailed ? (
+              <div className={styles.draftRecovery}>
+                <small role="alert">
+                  {draftReadFailed
+                    ? "一時保存した内容を読み込めませんでした。既存内容を上書きしないため、編集を止めています。画面を閉じずに再試行してください。"
+                    : "本文と補足メモをこのタブ内に一時保存できませんでした。画面を閉じずに再試行してください。"}
+                </small>
+                <button type="button" onClick={() => saveDraft(description, note)}>
+                  一時保存を再試行
+                </button>
+              </div>
             ) : null}
           </Card>
           <section>
@@ -1094,7 +1128,9 @@ function Description() {
                 aria-label="補足メモ"
                 placeholder="メモを入力してください"
                 value={note}
+                disabled={draftReadFailed}
                 onChange={(event) => {
+                  if (!draftLoaded.current) return;
                   const nextNote = event.target.value;
                   setNote(nextNote);
                   setDescriptionStatus("");
@@ -1144,7 +1180,7 @@ function Description() {
               className={styles.outline}
               onClick={() => {
                 resetDialog.current?.close();
-                setDescriptionStatus("編集内容をそのまま保持しました。");
+                setDescriptionStatus("編集内容を変更せず、編集を続けます。");
               }}
             >
               編集を続ける
@@ -1162,21 +1198,35 @@ function Official() {
   const [listingDescription, setListingDescription] = useState(APPROVED_PC_LISTING_DESCRIPTION);
   const [descriptionCopyStatus, setDescriptionCopyStatus] = useState("");
   const [descriptionDraftStatus, setDescriptionDraftStatus] = useState("");
+  const [draftReadFailed, setDraftReadFailed] = useState(false);
+  const draftLoaded = useRef(false);
   const listingNote = useRef("");
+  const copyRevision = useRef(0);
   const listingDescriptionInput = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    const saved = readApprovedPcListingDraft(getApprovedPcListingStorage());
+    const result = loadApprovedPcListingDraft(getApprovedPcListingStorage());
+    draftLoaded.current = result.status === "read";
+    setDraftReadFailed(!draftLoaded.current);
+    if (!draftLoaded.current) {
+      setDescriptionDraftStatus(
+        "一時保存した内容を読み込めませんでした。既存内容を上書きしないため、編集とコピーを止めています。画面を閉じずに再試行してください。",
+      );
+    }
+    const saved = result.draft;
     if (!saved) return;
     listingNote.current = saved.note;
     setListingDescription(saved.description);
   }, []);
 
   async function copyListingDescription() {
+    if (!draftLoaded.current) return;
+    const revision = ++copyRevision.current;
     setDescriptionCopyStatus("");
     const copied = await copyResearchText(listingDescription, (text) =>
       navigator.clipboard.writeText(text),
     );
+    if (revision !== copyRevision.current) return;
     setDescriptionCopyStatus(
       copied
         ? "コピーしました"
@@ -1184,11 +1234,35 @@ function Official() {
     );
   }
 
+  function saveListingDraft(nextDescription: string) {
+    if (!draftLoaded.current) {
+      const result = loadApprovedPcListingDraft(getApprovedPcListingStorage());
+      if (result.status === "unavailable") return false;
+      draftLoaded.current = true;
+      setDraftReadFailed(false);
+      if (result.draft) {
+        nextDescription = result.draft.description;
+        listingNote.current = result.draft.note;
+        setListingDescription(nextDescription);
+      }
+    }
+    const saved = writeApprovedPcListingDraft(getApprovedPcListingStorage(), {
+      description: nextDescription,
+      note: listingNote.current,
+    });
+    setDescriptionDraftStatus(
+      saved
+        ? ""
+        : "本文と補足メモをこのタブ内に一時保存できませんでした。コピーしても一時保存は完了しません。画面を閉じずに再試行してください。",
+    );
+    return saved;
+  }
+
   function protectUnsavedDescription(event: React.MouseEvent<HTMLAnchorElement>) {
-    if (!descriptionDraftStatus) return;
+    if (saveListingDraft(listingDescription)) return;
     event.preventDefault();
     setDescriptionDraftStatus(
-      "文章をこのタブ内に保持できないため、戻る操作を止めました。先に商品説明をコピーしてください。",
+      "一時保存できないため、戻る操作を止めました。コピーしても一時保存は完了しません。画面を閉じずに再試行してください。",
     );
     listingDescriptionInput.current?.focus();
   }
@@ -1227,30 +1301,28 @@ function Official() {
               aria-label="コピーする商品説明"
               ref={listingDescriptionInput}
               value={listingDescription}
+              disabled={draftReadFailed}
               onChange={(event) => {
+                if (!draftLoaded.current) return;
                 const nextDescription = event.target.value;
                 setListingDescription(nextDescription);
+                copyRevision.current += 1;
                 setDescriptionCopyStatus("");
-                const saved = writeApprovedPcListingDraft(getApprovedPcListingStorage(), {
-                  description: nextDescription,
-                  note: listingNote.current,
-                });
-                setDescriptionDraftStatus(
-                  saved
-                    ? ""
-                    : "このタブ内に文章を保持できませんでした。戻る前に商品説明をコピーしてください。",
-                );
+                saveListingDraft(nextDescription);
               }}
             />
             {descriptionDraftStatus ? (
-              <small className={styles.officialDraftError} role="alert">
-                {descriptionDraftStatus}
-              </small>
+              <div className={styles.draftRecovery}>
+                <small role="alert">{descriptionDraftStatus}</small>
+                <button type="button" onClick={() => saveListingDraft(listingDescription)}>
+                  一時保存を再試行
+                </button>
+              </div>
             ) : null}
             <button
               type="button"
               className={`${styles.outline} ${styles.officialTextCopy}`}
-              disabled={!listingDescription.trim()}
+              disabled={draftReadFailed || !listingDescription.trim()}
               aria-live="polite"
               onClick={() => void copyListingDescription()}
             >

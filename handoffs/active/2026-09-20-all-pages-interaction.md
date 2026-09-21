@@ -662,3 +662,15 @@ Codex右サイドパネルでITM-0006へ架空素材を選択し、ITM-0005へ�
 最終`npm run check`は111ファイル・829テスト、整形、静的解析、型、coverage、安全確認、API/Web build（86 routes）までPASS。`git diff --check`もPASS。証拠は`output/playwright/live-sales-check-persistence-evidence.md`。
 
 チェックリスト322/346（93.1%）、実用完成度は約97%。実iPhone、実メルカリ値との照合、OCR、複数実端末、会計不足補完は未完了で、Goal activeのまま。P23はcommit `f9f2f9e`（`feat: persist manual sales checks`）として保存し、`origin/codex/all-pages-interaction-fixes`へpush済み。GitHub Issue #11、Project #1、PR、外部Obsidian正本はP23分未更新。ObsidianはWindows正本とiPhone用コピーに差分があり、安全手順により上書きを停止した。
+
+## 2026-09-21 P24 PC23→24 商品説明の一時保存復旧
+
+PC23／24のsessionStorage一時保存に失敗した時、本文と補足メモを画面内に保持したまま本人が再試行できる操作を追加した。PC24の戻るでも現在値の保存を再試行し、成功時だけPC23へ戻る。コピー成功は保存成功と分離し、コピーの遅延応答やコピー後の編集で古い成功表示を復活させない。
+
+初回の別Astra lowレビューで、初回読取拒否後に保存領域が復旧すると、未編集の「戻る」で初期本文・空メモを既存内容へ上書きし得るP2を検出した。保存なしと読取不可を分離し、PC23／24とも読取不可中は編集を止め、PC24はコピーも止める。再試行時に既存本文とメモを先に復元し、PC23は本人が内容を確認してから次へ進むよう修正した。再レビューはP1=0、P2=0、P3=0でPASS。
+
+右サイドパネルで架空本文と補足メモを入力し、PC23→24→23で両方の保持を確認。PC24のコピーをクリックとEnterで実行し、コピー後に本文を編集すると古い成功表示が消えることも確認した。1536×900と768×900で横はみ出し0、画面外操作0、見出し・入力・ボタンの重なり0、console error／warning 0。サイドパネルの安全制約により、一時保存拒否を意図的に起こした画面の目視は行わず、保存領域取得拒否・読取拒否・書込拒否・復旧は対象25テストで確認した。
+
+最終`npm run check`は112ファイル・841テスト、整形、静的解析、型、coverage、安全確認、API/Web build（86 routes）までPASS。`git diff --check`もPASS。証拠は`output/playwright/live-pc23-description-draft-recovery-evidence.md`。
+
+チェックリスト329/354（92.9%）、実用完成度は約97%。実iPhone、実メルカリ値照合、OCR、複数実端末、会計不足補完、特殊な保存拒否状態のサイドパネル目視は未完了で、Goal activeのまま。GitHub Issue #11、Project #1、PR、mergeはGitHub再ログイン後に実施する。ObsidianはWindows正本へP24を追記し、iPhone用コピーは未統合差分保護のため更新しない。

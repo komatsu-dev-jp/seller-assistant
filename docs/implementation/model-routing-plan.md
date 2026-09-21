@@ -389,3 +389,18 @@
 - 実行結果: Astra medium writerが0048、契約、repository/API、PWA中継、実運用Web、fresh/upgrade試験を実装した。ルート担当が右サイドパネルで保存・再読込・503復旧・1440/390pxを確認し、最終`npm run check`は111ファイル・829テスト、全gateと86 routes buildをPASSした。
 - 独立判定: 別実行のAstra mediumが最終差分を読み取り専用で再確認し、P1=0、P2=0、P3=0でPASSした。実費・トークン消費は取得できないため未計測。
 - 状態: P23の承認済み範囲は完了。実iPhone、実メルカリ値照合、OCR、画像候補、他販売先、複数実端末は別工程として残し、全体Goalは継続する。
+
+## 2026-09-21 P24 PC23→24 商品説明の一時保存復旧
+
+- 目的と参照: sessionStorageの書込み拒否後に、本文と補足メモを失わず再試行し、成功時だけPC23／24間を移動できるようにする。正本は`docs/implementation/approved-description-draft-recovery-packet.md`。
+- リスク: 中程度。外部送信や共有保存はないが、編集内容の消失防止と画面遷移を扱う。
+- 実装担当: 別実行の`gpt-6-astra` / low / `description_draft_recovery_impl`を唯一のsource writerとする。
+- 確認担当: 実装担当とは別実行の`gpt-6-astra` / lowによる読み取り専用レビュー。ルート担当が自動試験と右サイドパネルの画面確認を行う。
+- 実装運転モード: `astra-centric`。既存UIとsessionStorageだけの限定復旧なのでlowで開始し、API・DB・未確認内容の破棄・原因不明の失敗へ波及したら変更を広げずルートへ戻す。
+- 変更可能: PC23／24のDescription・Official、専用CSS、approved listing draft helper/test、対応する操作テスト、計画・handoff・証拠。
+- 変更禁止: API、DB、実SKU保存、localStorage、AI、ZIP、OCR、未承認P1機能、外部通信、有料サービス。
+- 受け入れ条件: パケットの8条件、対象テスト、Web型・lint・format、root check、git diff check、1536／768pxの保存拒否→復旧、別実行レビューP1/P2 0件。
+- 実行結果: Astra low writerがPC23／24の再試行、PC24戻る時の再保存、コピー応答の世代管理、読取不可と保存なしの分離を実装した。初回独立レビューで、読取拒否後に初期値で既存内容を上書きし得るP2を検出し、PC23／24とも既存本文・メモを先に復元する保護と回帰テストを追加した。
+- 検証結果: 対象25テスト、最終`npm run check`（112ファイル・841テスト、全gate、86 routes build）、`git diff --check`をPASS。右サイドパネルで通常のPC23→24→23、コピーのクリック／Enter、コピー後編集、1536／768pxの横はみ出し0・重なり0・console error/warning 0を確認した。一時保存拒否を強制した画面の目視はサイドパネルの安全制約により未確認で、拒否・復旧は動作テストで確認した。
+- 独立判定: 別実行のAstra lowが初回P1=0、P2=1、P3=0を報告。修正後の再レビューはP1=0、P2=0、P3=0でPASS。API、DB、localStorage、実SKU、外部通信、未承認P1への逸脱なし。
+- 状態: P24の実装と自動検証は完了。特殊な保存拒否状態のサイドパネル目視、実商品別サーバー保存、AI生成、実iPhoneは別工程として残し、全体Goalは継続する。

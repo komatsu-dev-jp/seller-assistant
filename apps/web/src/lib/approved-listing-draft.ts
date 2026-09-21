@@ -23,11 +23,24 @@ export function getApprovedPcListingStorage(): DraftStorage | null {
 export function readApprovedPcListingDraft(
   storage: DraftStorage | null | undefined,
 ): ApprovedPcListingDraft | null {
-  if (!storage) return null;
-  try {
-    const saved = storage.getItem(APPROVED_PC_LISTING_DRAFT_KEY);
-    if (!saved) return null;
+  return loadApprovedPcListingDraft(storage).draft;
+}
 
+export function loadApprovedPcListingDraft(
+  storage: DraftStorage | null | undefined,
+):
+  | { status: "read"; draft: ApprovedPcListingDraft | null }
+  | { status: "unavailable"; draft: null } {
+  if (!storage) return { status: "unavailable", draft: null };
+  let saved: string | null;
+  try {
+    saved = storage.getItem(APPROVED_PC_LISTING_DRAFT_KEY);
+  } catch {
+    return { status: "unavailable", draft: null };
+  }
+  if (!saved) return { status: "read", draft: null };
+
+  try {
     const value: unknown = JSON.parse(saved);
     if (
       typeof value !== "object" ||
@@ -41,12 +54,12 @@ export function readApprovedPcListingDraft(
       !("note" in value) ||
       typeof value.note !== "string"
     ) {
-      return null;
+      return { status: "read", draft: null };
     }
 
-    return { description: value.description, note: value.note };
+    return { status: "read", draft: { description: value.description, note: value.note } };
   } catch {
-    return null;
+    return { status: "read", draft: null };
   }
 }
 

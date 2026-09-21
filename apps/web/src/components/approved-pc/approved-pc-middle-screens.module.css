@@ -4156,6 +4156,37 @@
   line-height: 1.3;
 }
 
+.draftRecovery {
+  display: grid;
+  gap: 6px;
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+}
+
+.draftRecovery > small {
+  float: none !important;
+  color: #9a4c00 !important;
+  line-height: 1.4;
+}
+
+.draftRecovery > button {
+  justify-self: start;
+  max-width: 100%;
+  border: 1px solid #b8c9df;
+  border-radius: 6px;
+  padding: 6px 10px;
+  color: #075bc8;
+  background: #fff;
+  font: inherit;
+  white-space: normal;
+  cursor: pointer;
+}
+
+.screen23 .desc > .card:has(.draftRecovery),
+.screen24 .official .card:has(.draftRecovery) {
+  height: auto;
+}
+
 .primaryDisabled {
   cursor: not-allowed;
   opacity: 0.52;

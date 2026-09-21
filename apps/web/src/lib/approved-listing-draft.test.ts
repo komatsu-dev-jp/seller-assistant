@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   APPROVED_PC_LISTING_DESCRIPTION,
   getApprovedPcListingStorage,
+  loadApprovedPcListingDraft,
   readApprovedPcListingDraft,
   writeApprovedPcListingDraft,
 } from "./approved-listing-draft";
@@ -18,6 +19,18 @@ function memoryStorage(initial?: string) {
 }
 
 describe("approved PC listing draft", () => {
+  it("distinguishes an empty store from an unreadable store", () => {
+    expect(loadApprovedPcListingDraft(memoryStorage())).toEqual({ status: "read", draft: null });
+    expect(loadApprovedPcListingDraft(null)).toEqual({ status: "unavailable", draft: null });
+    expect(
+      loadApprovedPcListingDraft({
+        getItem: () => {
+          throw new Error("denied");
+        },
+        setItem: () => {},
+      }),
+    ).toEqual({ status: "unavailable", draft: null });
+  });
   it("round-trips the edited description and keeps the note separate", () => {
     const storage = memoryStorage();
     const draft = { description: "1行目\n2行目", note: "本文へ混ぜないメモ" };
