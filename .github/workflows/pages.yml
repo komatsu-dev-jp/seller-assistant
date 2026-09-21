@@ -29,6 +29,8 @@ jobs:
           cache: npm
       - name: Install locked dependencies
         run: npm ci
+      - name: Build shared workspace packages
+        run: npm run build:packages
       - name: Build the shared approved-screen review app
         env:
           REVIEW_BASE_PATH: /seller-assistant
