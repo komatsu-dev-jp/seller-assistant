@@ -16,6 +16,7 @@ import {
   type MobileScreen,
 } from "./mobile-screen-data";
 import styles from "./approved-mobile-demo.module.css";
+import { isLocalReviewScreen, LocalReviewFlow } from "./local-review-flow";
 
 type Choice = "first" | "second" | "third" | "none";
 
@@ -3622,7 +3623,19 @@ export function ApprovedMobileDemo({ screenId }: { screenId: string }) {
       data-live-route={liveRoute ?? undefined}
     >
       <div className={styles.phoneShell}>
-        {screen.id === "01" ? null : <Header screen={screen} isFirst={isFirst} />}
+        {screen.id === "01" ? null : (
+          <Header
+            screen={
+              isStaticApprovedReview && isLocalReviewScreen(screen.id)
+                ? {
+                    ...screen,
+                    note: "架空商品1件の確認版です。入力・写真はこのブラウザーだけに保存します。外部送信・端末間共有は行いません。",
+                  }
+                : screen
+            }
+            isFirst={isFirst}
+          />
+        )}
         <div className={styles.scrollArea}>
           {isP1Preview ? (
             <div className={cn(styles.demoNotice, styles.demoNoticeP1)}>
@@ -3630,8 +3643,14 @@ export function ApprovedMobileDemo({ screenId }: { screenId: string }) {
               <span>架空データ・保存されません</span>
             </div>
           ) : null}
-          <RenderScreenContent id={screen.id} />
-          <ActionBar screen={screen} next={next} />
+          {isStaticApprovedReview && isLocalReviewScreen(screen.id) ? (
+            <LocalReviewFlow key={screen.id} screenId={screen.id} />
+          ) : (
+            <>
+              <RenderScreenContent id={screen.id} />
+              <ActionBar screen={screen} next={next} />
+            </>
+          )}
         </div>
         <Footer screen={screen} />
       </div>

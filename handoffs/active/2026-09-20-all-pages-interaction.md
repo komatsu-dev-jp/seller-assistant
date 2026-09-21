@@ -682,3 +682,13 @@ GitHubのCodexレビューで、保存成功後に応答だけ失われ、その
 実repositoryの処理順テストと実PostgreSQL結合試験を追加した。`template0`由来の新規DBへ48 migrationを適用し、66-table RLS、pilot開始後の両経路の201再送、元応答との完全一致、異内容409、新規キー409、worker403、商品URL1行・監査1行・販売状況2行・監査2行で重複なしをPASS。最終`npm run check`は113ファイル・851テスト、整形、静的解析、型、coverage、秘密情報検査、依存関係検査、API／Web build（86 routes）までPASSした。
 
 別実行のAstra lowレビューで初回P3だったpilot後の件数アサート不足を補い、再レビューはP1=0、P2=0、P3=0。製品機能の追加ではないため、チェックリスト329/354（92.9%）と実用完成度約97%は変更しない。PR #12は修正commitのpushと再確認後にmerge判断する。
+
+## 2026-09-22 P25 公開モバイル確認版の端末内操作
+
+GitHub Pagesの承認済みモバイル画面04／05・14〜28へ、架空商品`REVIEW-0001`だけを扱うブラウザー内保存を追加した。保管場所、検品6項目、写真8スロット、採寸4項目を承認済み順で操作できる。文字・数値は専用localStorage、写真Blobは専用IndexedDBへ保存し、API、DB、外部サービス、有料機能、実商品、個人情報、複数端末同期は使用しない。
+
+初回独立レビューのP2 3件（同じ写真枠の多重タブ競合、reset部分失敗後の古いUI、04／05／17の承認構造回帰）を修正。再レビューのP3 1件（検品6/6後の再読み込みで余分な5操作）も修正し、最終P1=0、P2=0、P3=0でPASSした。
+
+右サイドパネル390×844で、架空保管場所、検品6/6、架空写真8/8、肩幅47.5・身幅52・着丈70・袖丈60を完走。写真8枚後と全工程後の再読み込み復元、横はみ出し0、console error／warning 0を確認した。修正後は検品6/6で再読み込みしても、主ボタンから画面18へ直接進める。対象19テスト、最終`npm run check`は115ファイル・871テスト、review production buildは134ページ・137ファイル、`git diff --check`をPASS。証拠は`output/playwright/live-mobile-local-review-pwa-evidence.md`。
+
+チェックリスト340/366（92.9%）。実iPhone Safariのカメラ／写真選択、ホーム画面起動、再読み込み復元は未確認。公開後の本人確認へ残す。branchは`codex/mobile-local-review-pwa`。Draft PR作成後もmergeとPages公開は利用者の再承認まで停止する。
