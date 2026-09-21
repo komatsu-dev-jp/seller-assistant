@@ -1,0 +1,207 @@
+.headerPanel {
+  position: fixed;
+  z-index: 200;
+  top: 46px;
+  right: 12px;
+  width: 214px;
+  box-sizing: border-box;
+  overflow: hidden;
+  border: 1px solid #d8e1ee;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 12px 32px rgb(31 50 82 / 20%);
+  color: #172744;
+  font-size: 11px;
+}
+
+.headerPanel > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 38px;
+  padding: 0 10px 0 12px;
+  border-bottom: 1px solid #e6ebf2;
+  background: #f8fafc;
+}
+
+.headerPanel h2 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.headerPanel > header button {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #51617a;
+  cursor: pointer;
+  font: inherit;
+  font-size: 18px;
+}
+
+.headerPanel nav {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+  padding: 10px;
+}
+
+.headerPanel nav a,
+.panelBody a {
+  display: flex;
+  min-height: 30px;
+  align-items: center;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: #eef4ff;
+  color: #075de4;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.panelBody {
+  display: grid;
+  gap: 7px;
+  padding: 12px;
+  line-height: 1.55;
+}
+
+.panelBody p {
+  margin: 0;
+  color: #5b6b82;
+}
+
+.panelBody span {
+  color: #7c5a00;
+  font-weight: 700;
+}
+
+.headerPanel button:focus-visible,
+.headerPanel a:focus-visible {
+  outline: 2px solid #075de4;
+  outline-offset: 2px;
+}
+
+.previewTrigger {
+  margin: 0;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: inherit;
+}
+
+.reviewOnlyDisabledLink {
+  display: inline-flex;
+  align-items: center;
+  color: #66758b !important;
+  cursor: not-allowed;
+  opacity: 0.78;
+  text-decoration: none !important;
+}
+
+.previewBackdrop {
+  position: fixed;
+  z-index: 298;
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: rgb(16 28 48 / 48%);
+  cursor: pointer;
+}
+
+.previewPanel {
+  position: fixed;
+  z-index: 299;
+  top: 50%;
+  left: 50%;
+  width: min(420px, calc(100% - 48px));
+  box-sizing: border-box;
+  overflow: hidden;
+  border: 1px solid #d8e1ee;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 18px 54px rgb(16 28 48 / 32%);
+  color: #172744;
+  font-size: 13px;
+  transform: translate(-50%, -50%);
+}
+
+.previewPanel > header {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px 0 16px;
+  border-bottom: 1px solid #e6ebf2;
+  background: #f8fafc;
+}
+
+.previewPanel h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.previewPanel > header button {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid #cbd5e1;
+  border-radius: 50%;
+  background: #fff;
+  color: #394b66;
+  cursor: pointer;
+  font: inherit;
+  font-size: 20px;
+}
+
+.previewPanel > p {
+  margin: 0;
+  padding: 16px 16px 10px;
+  color: #4e6078;
+  line-height: 1.65;
+}
+
+.previewPanelActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 4px 16px 16px;
+}
+
+.previewPanelActions a,
+.previewPanelActions strong {
+  display: flex;
+  min-height: 36px;
+  align-items: center;
+  box-sizing: border-box;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: #eef4ff;
+  color: #075de4;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.previewPanelActions strong {
+  background: #fff6de;
+  color: #765300;
+}
+
+.previewPanel button:focus-visible,
+.previewPanel a:focus-visible,
+.previewTrigger:focus-visible {
+  outline: 2px solid #075de4;
+  outline-offset: 2px;
+}

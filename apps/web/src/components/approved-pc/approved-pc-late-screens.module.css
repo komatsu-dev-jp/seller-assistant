@@ -40,6 +40,20 @@
 .frame {
   flex: 1;
 }
+.headerAction {
+  appearance: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+.headerAction:focus-visible {
+  outline: 2px solid #075de4;
+  outline-offset: 2px;
+}
 .frame > header {
   height: 56px;
   background: #fff;
@@ -899,7 +913,7 @@
   gap: 7px;
   font-size: 10px;
 }
-.utilityTools > span:not(.utilityUser) {
+.utilityTools > :not(.utilityUser) {
   width: 24px;
   height: 24px;
 }
@@ -1624,7 +1638,7 @@
   color: #5a6b83;
   font-size: 12px;
 }
-.utilityTools > span:not(.utilityUser) {
+.utilityTools > :not(.utilityUser) {
   display: grid;
   place-items: center;
   width: 30px;
@@ -2237,6 +2251,12 @@
   margin: 0 0 4px;
   font-size: 13px;
 }
+.settingsPreviewCaption {
+  margin: 0 0 5px;
+  color: #68778e;
+  font-size: 8px;
+  line-height: 1.25;
+}
 .settingsApp .settingsBoard .settings table {
   width: 100%;
   margin: 0 0 7px;
@@ -2264,7 +2284,7 @@
 }
 .settingsFooter {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 142px;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
   margin-top: 4px;
@@ -2273,8 +2293,16 @@
   margin: 0;
   padding: 7px 9px;
 }
-.settingsApp .settingsFooter .btn {
-  padding: 8px 10px;
+.settingsPreviewActions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.settingsApp .settingsFooter .btn,
+.settingsApp .settingsFooter .previewLink {
+  min-height: 28px;
+  box-sizing: border-box;
+  padding: 6px 8px;
   text-align: center;
 }
 .settingsApp .storageBoard .storage {
@@ -2306,18 +2334,45 @@
   display: grid;
   gap: 5px;
 }
-.settingsApp .storagePathRow a {
+.settingsApp .storagePathRow a,
+.settingsApp .storagePathRow button {
   margin: 0;
+  border: 1px solid #9bc0ff;
+  border-radius: 4px;
   padding: 6px;
+  background: #fff;
+  color: #075de4;
+  font: inherit;
+  text-align: center;
+}
+.settingsApp .storagePathRow button:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+.settingsApp .storagePathRow small {
+  color: #68778e;
+  font-size: 7px;
   text-align: center;
 }
 .settingsApp .storageBoard .noSend {
   font-size: 17px;
   line-height: 1.6;
 }
-.settingsApp .storageBoard > .notice {
+.storagePreviewFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   margin: 10px 0 0;
+}
+.settingsApp .storagePreviewFooter > .notice {
+  flex: 1;
+  margin: 0;
   padding: 9px 11px;
+}
+.settingsApp .storagePreviewFooter .previewLink {
+  min-height: 30px;
+  padding: 8px 9px;
 }
 .settingsApp .backupBoard .backup {
   grid-template-columns: 1fr 1fr;
@@ -2345,8 +2400,10 @@
   padding: 5px 10px;
 }
 .settingsApp .backupBoard .backup .btn {
+  width: 100%;
   margin-top: 5px;
   padding: 7px 12px;
+  border: 0;
 }
 .settingsApp .backupBoard .backHistory {
   width: 100%;
@@ -2363,16 +2420,42 @@
   padding: 4px 6px;
   font-size: 9px;
 }
+.backupPreviewFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 5px;
+}
 .settingsApp .backupBoard .backHistory .notice {
+  flex: 1;
   margin: 5px 0 0;
   padding: 6px 8px;
 }
+.settingsApp .backupBoard .backupPreviewFooter .notice {
+  margin: 0;
+}
+.settingsApp .backupBoard .backupPreviewFooter .previewLink {
+  padding: 6px 8px;
+}
 .settingsApp .connectionsBoard .banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
   max-width: none;
   height: 100px;
   box-sizing: border-box;
   padding: 28px 20px;
   font-size: 21px;
+}
+.settingsApp .connectionsBoard .banner > span {
+  display: grid;
+  gap: 4px;
+}
+.settingsApp .connectionsBoard .banner small {
+  font-size: 9px;
+  font-weight: 600;
 }
 .settingsApp .connectionsBoard .connections {
   max-width: none;
@@ -2400,6 +2483,24 @@
 .settingsApp .connectionsBoard .protect p {
   margin: 6px 0 0;
   font-size: 11px;
+}
+.settingsApp .outlineShield {
+  display: inline-block;
+  width: 36px;
+  height: 42px;
+  flex: 0 0 36px;
+  vertical-align: middle;
+}
+.screen50 .outlineShield {
+  color: #a96d0b;
+}
+.screen52 .banner .outlineShield {
+  color: #19803e;
+}
+.screen52 .protect .outlineShield {
+  width: 30px;
+  height: 35px;
+  color: #0c4fa4;
 }
 
 /* Final fidelity pass: match the approved desktop chrome instead of using
@@ -2466,7 +2567,7 @@
   gap: 12px;
   font-size: 11px;
 }
-.utilityTools > span:not(.utilityUser) {
+.utilityTools > :not(.utilityUser) {
   position: relative;
   width: 22px;
   height: 22px;
@@ -2507,6 +2608,16 @@
   display: flex;
   align-items: center;
   gap: 10px;
+}
+.frameTools > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #657188;
+}
+.frameUserAction {
+  gap: 4px;
+  white-space: nowrap;
 }
 .frameTools svg {
   width: 15px;
@@ -3903,6 +4014,9 @@
   font-size: 8px;
   font-weight: 700;
   vertical-align: 1px;
+  padding: 0;
+  background: #fff;
+  cursor: pointer;
 }
 .screen46 .accounting h3 a {
   padding: 3px 6px;
@@ -4113,16 +4227,33 @@
   text-decoration: none;
   white-space: nowrap;
 }
+.screen48 .fileActions button {
+  display: inline-block;
+  padding: 6px 9px;
+  border: 1px solid #cbd9eb;
+  border-radius: 5px;
+  background: #fff;
+  color: #243a5f;
+  font-size: 8px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
 .screen48 .fileTop .card {
   padding: 7px;
 }
 .screen48 .fileTop .card p {
-  margin: 5px 0;
-  line-height: 1.25;
+  margin: 2px 0;
+  padding-bottom: 2px;
+  line-height: 1.1;
+}
+.screen48 .fileTop .card h3 {
+  margin-bottom: 3px;
+  line-height: 1.1;
 }
 .screen48 .downloadColumn {
   display: grid;
-  grid-template-rows: 60px minmax(0, 1fr);
+  grid-template-rows: 52px 82px;
   gap: 6px;
   min-height: 0;
   height: 140px;
@@ -4131,32 +4262,38 @@
   min-height: 0;
   height: auto;
   overflow: hidden;
-  padding: 7px;
+  padding: 5px 7px;
+}
+.screen48 .fileBottom > .card > h3 {
+  margin-bottom: 2px;
+  font-size: 9px;
+  line-height: 1.1;
 }
 .screen48 .downloadCard h3,
 .screen48 .importCard h3 {
-  margin-bottom: 3px;
+  margin-bottom: 1px;
   font-size: 9px;
 }
 .screen48 .downloadCard p {
-  margin: 2px 0;
+  margin: 0;
   font-size: 7px;
+  line-height: 1.05;
 }
 .screen48 .downloadCard .btn {
   display: block;
-  margin-top: 4px;
-  padding: 5px 7px;
+  margin-top: 2px;
+  padding: 3px 7px;
   text-align: center;
   font-size: 8px;
 }
 .screen48 .importCard p {
-  margin: 2px 0;
+  margin: 1px 0;
   font-size: 7px;
-  line-height: 1.15;
+  line-height: 1.05;
 }
 .screen48 .importCard > a {
   display: inline-block;
-  margin-top: 2px;
+  margin-top: 0;
   color: #075de4;
   font-size: 7px;
   font-weight: 700;
@@ -4171,11 +4308,91 @@
   font-weight: 700;
 }
 
+.accountingPreviewFooter,
+.mappingPreviewActions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.screen46 .accountingPreviewFooter {
+  margin-top: 6px;
+}
+.screen46 .accountingPreviewFooter .btn {
+  width: 240px;
+  box-sizing: border-box;
+  padding: 8px 12px;
+  text-align: center;
+}
+.screen46 .accountingPreviewFooter .previewLink,
+.screen47 .mappingPreviewActions .previewLink {
+  min-height: 28px;
+  box-sizing: border-box;
+  padding: 6px 9px;
+  font-size: 8px;
+}
+.screen47 .mappingPreviewActions {
+  flex: 0 0 auto;
+}
+.screen47 .mappingPreviewActions .btn {
+  min-width: 178px;
+}
+.screen48 .pad {
+  position: relative;
+  padding-bottom: 0;
+}
+.screen48 .pad > .notice {
+  margin-bottom: 0;
+}
+.screen48 .fileHelp {
+  position: absolute;
+  z-index: 4;
+  top: 42px;
+  right: 10px;
+  width: 285px;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid #9abcf7;
+  border-radius: 5px;
+  background: #f3f8ff;
+  box-shadow: 0 4px 14px rgb(31 72 133 / 18%);
+  color: #243a5f;
+  font-size: 8px;
+  line-height: 1.35;
+}
+.screen48 .formatChoice {
+  cursor: default;
+}
+.screen48 .formatChoice:hover {
+  background: #fff;
+}
+.screen48 .formatSelected:hover {
+  background: #f3f8ff;
+}
+.screen48 .formatSelect {
+  display: grid;
+  grid-column: 1;
+  gap: 2px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.screen48 .formatSelect b,
+.screen48 .formatSelect small {
+  grid-column: auto;
+}
+
 /* Final viewport guard: preserve every PC33/PC36 control inside the approved
    768 x 512 board without relying on scrolling. */
 .screen33 .inventoryBottom p {
   margin: 0;
-  padding: 3px 4px;
+  padding: 2px 3px;
+  font-size: 8px;
+  line-height: 1.15;
 }
 
 .screen33 .inventoryBottom,
@@ -4246,4 +4463,241 @@
 .screen36 .deleteGuard .btn {
   position: relative;
   top: -4px;
+}
+
+/* PC33-36 are approved-design previews. Keep preview navigation separate
+   from real inventory mutations so a static route never looks persisted. */
+.previewHeaderActions,
+.previewFooterActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+.previewLink {
+  display: inline-block;
+  box-sizing: border-box;
+  border: 1px solid #9fc0f2;
+  border-radius: 5px;
+  padding: 7px 9px;
+  color: #075de4;
+  background: #ffffff;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.15;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.previewDisabled,
+.screen36 .statuses button,
+.screen35 .photoAdd:disabled,
+.screen35 .secondaryAction:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
+.previewDisabled {
+  border: 0;
+  font: inherit;
+}
+
+.previewTextButton {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.previewInlineNote {
+  float: right;
+  color: #68778e;
+  font-size: 8px;
+  font-weight: 600;
+}
+
+.previewFieldNote {
+  display: block;
+  margin-top: 3px;
+  color: #68778e;
+  font-size: 7px;
+  line-height: 1.2;
+}
+
+.screen33 .screenActions > p {
+  max-width: 300px;
+}
+
+.screen33 .previewHeaderActions {
+  position: absolute;
+  top: 8px;
+  right: 18px;
+}
+
+.screen33 .screenActions .previewHeaderActions .btn {
+  position: static;
+}
+
+.screen34 .pad > h2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.screen34 .previewHeaderActions .btn {
+  float: none;
+}
+
+.screen35 .mismatch select:disabled {
+  color: #5d697b;
+  background: #f5f7fa;
+}
+
+.screen35 .photoAdd {
+  appearance: none;
+  font: inherit;
+  cursor: not-allowed;
+}
+
+.screen35 .mismatchFooter .previewFooterActions .btn {
+  min-width: 126px;
+  border: 0;
+  font: inherit;
+}
+
+.screen36 .statuses button {
+  box-sizing: border-box;
+  width: 100%;
+  border: 0;
+  font: inherit;
+}
+
+.screen36 .deleteGuard button.btn {
+  width: 100%;
+  border: 0;
+  font: inherit;
+}
+
+/* PC37-40 are approved-design previews. Keep member, permission, approval,
+   and history mutations separate from navigation through the preview set. */
+.teamPreviewHeaderActions,
+.teamPreviewActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+.teamPreviewHeaderActions {
+  float: right;
+}
+
+.teamPreviewHeaderActions .btn,
+.teamPreviewActions .btn {
+  border: 0;
+  font: inherit;
+}
+
+.screen37 .memberPreviewAction {
+  box-sizing: border-box;
+  border: 1px solid #a8c6fa;
+  border-radius: 4px;
+  padding: 4px 6px;
+  color: #075de4;
+  background: #ffffff;
+  font: inherit;
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.screen37 button.memberStop {
+  margin-left: 3px;
+  border-color: #f2a4a4;
+  background: #fff1f1;
+  color: #d93232;
+}
+
+.screen37 .pagination button:disabled,
+.screen40 .pagination button:disabled,
+.screen38 select:disabled,
+.screen38 input:disabled,
+.screen40 .filters select:disabled,
+.screen40 .filterSearch:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.screen38 .teamPreviewActions {
+  flex-wrap: wrap;
+}
+
+.screen38 .teamPreviewActions .btn,
+.screen38 .teamPreviewActions .previewLink {
+  flex: 1 1 100%;
+  text-align: center;
+}
+
+.screen39 .evidencePreviewNote {
+  margin: -3px 0 5px;
+  color: #68778e;
+  font-size: 7px;
+  line-height: 1.2;
+}
+
+.screen39 .pad > footer.approvalPreviewFooter {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.screen39 .approvalPreviewFooter .approvalPreviewAction,
+.screen39 .approvalPreviewFooter .btn,
+.screen39 .approvalPreviewFooter .previewLink {
+  display: grid;
+  min-height: 38px;
+  box-sizing: border-box;
+  place-items: center;
+  border-radius: 5px;
+  padding: 5px 6px;
+  font: inherit;
+  font-weight: 700;
+  text-align: center;
+}
+
+.screen39 .approvalPreviewFooter .approvalPreviewAction {
+  border: 1px solid #9fc3f8;
+  color: #075de4;
+  background: #ffffff;
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.screen39 .approvalPreviewFooter .approvalPreviewAction:nth-child(2) {
+  border-color: #efbc68;
+  color: #db7b00;
+}
+
+.screen40 .filters select:disabled,
+.screen40 .filterSearch:disabled {
+  color: #5d697b;
+  background: #f5f7fa;
+}
+
+/* PC41-44 are P1 approved-design previews. Their shared header is hidden by
+   design, so the visible body carries the preparation and fictional-data
+   boundary instead. */
+.analyticsPreviewHeaderActions .btn,
+.analyticsPreviewHeaderActions .previewLink {
+  padding: 7px 9px;
+  font-size: 9px;
+  line-height: 1.15;
+}
+
+.screen43 .analyticsPreviewHeaderActions,
+.screen44 .analyticsPreviewHeaderActions {
+  max-width: 420px;
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { PUTAWAY_SYNC_CHANGED } from "../lib/offline-events";
 
 import {
   acknowledgeLegacyPutawayConflicts,
@@ -22,6 +23,9 @@ export function OfflineSyncStatus() {
     try {
       const result = await syncPendingPutaways();
       setPending(result.remaining);
+      if (result.synced > 0 || result.discarded > 0) {
+        window.dispatchEvent(new Event(PUTAWAY_SYNC_CHANGED));
+      }
       setMessage(
         result.loginRequired
           ? "ログイン期限が切れました。再ログイン後に同期待ちを再送します。端末内に保持しています。"

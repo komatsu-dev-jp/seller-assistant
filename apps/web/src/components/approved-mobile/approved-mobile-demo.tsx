@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
+import { isStaticApprovedReview } from "../approved-review-environment";
 import {
   getMobileFooterSection,
   getMobileLiveRoute,
@@ -19,6 +21,163 @@ type Choice = "first" | "second" | "third" | "none";
 
 function cn(...names: Array<string | false | undefined>): string {
   return names.filter(Boolean).join(" ");
+}
+
+function PreviewActionButton({
+  children,
+  className,
+  ariaLabel,
+  title,
+  message,
+  liveHref,
+  liveLabel = "実際の業務画面を開く",
+}: {
+  children: ReactNode;
+  className?: string | undefined;
+  ariaLabel?: string | undefined;
+  title: string;
+  message: string;
+  liveHref?: string | undefined;
+  liveLabel?: string | undefined;
+}) {
+  const availableLiveHref = isStaticApprovedReview ? undefined : liveHref;
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLElement>(null);
+  const panelId = `${useId()}-preview-action`;
+  const titleId = `${panelId}-title`;
+
+  const close = () => {
+    setOpen(false);
+    window.requestAnimationFrame(() => {
+      if (triggerRef.current?.isConnected) triggerRef.current.focus();
+    });
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    closeRef.current?.focus();
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+        window.requestAnimationFrame(() => {
+          if (triggerRef.current?.isConnected) triggerRef.current.focus();
+        });
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = panelRef.current?.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      );
+      if (!focusable?.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [open]);
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        className={className}
+        aria-label={ariaLabel}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-controls={panelId}
+        onClick={() => setOpen(true)}
+      >
+        {children}
+      </button>
+      {open && typeof document !== "undefined"
+        ? createPortal(
+            <>
+              <button
+                type="button"
+                className={styles.previewActionBackdrop}
+                aria-label={`${title}の案内を閉じる`}
+                tabIndex={-1}
+                onClick={close}
+              />
+              <section
+                ref={panelRef}
+                id={panelId}
+                className={styles.previewActionPanel}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby={titleId}
+              >
+                <header>
+                  <strong id={titleId}>{title}</strong>
+                  <button
+                    ref={closeRef}
+                    type="button"
+                    aria-label={`${title}を閉じる`}
+                    onClick={close}
+                  >
+                    ×
+                  </button>
+                </header>
+                <p>{message}</p>
+                {availableLiveHref ? (
+                  <a href={availableLiveHref}>{liveLabel}</a>
+                ) : (
+                  <span>この機能は準備中です。保存や外部送信は行いません。</span>
+                )}
+              </section>
+            </>,
+            document.body,
+          )
+        : null}
+    </>
+  );
+}
+
+function PreviewCopyButton({ className }: { className?: string | undefined }) {
+  const [status, setStatus] = useState<string | null>(null);
+  const statusId = `${useId()}-copy-status`;
+  const copyText = "価格候補: ¥6,120\n見込み粗利: ¥1,320\n理由: 下限より¥220上";
+
+  const copy = async () => {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error("clipboard_unavailable");
+      await navigator.clipboard.writeText(copyText);
+      setStatus("変更内容をコピーしました");
+    } catch {
+      setStatus("コピーできませんでした。端末の許可を確認して、もう一度お試しください");
+    }
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        className={className}
+        aria-describedby={status ? statusId : undefined}
+        onClick={() => void copy()}
+      >
+        <span>▤</span>
+        <strong>変更内容をコピー</strong>
+        <small>価格や理由をコピーします</small>
+        <b>›</b>
+      </button>
+      {status ? (
+        <span id={statusId} className={styles.previewActionStatus} role="status">
+          {status}
+        </span>
+      ) : null}
+    </>
+  );
 }
 
 function Logo({ small = false }: { small?: boolean }) {
@@ -553,6 +712,20 @@ function Header({ screen, isFirst }: { screen: MobileScreen; isFirst: boolean })
       "42",
       "43",
     ].includes(screen.id) || screen.id === "sales-01";
+  const headerLiveHref = getMobileLiveRoute(screen) ?? undefined;
+  const notificationButton = (
+    <PreviewActionButton
+      className={styles.headerIconAction}
+      ariaLabel="通知を開く"
+      title="通知"
+      message="この確認版では新しい通知を取得しません。表示内容は承認デザイン確認用の架空例です。"
+    >
+      <svg className={styles.bellIcon} viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M6.5 9.5a5.5 5.5 0 0 1 11 0v4l1.7 2.1H4.8l1.7-2.1v-4Z" />
+        <path d="M9.5 18.1a2.8 2.8 0 0 0 5 0" />
+      </svg>
+    </PreviewActionButton>
+  );
   return (
     <header className={cn(styles.header, isHome && styles.headerHome)}>
       {isHome ? null : hideBack ? (
@@ -570,19 +743,29 @@ function Header({ screen, isFirst }: { screen: MobileScreen; isFirst: boolean })
       )}
       <h1 className={styles.headerTitle}>{screen.title}</h1>
       {isHome ? (
-        <svg className={styles.bellIcon} viewBox="0 0 24 24" aria-label="通知">
-          <path d="M6.5 9.5a5.5 5.5 0 0 1 11 0v4l1.7 2.1H4.8l1.7-2.1v-4Z" />
-          <path d="M9.5 18.1a2.8 2.8 0 0 0 5 0" />
-        </svg>
+        notificationButton
       ) : showHelp ? (
-        <span className={styles.headerHelp}>ヘルプ</span>
+        <PreviewActionButton
+          className={styles.headerHelp}
+          ariaLabel="この画面のヘルプを開く"
+          title="この画面のヘルプ"
+          message="表示内容は確認用の見本です。実際の保存が必要な場合は業務画面を開いてください。"
+          liveHref={headerLiveHref}
+        >
+          ヘルプ
+        </PreviewActionButton>
       ) : showQuestion ? (
-        <span className={styles.headerQuestion}>?</span>
+        <PreviewActionButton
+          className={styles.headerQuestion}
+          ariaLabel="この画面について開く"
+          title="この画面について"
+          message="この確認版は操作順を確認するための見本です。保存・公開・外部送信は行いません。"
+          liveHref={headerLiveHref}
+        >
+          ?
+        </PreviewActionButton>
       ) : showBell ? (
-        <svg className={styles.bellIcon} viewBox="0 0 24 24" aria-label="通知">
-          <path d="M6.5 9.5a5.5 5.5 0 0 1 11 0v4l1.7 2.1H4.8l1.7-2.1v-4Z" />
-          <path d="M9.5 18.1a2.8 2.8 0 0 0 5 0" />
-        </svg>
+        notificationButton
       ) : (
         <span className={styles.headerPlaceholder} aria-hidden="true" />
       )}
@@ -646,6 +829,7 @@ function LoginInput({
   type?: "text" | "password";
   icon: "mail" | "lock";
 }) {
+  const [passwordVisible, setPasswordVisible] = useState(false);
   return (
     <label className={styles.loginInput}>
       <span className={styles.loginInputIcon} aria-hidden="true">
@@ -663,9 +847,19 @@ function LoginInput({
           </svg>
         )}
       </span>
-      <input type={type} aria-label={label} placeholder={label} />
+      <input
+        type={type === "password" && passwordVisible ? "text" : type}
+        aria-label={label}
+        placeholder={label}
+      />
       {type === "password" ? (
-        <button type="button" className={styles.passwordEye} aria-label="パスワードを表示">
+        <button
+          type="button"
+          className={styles.passwordEye}
+          aria-label={passwordVisible ? "パスワードを隠す" : "パスワードを表示"}
+          aria-pressed={passwordVisible}
+          onClick={() => setPasswordVisible((visible) => !visible)}
+        >
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M2.5 12s3.4-5.5 9.5-5.5S21.5 12 21.5 12 18.1 17.5 12 17.5 2.5 12 2.5 12Z" />
             <circle cx="12" cy="12" r="2.6" />
@@ -1036,9 +1230,14 @@ function EditableValueRow({ label, value }: { label: string; value: string }) {
     <div className={styles.editableValueRow}>
       <strong>{label}</strong>
       <span>{value}</span>
-      <button type="button" aria-label={`${label}を編集`}>
+      <PreviewActionButton
+        ariaLabel={`${label}を編集`}
+        title={`${label}の編集`}
+        message="この画面は読み取り候補の確認見本です。実際の変更は検品・商品確認画面で行います。"
+        liveHref="/workflow"
+      >
         ✎
-      </button>
+      </PreviewActionButton>
     </div>
   );
 }
@@ -1532,9 +1731,14 @@ function RenderScreenContent({ id }: { id: string }) {
                 <small>商品名</small>
                 <strong>ネイビーシャツ</strong>
               </div>
-              <button type="button" aria-label="ネイビーシャツを編集">
+              <PreviewActionButton
+                ariaLabel="ネイビーシャツを編集"
+                title="商品行の編集"
+                message="この画面は商品行の確認見本です。実際の編集は仕入れ・商品確認画面で行います。"
+                liveHref="/workflow"
+              >
                 ✎
-              </button>
+              </PreviewActionButton>
             </div>
             <div className={styles.miniGrid}>
               <DataRow label="数量" value="10枚" />
@@ -1547,9 +1751,14 @@ function RenderScreenContent({ id }: { id: string }) {
                 <small>商品名</small>
                 <strong>収納ボックス</strong>
               </div>
-              <button type="button" aria-label="収納ボックスを編集">
+              <PreviewActionButton
+                ariaLabel="収納ボックスを編集"
+                title="商品行の編集"
+                message="この画面は商品行の確認見本です。実際の編集は仕入れ・商品確認画面で行います。"
+                liveHref="/workflow"
+              >
                 ✎
-              </button>
+              </PreviewActionButton>
             </div>
             <div className={styles.miniGrid}>
               <DataRow label="数量" value="5個" />
@@ -1562,9 +1771,14 @@ function RenderScreenContent({ id }: { id: string }) {
                 <small>商品名</small>
                 <strong>ファイルA4</strong>
               </div>
-              <button type="button" aria-label="ファイルA4を編集">
+              <PreviewActionButton
+                ariaLabel="ファイルA4を編集"
+                title="商品行の編集"
+                message="この画面は商品行の確認見本です。実際の編集は仕入れ・商品確認画面で行います。"
+                liveHref="/workflow"
+              >
                 ✎
-              </button>
+              </PreviewActionButton>
             </div>
             <div className={styles.miniGrid}>
               <DataRow label="数量" value="20冊" />
@@ -2130,30 +2344,50 @@ function RenderScreenContent({ id }: { id: string }) {
             <div>
               <strong>ブランド</strong>
               <span>CleanStyle</span>
-              <button type="button" aria-label="ブランドを編集">
+              <PreviewActionButton
+                ariaLabel="ブランドを編集"
+                title="ブランドの編集"
+                message="この画面は編集前の確認見本です。実際の変更は商品確認画面で行います。"
+                liveHref="/workflow"
+              >
                 ✎
-              </button>
+              </PreviewActionButton>
             </div>
             <div>
               <strong>サイズ</strong>
               <span>M</span>
-              <button type="button" aria-label="サイズを編集">
+              <PreviewActionButton
+                ariaLabel="サイズを編集"
+                title="サイズの編集"
+                message="この画面は編集前の確認見本です。実際の変更は商品確認画面で行います。"
+                liveHref="/workflow"
+              >
                 ✎
-              </button>
+              </PreviewActionButton>
             </div>
             <div>
               <strong>色</strong>
               <span>ネイビー</span>
-              <button type="button" aria-label="色を編集">
+              <PreviewActionButton
+                ariaLabel="色を編集"
+                title="色の編集"
+                message="この画面は編集前の確認見本です。実際の変更は商品確認画面で行います。"
+                liveHref="/workflow"
+              >
                 ✎
-              </button>
+              </PreviewActionButton>
             </div>
             <div>
               <strong>素材</strong>
               <span>綿100%</span>
-              <button type="button" aria-label="素材を編集">
+              <PreviewActionButton
+                ariaLabel="素材を編集"
+                title="素材の編集"
+                message="この画面は編集前の確認見本です。実際の変更は商品確認画面で行います。"
+                liveHref="/workflow"
+              >
                 ✎
-              </button>
+              </PreviewActionButton>
             </div>
           </div>
           <div className={styles.humanConfirmAmber}>
@@ -2342,9 +2576,15 @@ function RenderScreenContent({ id }: { id: string }) {
               onClick={() => setChoice("none")}
             />
           </div>
-          <button type="button" className={styles.textAction}>
+          <PreviewActionButton
+            className={styles.textAction}
+            title="ほかの配送サイズ"
+            message="この画面は配送候補の見本です。ほかのサイズと最新料金は発送画面で確認します。"
+            liveHref="/shipping"
+            liveLabel="発送画面で確認する"
+          >
             ほかのサイズを見る　›
-          </button>
+          </PreviewActionButton>
           <div className={styles.officialDate}>
             <svg className={styles.officialCheckIcon} viewBox="0 0 24 24" aria-hidden="true">
               <path d="M12 2.8 19 5.6v5.2c0 4.7-2.8 8.1-7 10.4-4.2-2.3-7-5.7-7-10.4V5.6L12 2.8Z" />
@@ -2365,9 +2605,15 @@ function RenderScreenContent({ id }: { id: string }) {
             <DataRow label="配送方法" value="ネコポス" />
             <DataRow label="送料" value="210円" />
           </div>
-          <button type="button" className={styles.outlineButton}>
+          <PreviewActionButton
+            className={styles.outlineButton}
+            title="公式料金の確認"
+            message="この見本から外部サイトを自動で開きません。最新料金は発送画面で人が確認します。"
+            liveHref="/shipping"
+            liveLabel="発送画面で確認する"
+          >
             公式料金を確認
-          </button>
+          </PreviewActionButton>
           <div className={styles.warningBanner}>⚠ 料金は変わることがあります</div>
         </section>
       );
@@ -2395,7 +2641,14 @@ function RenderScreenContent({ id }: { id: string }) {
               <br />
               公式確認日つき
             </small>
-            <button type="button">送料一覧を編集　›</button>
+            <PreviewActionButton
+              title="送料一覧の編集"
+              message="この画面は発送記録の見本です。送料一覧の確認と変更は発送画面で行います。"
+              liveHref="/shipping"
+              liveLabel="発送画面で確認する"
+            >
+              送料一覧を編集　›
+            </PreviewActionButton>
           </div>
         </section>
       );
@@ -2778,30 +3031,46 @@ function RenderScreenContent({ id }: { id: string }) {
             <div>
               <strong>ブランド</strong>
               <span>CleanStyle</span>
-              <button type="button" aria-label="ブランドを編集">
+              <PreviewActionButton
+                ariaLabel="ブランドを編集"
+                title="ブランドの編集"
+                message="追加フローは確認用の見本です。商品別の編集・保存機能は準備中です。"
+              >
                 ✎
-              </button>
+              </PreviewActionButton>
             </div>
             <div>
               <strong>サイズ</strong>
               <span>M</span>
-              <button type="button" aria-label="サイズを編集">
+              <PreviewActionButton
+                ariaLabel="サイズを編集"
+                title="サイズの編集"
+                message="追加フローは確認用の見本です。商品別の編集・保存機能は準備中です。"
+              >
                 ✎
-              </button>
+              </PreviewActionButton>
             </div>
             <div>
               <strong>色</strong>
               <span>ネイビー</span>
-              <button type="button" aria-label="色を編集">
+              <PreviewActionButton
+                ariaLabel="色を編集"
+                title="色の編集"
+                message="追加フローは確認用の見本です。商品別の編集・保存機能は準備中です。"
+              >
                 ✎
-              </button>
+              </PreviewActionButton>
             </div>
             <div>
               <strong>素材</strong>
               <span>綿100%</span>
-              <button type="button" aria-label="素材を編集">
+              <PreviewActionButton
+                ariaLabel="素材を編集"
+                title="素材の編集"
+                message="追加フローは確認用の見本です。商品別の編集・保存機能は準備中です。"
+              >
                 ✎
-              </button>
+              </PreviewActionButton>
             </div>
           </div>
           <div className={styles.humanConfirmAmber}>
@@ -2928,9 +3197,13 @@ function RenderScreenContent({ id }: { id: string }) {
     case "photo-07":
       return (
         <section className={styles.contentStack}>
-          <button type="button" className={styles.fileChooseButton}>
+          <PreviewActionButton
+            className={styles.fileChooseButton}
+            title="ZIPまたは画像の選択"
+            message="追加フローは確認用の見本です。この画面ではファイルを読み込まず、PCや外部へ送信しません。"
+          >
             ZIPまたは画像を選ぶ
-          </button>
+          </PreviewActionButton>
           <div className={styles.photoMatchBanner}>
             <CheckMark tone="green" />
             <strong>5 / 5枚 一致</strong>
@@ -3291,18 +3564,17 @@ function RenderScreenContent({ id }: { id: string }) {
             <DataRow label="下限より" value="¥220上" tone="ok" />
           </div>
           <div className={styles.salesManualActions}>
-            <button type="button" className={styles.salesManualAction}>
+            <PreviewActionButton
+              className={styles.salesManualAction}
+              title="公式の価格機能"
+              message="公式URLが未設定のため、この画面から外部サイトを勝手に開きません。価格変更は本人確認後に行います。"
+            >
               <span>↗</span>
               <strong>公式の価格機能を開く</strong>
               <small>公式画面で本人が操作</small>
               <b>›</b>
-            </button>
-            <button type="button" className={styles.salesManualAction}>
-              <span>▤</span>
-              <strong>変更内容をコピー</strong>
-              <small>価格や理由をコピーします</small>
-              <b>›</b>
-            </button>
+            </PreviewActionButton>
+            <PreviewCopyButton className={styles.salesManualAction} />
           </div>
           <div className={styles.salesManualNotice}>
             ⓘ このアプリは自動値下げしません。価格の変更は公式画面で本人が行ってください。
@@ -3341,7 +3613,7 @@ export function ApprovedMobileDemo({ screenId }: { screenId: string }) {
   const next = getMobileNext(screen.id);
   const isFirst = index === 0;
   const isP1Preview = isP1MobileReviewScreen(screen);
-  const liveRoute = getMobileLiveRoute(screen);
+  const liveRoute = isStaticApprovedReview ? null : getMobileLiveRoute(screen);
 
   return (
     <main

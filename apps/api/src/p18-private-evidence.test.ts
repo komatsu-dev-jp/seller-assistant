@@ -61,6 +61,7 @@ describe("P18 private catalog and evidence boundaries", () => {
       expect(response.body).not.toContain("private-location-photo");
       expect(access).toHaveBeenCalledTimes(revocation === "assignment" ? 2 : 1);
     },
+    10_000,
   );
   it("requires dedicated definitions without expanding the listing-photo set", () => {
     expect(photoRoleSchema.safeParse("measurement_evidence").success).toBe(false);

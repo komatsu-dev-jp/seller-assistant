@@ -307,6 +307,63 @@
   max-width: 420px;
   margin: 28px 0;
 }
+.measureEntry {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 12px 24px;
+  margin-top: 20px;
+  align-items: start;
+}
+.measureEntry > * {
+  min-width: 0;
+  grid-column: 2;
+  margin: 0;
+}
+.measureEntry .measureProgress {
+  grid-column: 1;
+  grid-row: 1;
+  color: var(--muted);
+  font-size: 14px;
+}
+.measureEntry > h3 {
+  grid-column: 2;
+  grid-row: 1;
+  font-size: 22px;
+}
+.measureEntry .measureEvidence {
+  grid-column: 1;
+  grid-row: 2 / span 8;
+  background: #fff;
+}
+.measureEntry .fileLabel {
+  margin-top: 0;
+}
+.measureEntry .evidencePreview {
+  min-height: 260px;
+  background: #f5f8fc;
+}
+.measureEntry .evidencePreview img {
+  max-height: 380px;
+}
+.measureEntry .measureInput {
+  width: 100%;
+  max-width: none;
+}
+.measureEntry .measureInput input {
+  border-color: #246bfd;
+  background: #f5f9ff;
+  font-variant-numeric: tabular-nums;
+}
+.measureBasis,
+.measureSaveNotice {
+  font-size: 13px;
+  color: #52627f;
+}
+.measureSaveNotice {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
 .measureInput input {
   min-height: 84px;
   font-size: 36px;
@@ -377,6 +434,38 @@
   background: white;
 }
 @media (max-width: 767px) {
+  .measureEntry {
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 14px;
+  }
+  .measureEntry > * {
+    width: 100%;
+    box-sizing: border-box;
+    grid-column: 1 / -1;
+    grid-row: auto;
+  }
+  .measureEntry .measureProgress,
+  .measureEntry > h3 {
+    order: -4;
+  }
+  .measureEntry .measureBasis {
+    order: -3;
+  }
+  .measureEntry .measureEvidence {
+    grid-column: 1 / -1;
+    grid-row: auto;
+    order: -2;
+    padding: 12px;
+  }
+  .measureEntry .evidencePreview {
+    min-height: 160px;
+  }
+  .measureEntry .evidencePreview img {
+    max-height: 220px;
+  }
+  .measureEntry .measureInput {
+    order: -1;
+  }
   .layout {
     display: block;
     padding-bottom: calc(80px + env(safe-area-inset-bottom));
@@ -393,6 +482,9 @@
   }
   .content {
     padding: 16px;
+  }
+  .content :is(input, select, textarea, button, a) {
+    scroll-margin-block: calc(88px + env(safe-area-inset-bottom));
   }
   .content :global(.panel) {
     padding: 18px;

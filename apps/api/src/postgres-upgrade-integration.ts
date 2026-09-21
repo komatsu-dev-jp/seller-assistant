@@ -28,7 +28,7 @@ const legacyMigrations = migrationNames.filter((name) => Number(name.slice(0, 4)
 const upgradeMigrations = migrationNames.filter((name) => Number(name.slice(0, 4)) > 14);
 assert.ok(legacyMigrations.length > 0, "Legacy migrations must be present");
 assert.deepEqual(
-  upgradeMigrations.slice(-25).map((name) => name.slice(0, 4)),
+  upgradeMigrations.slice(-27).map((name) => name.slice(0, 4)),
   [
     "0021",
     "0022",
@@ -55,6 +55,8 @@ assert.deepEqual(
     "0044",
     "0045",
     "0046",
+    "0047",
+    "0048",
   ],
   "The upgrade fixture must include the revised-A migrations",
 );
@@ -1987,7 +1989,7 @@ try {
     historyBeforeRestoreSafety,
     "0040 must only harden helper resolution without rewriting existing history",
   );
-  for (const version of ["0041", "0042", "0043", "0044", "0045", "0046"]) {
+  for (const version of ["0041", "0042", "0043", "0044", "0045", "0046", "0047", "0048"]) {
     let legacyTeamHistory: string | undefined;
     if (version === "0046") {
       await sql`select set_config('app.workspace_id',${ids.workspace},false)`;
@@ -2041,13 +2043,18 @@ try {
         where conrelid='location_node'::regclass and conname='quarantine_location_storage_check'`;
       assert.ok(prior);
       assert.match(prior.definition as string, /active/u);
-    } else {
+    } else if (version === "0046") {
       const [prior] =
         await sql`select to_regprocedure('app_team_assignment_exact_version(text,jsonb)') is null as absent`;
       assert.ok(prior?.absent);
       const [grant] = await sql`select has_function_privilege('resale_app_runtime',
         'app_request_team_assignment_change(uuid,uuid,uuid,text,timestamptz,timestamptz,text,uuid)', 'EXECUTE') as allowed`;
       assert.ok(grant?.allowed);
+    } else {
+      const [prior] = await sql<
+        Array<{ absent: boolean }>
+      >`select to_regclass(${version === "0047" ? "public.published_product_page" : "public.sales_check_observation"}) is null as absent`;
+      assert.equal(prior?.absent, true);
     }
     await sql.unsafe(migration);
     if (legacyTeamHistory !== undefined) {
@@ -2059,6 +2066,25 @@ try {
         ),
         legacyTeamHistory,
         "0046 must retain legacy team request and event bytes without fabricating exact versions",
+      );
+    }
+    if (version === "0048") {
+      const [observationCount] = await sql<
+        Array<{ count: number }>
+      >`select count(*)::integer as count from sales_check_observation`;
+      assert.equal(observationCount?.count, 0, "0048 must not fabricate historical observations");
+      const [protection] =
+        await sql`select relrowsecurity, relforcerowsecurity from pg_class where oid='sales_check_observation'::regclass`;
+      assert.ok(protection?.relrowsecurity && protection?.relforcerowsecurity);
+    }
+    if (version === "0047") {
+      const [publishedPageCount] = await sql<Array<{ count: number }>>`
+        select count(*)::integer as count from published_product_page
+      `;
+      assert.equal(
+        publishedPageCount?.count,
+        0,
+        "0047 must not convert market evidence into the seller's own product page",
       );
     }
     assert.deepEqual(

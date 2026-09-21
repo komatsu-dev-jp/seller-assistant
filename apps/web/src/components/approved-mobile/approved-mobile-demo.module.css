@@ -6351,6 +6351,18 @@
   stroke-width: 1.6;
 }
 
+.headerIconAction {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  justify-self: end;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
 .scrollArea {
   min-height: calc(100dvh - 123px);
   padding: 15px 16px 165px;
@@ -6454,8 +6466,13 @@
 }
 
 .headerHelp {
+  padding: 6px 0;
   justify-self: end;
+  border: 0;
   color: var(--blue);
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
   font-size: 12px;
   font-weight: 900;
   white-space: nowrap;
@@ -6467,7 +6484,11 @@
   display: grid;
   place-items: center;
   justify-self: end;
+  padding: 0;
   color: var(--ink);
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
   border: 1.5px solid currentColor;
   border-radius: 50%;
   font-size: 13px;
@@ -15293,4 +15314,94 @@
   .phoneShell:has(.loginContent) .scrollArea {
     padding: max(8px, env(safe-area-inset-top)) 16px max(8px, env(safe-area-inset-bottom));
   }
+}
+button.previewActionBackdrop.previewActionBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: rgb(15 34 63 / 18%);
+}
+
+.previewActionPanel {
+  position: fixed;
+  right: 12px;
+  bottom: calc(80px + env(safe-area-inset-bottom));
+  left: 12px;
+  z-index: 91;
+  padding: 16px;
+  border: 1px solid #dce4ef;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 16px 40px rgb(18 43 78 / 24%);
+  color: #152238;
+  text-align: left;
+}
+
+.previewActionPanel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.previewActionPanel header strong {
+  font-size: 17px;
+}
+
+.previewActionPanel header button {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #eef2f7;
+  color: #40516a;
+  font-size: 22px;
+  place-items: center;
+}
+
+.previewActionPanel p {
+  margin: 12px 0;
+  color: #596a82;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.previewActionPanel a,
+.previewActionPanel > span {
+  display: block;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #edf5ff;
+  color: #075be9;
+  font-size: 14px;
+  font-weight: 800;
+  text-align: center;
+  text-decoration: none;
+}
+
+.previewActionPanel > span {
+  background: #f5f7fa;
+  color: #596a82;
+}
+
+.previewActionStatus {
+  position: fixed;
+  right: 16px;
+  bottom: calc(88px + env(safe-area-inset-bottom));
+  left: 16px;
+  z-index: 92;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #16345d;
+  box-shadow: 0 10px 28px rgb(18 43 78 / 22%);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  text-align: center;
 }

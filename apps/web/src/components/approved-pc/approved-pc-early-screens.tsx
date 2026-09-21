@@ -1,7 +1,10 @@
 "use client";
 
+import { useId, useState } from "react";
+
 import styles from "./approved-pc-early-screens.module.css";
 import { PcCanvas } from "./pc-canvas";
+import { PcLiveRouteLink, PcPreviewActionButton } from "./pc-preview-action-button";
 import { PcUiGlyph, pcNavGlyphs } from "./pc-ui-glyph";
 import { isP1ApprovedPcScreen } from "./approved-screen-scope";
 
@@ -48,6 +51,38 @@ function Primary({ screen, children }: { screen: number; children: string }) {
     </a>
   );
 }
+
+function CopyPreviewAction({ label, text }: { label: string; text: string }) {
+  const [status, setStatus] = useState("");
+  const statusId = `${useId()}-copy-status`;
+
+  async function copy() {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error("clipboard_unavailable");
+      await navigator.clipboard.writeText(text);
+      setStatus("コピーしました");
+    } catch {
+      setStatus("コピーできませんでした。ブラウザの許可を確認してください");
+    }
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => void copy()}
+        aria-describedby={status ? statusId : undefined}
+      >
+        {label}
+      </button>
+      {status ? (
+        <span className={styles.copyStatus} id={statusId} role="status">
+          {status}
+        </span>
+      ) : null}
+    </>
+  );
+}
 function Top({ screen, compact = false }: { screen: number; compact?: boolean }) {
   return (
     <header className={styles.top}>
@@ -68,23 +103,47 @@ function Top({ screen, compact = false }: { screen: number; compact?: boolean })
             </label>
           )}
           {screen <= 4 && (
-            <span className={styles.help} aria-label="ヘルプ">
+            <button
+              type="button"
+              className={`${styles.help} ${styles.headerAction}`}
+              aria-label="ヘルプを開く"
+              aria-controls="approved-pc-header-panel"
+              data-pc-header-action="help"
+            >
               <PcUiGlyph name="help" />
-            </span>
+            </button>
           )}
-          <span className={styles.bell} aria-label="通知">
+          <button
+            type="button"
+            className={`${styles.bell} ${styles.headerAction}`}
+            aria-label="通知を開く"
+            aria-controls="approved-pc-header-panel"
+            data-pc-header-action="notifications"
+          >
             <PcUiGlyph name="bell" />
-          </span>
+          </button>
           {screen >= 9 ? (
-            <span className={styles.teamUser}>
+            <button
+              type="button"
+              className={`${styles.teamUser} ${styles.headerAction}`}
+              aria-label="担当者メニューを開く"
+              aria-controls="approved-pc-header-panel"
+              data-pc-header-action="account"
+            >
               <PcUiGlyph name="user" />
               デモチーム⌄
-            </span>
+            </button>
           ) : (
-            <span className={styles.user}>
+            <button
+              type="button"
+              className={`${styles.user} ${styles.headerAction}`}
+              aria-label="担当者メニューを開く"
+              aria-controls="approved-pc-header-panel"
+              data-pc-header-action="account"
+            >
               <PcUiGlyph name="user" />
               デモ 太郎⌄
-            </span>
+            </button>
           )}
         </>
       )}
@@ -95,17 +154,34 @@ function Top({ screen, compact = false }: { screen: number; compact?: boolean })
 function UtilityHeader({ screen }: { screen: number }) {
   return (
     <header className={styles.utilityHeader}>
-      <button type="button" aria-label="サイドバーを開く">
+      <button
+        type="button"
+        aria-label="サイドバーを開く"
+        aria-controls="approved-pc-header-panel"
+        data-pc-header-action="sidebar"
+      >
         ☰
       </button>
       <span className={styles.utilityWorkspace}>デモワークスペース　⌄</span>
       <div className={styles.utilityTools}>
-        <span className={styles.utilityBell} aria-label="通知">
+        <button
+          type="button"
+          className={`${styles.utilityBell} ${styles.headerAction}`}
+          aria-label="通知を開く"
+          aria-controls="approved-pc-header-panel"
+          data-pc-header-action="notifications"
+        >
           <PcUiGlyph name="bell" />
-        </span>
-        <span aria-label="ヘルプ">
+        </button>
+        <button
+          type="button"
+          className={styles.headerAction}
+          aria-label="ヘルプを開く"
+          aria-controls="approved-pc-header-panel"
+          data-pc-header-action="help"
+        >
           <PcUiGlyph name="help" />
-        </span>
+        </button>
       </div>
     </header>
   );
@@ -125,9 +201,11 @@ function Side({ screen }: { screen: number }) {
               ? "仕入れ"
               : screen <= 10
                 ? "商品"
-                : screen <= 12
+                : screen === 11
                   ? "在庫"
-                  : "作業";
+                  : screen === 12
+                    ? "倉庫"
+                    : "作業";
   const routes: Record<string, number> = {
     ホーム: 2,
     作業: 3,
@@ -135,7 +213,7 @@ function Side({ screen }: { screen: number }) {
     商品: 9,
     "注文・発送": 29,
     在庫: 11,
-    倉庫: 11,
+    倉庫: 12,
     会計: 45,
     メンバー: 37,
     設定: 49,
@@ -164,6 +242,7 @@ function Side({ screen }: { screen: number }) {
           key={item}
           className={item === active ? styles.active : ""}
           href={go(routes[item] ?? [2, 3, 5, 9, 29, 33, 45, 37, 49][index] ?? 2)}
+          aria-current={item === active ? "page" : undefined}
         >
           <i>
             <PcUiGlyph name={icons[item] ?? pcNavGlyphs[index] ?? "home"} />
@@ -538,7 +617,9 @@ function Notifications() {
               <small>{i * 25 + 5}分前</small>
             </p>
           ))}
-          <a href={go(4)}>すべての通知を見る</a>
+          <span className={styles.currentViewLink} aria-current="page">
+            すべての通知を表示中
+          </span>
         </Card>
         <Card>
           <h2>
@@ -592,6 +673,7 @@ function Notifications() {
   );
 }
 function Documents() {
+  const [previewZoom, setPreviewZoom] = useState(80);
   return (
     <Shell screen={5}>
       <div className={styles.documents}>
@@ -628,7 +710,13 @@ function Documents() {
                 <br />
                 または
               </span>
-              <a href={go(5)}>写真ファイルを選ぶ</a>
+              <PcPreviewActionButton
+                title="仕入れ書類の選択"
+                message="この承認デザイン確認画面では端末のファイルを読み取りません。実際の書類追加は仕入れ作業画面で行います。"
+                liveHref="/workflow"
+              >
+                写真ファイルを選ぶ
+              </PcPreviewActionButton>
               <small>iCloud Driveなど、PCに表示されるフォルダーから選べます</small>
             </div>
             <p>対応形式：PDF / JPG / PNG（最大20MB）</p>
@@ -636,23 +724,45 @@ function Documents() {
           <Card>
             <h3>2. 原本プレビュー</h3>
             <div className={styles.receiptStage}>
-              <div className={styles.receipt}>
+              <div
+                className={styles.receipt}
+                style={{
+                  transform: `scale(${previewZoom / 80})`,
+                  transformOrigin: "top center",
+                  pointerEvents: "none",
+                }}
+              >
                 <img
                   src="/approved-assets/documents/invoice-preview-pc.png"
                   alt="請求書の原本プレビュー"
                 />
               </div>
               <div className={styles.receiptControls} aria-label="プレビューの拡大縮小">
-                <button type="button" aria-label="縮小">
+                <button
+                  type="button"
+                  aria-label="縮小"
+                  disabled={previewZoom <= 60}
+                  onClick={() => setPreviewZoom((value) => Math.max(60, value - 10))}
+                >
                   −
                 </button>
-                <span>80%</span>
-                <button type="button" aria-label="拡大">
+                <span aria-live="polite">{previewZoom}%</span>
+                <button
+                  type="button"
+                  aria-label="拡大"
+                  disabled={previewZoom >= 100}
+                  onClick={() => setPreviewZoom((value) => Math.min(100, value + 10))}
+                >
                   ＋
                 </button>
-                <button type="button" aria-label="全画面表示">
+                <PcPreviewActionButton
+                  ariaLabel="全画面表示"
+                  title="原本プレビューの全画面表示"
+                  message="この画面は承認デザイン用の見本です。実際の原本確認は仕入れ作業画面で行います。"
+                  liveHref="/workflow"
+                >
                   ⛶
-                </button>
+                </PcPreviewActionButton>
               </div>
             </div>
           </Card>
@@ -681,22 +791,36 @@ function Documents() {
   );
 }
 function Count() {
+  const [count, setCount] = useState<number | null>(null);
   return (
     <Shell screen={6}>
       <div className={styles.count}>
         <Card>
           <h3>現在の点数</h3>
-          <strong>まだ不明</strong>
-          <span>（数え始めてください）</span>
-          <a className={styles.plus} href={go(6)}>
+          <strong aria-live="polite">{count ?? "まだ不明"}</strong>
+          <span>{count === null ? "（数え始めてください）" : "点（画面内の一時確認）"}</span>
+          <button
+            type="button"
+            className={styles.plus}
+            onClick={() => setCount((value) => (value ?? 0) + 1)}
+          >
             +1
-          </a>
-          <a className={styles.outline} href={go(6)}>
+          </button>
+          <button
+            type="button"
+            className={styles.outline}
+            onClick={() => setCount((value) => (value ?? 0) + 10)}
+          >
             +10
-          </a>
-          <a className={styles.outline} href={go(6)}>
+          </button>
+          <button
+            type="button"
+            className={styles.outline}
+            disabled={count === null || count === 0}
+            onClick={() => setCount((value) => Math.max(0, (value ?? 0) - 1))}
+          >
             ↶ 1つ戻す
-          </a>
+          </button>
         </Card>
         <Card>
           <h3>カウント履歴</h3>
@@ -709,6 +833,13 @@ function Count() {
               </tr>
             </thead>
             <tbody>
+              {count !== null ? (
+                <tr>
+                  <td>今</td>
+                  <td>画面内で確認</td>
+                  <td>{count}</td>
+                </tr>
+              ) : null}
               {[
                 ["13:58:22", "+1", "17"],
                 ["13:58:18", "+10", "16"],
@@ -758,21 +889,27 @@ function Register() {
             <h3>2. スマホから届いた写真</h3>
             <p>最新 10:42　　3件受信</p>
             <Photo kind="bag" />
-            <a href={go(7)}>写真を選ぶ</a>
+            <PcPreviewActionButton
+              className={styles.inlineLinkButton}
+              title="商品写真の選択"
+              message="このP1確認画面では端末の写真を読み取りません。写真選択・保存機能は準備中です。"
+            >
+              写真を選ぶ
+            </PcPreviewActionButton>
           </Card>
           <Card className={styles.registerDetails}>
             <h3>3. ブランド</h3>
-            <input defaultValue="デモブランド" />
+            <input aria-label="ブランド" defaultValue="デモブランド" />
             <h3>4. 特徴・カテゴリ</h3>
-            <input defaultValue="レザー / ハンドバッグ" />
+            <input aria-label="特徴・カテゴリ" defaultValue="レザー / ハンドバッグ" />
             <h3>5. 販売可否</h3>
-            <select defaultValue="要確認">
+            <select aria-label="販売可否" defaultValue="要確認">
               <option>要確認</option>
               <option>販売できる</option>
               <option>保留</option>
             </select>
             <h3>6. メモ（任意）</h3>
-            <input placeholder="付属品・気になる点" />
+            <input aria-label="メモ（任意）" placeholder="付属品・気になる点" />
           </Card>
         </div>
         <Card className={styles.priceSearch}>
@@ -791,9 +928,17 @@ function Register() {
             </section>
             <section>
               <b>調べる・共有する</b>
-              <a href={go(7)}>⌕ メルカリで検索を開く</a>
-              <a href={go(7)}>▱ 検索語をコピー</a>
-              <a href={go(7)}>◌ Codex用の質問文をコピー</a>
+              <a href="https://jp.mercari.com/" target="_blank" rel="noopener noreferrer">
+                ⌕ メルカリで検索を開く
+              </a>
+              <CopyPreviewAction
+                label="▱ 検索語をコピー"
+                text="デモブランド レザー ハンドバッグ ブラック"
+              />
+              <CopyPreviewAction
+                label="◌ Codex用の質問文をコピー"
+                text="デモブランドのレザー製ブラックハンドバッグについて、公式情報と販売判断の確認項目を整理してください。"
+              />
             </section>
             <section>
               <b>予想価格（人が確認）</b>
@@ -855,7 +1000,9 @@ function Research() {
             <Photo kind={(["researchBag", "watch", "leather"] as const)[i] ?? "researchBag"} />
             <strong>{r[2]}</strong>
             <em>{r[3]}</em>
-            <a href={go(8)}>›</a>
+            <a href={go(7)} aria-label={`${r[2]}の商品詳細を開く`}>
+              ›
+            </a>
           </Card>
         ))}
         <Notice>上記以外の商品は「1点ずつ簡単登録」が完了しています。</Notice>
@@ -904,6 +1051,8 @@ function Numbering() {
   );
 }
 function Labels() {
+  const [labelMethod, setLabelMethod] = useState<"hand" | "print">("hand");
+  const [previewVersion, setPreviewVersion] = useState(0);
   const labels = Array.from({ length: 28 }, (_, i) => String(123 + i).padStart(4, "0"));
   const selectedLabels = new Set([
     "0126",
@@ -925,14 +1074,24 @@ function Labels() {
           <section>
             <Card>
               <h3>ラベルの方法を選ぶ</h3>
-              <a className={styles.selected} href={go(10)}>
+              <button
+                type="button"
+                className={labelMethod === "hand" ? styles.selected : ""}
+                aria-pressed={labelMethod === "hand"}
+                onClick={() => setLabelMethod("hand")}
+              >
                 ◉　✎　手書き（無料・標準）　<em>推奨</em>
                 <small>はがせるサイズのラベルに手書きします。</small>
-              </a>
-              <a href={go(10)}>
+              </button>
+              <button
+                type="button"
+                className={labelMethod === "print" ? styles.selected : ""}
+                aria-pressed={labelMethod === "print"}
+                onClick={() => setLabelMethod("print")}
+              >
                 ○　▤　A4一括印刷（任意）　<em>任意</em>
                 <small>1商品につき1枚のラベル</small>
-              </a>
+              </button>
             </Card>
             <Card>
               <h3>在庫番号（チェック済み）</h3>
@@ -987,8 +1146,19 @@ function Labels() {
               <p>同じ番号なし</p>
             </Card>
             <Card className={styles.labelActions}>
-              <a href={go(10)}>↻ プレビューを更新</a>
-              <a href={go(10)}>▤ 印刷…</a>
+              <button type="button" onClick={() => setPreviewVersion((value) => value + 1)}>
+                ↻ プレビューを更新
+              </button>
+              <PcPreviewActionButton
+                title="在庫ラベルの印刷"
+                message="この確認画面から印刷は開始しません。実際のラベル作成・印刷は在庫ラベル画面で内容を確認して行います。"
+                liveHref="/inventory/labels"
+              >
+                ▤ 印刷…
+              </PcPreviewActionButton>
+              <span className={styles.labelPreviewStatus} aria-live="polite">
+                {previewVersion > 0 ? `更新済み（${previewVersion}回）` : "未更新"}
+              </span>
             </Card>
             <Card>
               <h3>選択中の商品（3点）</h3>
@@ -1090,7 +1260,7 @@ function Putaway() {
             <Barcode />
             <p>デモブランドTシャツ ネイビーM</p>
             <p>状態：美品</p>
-            <a href={go(12)}>スマホで読み取って商品を開く</a>
+            <PcLiveRouteLink href="/mobile/scan">スマホで読み取って商品を開く</PcLiveRouteLink>
           </Card>
           <Card>
             <h3>
@@ -1119,7 +1289,7 @@ function Putaway() {
                 {x}
               </label>
             ))}
-            <textarea placeholder="備考を入力してください" />
+            <textarea aria-label="格納時の備考" placeholder="備考を入力してください" />
           </Card>
         </div>
         <Card className={styles.match}>
@@ -1177,6 +1347,12 @@ function Types() {
 }
 function Inspect() {
   const rows = ["状態", "使用感", "汚れ", "傷", "ほつれ"];
+  const [selections, setSelections] = useState<Record<string, "neutral" | "ok" | "warn">>(() =>
+    Object.fromEntries(rows.map((row) => [row, "neutral"])),
+  );
+  const select = (row: string, value: "neutral" | "ok" | "warn") => {
+    setSelections((current) => ({ ...current, [row]: value }));
+  };
   return (
     <Shell screen={14}>
       <div className={styles.inspect}>
@@ -1196,18 +1372,32 @@ function Inspect() {
                 <tr key={x}>
                   <th>{x}</th>
                   <td>
-                    <a href={go(14)}>
+                    <button
+                      type="button"
+                      aria-pressed={selections[x] === "neutral"}
+                      onClick={() => select(x, "neutral")}
+                    >
                       <span className={styles.inspectNeutralIcon} aria-hidden="true" />
                       未確認
-                    </a>
-                    <a className={styles.ok} href={go(14)}>
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.ok}
+                      aria-pressed={selections[x] === "ok"}
+                      onClick={() => select(x, "ok")}
+                    >
                       <span className={styles.inspectOkIcon} aria-hidden="true" />
                       問題なしを確認
-                    </a>
-                    <a className={styles.warn} href={go(14)}>
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.warn}
+                      aria-pressed={selections[x] === "warn"}
+                      onClick={() => select(x, "warn")}
+                    >
                       <span className={styles.inspectWarnIcon} aria-hidden="true" />
                       気になる点あり
-                    </a>
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -1228,6 +1418,7 @@ function Inspect() {
   );
 }
 function Concern() {
+  const [photoZoom, setPhotoZoom] = useState(1);
   return (
     <Shell screen={15}>
       <div className={styles.concern}>
@@ -1236,12 +1427,27 @@ function Concern() {
         </p>
         <div>
           <Card className={styles.markerPhoto}>
-            <Photo marker />
+            <div
+              className={styles.zoomTarget}
+              style={{ transform: `scale(${photoZoom})`, transformOrigin: "center" }}
+            >
+              <Photo marker />
+            </div>
             <div className={styles.photoZoom} aria-label="写真の拡大縮小">
-              <button type="button" aria-label="拡大">
+              <button
+                type="button"
+                aria-label="拡大"
+                disabled={photoZoom >= 1.2}
+                onClick={() => setPhotoZoom((value) => Math.min(1.2, value + 0.1))}
+              >
                 ＋
               </button>
-              <button type="button" aria-label="縮小">
+              <button
+                type="button"
+                aria-label="縮小"
+                disabled={photoZoom <= 0.8}
+                onClick={() => setPhotoZoom((value) => Math.max(0.8, value - 0.1))}
+              >
                 −
               </button>
             </div>
@@ -1369,9 +1575,9 @@ function Summary() {
           <a className={styles.outline} href={go(15)}>
             戻る
           </a>
-          <a className={styles.disabled} href={go(16)}>
+          <button type="button" className={styles.disabled} disabled>
             検品を完了
-          </a>
+          </button>
         </footer>
       </div>
     </Shell>

@@ -1,5 +1,7 @@
 import { InstallAppCard } from "../../components/install-app-card";
+import { LogoutButton } from "../../components/logout-button";
 import { MobileAssignmentSummary } from "../../components/mobile-assignment-summary";
+import { MobileCaptureTaskAction } from "../../components/mobile-capture-task-action";
 import { OfflineSyncStatus } from "../../components/offline-sync-status";
 import { requirePageSession } from "../../lib/server-session";
 
@@ -17,7 +19,11 @@ export default async function MobileHomePage() {
   return (
     <main className="mobileAppShell">
       <header className="mobileAppHeader">
-        <a className="brand" href="/" aria-label="PCホームへ">
+        <a
+          className="brand"
+          href={canViewManagement ? "/" : "/mobile"}
+          aria-label={canViewManagement ? "PCホームへ" : "作業ホームへ"}
+        >
           R<span>O</span>
         </a>
         <div>
@@ -40,14 +46,7 @@ export default async function MobileHomePage() {
         <MobileAssignmentSummary workspaceId={session.workspaceId} role={session.role} />
 
         {session.role !== "shipping" ? (
-          <a className="mobileWorkflowAction" href="/mobile/capture">
-            <span aria-hidden="true">▣</span>
-            <div>
-              <strong>割当商品の撮影・採寸</strong>
-              <small>途中保存・再測定・タグ文字候補</small>
-            </div>
-            <span aria-hidden="true">›</span>
-          </a>
+          <MobileCaptureTaskAction workspaceId={session.workspaceId} />
         ) : null}
 
         {canViewManagement ? (
@@ -76,6 +75,7 @@ export default async function MobileHomePage() {
           <strong>表示しない情報</strong>
           <p>原価・利益・購入者情報・税務資料は現場担当へ表示しません。</p>
         </section>
+        <LogoutButton />
       </section>
 
       <nav className="mobileBottomNav" aria-label="モバイルナビゲーション">

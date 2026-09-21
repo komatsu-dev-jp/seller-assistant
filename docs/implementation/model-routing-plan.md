@@ -346,3 +346,61 @@
 - 独立再レビューはCritical 0 / High 0 / P0阻害Medium 0 / Low 2。Lowは正式なIPv4手順と未公開migration一括適用では現在のP0を止めないため、追加の高コスト担当は増やさず終了条件を満たした。
 - P0全94項目のうち83項目は証拠付きPASS、残り11項目は実iPhone・物理印刷・公式Money Forward・固定10商品・利用者判断が必要な`WAITING_HUMAN`。Codex側の未完了は0項目。
 - commit、push、PR ready化、merge、Pages更新、本番公開、外部runtime API、有料サービスは行わない。
+
+## 2026-09-21 P21 公開後の商品URLを実商品へ保存
+
+- 目的と参照: 承認済みMVP 8、モバイル販売支援v4、PC24〜25、2026-08-26 decisionに従い、個人メルカリで本人が公開・確認した商品IDとURLを実SKUへ1回保存し、再読み込み後も再利用できるようにする。正本は `product-url-persistence-packet.md`。
+- リスク: 重大。新規migration、認証済みAPI、workspace分離、出品後状態、外部URL表示、監査を横断するため。
+- 実装担当: ルートCodex（`gpt-6-astra`系）を唯一writerとする。契約・migration・repository・API・実運用Web・試験を一つの凍結パケットとして扱う。
+- 確認担当: 実装担当とは別実行のAstra mediumによる読み取り専用レビュー。モデル名だけでは合格にせず、差分、fresh/upgrade DB、対象API、ブラウザ証拠を直接確認する。
+- 実装運転モード: `astra-centric`。設計監査だけを別実行へ分け、source writerは増やさない。
+- 変更可能: 新規0047、contracts、P0 repository、API route/test、PostgreSQL fresh/upgrade/schema試験、`/workflow`の専用パネル・CSS・test、今回の計画・handoff・証拠。
+- 変更禁止: 既存migration、静的PC24〜26への実データ接続、訂正・削除・複数販売先、外部fetch、自動出品、実データ、GitHub／Pages／PR操作、有料サービス、会計不足補完。
+- 受け入れ条件: `product-url-persistence-packet.md`の全条件、root `npm run check`、`git diff --check`、独立レビューP1/P2 0件。保存後のGETとページ再読み込みで同一値が残ることを実DB・実ブラウザで証明する。
+- 停止・昇格条件: 訂正・まとめ売り・他販売先・自動URL確認が必要、既存状態／権限を弱める必要、原因不明のDB失敗、対象外競合を検出したら変更を広げず停止する。
+- 実行結果: ルートCodexを唯一writerとして0047、契約、repository/API、実運用Web、PWA中継の完全一致許可、fresh/upgrade試験を実装した。右サイドパネルの初回実操作で中継404を検出し、限定修正と回帰テスト後に保存・再読込を完走した。
+- 検証結果: fresh 46 migration・66-table RLS、upgrade 0001〜0047、104ファイル・792テストのroot check、390×844／1440×900の実ブラウザをPASS。既存UI DB、静的PC24〜26、外部メルカリページは変更・アクセスしていない。
+- 独立判定: 別実行のAstra mediumが契約、DB、権限、監査、GET読戻し、PWAの正確なGET/POST許可、静的画面境界を直接確認し、具体的P1/P2 0件でPASS。
+- 状態: P21の承認済み範囲は完了。訂正・再出品、他販売先、まとめ売り、実iPhone・複数端末は別判断として残す。全体Goalは継続する。
+
+## 2026-09-21 P22 PC26 ローカル画像プレビュー
+
+- 目的と参照: 残項目監査で、外部連携や利用者判断を要せず、安全に閉じられる次の範囲としてPC26の画像選択を選定した。正本は`docs/implementation/sales-check-image-preview-packet.md`。
+- リスク: 中。利用者が選ぶローカルファイルを扱うが、ブラウザー内の一時表示だけに限定し、API・保存・OCR・外部送信を追加しない。
+- 実装担当: ルートCodexを唯一writerとする。画像の形式・容量・寸法検査、商品単位の一時URL管理、表示と説明、契約テストを一つのパケットとして扱う。
+- 検証担当: ルートCodexが右サイドパネルで1536×1024と768×1024を実操作し、別実行のAstra lowがコード、テスト、証拠、未実装境界を独立確認する。
+- 停止・昇格条件: OCR、数値候補、サーバー保存、外部送信、実端末権限が必要になった場合は範囲を広げず停止する。
+- 実行結果: JPEG・PNG・WebPの選択と商品別の一時表示を実装。右サイドパネルで商品往復、横はみ出し0、画面外操作0、重なり0、console error/warning 0を確認した。
+- 検証結果: 画像差し替え・削除・画面終了・古い読込通知を実行するテストを追加し、対象テスト、Web型、対象整形、全体`npm run check`（105ファイル・801テスト、全gateと86 routes build）をPASS。
+- 独立判定: 別実行のAstra lowがコード、テスト、契約、証拠を直接読み、初回P1=0、P2=0でPASS。初回P3だった一時URLライフサイクルの動作テストを追加し、再レビューはP1=0、P2=0、P3=0でPASS。
+- 状態: P22の承認済み範囲は完了。OCR、数値候補、数値保存、実iPhoneは別工程として残し、全体Goalは継続する。
+
+## 2026-09-21 P23 販売状況の本人手入力保存
+
+- 目的と参照: 公開商品URLを登録済みの実SKUへ、本人が公式ページで確認した販売状況と次回確認日を追記保存し、再読込できるようにする。正本は`docs/implementation/sales-check-persistence-packet.md`。
+- リスク: 重大。新規migration、認証済みAPI、workspace分離、追記履歴、再送制御、実運用Webを横断するため。
+- 実装担当: 別実行の`gpt-6-astra` / `medium` / `sales_check_persistence_impl`を唯一のsource writerとする。
+- 確認担当: 実装担当とは別実行の`gpt-6-astra` / `medium`による読み取り専用レビュー。ルート担当が自動試験、実PostgreSQL、右サイドパネルの画面確認を行う。
+- 実装運転モード: `astra-centric`。定型抽出だけの追加担当は増やさず、実費・トークン消費は未計測とする。
+- 変更可能: 新規0048、contracts、P0 repository、API route/test、fresh/upgrade/schema試験、`/workflow`の専用パネル・helper・CSS・test、PWA中継、今回の計画・handoff・証拠。
+- 変更禁止: 既存migration、会計・注文・発送・在庫repository、静的PC26、商品URL訂正、OCR・画像upload、外部取得、自動反映、実データ、GitHub／Pages／PR操作、有料サービス。
+- 受け入れ条件: パケット文書の全条件、対象テスト、fresh/upgrade PostgreSQL、root `npm run check`、`git diff --check`、右サイドパネル1440/390px、独立レビューP1/P2 0件。保存後GETと再読み込みで最新値が残り、過去記録、業務状態、監査秘匿を証明する。
+- 停止・昇格条件: 必須性・意味・権限の矛盾、他販売先・画像由来入力・商品URL訂正・会計等の状態変更、migration重複、原因不明のDB失敗、対象外競合を検出したら変更を広げずルートへ戻す。
+- 実行結果: Astra medium writerが0048、契約、repository/API、PWA中継、実運用Web、fresh/upgrade試験を実装した。ルート担当が右サイドパネルで保存・再読込・503復旧・1440/390pxを確認し、最終`npm run check`は111ファイル・829テスト、全gateと86 routes buildをPASSした。
+- 独立判定: 別実行のAstra mediumが最終差分を読み取り専用で再確認し、P1=0、P2=0、P3=0でPASSした。実費・トークン消費は取得できないため未計測。
+- 状態: P23の承認済み範囲は完了。実iPhone、実メルカリ値照合、OCR、画像候補、他販売先、複数実端末は別工程として残し、全体Goalは継続する。
+
+## 2026-09-21 P24 PC23→24 商品説明の一時保存復旧
+
+- 目的と参照: sessionStorageの書込み拒否後に、本文と補足メモを失わず再試行し、成功時だけPC23／24間を移動できるようにする。正本は`docs/implementation/approved-description-draft-recovery-packet.md`。
+- リスク: 中程度。外部送信や共有保存はないが、編集内容の消失防止と画面遷移を扱う。
+- 実装担当: 別実行の`gpt-6-astra` / low / `description_draft_recovery_impl`を唯一のsource writerとする。
+- 確認担当: 実装担当とは別実行の`gpt-6-astra` / lowによる読み取り専用レビュー。ルート担当が自動試験と右サイドパネルの画面確認を行う。
+- 実装運転モード: `astra-centric`。既存UIとsessionStorageだけの限定復旧なのでlowで開始し、API・DB・未確認内容の破棄・原因不明の失敗へ波及したら変更を広げずルートへ戻す。
+- 変更可能: PC23／24のDescription・Official、専用CSS、approved listing draft helper/test、対応する操作テスト、計画・handoff・証拠。
+- 変更禁止: API、DB、実SKU保存、localStorage、AI、ZIP、OCR、未承認P1機能、外部通信、有料サービス。
+- 受け入れ条件: パケットの8条件、対象テスト、Web型・lint・format、root check、git diff check、1536／768pxの保存拒否→復旧、別実行レビューP1/P2 0件。
+- 実行結果: Astra low writerがPC23／24の再試行、PC24戻る時の再保存、コピー応答の世代管理、読取不可と保存なしの分離を実装した。初回独立レビューで、読取拒否後に初期値で既存内容を上書きし得るP2を検出し、PC23／24とも既存本文・メモを先に復元する保護と回帰テストを追加した。
+- 検証結果: 対象25テスト、最終`npm run check`（112ファイル・841テスト、全gate、86 routes build）、`git diff --check`をPASS。右サイドパネルで通常のPC23→24→23、コピーのクリック／Enter、コピー後編集、1536／768pxの横はみ出し0・重なり0・console error/warning 0を確認した。一時保存拒否を強制した画面の目視はサイドパネルの安全制約により未確認で、拒否・復旧は動作テストで確認した。
+- 独立判定: 別実行のAstra lowが初回P1=0、P2=1、P3=0を報告。修正後の再レビューはP1=0、P2=0、P3=0でPASS。API、DB、localStorage、実SKU、外部通信、未承認P1への逸脱なし。
+- 状態: P24の実装と自動検証は完了。特殊な保存拒否状態のサイドパネル目視、実商品別サーバー保存、AI生成、実iPhoneは別工程として残し、全体Goalは継続する。

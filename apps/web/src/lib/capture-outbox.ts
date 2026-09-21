@@ -115,6 +115,31 @@ async function fingerprintImage(file: File): Promise<string> {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+/** 選択中の画像だけを比較する。過去の保存画像との照合はサーバーの制約を維持する。 */
+export async function assertDedicatedMeasurementPhotos(
+  listing: ReadonlyArray<{ label: string; file: File | undefined }>,
+  measurements: ReadonlyArray<{ label: string; file: File | undefined }>,
+): Promise<void> {
+  const seen = new Map<string, string>();
+  for (const entry of listing) {
+    if (!entry.file) continue;
+    assertSupportedImage(entry.file);
+    seen.set(await fingerprintImage(entry.file), `掲載用の${entry.label}`);
+  }
+  for (const entry of measurements) {
+    if (!entry.file) continue;
+    assertSupportedImage(entry.file);
+    const fingerprint = await fingerprintImage(entry.file);
+    const previous = seen.get(fingerprint);
+    if (previous) {
+      throw new Error(
+        `${entry.label}の採寸写真が${previous}と同じです。採寸項目ごとに別の写真を選んでください。`,
+      );
+    }
+    seen.set(fingerprint, `${entry.label}の採寸写真`);
+  }
+}
+
 function assertSupportedImage(file: File): void {
   if (file.type !== "image/jpeg" && file.type !== "image/png") {
     throw new Error("写真はJPEGまたはPNGを選んでください。");

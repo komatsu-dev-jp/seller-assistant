@@ -1,13 +1,6 @@
 "use client";
 
-import type {
-  MeasurementResponse,
-  OrderOperationResponse,
-  P0ItemResponse,
-  PackOrderRequest,
-  PilotRunResponse,
-  ShipOrderRequest,
-} from "@resale/contracts";
+import type { MeasurementResponse, P0ItemResponse, PilotRunResponse } from "@resale/contracts";
 import {
   listingPrepPilotFixtureManifestSha256,
   listingPrepPilotFixtureProfiles,
@@ -19,6 +12,7 @@ import {
 } from "@resale/contracts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  assertDedicatedMeasurementPhotos,
   clearCaptureUploads,
   clearCaptureUpload,
   loadCaptureUploads,
@@ -45,8 +39,16 @@ import {
 } from "../lib/pilot-stage";
 import { AccountingWorkspace } from "./accounting-workspace";
 import { ProductResearchPanel } from "./product-research-panel";
+import { PublishedProductPagePanel } from "./published-product-page-panel";
+import { SalesCheckPanel } from "./sales-check-panel";
 import { WorkflowLiveLayout, WorkflowCaptureSteps } from "./workflow-live-layout";
 import { copyBeforeWorkflowHandoff } from "./workflow-copy-handoff";
+import { refreshedWorkflowSelection, workflowItemHref } from "../lib/workflow-item-selection";
+import {
+  hasListingPhotos,
+  latestListingPhoto,
+  listingPhotoDownloadBaseName,
+} from "../lib/listing-photos";
 
 type Stage = WorkflowStage;
 type PhotoRole = "front" | "back" | "brand_tag" | "care_label";
@@ -92,13 +94,23 @@ class HttpResponseError extends Error {
   }
 }
 
-export function P0Workspace({ workspaceId }: { workspaceId: string }) {
+export function P0Workspace({
+  workspaceId,
+  requestedSkuId,
+  startNewPurchase = false,
+}: {
+  workspaceId: string;
+  requestedSkuId?: string | undefined;
+  startNewPurchase?: boolean;
+}) {
+  const [newPurchase, setNewPurchase] = useState(startNewPurchase);
+  const [pilotChecked, setPilotChecked] = useState(false);
   const [stage, setStage] = useState<Stage>("purchase");
   const [listingStep, setListingStep] = useState<"research" | "description">("research");
   const [descriptionDraft, setDescriptionDraft] = useState<string | null>(null);
   const [putawayStep, setPutawayStep] = useState<"number" | "location">("number");
   const [items, setItems] = useState<P0ItemResponse[]>([]);
-  const [selectedSkuId, setSelectedSkuId] = useState<string | null>(null);
+  const [selectedSkuId, setSelectedSkuId] = useState<string | null>(requestedSkuId ?? null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -106,8 +118,6 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
   const [measurementEvidence, setMeasurementEvidence] = useState<Partial<Record<string, File>>>({});
   const [measurements, setMeasurements] = useState<Record<string, string>>({});
   const [measurementReviewReason, setMeasurementReviewReason] = useState("");
-  const [addressLeaseId, setAddressLeaseId] = useState<string | null>(null);
-  const [shippingAddressView, setShippingAddressView] = useState<string | null>(null);
   const [assignmentMessage, setAssignmentMessage] = useState("");
   const [pilotRun, setPilotRun] = useState<PilotRunResponse | null>(null);
   const [pendingPilotEventCount, setPendingPilotEventCount] = useState(0);
@@ -115,12 +125,14 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
   const pageInstanceId = useRef(crypto.randomUUID()).current;
   const initialPilotResumeChecked = useRef(false);
 
-  const item = items.find((candidate) => candidate.skuId === selectedSkuId) ?? items[0] ?? null;
+  const item = newPurchase
+    ? null
+    : (items.find((candidate) => candidate.skuId === selectedSkuId) ?? null);
   const listingPhotos = useMemo(
     () =>
       item
         ? photoRoles.flatMap(({ id, label }) => {
-            const assetId = item.capture.photoAssetIds[item.capture.photoRoles.indexOf(id)];
+            const assetId = latestListingPhoto(item.capture, id);
             return assetId ? [{ id, label, assetId }] : [];
           })
         : [],
@@ -130,17 +142,14 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
   const refreshItems = useCallback(async () => {
     const result = await requestJson<P0ItemResponse[]>(`/v1/workspaces/${workspaceId}/p0-items`);
     setItems(result);
-    setSelectedSkuId((current) =>
-      current && result.some((candidate) => candidate.skuId === current)
-        ? current
-        : (result[0]?.skuId ?? null),
-    );
-  }, [workspaceId]);
+    setSelectedSkuId((current) => refreshedWorkflowSelection(result, current, requestedSkuId));
+  }, [workspaceId, requestedSkuId]);
   const refreshPilotRun = useCallback(async () => {
     const result = await requestJson<PilotRunResponse | null>(
       `/v1/workspaces/${workspaceId}/pilot-runs/latest`,
     );
     setPilotRun(result);
+    setPilotChecked(true);
   }, [workspaceId]);
   const syncPendingPilotEvents = useCallback(
     async (runId?: string): Promise<PilotRunResponse | null> => {
@@ -402,6 +411,8 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
           : [created, ...current],
       );
       setSelectedSkuId(created.skuId);
+      if (newPurchase) window.history.replaceState(null, "", workflowItemHref(created.skuId));
+      setNewPurchase(false);
       setStage("capture");
       try {
         await refreshItems();
@@ -435,6 +446,13 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
     }
     await run(async () => {
       // すべての画像を先に画面内メモリへ検証・準備してから、最初の通信を始める。
+      await assertDedicatedMeasurementPhotos(
+        photoRoles.map(({ id, label }) => ({ label, file: photos[id] })),
+        activeMeasurementDefinitions.map(({ definitionId, label }) => ({
+          label,
+          file: measurementEvidence[definitionId],
+        })),
+      );
       const stagedPhotos = await Promise.all(
         photoRoles.map(async ({ id: role }) => {
           const file = photos[role];
@@ -724,44 +742,6 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
     }
   }
 
-  async function createOrder(form: FormData) {
-    if (!item || item.inventoryStatus !== "available") return;
-    await run(async () => {
-      await requestJson<OrderOperationResponse>(`/v1/workspaces/${workspaceId}/orders`, {
-        method: "POST",
-        body: JSON.stringify({
-          orderNumber: textField(form, "orderNumber").toUpperCase(),
-          skuId: item.skuId,
-          inventoryUnitId: item.inventoryUnitId,
-          saleAmountMinor: numberField(form, "saleAmountMinor"),
-          costAmountMinor: item.allocatedCostMinor,
-          sellingFeeMinor: numberField(form, "sellingFeeMinor"),
-          shippingCostMinor: numberField(form, "shippingCostMinor"),
-          packagingCostMinor: numberField(form, "packagingCostMinor"),
-          taxBasis: "tax_included",
-          sourceMeaning: "本人が公式販売画面と照合した手入力取引",
-          occurredAt: new Date().toISOString(),
-          shippingAddress: textField(form, "shippingAddress"),
-          idempotencyKey: crypto.randomUUID(),
-          humanConfirmed: true,
-        }),
-      });
-      await refreshItems();
-    });
-  }
-
-  async function issueAddressLease(orderId: string): Promise<string> {
-    const result = await requestJson<{ leaseId: string }>(
-      `/v1/workspaces/${workspaceId}/orders/${orderId}/address-leases`,
-      {
-        method: "POST",
-        body: JSON.stringify({ purpose: "shipping_label", humanConfirmed: true }),
-      },
-    );
-    setAddressLeaseId(result.leaseId);
-    return result.leaseId;
-  }
-
   async function assignShipping(form: FormData) {
     if (!item?.orderId) return;
     await run(async () => {
@@ -780,73 +760,50 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
     });
   }
 
-  async function progressOrder() {
-    if (!item?.orderId) return;
-    await run(async () => {
-      const orderId = item.orderId as string;
-      const leaseId = addressLeaseId ?? (await issueAddressLease(orderId));
-      if (item.orderState === "confirmed") {
-        if (!item.locationCode || !item.locationLabelVersion) {
-          throw new Error("現在の保管場所と有効な場所ラベルが必要です。");
-        }
-        const now = Date.now();
-        await requestJson(`/v1/workspaces/${workspaceId}/orders/${orderId}/pick`, {
-          method: "POST",
-          body: JSON.stringify({
-            inventoryNumber: item.inventoryNumber,
-            locationCode: item.locationCode,
-            inventoryLabelVersion: item.inventoryLabelVersion,
-            locationLabelVersion: item.locationLabelVersion,
-            addressLeaseId: leaseId,
-            inventoryScannedAt: new Date(now).toISOString(),
-            locationScannedAt: new Date(now + 1).toISOString(),
-            confirmedAt: new Date(now + 2).toISOString(),
-            idempotencyKey: crypto.randomUUID(),
-            humanConfirmed: true,
-          }),
-        });
-      } else if (item.orderState === "picking") {
-        await requestJson(`/v1/workspaces/${workspaceId}/orders/${orderId}/pack`, {
-          method: "POST",
-          body: JSON.stringify({
-            addressLeaseId: leaseId,
-            idempotencyKey: crypto.randomUUID(),
-            humanConfirmed: true,
-          } satisfies PackOrderRequest),
-        });
-      } else if (item.orderState === "packed") {
-        await requestJson(`/v1/workspaces/${workspaceId}/orders/${orderId}/ship`, {
-          method: "POST",
-          body: JSON.stringify({
-            addressLeaseId: leaseId,
-            idempotencyKey: crypto.randomUUID(),
-            humanConfirmed: true,
-          } satisfies ShipOrderRequest),
-        });
-      }
-      await refreshItems();
-    });
-  }
-
-  async function revealShippingAddress() {
-    if (!item?.orderId) return;
-    await run(async () => {
-      const leaseId = addressLeaseId ?? (await issueAddressLease(item.orderId as string));
-      const result = await requestJson<{ shippingAddress: string; expiresAt: string }>(
-        `/v1/workspaces/${workspaceId}/orders/${item.orderId}/address?leaseId=${leaseId}`,
-      );
-      setShippingAddressView(result.shippingAddress);
-      const remaining = Math.max(0, Date.parse(result.expiresAt) - Date.now());
-      window.setTimeout(() => setShippingAddressView(null), Math.min(remaining, 300_000));
-    });
-  }
-
   if (loading)
     return (
       <WorkflowLiveLayout>
         <p role="status">商品を読み込んでいます…</p>
       </WorkflowLiveLayout>
     );
+
+  if (newPurchase && (!pilotChecked || pilotRun?.state === "active")) {
+    return (
+      <WorkflowLiveLayout>
+        {pilotChecked ? (
+          <div role="alert">
+            <p>
+              試験計測が進行中です。新しい通常商品を登録する前に、途中の試験を確認してください。
+            </p>
+            <a href="/workflow">途中の試験を確認する</a>
+          </div>
+        ) : error ? (
+          <div role="alert">
+            <p>作業状況を確認できませんでした。新規登録はまだ行っていません。</p>
+            <button type="button" disabled={busy} onClick={() => void run(refreshPilotRun)}>
+              もう一度読み込む
+            </button>
+          </div>
+        ) : (
+          <p role="status">新規登録の準備をしています…</p>
+        )}
+      </WorkflowLiveLayout>
+    );
+  }
+
+  if (requestedSkuId !== undefined && selectedSkuId === requestedSkuId && !item) {
+    return (
+      <WorkflowLiveLayout>
+        <div role="alert">
+          <p>
+            {error ||
+              "指定された商品を開けません。商品が存在しないか、現在の作業スペースで確認できません。別の商品は開いていません。"}
+          </p>
+          <a href="/">作業一覧へ戻って商品を選ぶ</a>
+        </div>
+      </WorkflowLiveLayout>
+    );
+  }
 
   return (
     <WorkflowLiveLayout>
@@ -920,7 +877,7 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
           ))}
         </nav>
 
-        {items.length > 0 && !awaitingNextPilotItem ? (
+        {items.length > 0 && !awaitingNextPilotItem && !newPurchase ? (
           <section className="workflowItemSummary panel">
             <label>
               対象商品
@@ -1071,12 +1028,12 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
                   photos={listingPhotos}
                 />
                 {photoRoles.map(({ id, label }) => {
-                  const assetId = item.capture.photoAssetIds[item.capture.photoRoles.indexOf(id)];
+                  const assetId = latestListingPhoto(item.capture, id);
                   return assetId ? (
                     <a
                       key={id}
                       href={`/v1/workspaces/${workspaceId}/skus/${item.skuId}/product-photos/${assetId}/content`}
-                      download={`${item.skuCode}-${id}.jpg`}
+                      download={listingPhotoDownloadBaseName(item.skuCode, id)}
                     >
                       {label}写真を保存
                     </a>
@@ -1187,25 +1144,27 @@ export function P0Workspace({ workspaceId }: { workspaceId: string }) {
         ) : null}
 
         {stage === "order" && item ? (
-          <OrderPanel
-            item={item}
-            busy={busy}
-            addressLeaseId={addressLeaseId}
-            shippingAddressView={shippingAddressView}
-            onCreate={createOrder}
-            onAssign={assignShipping}
-            assignmentMessage={assignmentMessage}
-            onProgress={progressOrder}
-            onIssueLease={() => {
-              const orderId = item.orderId;
-              if (orderId)
-                void run(async () => {
-                  await issueAddressLease(orderId);
-                });
-            }}
-            onReveal={revealShippingAddress}
-            onNext={() => setStage("accounting")}
-          />
+          <>
+            <PublishedProductPagePanel
+              key={item.skuId}
+              workspaceId={workspaceId}
+              skuId={item.skuId}
+              listingConfirmed={completed.listing}
+              pilotActive={pilotRun?.state === "active"}
+            />
+            <SalesCheckPanel
+              workspaceId={workspaceId}
+              skuId={item.skuId}
+              pilotActive={pilotRun?.state === "active"}
+            />
+            <OrderPanel
+              item={item}
+              busy={busy}
+              onAssign={assignShipping}
+              assignmentMessage={assignmentMessage}
+              onNext={() => setStage("accounting")}
+            />
+          </>
         ) : null}
 
         {stage === "accounting" && item ? (
@@ -1784,26 +1743,14 @@ function PurchasePanel({
 function OrderPanel({
   item,
   busy,
-  addressLeaseId,
-  shippingAddressView,
-  onCreate,
   onAssign,
   assignmentMessage,
-  onProgress,
-  onIssueLease,
-  onReveal,
   onNext,
 }: {
   item: P0ItemResponse;
   busy: boolean;
-  addressLeaseId: string | null;
-  shippingAddressView: string | null;
-  onCreate: (form: FormData) => Promise<void>;
   onAssign: (form: FormData) => Promise<void>;
   assignmentMessage: string;
-  onProgress: () => Promise<void>;
-  onIssueLease: () => void;
-  onReveal: () => Promise<void>;
   onNext: () => void;
 }) {
   const canCreate = item.inventoryStatus === "available" && !item.orderId;
@@ -1825,43 +1772,15 @@ function OrderPanel({
         </div>
       ) : null}
       {canCreate ? (
-        <form action={onCreate}>
-          <div className="measurementGrid">
-            <label>
-              注文番号
-              <input
-                name="orderNumber"
-                required
-                defaultValue=""
-                placeholder="公式画面の注文番号"
-                autoComplete="off"
-              />
-            </label>
-            <label>
-              販売額
-              <input name="saleAmountMinor" type="number" min="1" required defaultValue="" />
-            </label>
-            <label>
-              販売手数料
-              <input name="sellingFeeMinor" type="number" min="0" required defaultValue="" />
-            </label>
-            <label>
-              送料
-              <input name="shippingCostMinor" type="number" min="0" required defaultValue="" />
-            </label>
-            <label>
-              梱包費
-              <input name="packagingCostMinor" type="number" min="0" required defaultValue="" />
-            </label>
-            <label>
-              発送先（暗号化保存）
-              <textarea name="shippingAddress" required rows={3} />
-            </label>
+        <div className="humanGate">
+          <div>
+            <strong>この商品の注文を登録</strong>
+            <p>販売先と住所の扱いを確認する画面へ進みます。開くだけでは登録されません。</p>
           </div>
-          <button type="submit" disabled={busy}>
-            公式画面と照合して注文を保存
-          </button>
-        </form>
+          <a className="primaryButton" href={`/shipping?sku=${encodeURIComponent(item.skuId)}`}>
+            注文登録へ進む
+          </a>
+        </div>
       ) : null}
       {item.orderId ? (
         <form action={onAssign} className="candidateNotice">
@@ -1881,33 +1800,16 @@ function OrderPanel({
         <div className="humanGate">
           <div>
             <strong>現在: {stateLabel}</strong>
-            <p>住所閲覧許可は最大5分です。商品と場所を確認せず次へ進めません。</p>
+            <p>発送画面で商品と保管場所を照合し、梱包と配送方法を確認してください。</p>
           </div>
           <div>
-            <button type="button" disabled={busy || Boolean(addressLeaseId)} onClick={onIssueLease}>
-              {addressLeaseId ? "5分許可を発行済み" : "住所の5分許可"}
-            </button>
-            <button type="button" disabled={busy} onClick={() => void onReveal()}>
-              発送先を5分だけ表示
-            </button>
-            <button
-              type="button"
-              disabled={busy || item.orderState === "shipped" || item.orderState === "returned"}
-              onClick={() => void onProgress()}
+            <a
+              className="primaryButton"
+              href={`/shipping?order=${encodeURIComponent(item.orderId)}`}
             >
-              {item.orderState === "confirmed"
-                ? "商品＋場所を確認"
-                : item.orderState === "picking"
-                  ? "梱包証拠を確認"
-                  : "発送を人が確定"}
-            </button>
+              この注文の発送画面を開く
+            </a>
           </div>
-        </div>
-      ) : null}
-      {shippingAddressView ? (
-        <div className="candidateNotice" aria-live="polite">
-          <strong>発送先（最大5分で非表示）</strong>
-          <p>{shippingAddressView}</p>
         </div>
       ) : null}
       <WorkflowNext
@@ -2089,13 +1991,7 @@ function isPhotoRole(value: string): value is PhotoRole {
 }
 
 function hasListingExportPhotos(item: P0ItemResponse): boolean {
-  return (
-    item.capture.photoAssetIds.length === photoRoles.length &&
-    photoRoles.every((role) => {
-      const index = item.capture.photoRoles.indexOf(role.id);
-      return index >= 0 && Boolean(item.capture.photoAssetIds[index]);
-    })
-  );
+  return hasListingPhotos(item.capture);
 }
 
 function latestMeasurements(

@@ -35,6 +35,7 @@ import {
   type P0WorkflowState,
 } from "@resale/domain";
 
+import { knownDatabaseConflictMessage } from "./database-error.js";
 import { recordActivePilotManualCorrection } from "./pilot-manual-correction.js";
 
 export type WorkspaceRole =
@@ -944,7 +945,7 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
           count(*) filter (where status = 'available')::int as available,
           count(*) filter (where status = 'putaway_pending')::int as putaway_pending,
           count(*) filter (where status = 'reserved')::int as reserved,
-          (select count(*)::int from inventory_discrepancy where workspace_id = ${workspaceId} and state <> 'resolved') as discrepancies,
+          (select count(*)::int from inventory_discrepancy where workspace_id = ${workspaceId} and state not in ('resolved', 'restored')) as discrepancies,
           count(*) filter (where status = 'available' and created_at < now() - interval '90 days')::int as older_than_90_days
         from inventory_unit
         where workspace_id = ${workspaceId}
@@ -2971,6 +2972,8 @@ function hashPutawayInput(input: PutawayInventoryRequest): string {
 function normalizeDatabaseError(error: unknown): RepositoryError {
   if (error instanceof RepositoryError) return error;
   if (typeof error === "object" && error && "code" in error) {
+    const knownConflict = knownDatabaseConflictMessage(error);
+    if (knownConflict) return new RepositoryError("conflict", knownConflict);
     if (["23505", "23514", "P0001", "40001", "40P01"].includes(String(error.code))) {
       return new RepositoryError("conflict", "The operation conflicts with current server state");
     }

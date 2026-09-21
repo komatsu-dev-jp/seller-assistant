@@ -1,7 +1,39 @@
 "use client";
-import { useState } from "react";
+import { type ChangeEvent, useEffect, useRef, useState } from "react";
+import {
+  APPROVED_PC_LISTING_DESCRIPTION,
+  getApprovedPcListingStorage,
+  loadApprovedPcListingDraft,
+  writeApprovedPcListingDraft,
+} from "../../lib/approved-listing-draft";
+import { copyResearchText } from "../../lib/product-research-handoff";
+import { formatPriceCandidate } from "../../lib/price-candidate";
+import {
+  filterSavedProducts,
+  getSavedProductPageSummary,
+  type SavedProductFilter,
+} from "../../lib/saved-product-gallery";
+import {
+  createSalesCheckDrafts,
+  getSalesCheckAge,
+  orderSalesCheckItems,
+  SALES_CHECK_ITEMS,
+  SALES_CHECK_REFERENCE_DATE,
+  type SalesCheckDraftField,
+  updateSalesCheckDraft,
+} from "../../lib/sales-check-draft";
+import {
+  isCurrentSalesCheckImagePreview,
+  releaseSalesCheckImagePreviews,
+  replaceSalesCheckImagePreview,
+  SALES_CHECK_IMAGE_ACCEPT,
+  type SalesCheckImagePreview,
+  validateSalesCheckImageDimensions,
+  validateSalesCheckImageFile,
+} from "../../lib/sales-check-image";
 import styles from "./approved-pc-middle-screens.module.css";
 import { PcCanvas } from "./pc-canvas";
+import { PcPreviewActionButton } from "./pc-preview-action-button";
 import { PcUiGlyph, pcNavGlyphs } from "./pc-ui-glyph";
 import { isP1ApprovedPcScreen } from "./approved-screen-scope";
 
@@ -34,67 +66,117 @@ function Button({ n, children }: { n: number; children: string }) {
 }
 function StandardHeader({ n }: { n: number }) {
   const workDetail = n >= 21 && n <= 24;
+  const preview = isP1ApprovedPcScreen(n);
   return (
-    <header className={styles.topbar}>
+    <header className={`${styles.topbar} ${preview ? styles.previewTopbar : ""}`}>
       <div className={styles.topbarTitle}>
         <b>{String(n).padStart(2, "0")}</b>
         <h1>{names[n - 17]}</h1>
         {n === 23 && <em className={styles.headerStatus}>候補・人が確認</em>}
       </div>
-      {isP1ApprovedPcScreen(n) ? <span className={styles.scopeBadge}>準備中・P0対象外</span> : null}
+      {preview ? <span className={styles.scopeBadge}>準備中・P0対象外</span> : null}
       <label className={styles.topbarSearch}>
         ⌕　<span>商品名・キーワード・メモを検索</span>
       </label>
-      <span className={styles.topbarBell} aria-label="通知">
+      <button
+        type="button"
+        className={`${styles.topbarBell} ${styles.headerAction}`}
+        aria-label="通知を開く"
+        aria-controls="approved-pc-header-panel"
+        data-pc-header-action="notifications"
+      >
         <PcUiGlyph name="bell" />
-      </span>
+      </button>
       {workDetail && (
-        <span className={styles.topbarHelp} aria-label="ヘルプ">
+        <button
+          type="button"
+          className={`${styles.topbarHelp} ${styles.headerAction}`}
+          aria-label="ヘルプを開く"
+          aria-controls="approved-pc-header-panel"
+          data-pc-header-action="help"
+        >
           <PcUiGlyph name="help" />
-        </span>
+        </button>
       )}
-      <span className={styles.topbarUser}>
+      <button
+        type="button"
+        className={`${styles.topbarUser} ${styles.headerAction}`}
+        aria-label="担当者メニューを開く"
+        aria-controls="approved-pc-header-panel"
+        data-pc-header-action="account"
+      >
         <PcUiGlyph name="user" />
         {!workDetail && "スタッフA⌄"}
-      </span>
+      </button>
     </header>
   );
 }
 function UtilityHeader() {
   return (
     <header className={styles.utilityHeader}>
-      <button type="button" aria-label="サイドバーを開く" className={styles.utilitySideToggle}>
+      <button
+        type="button"
+        aria-label="サイドバーを開く"
+        aria-controls="approved-pc-header-panel"
+        className={styles.utilitySideToggle}
+        data-pc-header-action="sidebar"
+      >
         ☰
       </button>
       <div className={styles.utilityMainTools}>
         <button
           type="button"
           aria-label="作業者メニューを開く"
+          aria-controls="approved-pc-header-panel"
           className={styles.utilityFrameToggle}
+          data-pc-header-action="work"
         >
           ☰
         </button>
-        <button type="button" className={styles.workerMenu}>
+        <button
+          type="button"
+          className={styles.workerMenu}
+          aria-controls="approved-pc-header-panel"
+          data-pc-header-action="work"
+        >
           作業者メニュー　⌄
         </button>
         <div className={styles.utilityTools}>
-          <span aria-label="通知">
+          <button
+            type="button"
+            className={styles.headerAction}
+            aria-label="通知を開く"
+            aria-controls="approved-pc-header-panel"
+            data-pc-header-action="notifications"
+          >
             <PcUiGlyph name="bell" />
-          </span>
-          <span aria-label="ヘルプ">
+          </button>
+          <button
+            type="button"
+            className={styles.headerAction}
+            aria-label="ヘルプを開く"
+            aria-controls="approved-pc-header-panel"
+            data-pc-header-action="help"
+          >
             <PcUiGlyph name="help" />
-          </span>
-          <span className={styles.utilityUser}>
+          </button>
+          <button
+            type="button"
+            className={`${styles.utilityUser} ${styles.headerAction}`}
+            aria-label="担当者メニューを開く"
+            aria-controls="approved-pc-header-panel"
+            data-pc-header-action="account"
+          >
             <PcUiGlyph name="user" />
             担当A⌄
-          </span>
+          </button>
         </div>
       </div>
     </header>
   );
 }
 function Shell({ n, children }: { n: number; children: React.ReactNode }) {
-  const active = n <= 20 ? "商品" : "作業";
+  const active = n >= 29 ? "注文・発送" : n <= 20 ? "商品" : "作業";
   const utility = n >= 29 && n <= 32;
   const workDetail = n >= 21 && n <= 24;
   return (
@@ -109,6 +191,7 @@ function Shell({ n, children }: { n: number; children: React.ReactNode }) {
             className={x === active ? styles.active : ""}
             href={to([2, 3, 5, 9, 29, 33, 45, 37, 49][i] ?? 2)}
             key={x}
+            aria-current={x === active ? "page" : undefined}
           >
             <PcUiGlyph name={pcNavGlyphs[i] ?? "home"} className={styles.navGlyph ?? ""} />
             {x}
@@ -133,10 +216,12 @@ function Card({
   children,
   className = "",
   onClick,
+  ariaPressed,
 }: {
   children: React.ReactNode;
   className?: string | undefined;
   onClick?: () => void;
+  ariaPressed?: boolean | undefined;
 }) {
   return (
     <section
@@ -154,6 +239,7 @@ function Card({
       }
       role={onClick ? "button" : undefined}
       tabIndex={onClick ? 0 : undefined}
+      aria-pressed={onClick ? ariaPressed : undefined}
     >
       {children}
     </section>
@@ -372,10 +458,14 @@ function Photos() {
       <div className={styles.pad}>
         <Crumbs>商品　&gt;　0128　&gt;　写真</Crumbs>
         <div className={styles.photoHeaderActions}>
-          <a href={to(17)} className={styles.confirmedAction}>
-            ✓ 確認済み
-          </a>
-          <a href={to(17)}>写真を並べ替え</a>
+          <span className={styles.confirmedAction}>✓ 確認済み</span>
+          <PcPreviewActionButton
+            title="写真の並べ替え"
+            message="この画面は並び順の確認見本です。実際の写真変更は商品作業画面で行います。"
+            liveHref="/workflow"
+          >
+            写真を並べ替え
+          </PcPreviewActionButton>
         </div>
         <div className={styles.photoFive}>
           {labels.map((x, i) => (
@@ -388,7 +478,13 @@ function Photos() {
         </div>
         <div className={styles.photoAdd}>
           <div className={styles.uploadCard}>
-            <a href={to(17)}>写真を追加</a>
+            <PcPreviewActionButton
+              title="写真の追加"
+              message="この確認版では端末のファイルを読み取りません。実際の写真追加は商品作業画面で行います。"
+              liveHref="/workflow"
+            >
+              写真を追加
+            </PcPreviewActionButton>
             <small>ドラッグ＆ドロップ または クリックして選択</small>
           </div>
           <Card>
@@ -706,7 +802,16 @@ function Measure() {
         </div>
         <footer>
           <a href={to(19)}>キャンセル</a>
-          <Button n={20}>確認した値を保存</Button>
+          <PcPreviewActionButton
+            className={styles.primary}
+            title="採寸値の保存"
+            message="表示値は承認デザイン用の架空例です。この画面では保存せず、実際の採寸保存は商品作業画面で行います。"
+            liveHref="/workflow"
+            previewHref={to(21)}
+            previewLabel="次の見本を見る"
+          >
+            確認した値を保存　›
+          </PcPreviewActionButton>
         </footer>
       </div>
     </Shell>
@@ -721,7 +826,15 @@ function Tags() {
         <div className={styles.tags}>
           <Card>
             <h3>
-              タグ・ケアラベルの写真 <a href={to(21)}>写真を追加</a>
+              タグ・ケアラベルの写真{" "}
+              <PcPreviewActionButton
+                className={styles.previewInlineAction}
+                title="タグ写真の追加"
+                message="この確認版では端末の写真を読み取りません。実際の写真追加は商品作業画面で行います。"
+                liveHref="/workflow"
+              >
+                写真を追加
+              </PcPreviewActionButton>
             </h3>
             <div className={styles.tagPhotos}>
               {tagKinds.map((kind) => (
@@ -759,7 +872,16 @@ function Tags() {
         </div>
         <footer>
           <a href={to(20)}>戻る</a>
-          <Button n={21}>確認した内容を保存</Button>
+          <PcPreviewActionButton
+            className={styles.primary}
+            title="タグ内容の保存"
+            message="表示候補は承認デザイン用の架空例です。この画面では保存せず、実際の確認・保存は商品作業画面で行います。"
+            liveHref="/workflow"
+            previewHref={to(22)}
+            previewLabel="商品まとめの見本を見る"
+          >
+            確認した内容を保存　›
+          </PcPreviewActionButton>
         </footer>
       </div>
     </Shell>
@@ -812,7 +934,7 @@ function ProductSummary() {
                 <Photo kind={kind} key={kind} />
               ))}
             </div>
-            <a href={to(22)}>すべての写真を確認</a>
+            <a href={to(17)}>すべての写真を確認</a>
           </Card>
           <Card>
             <h3>採寸（cm）</h3>
@@ -844,29 +966,144 @@ function ProductSummary() {
             <p>● 検品を確認しました</p>
           </Card>
         </div>
-        <Button n={22}>商品説明の候補を作る</Button>
+        <PcPreviewActionButton
+          className={styles.primary}
+          title="商品説明候補の作成"
+          message="この画面ではAI生成や保存を行いません。実際の商品確認は商品作業画面で行い、次画面は文章候補の操作見本です。"
+          liveHref="/workflow"
+          previewHref={to(23)}
+          previewLabel="文章候補の見本を見る"
+        >
+          商品説明の候補を作る　›
+        </PcPreviewActionButton>
       </div>
     </Shell>
   );
 }
 function Description() {
+  const [description, setDescription] = useState(APPROVED_PC_LISTING_DESCRIPTION);
+  const [note, setNote] = useState("");
+  const [descriptionStatus, setDescriptionStatus] = useState("");
+  const [draftSaveFailed, setDraftSaveFailed] = useState(false);
+  const [draftReadFailed, setDraftReadFailed] = useState(false);
+  const draftLoaded = useRef(false);
+  const descriptionInput = useRef<HTMLTextAreaElement>(null);
+  const previewDialog = useRef<HTMLDialogElement>(null);
+  const resetDialog = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    const result = loadApprovedPcListingDraft(getApprovedPcListingStorage());
+    draftLoaded.current = result.status === "read";
+    setDraftReadFailed(!draftLoaded.current);
+    const saved = result.draft;
+    if (!saved) return;
+    setDescription(saved.description);
+    setNote(saved.note);
+  }, []);
+
+  function saveDraft(nextDescription: string, nextNote: string) {
+    if (!draftLoaded.current) {
+      const result = loadApprovedPcListingDraft(getApprovedPcListingStorage());
+      if (result.status === "unavailable") return false;
+      draftLoaded.current = true;
+      setDraftReadFailed(false);
+      if (result.draft) {
+        nextDescription = result.draft.description;
+        nextNote = result.draft.note;
+        setDescription(nextDescription);
+        setNote(nextNote);
+        setDescriptionStatus(
+          "一時保存した内容を読み込みました。内容を確認してから進んでください。",
+        );
+        return false;
+      }
+    }
+    const saved = writeApprovedPcListingDraft(getApprovedPcListingStorage(), {
+      description: nextDescription,
+      note: nextNote,
+    });
+    setDraftSaveFailed(!saved);
+    setDescriptionStatus("");
+    return saved;
+  }
+
+  function requestDescriptionReset() {
+    if (!draftLoaded.current) return;
+    if (description === APPROVED_PC_LISTING_DESCRIPTION && note === "") {
+      setDescriptionStatus("すでに元の候補です。");
+      return;
+    }
+    setDescriptionStatus("");
+    resetDialog.current?.showModal();
+  }
+
+  function resetDescription() {
+    setDescription(APPROVED_PC_LISTING_DESCRIPTION);
+    setNote("");
+    if (saveDraft(APPROVED_PC_LISTING_DESCRIPTION, "")) {
+      setDescriptionStatus("元の商品説明候補へ戻しました。");
+    }
+    resetDialog.current?.close();
+  }
+
+  function prepareDescriptionReview(event: React.MouseEvent<HTMLAnchorElement>) {
+    setDescriptionStatus("");
+    if (!description.trim()) {
+      event.preventDefault();
+      setDescriptionStatus("商品説明を入力してから、コピーする内容を確認してください。");
+      descriptionInput.current?.focus();
+      return;
+    }
+    if (!saveDraft(description, note)) event.preventDefault();
+  }
+
   return (
     <Shell n={23}>
       <div className={styles.pad}>
         <div className={styles.desc}>
           <Card>
             <h3>
-              商品説明（編集できます） <small>文字数：約312文字</small>
+              商品説明（編集できます） <small>文字数：{Array.from(description).length}文字</small>
             </h3>
             <textarea
-              defaultValue={
-                "サンプルブランドのオックスフォードシャツです。\n爽やかなライトブルーのカラーで、幅広いコーディネートに合わせやすいベーシックなデザインです。\n\n程よい厚みの綿100%生地で、通年でご着用いただけます。\nカジュアルからきれいめまで活躍する一枚です。\n\n【ブランド】サンプルブランド\n【サイズ】M\n【カラー】ライトブルー\n【素材】綿100%\n\n【実寸（cm）】\n着丈 72.5 / 肩幅 45.0 / 身幅54.0 / 袖丈61.0 / 裄丈83.5\n\n【状態】\n目立つ汚れやダメージはなく、全体的にきれいな状態です。"
-              }
+              aria-label="編集する商品説明"
+              ref={descriptionInput}
+              value={description}
+              disabled={draftReadFailed}
+              onChange={(event) => {
+                if (!draftLoaded.current) return;
+                const nextDescription = event.target.value;
+                setDescription(nextDescription);
+                setDescriptionStatus("");
+                saveDraft(nextDescription, note);
+              }}
             />
-            <p>
-              <a href={to(23)}>プレビュー</a>　<a href={to(23)}>リセット</a>
-              <small>改行はそのまま反映されます</small>
-            </p>
+            <div className={styles.descriptionActions}>
+              <button type="button" onClick={() => previewDialog.current?.showModal()}>
+                プレビュー
+              </button>
+              <button type="button" disabled={draftReadFailed} onClick={requestDescriptionReset}>
+                リセット
+              </button>
+              <small>改行はそのまま反映・このタブ内だけ保持</small>
+            </div>
+            {descriptionStatus ? (
+              <small className={styles.descriptionStatus} role="status">
+                {descriptionStatus}
+              </small>
+            ) : null}
+            {draftSaveFailed || draftReadFailed ? (
+              <div className={styles.draftRecovery}>
+                <small role="alert">
+                  {draftReadFailed
+                    ? "一時保存した内容を読み込めませんでした。既存内容を上書きしないため、編集を止めています。画面を閉じずに再試行してください。"
+                    : "本文と補足メモをこのタブ内に一時保存できませんでした。画面を閉じずに再試行してください。"}
+                </small>
+                <button type="button" onClick={() => saveDraft(description, note)}>
+                  一時保存を再試行
+                </button>
+              </div>
+            ) : null}
           </Card>
           <section>
             <Card>
@@ -887,19 +1124,149 @@ function Description() {
             </Card>
             <Card>
               <h3>補足メモ（任意）</h3>
-              <textarea placeholder="メモを入力してください" />
+              <textarea
+                aria-label="補足メモ"
+                placeholder="メモを入力してください"
+                value={note}
+                disabled={draftReadFailed}
+                onChange={(event) => {
+                  if (!draftLoaded.current) return;
+                  const nextNote = event.target.value;
+                  setNote(nextNote);
+                  setDescriptionStatus("");
+                  saveDraft(description, nextNote);
+                }}
+              />
             </Card>
           </section>
         </div>
         <footer>
           <a href={to(22)}>戻る</a>
-          <Button n={23}>コピーする内容を確認</Button>
+          <a
+            className={`${styles.primary} ${!description.trim() ? styles.primaryDisabled : ""}`}
+            href={to(24)}
+            aria-disabled={!description.trim()}
+            onClick={prepareDescriptionReview}
+          >
+            コピーする内容を確認　›
+          </a>
         </footer>
+        <dialog
+          ref={previewDialog}
+          className={styles.descriptionPreview}
+          aria-labelledby="description-preview-title"
+        >
+          <h2 id="description-preview-title">商品説明のプレビュー</h2>
+          <p>補足メモは商品説明へ含まれません。</p>
+          <pre>{description || "商品説明が空です。"}</pre>
+          <button
+            type="button"
+            className={styles.outline}
+            onClick={() => previewDialog.current?.close()}
+          >
+            編集へ戻る
+          </button>
+        </dialog>
+        <dialog
+          ref={resetDialog}
+          className={`${styles.descriptionPreview} ${styles.descriptionReset}`}
+          aria-labelledby="description-reset-title"
+        >
+          <h2 id="description-reset-title">編集内容を元に戻しますか？</h2>
+          <p>商品説明と補足メモを、最初の候補へ戻します。</p>
+          <div className={styles.descriptionResetActions}>
+            <button
+              type="button"
+              className={styles.outline}
+              onClick={() => {
+                resetDialog.current?.close();
+                setDescriptionStatus("編集内容を変更せず、編集を続けます。");
+              }}
+            >
+              編集を続ける
+            </button>
+            <button type="button" className={styles.primary} onClick={resetDescription}>
+              元の候補へ戻す
+            </button>
+          </div>
+        </dialog>
       </div>
     </Shell>
   );
 }
 function Official() {
+  const [listingDescription, setListingDescription] = useState(APPROVED_PC_LISTING_DESCRIPTION);
+  const [descriptionCopyStatus, setDescriptionCopyStatus] = useState("");
+  const [descriptionDraftStatus, setDescriptionDraftStatus] = useState("");
+  const [draftReadFailed, setDraftReadFailed] = useState(false);
+  const draftLoaded = useRef(false);
+  const listingNote = useRef("");
+  const copyRevision = useRef(0);
+  const listingDescriptionInput = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const result = loadApprovedPcListingDraft(getApprovedPcListingStorage());
+    draftLoaded.current = result.status === "read";
+    setDraftReadFailed(!draftLoaded.current);
+    if (!draftLoaded.current) {
+      setDescriptionDraftStatus(
+        "一時保存した内容を読み込めませんでした。既存内容を上書きしないため、編集とコピーを止めています。画面を閉じずに再試行してください。",
+      );
+    }
+    const saved = result.draft;
+    if (!saved) return;
+    listingNote.current = saved.note;
+    setListingDescription(saved.description);
+  }, []);
+
+  async function copyListingDescription() {
+    if (!draftLoaded.current) return;
+    const revision = ++copyRevision.current;
+    setDescriptionCopyStatus("");
+    const copied = await copyResearchText(listingDescription, (text) =>
+      navigator.clipboard.writeText(text),
+    );
+    if (revision !== copyRevision.current) return;
+    setDescriptionCopyStatus(
+      copied
+        ? "コピーしました"
+        : "コピーできませんでした。文章欄を選択して手動でコピーしてください。",
+    );
+  }
+
+  function saveListingDraft(nextDescription: string) {
+    if (!draftLoaded.current) {
+      const result = loadApprovedPcListingDraft(getApprovedPcListingStorage());
+      if (result.status === "unavailable") return false;
+      draftLoaded.current = true;
+      setDraftReadFailed(false);
+      if (result.draft) {
+        nextDescription = result.draft.description;
+        listingNote.current = result.draft.note;
+        setListingDescription(nextDescription);
+      }
+    }
+    const saved = writeApprovedPcListingDraft(getApprovedPcListingStorage(), {
+      description: nextDescription,
+      note: listingNote.current,
+    });
+    setDescriptionDraftStatus(
+      saved
+        ? ""
+        : "本文と補足メモをこのタブ内に一時保存できませんでした。コピーしても一時保存は完了しません。画面を閉じずに再試行してください。",
+    );
+    return saved;
+  }
+
+  function protectUnsavedDescription(event: React.MouseEvent<HTMLAnchorElement>) {
+    if (saveListingDraft(listingDescription)) return;
+    event.preventDefault();
+    setDescriptionDraftStatus(
+      "一時保存できないため、戻る操作を止めました。コピーしても一時保存は完了しません。画面を閉じずに再試行してください。",
+    );
+    listingDescriptionInput.current?.focus();
+  }
+
   return (
     <Shell n={24}>
       <div className={styles.pad}>
@@ -915,17 +1282,59 @@ function Official() {
               src="/approved-assets/pc-fidelity/product/light-blue-shirt-stack.png"
               alt="ライトブルーシャツの12枚写真"
             />
-            <a href={to(24)}>↓ 写真（12枚）を一括ダウンロード</a>
+            <button
+              type="button"
+              className={`${styles.outline} ${styles.officialPendingAction}`}
+              aria-describedby="official-photo-export-pending"
+              disabled
+            >
+              ↓ 写真（12枚）の保存は準備中
+            </button>
+            <small id="official-photo-export-pending" className={styles.officialPendingNote}>
+              実商品写真はまだ保存されません
+            </small>
           </Card>
           <Card>
             <h3>2. テキストをコピー</h3>
             <p>商品説明をコピーして貼り付けてください。</p>
             <textarea
-              defaultValue={
-                "サンプルブランドのオックスフォードシャツです。\n爽やかなライトブルーのカラーで、幅広いコーディネートに合わせやすいベーシックなデザインです。\n\n程よい厚みの綿100%生地で、通年でご着用いただけます。"
-              }
+              aria-label="コピーする商品説明"
+              ref={listingDescriptionInput}
+              value={listingDescription}
+              disabled={draftReadFailed}
+              onChange={(event) => {
+                if (!draftLoaded.current) return;
+                const nextDescription = event.target.value;
+                setListingDescription(nextDescription);
+                copyRevision.current += 1;
+                setDescriptionCopyStatus("");
+                saveListingDraft(nextDescription);
+              }}
             />
-            <a href={to(24)}>商品説明をコピー　▣</a>
+            {descriptionDraftStatus ? (
+              <div className={styles.draftRecovery}>
+                <small role="alert">{descriptionDraftStatus}</small>
+                <button type="button" onClick={() => saveListingDraft(listingDescription)}>
+                  一時保存を再試行
+                </button>
+              </div>
+            ) : null}
+            <button
+              type="button"
+              className={`${styles.outline} ${styles.officialTextCopy}`}
+              disabled={draftReadFailed || !listingDescription.trim()}
+              aria-live="polite"
+              onClick={() => void copyListingDescription()}
+            >
+              {descriptionCopyStatus === "コピーしました"
+                ? "コピーしました　✓"
+                : "商品説明をコピー　▣"}
+            </button>
+            {descriptionCopyStatus && descriptionCopyStatus !== "コピーしました" ? (
+              <small className={styles.officialCopyError} role="alert">
+                {descriptionCopyStatus}
+              </small>
+            ) : null}
           </Card>
           <Card>
             <h3>3. 公式の販売画面を開く</h3>
@@ -945,7 +1354,12 @@ function Official() {
                 <em>写真　説明　価格</em>
               </div>
             </div>
-            <a className={styles.primary} href={to(24)}>
+            <a
+              className={styles.primary}
+              href="https://jp.mercari.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
               公式画面を開く　↗
             </a>
           </Card>
@@ -964,8 +1378,15 @@ function Official() {
           </div>
         </Card>
         <footer>
-          <a href={to(23)}>戻る</a>
-          <Button n={24}>出品情報を保存</Button>
+          <a href={to(23)} onClick={protectUnsavedDescription}>
+            戻る
+          </a>
+          <div className={styles.officialSavePending}>
+            <small>販売先・商品ID・URL・確認日はまだ保存されません</small>
+            <button type="button" className={styles.primary} disabled>
+              出品情報の保存は準備中
+            </button>
+          </div>
         </footer>
       </div>
     </Shell>
@@ -1033,6 +1454,8 @@ function PackingBox() {
   );
 }
 function Gallery() {
+  const [viewMode, setViewMode] = useState<"gallery" | "list">("gallery");
+  const [filter, setFilter] = useState<SavedProductFilter>("all");
   const items = [
     {
       id: "ITM-0001",
@@ -1089,17 +1512,56 @@ function Gallery() {
       kind: "catalogPants",
     },
   ] as const;
+  const visibleItems = filterSavedProducts(items, filter);
+  const pageSummary = getSavedProductPageSummary(visibleItems.length);
+  const channelACount = items.filter((item) => item.channel === "販売先A").length;
+  const channelBCount = items.filter((item) => item.channel === "販売先B").length;
   return (
     <Shell n={25}>
       <div className={styles.pad}>
         <h2>保存した商品ページ</h2>
         <Notice>リンク先を自動で読み取りません</Notice>
-        <nav className={styles.toggle}>
-          — 一覧表示　　<b>▦ ギャラリー表示</b>
+        <nav className={styles.toggle} aria-label="商品ページの表示方法">
+          <button
+            type="button"
+            aria-pressed={viewMode === "list"}
+            className={viewMode === "list" ? styles.toggleActive : ""}
+            onClick={() => setViewMode("list")}
+          >
+            — 一覧表示
+          </button>
+          <button
+            type="button"
+            aria-pressed={viewMode === "gallery"}
+            className={viewMode === "gallery" ? styles.toggleActive : ""}
+            onClick={() => setViewMode("gallery")}
+          >
+            ▦ ギャラリー表示
+          </button>
         </nav>
-        <p className={styles.filter}>すべて　48　　販売先A　24　　販売先B　24　　未確認URL　9</p>
-        <div className={styles.gallery}>
-          {items.map((item) => (
+        <nav className={styles.filter} aria-label="販売先で絞り込む">
+          {[
+            ["all", `すべて ${items.length}`],
+            ["channel-a", `販売先A ${channelACount}`],
+            ["channel-b", `販売先B ${channelBCount}`],
+          ].map(([value, label]) => (
+            <button
+              type="button"
+              aria-pressed={filter === value}
+              className={filter === value ? styles.filterActive : ""}
+              onClick={() => setFilter(value as SavedProductFilter)}
+              key={value}
+            >
+              {label}
+            </button>
+          ))}
+          <button type="button" disabled title="商品URLの保存機能は準備中です">
+            URL確認は準備中
+          </button>
+        </nav>
+        <p className={styles.galleryUrlNotice}>この見本6件に商品URLはまだ登録されていません。</p>
+        <div className={`${styles.gallery} ${viewMode === "list" ? styles.galleryList : ""}`}>
+          {visibleItems.map((item) => (
             <Card key={item.id}>
               <GalleryVisual kind={item.kind} />
               <b>{item.id}</b>
@@ -1109,24 +1571,29 @@ function Gallery() {
               <small>最終確認日　{item.checkedAt}</small>
               <footer>
                 <em>{item.status}</em>
-                <a href={to(26)}>商品ページを開く</a>
+                <span className={styles.galleryUrlAction}>
+                  <button type="button" disabled aria-describedby={`url-missing-${item.id}`}>
+                    商品ページを開く
+                  </button>
+                  <small id={`url-missing-${item.id}`}>URL未登録</small>
+                </span>
               </footer>
             </Card>
           ))}
         </div>
         <nav className={styles.galleryPagination} aria-label="商品ページ一覧のページ">
-          <a href={to(25)} aria-label="前のページ">
+          <button type="button" aria-label="前のページ" disabled>
             ‹
-          </a>
-          {[1, 2, 3].map((page) => (
-            <a className={page === 1 ? styles.pageActive : ""} href={to(25)} key={page}>
-              {page}
-            </a>
-          ))}
-          <a href={to(25)} aria-label="次のページ">
+          </button>
+          <button type="button" className={styles.pageActive} aria-current="page" disabled>
+            1
+          </button>
+          <button type="button" aria-label="次のページ" disabled>
             ›
-          </a>
-          <span>48件中 1〜6件</span>
+          </button>
+          <span>
+            {visibleItems.length}件中 {pageSummary.first}〜{pageSummary.last}件
+          </span>
         </nav>
       </div>
     </Shell>
@@ -1134,57 +1601,103 @@ function Gallery() {
 }
 function SalesCheck() {
   const [mode, setMode] = useState<"direct" | "screenshot">("direct");
-  const [selected, setSelected] = useState(1);
-  const items = [
-    {
-      id: "ITM-0004",
-      name: "リュックサック（ブラック）",
-      channel: "販売先B",
-      date: "2025/05/17",
-      status: "7日未確認",
-      kind: "catalogBackpack",
+  const items = orderSalesCheckItems(SALES_CHECK_ITEMS);
+  const [selectedId, setSelectedId] = useState(items[0]?.id ?? "");
+  const [drafts, setDrafts] = useState(() => createSalesCheckDrafts(SALES_CHECK_ITEMS));
+  const imageInput = useRef<HTMLInputElement>(null);
+  const imagePreviewsRef = useRef<Record<string, SalesCheckImagePreview>>({});
+  const [imagePreviews, setImagePreviews] = useState(imagePreviewsRef.current);
+  const [imageErrors, setImageErrors] = useState<Record<string, string>>({});
+  const selectedItem = items.find((item) => item.id === selectedId) ?? items[0];
+  useEffect(
+    () => () => {
+      releaseSalesCheckImagePreviews(imagePreviewsRef.current, (previewUrl) =>
+        URL.revokeObjectURL(previewUrl),
+      );
+      imagePreviewsRef.current = {};
     },
-    {
-      id: "ITM-0006",
-      name: "ワイドパンツ（カーキ）",
-      channel: "販売先B",
-      date: "2025/05/15",
-      status: "7日未確認",
-      kind: "catalogPants",
-    },
-    {
-      id: "ITM-0002",
-      name: "コンパクト財布（ネイビー）",
-      channel: "販売先B",
-      date: "2025/05/18",
-      status: "確認済み",
-      kind: "catalogWallet",
-    },
-    {
-      id: "ITM-0003",
-      name: "メッシュスニーカー（ホワイト）",
-      channel: "販売先A",
-      date: "2025/05/19",
-      status: "今日確認",
-      kind: "catalogShoe",
-    },
-    {
-      id: "ITM-0001",
-      name: "ライトトートバッグ（グレー）",
-      channel: "販売先A",
-      date: "2025/05/20",
-      status: "今日確認",
-      kind: "catalogTote",
-    },
-    {
-      id: "ITM-0005",
-      name: "リネンシャツ（ベージュ）",
-      channel: "販売先A",
-      date: "2025/05/16",
-      status: "7日未確認",
-      kind: "catalogShirt",
-    },
-  ] as const;
+    [],
+  );
+  if (!selectedItem) return null;
+  const selectedItemId = selectedItem.id;
+  const selectedDraft = drafts[selectedItemId] ?? selectedItem.initialDraft;
+  const selectedImagePreview = imagePreviews[selectedItemId];
+  const selectedImageError = imageErrors[selectedItemId] ?? "";
+  const directFields: readonly [string, SalesCheckDraftField, string][] = [
+    ["出品日数", "listingDays", "日"],
+    ["現在価格", "currentPrice", "円"],
+    ["閲覧数", "views", "回"],
+    ["検索数", "searches", "回"],
+    ["いいね数", "likes", "件"],
+    ["値下げ依頼", "priceRequests", "件"],
+  ];
+  const screenshotFields = directFields.filter(([, field]) => field !== "listingDays");
+
+  function updateDraft(field: SalesCheckDraftField, value: string) {
+    setDrafts((current) => updateSalesCheckDraft(current, selectedItemId, field, value));
+  }
+
+  function replaceImagePreview(itemId: string, preview: SalesCheckImagePreview | null) {
+    const next = replaceSalesCheckImagePreview(
+      imagePreviewsRef.current,
+      itemId,
+      preview,
+      (previewUrl) => URL.revokeObjectURL(previewUrl),
+    );
+    imagePreviewsRef.current = next;
+    setImagePreviews(next);
+  }
+
+  function handleImageSelection(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    if (!file) return;
+    const validationError = validateSalesCheckImageFile(file);
+    if (validationError) {
+      setImageErrors((current) => ({ ...current, [selectedItemId]: validationError }));
+      return;
+    }
+    let previewUrl: string;
+    try {
+      previewUrl = URL.createObjectURL(file);
+    } catch {
+      setImageErrors((current) => ({
+        ...current,
+        [selectedItemId]: "画像を開けませんでした。別の画像を選んでください。",
+      }));
+      return;
+    }
+    replaceImagePreview(selectedItemId, { previewUrl, state: "loading" });
+    setImageErrors((current) => ({ ...current, [selectedItemId]: "" }));
+  }
+
+  function finishImagePreview(itemId: string, previewUrl: string, image: HTMLImageElement) {
+    if (!isCurrentSalesCheckImagePreview(imagePreviewsRef.current, itemId, previewUrl, "loading"))
+      return;
+    const validationError = validateSalesCheckImageDimensions(
+      image.naturalWidth,
+      image.naturalHeight,
+    );
+    if (validationError) {
+      replaceImagePreview(itemId, null);
+      setImageErrors((errors) => ({ ...errors, [itemId]: validationError }));
+      return;
+    }
+    replaceImagePreview(itemId, { previewUrl, state: "ready" });
+    setDrafts((currentDrafts) =>
+      updateSalesCheckDraft(currentDrafts, itemId, "source", "本人が画像と比較して確認"),
+    );
+  }
+
+  function rejectImagePreview(itemId: string, previewUrl: string) {
+    if (!isCurrentSalesCheckImagePreview(imagePreviewsRef.current, itemId, previewUrl)) return;
+    replaceImagePreview(itemId, null);
+    setImageErrors((errors) => ({
+      ...errors,
+      [itemId]: "画像を表示できませんでした。別の画像を選んでください。",
+    }));
+  }
+
   return (
     <Shell n={26}>
       <div className={styles.pad}>
@@ -1192,33 +1705,38 @@ function SalesCheck() {
         <Notice>公式ページを自動で読み取りません</Notice>
         <div className={styles.sales}>
           <Card>
-            <b>今日確認する商品　8件</b>
-            {items.map((item, i) => (
+            <b>今日確認する商品　{items.length}件</b>
+            <small className={styles.salesReferenceDate}>
+              見本基準日 {SALES_CHECK_REFERENCE_DATE.replaceAll("-", "/")}・古い順
+            </small>
+            {items.map((item) => (
               <button
                 type="button"
-                className={i === selected ? styles.selected : ""}
-                onClick={() => setSelected(i)}
+                className={item.id === selectedItem.id ? styles.selected : ""}
+                aria-pressed={item.id === selectedItem.id}
+                onClick={() => setSelectedId(item.id)}
                 key={item.id}
               >
                 <GalleryVisual kind={item.kind} />
                 <strong>{item.id}</strong>
                 <span>{item.name}</span>
                 <small>
-                  {item.channel}　最終確認日 {item.date}
+                  {item.channel}　最終確認日 {item.checkedAt.replaceAll("-", "/")}
                 </small>
-                <em className={styles.salesItemStatus}>{item.status}</em>
+                <em className={styles.salesItemStatus}>{getSalesCheckAge(item.checkedAt)}</em>
               </button>
             ))}
           </Card>
           <section>
             <h3>
-              ITM-0006　ワイドパンツ（カーキ）　<em>候補・人が確認</em>
+              {selectedItem.id}　{selectedItem.name}　<em>候補・人が確認</em>
             </h3>
-            <p className={styles.salesChannel}>販売先B</p>
+            <p className={styles.salesChannel}>{selectedItem.channel}</p>
             <nav className={styles.tabs} aria-label="販売状況の入力方法">
               <button
                 type="button"
                 className={mode === "direct" ? styles.tabActive : ""}
+                aria-pressed={mode === "direct"}
                 onClick={() => setMode("direct")}
               >
                 数字を直接入力
@@ -1226,79 +1744,160 @@ function SalesCheck() {
               <button
                 type="button"
                 className={mode === "screenshot" ? styles.tabActive : ""}
+                aria-pressed={mode === "screenshot"}
                 onClick={() => setMode("screenshot")}
               >
                 スクリーンショットから候補
               </button>
             </nav>
             <Card>
-              {mode === "direct" ? (
-                <div className={styles.directEntry}>
-                  {[
-                    ["現在価格", "4,280", "円"],
-                    ["閲覧数", "132", "回"],
-                    ["いいね数", "7", "件"],
-                    ["値下げ依頼", "3", "件"],
-                  ].map(([label, value, unit]) => (
-                    <label key={label}>
+              {mode === "screenshot" ? (
+                <div className={styles.salesScreenshotPending}>
+                  <figure>
+                    <img
+                      key={selectedImagePreview?.previewUrl ?? "approved-design-example"}
+                      src={
+                        selectedImagePreview?.previewUrl ??
+                        "/approved-assets/pc-fidelity/sales/official-screen-pants.png"
+                      }
+                      alt={
+                        selectedImagePreview
+                          ? "本人が選んだ販売状況画像のプレビュー"
+                          : "販売画面の承認デザイン見本"
+                      }
+                      onLoad={
+                        selectedImagePreview?.state === "loading"
+                          ? (event) =>
+                              finishImagePreview(
+                                selectedItemId,
+                                selectedImagePreview.previewUrl,
+                                event.currentTarget,
+                              )
+                          : undefined
+                      }
+                      onError={
+                        selectedImagePreview
+                          ? () =>
+                              rejectImagePreview(selectedItemId, selectedImagePreview.previewUrl)
+                          : undefined
+                      }
+                    />
+                    <figcaption>
+                      {selectedImagePreview
+                        ? "PC内だけの一時プレビュー・保存されません"
+                        : "承認デザインの見本・実データではありません"}
+                    </figcaption>
+                  </figure>
+                  <div>
+                    <p className={styles.candidate}>候補・人が確認</p>
+                    <b>
+                      {selectedImagePreview?.state === "loading"
+                        ? "画像を確認しています…"
+                        : selectedImagePreview
+                          ? "画像を見ながら本人が入力"
+                          : "画像を選んで数字を見比べる"}
+                    </b>
+                    <p id="sales-screenshot-help">
+                      画像から数字を自動入力しません。原画像と下の値を本人が比較してください。
+                    </p>
+                    {selectedImageError ? (
+                      <p
+                        id={`sales-screenshot-error-${selectedItemId}`}
+                        className={styles.salesScreenshotError}
+                        role="alert"
+                      >
+                        {selectedImageError}
+                      </p>
+                    ) : null}
+                    <input
+                      ref={imageInput}
+                      type="file"
+                      accept={SALES_CHECK_IMAGE_ACCEPT}
+                      className={styles.salesScreenshotFileInput}
+                      aria-label="販売状況の画像を選ぶ"
+                      onChange={handleImageSelection}
+                    />
+                    <button
+                      type="button"
+                      aria-describedby={`sales-screenshot-help${
+                        selectedImageError ? ` sales-screenshot-error-${selectedItemId}` : ""
+                      }`}
+                      onClick={() => imageInput.current?.click()}
+                    >
+                      {selectedImagePreview ? "画像を選び直す" : "画像を選ぶ"}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+              <div
+                className={`${styles.directEntry} ${
+                  mode === "screenshot" ? styles.screenshotCandidateFields : ""
+                }`}
+              >
+                {(mode === "direct" ? directFields : screenshotFields).map(
+                  ([label, field, unit]) => (
+                    <label key={field}>
                       {label}
                       <span>
-                        <input aria-label={label} defaultValue={value} inputMode="numeric" />
+                        <input
+                          aria-label={label}
+                          value={selectedDraft[field]}
+                          inputMode="numeric"
+                          onChange={(event) => updateDraft(field, event.target.value)}
+                        />
                         <i>{unit}</i>
                       </span>
                     </label>
-                  ))}
-                </div>
-              ) : (
-                <div className={styles.screenshotMode}>
-                  <div className={styles.screenshotArt}>
-                    <img
-                      src="/approved-assets/pc-fidelity/sales/official-screen-pants.png"
-                      alt="公式販売画面の承認見本"
-                    />
-                    <b>販売ページの見本</b>
-                    <strong>¥4,280</strong>
-                    <span>閲覧 132　♡ 7</span>
-                    <i />
-                  </div>
-                  <div>
-                    <p className={styles.candidate}>候補・人が確認</p>
-                    <label>
-                      現在価格
-                      <input defaultValue="4,280" />
-                    </label>
-                    <label>
-                      閲覧数
-                      <input defaultValue="132" />
-                    </label>
-                    <label>
-                      いいね数
-                      <input defaultValue="7" />
-                    </label>
-                  </div>
-                </div>
-              )}
-              {mode === "direct" && (
-                <div
-                  className={`${styles.screenshotArt} ${styles.directScreenshot}`}
-                  aria-label="公式販売画面の承認見本"
-                >
-                  <b>アップロードしたスクリーンショット</b>
-                  <img
-                    src="/approved-assets/pc-fidelity/sales/official-screen-pants.png"
-                    alt="公式販売画面の承認見本"
+                  ),
+                )}
+              </div>
+              <div className={styles.salesMetaFields}>
+                <label>
+                  確認日
+                  <input
+                    aria-label="確認日"
+                    type="date"
+                    value={selectedDraft.recordedAt}
+                    onChange={(event) => updateDraft("recordedAt", event.target.value)}
                   />
-                  <small>最終アップロード　2025/05/20 10:15</small>
-                  <a href={to(26)}>画像を変更</a>
-                </div>
-              )}
-              <label>
-                次回確認日　
-                <input defaultValue="2025/05/25" />
-              </label>
-              <footer>
-                <a href={to(26)}>公式ページを開く</a>
-                <Button n={26}>確認した数値を保存</Button>
+                </label>
+                <label>
+                  入力元
+                  <select
+                    aria-label="入力元"
+                    value={selectedDraft.source}
+                    onChange={(event) => updateDraft("source", event.target.value)}
+                  >
+                    <option>本人が公式ページで確認</option>
+                    <option>本人が画像と比較して確認</option>
+                  </select>
+                </label>
+                <label>
+                  次回確認日
+                  <input
+                    aria-label="次回確認日"
+                    type="date"
+                    value={selectedDraft.nextCheckAt}
+                    onChange={(event) => updateDraft("nextCheckAt", event.target.value)}
+                  />
+                </label>
+              </div>
+              <p className={styles.salesDraftNotice}>
+                入力はこの画面を開いている間だけ保持され、まだ保存されません。
+              </p>
+              <footer className={styles.salesPendingActions}>
+                <span>
+                  <button type="button" disabled aria-describedby="sales-url-pending">
+                    公式ページを開く
+                  </button>
+                  <small id="sales-url-pending">商品URLは未登録です</small>
+                </span>
+                <span>
+                  <button type="button" className={styles.primary} disabled>
+                    数値の保存は準備中
+                  </button>
+                  <small>保存成功として次へ進みません</small>
+                </span>
               </footer>
             </Card>
           </section>
@@ -1308,6 +1907,9 @@ function SalesCheck() {
   );
 }
 function Price() {
+  const [customPrice, setCustomPrice] = useState("");
+  const [copyStatus, setCopyStatus] = useState("");
+  const customPriceInput = useRef<HTMLInputElement>(null);
   const rows = [
     ["現在価格", "4,280円", "—", "—", "—", "input:円"],
     ["値下げ率", "—", "5%", "10%", "15%", "—"],
@@ -1326,6 +1928,26 @@ function Price() {
     ["情報の出どころ", "担当者の主観", "—", "—", "—", "input:入力"],
     ["確認日", "2025/05/20", "2025/05/20", "2025/05/20", "2025/05/20", "date:日付を選択"],
   ] as const;
+
+  async function copyCustomPrice() {
+    setCopyStatus("");
+    const formattedPrice = formatPriceCandidate(customPrice);
+    if (!formattedPrice) {
+      setCopyStatus("新価格を1円以上の数字で入力してください。");
+      customPriceInput.current?.focus();
+      return;
+    }
+
+    const copied = await copyResearchText(formattedPrice, (text) =>
+      navigator.clipboard.writeText(text),
+    );
+    setCopyStatus(
+      copied
+        ? `${formattedPrice}をコピーしました。公式ページで本人が確認して反映してください。`
+        : "コピーできませんでした。新価格の入力欄を選択して手動でコピーしてください。",
+    );
+  }
+
   return (
     <Shell n={27}>
       <div className={styles.pad}>
@@ -1351,7 +1973,19 @@ function Price() {
                 <th>{label}</th>
                 {cells.map((cell, index) => (
                   <td key={`${label}-${index}`}>
-                    {cell.startsWith("input:") || cell.startsWith("date:") ? (
+                    {label === "新価格" && index === 4 ? (
+                      <input
+                        ref={customPriceInput}
+                        aria-label="コピーする新価格"
+                        inputMode="numeric"
+                        value={customPrice}
+                        onChange={(event) => {
+                          setCustomPrice(event.target.value);
+                          setCopyStatus("");
+                        }}
+                        placeholder="円"
+                      />
+                    ) : cell.startsWith("input:") || cell.startsWith("date:") ? (
                       <input placeholder={cell.split(":")[1]} />
                     ) : cell.startsWith("select:") ? (
                       <select defaultValue="">
@@ -1373,7 +2007,19 @@ function Price() {
           ※
           想定粗利は手数料・送料・梱包費を差し引いた目安です。実際の粗利を保証するものではありません。
         </p>
-        <Button n={27}>この候補をコピー</Button>
+        <div className={styles.priceFooter}>
+          {copyStatus ? (
+            <p
+              className={styles.priceCopyNotice}
+              role={copyStatus.includes("コピーしました") ? "status" : "alert"}
+            >
+              {copyStatus}
+            </p>
+          ) : null}
+          <button type="button" className={styles.primary} onClick={() => void copyCustomPrice()}>
+            この候補をコピー　›
+          </button>
+        </div>
       </div>
     </Shell>
   );
@@ -1397,6 +2043,23 @@ function Reply() {
       body: "ご連絡ありがとうございます。\n内容を確認のうえ、改めてご連絡いたします。",
     },
   ] as const;
+  const [drafts, setDrafts] = useState<string[]>(() => templates.map((template) => template.body));
+  const [selectedTemplate, setSelectedTemplate] = useState(0);
+  const [copyStatus, setCopyStatus] = useState("");
+
+  async function copyTemplate(index: number) {
+    setSelectedTemplate(index);
+    setCopyStatus("");
+    const copied = await copyResearchText(drafts[index] ?? "", (text) =>
+      navigator.clipboard.writeText(text),
+    );
+    setCopyStatus(
+      copied
+        ? "コピーしました。公式ページへ貼り付ける前に内容を確認してください。"
+        : "コピーできませんでした。文章欄を選択して手動でコピーしてください。",
+    );
+  }
+
   return (
     <Shell n={28}>
       <div className={styles.pad}>
@@ -1407,17 +2070,41 @@ function Reply() {
         <div className={styles.reply}>
           <Card>
             <h3>返信テンプレート（編集可能）</h3>
-            {templates.map((template) => (
-              <article key={template.title}>
+            {templates.map((template, index) => (
+              <article key={template.title} data-selected={selectedTemplate === index}>
                 <b>{template.title}</b>
-                <p>{template.body}</p>
-                <a href={to(28)}>コピー</a>
+                <textarea
+                  className={styles.replyTemplateText}
+                  aria-label={`${template.title}の本文`}
+                  value={drafts[index] ?? ""}
+                  onFocus={() => setSelectedTemplate(index)}
+                  onChange={(event) => {
+                    const nextDrafts = [...drafts];
+                    nextDrafts[index] = event.target.value;
+                    setDrafts(nextDrafts);
+                    setSelectedTemplate(index);
+                    setCopyStatus("");
+                  }}
+                />
+                <button
+                  type="button"
+                  className={styles.replyCopyButton}
+                  disabled={!(drafts[index] ?? "").trim()}
+                  onClick={() => void copyTemplate(index)}
+                >
+                  コピー
+                </button>
               </article>
             ))}
           </Card>
           <Card>
             <h3>操作と記録</h3>
-            <a className={styles.outline} href={to(28)}>
+            <a
+              className={styles.outline}
+              href="https://jp.mercari.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
               公式ページを開く
             </a>
             <h4>適用結果（本人操作後にチェック）</h4>
@@ -1432,29 +2119,67 @@ function Reply() {
             <textarea placeholder="対応内容をメモしてください" />
           </Card>
         </div>
-        <Button n={28}>文章をコピー</Button>
+        <div className={styles.replyFooter}>
+          {copyStatus ? (
+            <p
+              className={styles.replyCopyNotice}
+              role={copyStatus.startsWith("コピーしました") ? "status" : "alert"}
+            >
+              {copyStatus}
+            </p>
+          ) : null}
+          <button
+            type="button"
+            className={styles.primary}
+            disabled={!(drafts[selectedTemplate] ?? "").trim()}
+            onClick={() => void copyTemplate(selectedTemplate)}
+          >
+            文章をコピー
+          </button>
+        </div>
       </div>
     </Shell>
   );
 }
 function Order() {
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [channel, setChannel] = useState("");
+  const [transactionId, setTransactionId] = useState("");
+  const [buyerName, setBuyerName] = useState("");
+  const [salesAmount, setSalesAmount] = useState("");
+  const [deferredMessage, setDeferredMessage] = useState("");
+  const missingCount = Number(!transactionId.trim()) + Number(!salesAmount.trim());
+
   return (
     <Shell n={29}>
       <div className={styles.pad}>
         <h2>注文を記録</h2>
         <p>
           匿名配送で住所の情報が不要な場合は、住所は保存しません。　
-          <a href={to(29)}>詳しく見る ⓘ</a>
+          <button
+            type="button"
+            className={styles.orderDetailsButton}
+            aria-expanded={detailsOpen}
+            aria-controls="approved-order-address-details"
+            onClick={() => setDetailsOpen((current) => !current)}
+          >
+            {detailsOpen ? "説明を閉じる" : "詳しく見る"} ⓘ
+          </button>
         </p>
+        {detailsOpen ? (
+          <p className={styles.orderDetails} id="approved-order-address-details">
+            匿名配送でも販売先の仕様によって住所情報が必要になる場合があります。実際の登録前に、本人が販売先の注文内容を確認します。
+          </p>
+        ) : null}
         <Card className={styles.order}>
-          <h3>⚙ 仮注文番号 #0048（自動で付与されます）</h3>
+          <h3>⚙ 注文番号の表示見本 #0048（実番号は登録時に付与）</h3>
           <div>
             <label>
               <span className={styles.orderFieldHead}>
                 <b>販売先</b>
                 <span className={styles.requiredChip}>必須</span>
               </span>
-              <select defaultValue="">
+              <select value={channel} onChange={(event) => setChannel(event.target.value)}>
                 <option value="" disabled>
                   選択してください
                 </option>
@@ -1467,8 +2192,25 @@ function Order() {
                 <span className={styles.laterHint}>任意・あとで入力できます</span>
               </span>
               <span className={styles.orderInlineInput}>
-                <input placeholder="取引IDを入力" />
-                <button type="button">あとで入力</button>
+                <input
+                  placeholder="取引IDを入力"
+                  value={transactionId}
+                  onChange={(event) => {
+                    setTransactionId(event.target.value);
+                    setDeferredMessage("");
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTransactionId("");
+                    setDeferredMessage(
+                      "取引IDを未入力として表示しています。この見本画面から注文は保存されません。",
+                    );
+                  }}
+                >
+                  あとで入力
+                </button>
               </span>
             </label>
             <label>
@@ -1476,7 +2218,11 @@ function Order() {
                 <b>購入者の表示名</b>
                 <span className={styles.laterHint}>任意</span>
               </span>
-              <input placeholder="表示名を入力" />
+              <input
+                placeholder="表示名を入力"
+                value={buyerName}
+                onChange={(event) => setBuyerName(event.target.value)}
+              />
             </label>
             <label>
               <span className={styles.orderFieldHead}>
@@ -1486,22 +2232,64 @@ function Order() {
               <span className={styles.orderInlineInput}>
                 <span className={styles.moneyInput}>
                   <span>¥</span>
-                  <input inputMode="numeric" placeholder="0" />
+                  <input
+                    inputMode="numeric"
+                    placeholder="0"
+                    value={salesAmount}
+                    onChange={(event) => {
+                      setSalesAmount(event.target.value);
+                      setDeferredMessage("");
+                    }}
+                  />
                 </span>
-                <button type="button">あとで確認</button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSalesAmount("");
+                    setDeferredMessage(
+                      "販売金額を未入力として表示しています。この見本画面から注文は保存されません。",
+                    );
+                  }}
+                >
+                  あとで確認
+                </button>
               </span>
             </label>
           </div>
-          <p className={styles.warn}>▲　未入力 2件・作業は続けられます</p>
+          <p className={missingCount > 0 ? styles.warn : styles.ok}>
+            {missingCount > 0
+              ? `▲　未入力 ${missingCount}件・作業は続けられます`
+              : "●　取引IDと販売金額は入力されています"}
+          </p>
+          {deferredMessage ? (
+            <p className={styles.orderLocalStatus} role="status">
+              {deferredMessage}
+            </p>
+          ) : null}
           <Notice>
             匿名配送で住所の情報が不要な場合は、住所は保存しません。
             <br />
             匿名配送であっても、販売先の仕様により住所の情報が必要な場合があります。
           </Notice>
         </Card>
-        <footer>
+        <p className={styles.orderPreviewNotice}>
+          この画面は承認デザインの見本です。入力はサーバーへ送られず、実注文は登録されません。
+        </p>
+        <footer className={styles.pendingFooter}>
           <a href={to(28)}>キャンセル</a>
-          <Button n={29}>仮登録して取り出しへ</Button>
+          <a className={styles.outline} href={to(30)}>
+            取り出し画面の見本を見る
+          </a>
+          <span className={styles.pendingPrimaryAction}>
+            <button
+              type="button"
+              className={`${styles.primary} ${styles.primaryDisabled}`}
+              disabled
+            >
+              仮登録は準備中
+            </button>
+            <small>実際の登録は業務用「注文・発送」で本人が行います</small>
+          </span>
         </footer>
       </div>
     </Shell>
@@ -1512,9 +2300,9 @@ function Pick() {
     <Shell n={30}>
       <div className={styles.pad}>
         <h2>
-          商品を取り出す　<em>担当注文</em>
+          商品を取り出す　<em>承認デザインの見本</em>
         </h2>
-        <p>仮注文 #0048　配送先：一般のご購入者様</p>
+        <p>注文番号の見本 #0048　配送先表示の見本：一般のご購入者様</p>
         <div className={styles.pick}>
           <Card>
             <h3>商品ラベル</h3>
@@ -1532,18 +2320,30 @@ function Pick() {
         <div className={styles.pickBottom}>
           <Card>
             <h3>照合結果</h3>
-            <b className={styles.ok}>● 一致しました</b>
-            <p>商品ラベルと置き場所ラベルが一致しています。</p>
+            <b className={styles.pendingResult}>● 一致状態の表示見本</b>
+            <p>実際のラベル読み取り・照合結果ではありません。</p>
           </Card>
           <Notice>
             <b>作業のポイント</b>
             <br />
-            商品ラベルと置き場所ラベルを確認し、正しい商品を取り出してください。
+            実作業では商品ラベルと置き場所ラベルを読み取り、本人が正しい商品か確認します。
           </Notice>
         </div>
-        <footer>
+        <footer className={styles.pendingFooter}>
           <a href={to(29)}>中止する</a>
-          <Button n={30}>取り出しを完了</Button>
+          <a className={styles.outline} href={to(31)}>
+            発送前写真の見本を見る
+          </a>
+          <span className={styles.pendingPrimaryAction}>
+            <button
+              type="button"
+              className={`${styles.primary} ${styles.primaryDisabled}`}
+              disabled
+            >
+              取り出し完了は準備中
+            </button>
+            <small>実ラベルの読み取り前は完了にしません</small>
+          </span>
         </footer>
       </div>
     </Shell>
@@ -1551,6 +2351,16 @@ function Pick() {
 }
 function Pack() {
   const [policy, setPolicy] = useState(0);
+  const checklistItems = [
+    "商品が正しい",
+    "付属品が揃っている",
+    "傷や汚れはない",
+    "緩衝材を使用した",
+    "箱をしっかり封緘した",
+    "その他（任意）",
+  ];
+  const [checkedItems, setCheckedItems] = useState(() => checklistItems.map(() => false));
+  const checkedCount = checkedItems.filter(Boolean).length;
   return (
     <Shell n={31}>
       <div className={styles.pad}>
@@ -1573,10 +2383,11 @@ function Pack() {
             <Card
               className={i === policy ? styles.selected : ""}
               onClick={() => setPolicy(i)}
+              ariaPressed={i === policy}
               key={x[0]}
             >
               <b>
-                {i === 0 ? "◉" : "○"}　{x[0]}
+                {i === policy ? "◉" : "○"}　{x[0]}
               </b>
               <p>{x[1]}</p>
             </Card>
@@ -1586,72 +2397,113 @@ function Pack() {
           <Card>
             <h3>商品写真（例）</h3>
             <Headphones />
-            <a href={to(31)}>▣ 再撮影</a>
+            <button className={styles.packPhotoAction} type="button" disabled>
+              ▣ 再撮影は準備中
+            </button>
           </Card>
           <Card>
             <h3>梱包写真（例）</h3>
             <PackingBox />
-            <a href={to(31)}>▣ 再撮影</a>
+            <button className={styles.packPhotoAction} type="button" disabled>
+              ▣ 再撮影は準備中
+            </button>
           </Card>
           <Card>
             <h3>確認チェックリスト（人の目で確認）</h3>
-            {[
-              "商品が正しい",
-              "付属品が揃っている",
-              "傷や汚れはない",
-              "緩衝材を使用した",
-              "箱をしっかり封緘した",
-              "その他（任意）",
-            ].map((x, i) => (
+            {checklistItems.map((x, i) => (
               <label key={x}>
-                <input type="checkbox" defaultChecked={i < 5} /> {x}
+                <input
+                  type="checkbox"
+                  checked={checkedItems[i]}
+                  onChange={(event) =>
+                    setCheckedItems((current) =>
+                      current.map((checked, index) =>
+                        index === i ? event.target.checked : checked,
+                      ),
+                    )
+                  }
+                />{" "}
+                {x}
               </label>
             ))}
+            <small className={styles.packChecklistStatus}>
+              {checkedCount}/6項目（画面内の確認見本）
+            </small>
           </Card>
         </div>
         <Notice>金額が未入力でも、梱包を止めずに進めます。</Notice>
-        <p className={styles.privacyNote}>▣　写真はPC内で非公開に保存。外部へ自動送信しません。</p>
-        <footer>
-          <a href={to(31)}>今回は使わない</a>
-          <Button n={31}>この写真を使う</Button>
+        <p className={styles.privacyNote}>
+          ▣　この見本画面では写真を保存・外部送信しません。実際の写真保存は準備中です。
+        </p>
+        <footer className={`${styles.pendingFooter} ${styles.packPreviewFooter}`}>
+          <button type="button" className={styles.secondaryAction} onClick={() => setPolicy(2)}>
+            今回は使わない（見本）
+          </button>
+          <a className={styles.outline} href={to(32)}>
+            配送画面の見本を見る
+          </a>
+          <span className={styles.pendingPrimaryAction}>
+            <button
+              type="button"
+              className={`${styles.primary} ${styles.primaryDisabled}`}
+              disabled
+            >
+              写真の保存は準備中
+            </button>
+            <small>実写真の撮影・確認前は保存しません</small>
+          </span>
         </footer>
       </div>
     </Shell>
   );
 }
 function Ship() {
+  const shippingMethods = [
+    ["配送方法A（追跡あり）", "お届けの目安：2〜3日", "¥600"],
+    ["配送方法B（追跡あり）", "お届けの目安：1〜2日", "¥450"],
+    ["配送方法C（追跡なし）", "お届けの目安：4〜7日", "¥300"],
+  ];
+  const [selectedMethod, setSelectedMethod] = useState(1);
+  const [plannedDate, setPlannedDate] = useState("2025/05/21");
+  const [shippedAt, setShippedAt] = useState("2025/05/20　15:20");
   return (
     <Shell n={32}>
       <div className={styles.pad}>
         <h2>配送方法と発送</h2>
-        <p>仮注文 #0048　 販売先：選択済み　｜　配送先：一般のご購入者様</p>
-        <p className={styles.shipDone}>● 発送前の写真　2枚・確認済み</p>
+        <p>仮注文 #0048（表示見本）　 販売先：選択例　｜　配送先：架空のご購入者様</p>
+        <p className={styles.shipDone}>
+          ◌ 発送前写真の表示見本　2枚・未確認（実写真の確認結果ではありません）
+        </p>
         <div className={styles.ship}>
           <Card>
             <h3>
-              お届け先（販売先の設定に基づく） <em className={styles.domesticChip}>国内向け</em>
+              お届け先（表示例） <em className={styles.domesticChip}>国内向け</em>
             </h3>
             <p>
-              <b>有力な配送方法</b>
+              <b>配送方法の候補（画面内の見本）</b>
             </p>
-            {[
-              ["配送方法A（追跡あり）", "お届けの目安：2〜3日", "¥600"],
-              ["配送方法B（追跡あり）", "お届けの目安：1〜2日", "¥450"],
-              ["配送方法C（追跡なし）", "お届けの目安：4〜7日", "¥300"],
-            ].map(([method, estimate, price], i) => (
-              <a className={i === 1 ? styles.selected : ""} href={to(32)} key={method}>
-                <span>◉　{method}</span>
+            {shippingMethods.map(([method, estimate, price], i) => (
+              <button
+                type="button"
+                className={`${styles.shipMethodChoice} ${i === selectedMethod ? styles.selected : ""}`}
+                aria-pressed={i === selectedMethod}
+                onClick={() => setSelectedMethod(i)}
+                key={method}
+              >
+                <span>
+                  {i === selectedMethod ? "◉" : "○"}　{method}
+                </span>
                 <small>{estimate}</small>
                 <b>{price}</b>
-              </a>
+              </button>
             ))}
           </Card>
           <Card>
             <h3>
-              配送料金（過去の納品履歴から選択）
-              <a className={styles.catalogEdit} href={to(32)}>
-                料金カタログを編集
-              </a>
+              配送料金（履歴の表示例）
+              <button className={styles.catalogEditButton} type="button" disabled>
+                カタログ編集は準備中
+              </button>
             </h3>
             <table>
               <tbody>
@@ -1661,25 +2513,28 @@ function Ship() {
                   "2025/04/28　配送方法B　¥450",
                 ].map((x) => (
                   <tr key={x}>
-                    <td>◉　{x}</td>
+                    <td>・　{x}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            <p className={styles.total}>
-              この注文の配送料　<b>¥450（確定）</b>
+            <p className={`${styles.total} ${styles.shipTotalPreview}`}>
+              選択中の料金候補　<b>{shippingMethods[selectedMethod]?.[2]}（見本）</b>
             </p>
           </Card>
           <Card>
-            <h3>発送情報</h3>
+            <h3>発送情報（入力見本）</h3>
             <label>
               発送予定日 <small>（人のチェック必須）</small>
-              <input defaultValue="2025/05/21" />
+              <input value={plannedDate} onChange={(event) => setPlannedDate(event.target.value)} />
             </label>
             <label>
               発送日時
-              <input defaultValue="2025/05/20　15:20" />
+              <input value={shippedAt} onChange={(event) => setShippedAt(event.target.value)} />
             </label>
+            <small className={styles.shipLocalStatus}>
+              入力内容はこの見本画面だけで、保存されません。
+            </small>
           </Card>
         </div>
         <Notice>
@@ -1691,9 +2546,21 @@ function Ship() {
           <span>▲ 発送を確定する前に未入力の注文情報を確認</span>
           <a href={to(29)}>注文情報を確認</a>
         </div>
-        <footer>
+        <footer className={styles.pendingFooter}>
           <a href={to(31)}>戻る</a>
-          <Button n={32}>発送を記録</Button>
+          <a className={styles.outline} href={to(33)}>
+            在庫画面の見本を見る
+          </a>
+          <span className={styles.pendingPrimaryAction}>
+            <button
+              type="button"
+              className={`${styles.primary} ${styles.primaryDisabled}`}
+              disabled
+            >
+              発送記録は準備中
+            </button>
+            <small>実注文と人の確認がないため記録しません</small>
+          </span>
         </footer>
       </div>
     </Shell>

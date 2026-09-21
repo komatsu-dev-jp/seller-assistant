@@ -9,6 +9,16 @@ const css = readFileSync(resolve(root, "components/workflow-live-layout.module.c
 const route = readFileSync(resolve(root, "app/workflow/page.tsx"), "utf8");
 
 describe("live workflow presentation contract", () => {
+  it("keeps measurement keyboard controls in the visible photo then value order", () => {
+    const measurement = source.slice(
+      source.indexOf('{step === "measure" && definition && ('),
+      source.indexOf("写真は最後に保存します。"),
+    );
+    expect(measurement.indexOf('type="file"')).toBeGreaterThan(-1);
+    expect(measurement.indexOf('type="number"')).toBeGreaterThan(
+      measurement.indexOf('type="file"'),
+    );
+  });
   it("retains page authorization and uses a dedicated shell", () => {
     expect(route).toContain('requirePageSession(["owner", "inventory_manager"])');
     expect(route).not.toContain("AppSidebar");
@@ -76,6 +86,9 @@ describe("live workflow presentation contract", () => {
     expect(workspace).toContain("field.reportValidity()");
   });
   it("has scoped responsive geometry and safe touch targets", () => {
+    const mobileCss = css.slice(css.indexOf("@media (max-width: 767px)"));
+    expect(mobileCss).toContain(".content :is(input, select, textarea, button, a)");
+    expect(mobileCss).toContain("scroll-margin-block: calc(88px + env(safe-area-inset-bottom))");
     expect(css).toContain("env(safe-area-inset-top)");
     expect(css).toContain("env(safe-area-inset-bottom)");
     expect(css).toContain("min-height: 44px");

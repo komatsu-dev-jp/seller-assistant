@@ -6,6 +6,43 @@ import type {
   WorkspaceRole,
 } from "@resale/contracts";
 import { useEffect, useState } from "react";
+import { PUTAWAY_SYNC_CHANGED } from "../lib/offline-events";
+import { getPutawayActionState, getShippingActionState } from "./mobile-assignment-action";
+
+function PrimaryTaskAction({
+  enabled,
+  href,
+  title,
+  detail,
+}: {
+  enabled: boolean;
+  href: string;
+  title: string;
+  detail: string;
+}) {
+  const content = (
+    <>
+      <span aria-hidden="true">▣</span>
+      <div>
+        <strong>{title}</strong>
+        <small>{detail}</small>
+      </div>
+      <span aria-hidden="true">{enabled ? "›" : "—"}</span>
+    </>
+  );
+  if (enabled) {
+    return (
+      <a className="mobilePrimaryAction" href={href}>
+        {content}
+      </a>
+    );
+  }
+  return (
+    <button className="mobilePrimaryAction" type="button" disabled>
+      {content}
+    </button>
+  );
+}
 
 export function MobileAssignmentSummary({
   workspaceId,
@@ -17,23 +54,42 @@ export function MobileAssignmentSummary({
   const [putaway, setPutaway] = useState<PutawayCatalogResponse | null>(null);
   const [shipping, setShipping] = useState<ShippingTaskResponse[]>([]);
   const [error, setError] = useState("");
+  const [revision, setRevision] = useState(0);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const invalidate = () => setRevision((current) => current + 1);
+    window.addEventListener(PUTAWAY_SYNC_CHANGED, invalidate);
+    return () => window.removeEventListener(PUTAWAY_SYNC_CHANGED, invalidate);
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setPutaway(null);
+    setShipping([]);
+    setError("");
+    setLoading(true);
     const url =
       role === "shipping"
         ? `/v1/workspaces/${workspaceId}/shipping-tasks`
         : `/v1/workspaces/${workspaceId}/inventory/putaway-catalog`;
-    fetch(url, { cache: "no-store" })
+    fetch(url, { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error("担当範囲を読み込めませんでした。");
         const payload: unknown = await response.json();
+        if (controller.signal.aborted) return;
         if (role === "shipping") setShipping(payload as ShippingTaskResponse[]);
         else setPutaway(payload as PutawayCatalogResponse);
+        setLoading(false);
       })
-      .catch((reason: unknown) =>
-        setError(reason instanceof Error ? reason.message : "担当範囲を読み込めませんでした。"),
-      );
-  }, [role, workspaceId]);
+      .catch((reason: unknown) => {
+        if (!controller.signal.aborted) {
+          setError(reason instanceof Error ? reason.message : "担当範囲を読み込めませんでした。");
+          setLoading(false);
+        }
+      });
+    return () => controller.abort();
+  }, [role, workspaceId, revision]);
 
   if (error)
     return (
@@ -43,6 +99,7 @@ export function MobileAssignmentSummary({
     );
   if (role === "shipping") {
     const next = shipping[0];
+    const action = getShippingActionState(loading, shipping.length);
     return (
       <>
         <section className="mobileTaskGrid" aria-label="発送割当">
@@ -51,14 +108,12 @@ export function MobileAssignmentSummary({
             <strong>{shipping.length}件</strong>
           </article>
         </section>
-        <a className="mobilePrimaryAction" href="/shipping">
-          <span aria-hidden="true">▣</span>
-          <div>
-            <strong>発送作業を開く</strong>
-            <small>割当期間中の注文だけ</small>
-          </div>
-          <span aria-hidden="true">›</span>
-        </a>
+        <PrimaryTaskAction
+          enabled={action.enabled}
+          href="/shipping"
+          title="発送作業を開く"
+          detail={action.detail}
+        />
         <section className="mobileNext panel">
           <div className="panelHead">
             <h2>次の作業</h2>
@@ -79,6 +134,11 @@ export function MobileAssignmentSummary({
     );
   }
   const next = putaway?.inventory[0];
+  const action = getPutawayActionState(
+    loading,
+    putaway?.inventory.length ?? 0,
+    putaway?.locations.length ?? 0,
+  );
   return (
     <>
       <section className="mobileTaskGrid" aria-label="担当作業">
@@ -91,14 +151,12 @@ export function MobileAssignmentSummary({
           <strong>{putaway?.locations.length ?? 0}件</strong>
         </article>
       </section>
-      <a className="mobilePrimaryAction" href="/mobile/scan">
-        <span aria-hidden="true">▣</span>
-        <div>
-          <strong>商品と場所を読み取る</strong>
-          <small>割当範囲・チェック値を照合</small>
-        </div>
-        <span aria-hidden="true">›</span>
-      </a>
+      <PrimaryTaskAction
+        enabled={action.enabled}
+        href="/mobile/scan"
+        title="商品と場所を読み取る"
+        detail={action.detail}
+      />
       <section className="mobileNext panel">
         <div className="panelHead">
           <h2>次の作業</h2>

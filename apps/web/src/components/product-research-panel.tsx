@@ -238,7 +238,10 @@ export function ProductResearchPanel({
       {!pilotActive ? (
         <>
           {research && research.workspaceId === workspaceId && research.skuId === skuId ? (
-            <ResearchHandoff key={`${workspaceId}:${skuId}`} research={research} />
+            <ResearchHandoff
+              key={`${workspaceId}:${skuId}:${research.confirmedAttributes?.confirmationId ?? "unconfirmed"}`}
+              research={research}
+            />
           ) : null}
           <form className="compactForm" action={(form) => void addReference(form)}>
             <label>
@@ -324,7 +327,7 @@ function ResearchHandoff({ research }: { research: ProductResearchResponse }) {
   }
 
   return (
-    <div className="compactForm">
+    <div className="compactForm researchHandoffForm">
       <h4>販売価格を自分で調べる</h4>
       <p className="accountingDisclaimer">
         検索語と質問文はこの画面内だけで作る候補です。自由に編集・並べ替えできます。検索結果の自動取得やCodexへの自動送信はしません。予想価格は人が確認します。

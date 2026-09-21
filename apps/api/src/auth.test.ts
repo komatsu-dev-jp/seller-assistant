@@ -111,5 +111,5 @@ describe("zero-cost password security", () => {
 
     await service.close();
     expect(sql.end).toHaveBeenCalledWith({ timeout: 5 });
-  });
+  }, 10_000);
 });

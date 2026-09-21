@@ -10,13 +10,18 @@ const handoff = source.slice(
 const helper = readFileSync(resolve("apps/web/src/lib/product-research-handoff.ts"), "utf8");
 
 describe("AC-067 local-only handoff source boundary", () => {
-  it("mounts only outside pilot and isolates drafts by workspace and SKU", () => {
+  it("mounts only outside pilot and refreshes drafts for each confirmed attribute revision", () => {
     expect(source).toMatch(
       /\{!pilotActive \? \(\s*<>\s*\{research && research.workspaceId === workspaceId && research.skuId === skuId \? \(\s*<ResearchHandoff/u,
     );
-    expect(source).toContain("key={`${workspaceId}:${skuId}`}");
+    expect(source).toContain(
+      'key={`${workspaceId}:${skuId}:${research.confirmedAttributes?.confirmationId ?? "unconfirmed"}`}',
+    );
     expect(handoff).toContain("useState(() => buildResearchSearchTerms(research))");
     expect(handoff).not.toMatch(/useEffect|refresh|setTerms\(buildResearch/u);
+  });
+  it("uses a dedicated class for a single-column mobile handoff", () => {
+    expect(handoff).toContain('className="compactForm researchHandoffForm"');
   });
   it("limits clipboard and external navigation to explicit click handlers", () => {
     expect(handoff).toMatch(

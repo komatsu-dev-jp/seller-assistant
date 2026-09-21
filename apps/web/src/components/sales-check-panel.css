@@ -1,0 +1,42 @@
+.salesCheckPanel {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid #dce5e0;
+  border-radius: 16px;
+  background: white;
+}
+.salesCheckPanel p,
+.salesCheckPanel dd {
+  overflow-wrap: anywhere;
+}
+.salesCheckForm,
+.salesCheckSummary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr));
+  gap: 12px;
+  min-width: 0;
+}
+.salesCheckForm {
+  margin: 16px 0;
+  padding: 12px;
+  border: 1px solid #dce5e0;
+}
+.salesCheckForm label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.salesCheckForm input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  box-sizing: border-box;
+}
+.salesCheckPanel button {
+  min-height: 44px;
+  max-width: 100%;
+  white-space: normal;
+}
+.salesCheckSummary dd {
+  margin: 4px 0 0;
+}

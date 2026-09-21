@@ -15,6 +15,7 @@ const nextConfig: NextConfig = {
   ...(basePath ? { assetPrefix: basePath } : {}),
   env: {
     NEXT_PUBLIC_REVIEW_BASE_PATH: basePath,
+    NEXT_PUBLIC_REVIEW_ONLY: "true",
   },
 };
 

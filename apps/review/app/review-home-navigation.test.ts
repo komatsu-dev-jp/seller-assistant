@@ -12,4 +12,14 @@ describe("review home navigation", () => {
     expect(source).toContain('<a className={styles.secondary} href="/pc/2">');
     expect(source).not.toContain("<Link");
   });
+
+  it("uses native navigation in the mobile index without requesting server route payloads", () => {
+    const index = readFileSync(
+      resolve(process.cwd(), "apps/review/app/mobile/screens/page.tsx"),
+      "utf8",
+    );
+    expect(index).not.toContain('from "next/link"');
+    expect(index).not.toContain("<Link");
+    expect(index).toContain("<a href={`/mobile/screens/${screen}`}>{screen}</a>");
+  });
 });

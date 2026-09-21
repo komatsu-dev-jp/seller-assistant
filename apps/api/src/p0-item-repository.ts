@@ -1,5 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
+  recordSalesCheckRequestSchema,
+  type RecordSalesCheckRequest,
+  type SalesCheckResponse,
+  type SalesCheckSummary,
+} from "@resale/contracts";
+import {
   appendCodeCheckDigit,
   listingPrepPilotFixtureManifestSha256,
   listingPrepPilotFixtureProfiles,
@@ -23,7 +29,10 @@ import {
   type P0ItemResponse,
   type ProductAttributeConfirmationResponse,
   type ProductResearchResponse,
+  type PublishedProductPageResponse,
+  type PublishedProductPageSummary,
   type PutawayCatalogResponse,
+  type RegisterPublishedProductPageRequest,
   type ReturnCatalogResponse,
   type ReceiptEvidenceResponse,
   type PilotRunResponse,
@@ -48,6 +57,13 @@ export interface RegisterReceiptEvidence {
 }
 
 export interface P0ItemRepository {
+  salesCheck(workspaceId: string, skuId: string, actor: RequestActor): Promise<SalesCheckSummary>;
+  recordSalesCheck(
+    workspaceId: string,
+    skuId: string,
+    actor: RequestActor,
+    input: RecordSalesCheckRequest,
+  ): Promise<SalesCheckResponse>;
   createItem(
     workspaceId: string,
     actor: RequestActor,
@@ -128,6 +144,17 @@ export interface P0ItemRepository {
     skuId: string,
     actor: RequestActor,
   ): Promise<ProductResearchResponse>;
+  publishedProductPage(
+    workspaceId: string,
+    skuId: string,
+    actor: RequestActor,
+  ): Promise<PublishedProductPageSummary>;
+  registerPublishedProductPage(
+    workspaceId: string,
+    skuId: string,
+    actor: RequestActor,
+    input: RegisterPublishedProductPageRequest,
+  ): Promise<PublishedProductPageResponse>;
   close(): Promise<void>;
 }
 
@@ -239,6 +266,20 @@ interface ReferenceRow {
   exclusion_reason: string | null;
   checked_at: Date;
   created_at: Date;
+}
+
+interface PublishedProductPageRow {
+  id: string;
+  workspace_id: string;
+  sku_id: string;
+  sales_channel_key: "mercari";
+  sales_channel_name: "メルカリ";
+  product_id: string;
+  product_url: string;
+  confirmed_by: string;
+  confirmed_at: Date;
+  idempotency_key: string;
+  payload_hash: string;
 }
 
 interface PilotRunRow {
@@ -1708,9 +1749,275 @@ export class PostgresP0ItemRepository implements P0ItemRepository {
     }
   }
 
+  async publishedProductPage(
+    workspaceId: string,
+    skuId: string,
+    actor: RequestActor,
+  ): Promise<PublishedProductPageSummary> {
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId);
+        await requireManagementRole(transaction, workspaceId, actor.identityId);
+        await requireManagedSku(transaction, workspaceId, skuId);
+        const rows = await selectPublishedProductPage(transaction, workspaceId, skuId);
+        return {
+          workspaceId,
+          skuId,
+          page: rows[0] ? toPublishedProductPage(rows[0]) : null,
+        };
+      });
+    } catch (error) {
+      throw normalizeP0ItemError(error);
+    }
+  }
+
+  async registerPublishedProductPage(
+    workspaceId: string,
+    skuId: string,
+    actor: RequestActor,
+    input: RegisterPublishedProductPageRequest,
+  ): Promise<PublishedProductPageResponse> {
+    const payloadHash = createHash("sha256")
+      .update(
+        JSON.stringify({
+          skuId,
+          salesChannelKey: input.salesChannelKey,
+          salesChannelName: input.salesChannelName,
+          productId: input.productId,
+          productUrl: input.productUrl,
+          humanConfirmed: input.humanConfirmed,
+        }),
+        "utf8",
+      )
+      .digest("hex");
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId);
+        await requireManagementRole(transaction, workspaceId, actor.identityId);
+        await transaction`select pg_advisory_xact_lock(hashtext(${workspaceId}), hashtext(${skuId}))`;
+        const replayRows = await transaction<PublishedProductPageRow[]>`
+          select id, workspace_id, sku_id, sales_channel_key, sales_channel_name,
+                 product_id, product_url, confirmed_by, confirmed_at,
+                 idempotency_key, payload_hash
+          from published_product_page
+          where workspace_id = ${workspaceId} and idempotency_key = ${input.idempotencyKey}
+        `;
+        if (replayRows[0]) {
+          if (replayRows[0].payload_hash !== payloadHash || replayRows[0].sku_id !== skuId) {
+            throw new RepositoryError(
+              "conflict",
+              "The product page idempotency key has another payload",
+            );
+          }
+          return toPublishedProductPage(replayRows[0]);
+        }
+
+        // A committed replay is read-only; mutable workflow/pilot gates apply only to new writes.
+        await requirePublishedProductPageEligible(transaction, workspaceId, skuId);
+        const existingRows = await selectPublishedProductPage(transaction, workspaceId, skuId);
+        if (existingRows[0]) {
+          if (
+            existingRows[0].sales_channel_key === input.salesChannelKey &&
+            existingRows[0].sales_channel_name === input.salesChannelName &&
+            existingRows[0].product_id === input.productId &&
+            existingRows[0].product_url === input.productUrl
+          ) {
+            return toPublishedProductPage(existingRows[0]);
+          }
+          throw new RepositoryError(
+            "conflict",
+            "This item already has a different confirmed product page",
+          );
+        }
+
+        const id = randomUUID();
+        const rows = await transaction<PublishedProductPageRow[]>`
+          insert into published_product_page (
+            id, workspace_id, sku_id, sales_channel_key, sales_channel_name,
+            product_id, product_url, confirmed_by, idempotency_key, payload_hash
+          ) values (
+            ${id}, ${workspaceId}, ${skuId}, ${input.salesChannelKey},
+            ${input.salesChannelName}, ${input.productId}, ${input.productUrl},
+            ${actor.identityId}, ${input.idempotencyKey}, ${payloadHash}
+          ) returning id, workspace_id, sku_id, sales_channel_key, sales_channel_name,
+              product_id, product_url, confirmed_by, confirmed_at,
+              idempotency_key, payload_hash
+        `;
+        if (!rows[0]) {
+          throw new RepositoryError("database_error", "The confirmed product page was not stored");
+        }
+        await transaction`
+          insert into audit_event (
+            workspace_id, actor_id, action, target_type, target_id,
+            field_names, redacted_changes, reference_ids, reason_code, approved_by
+          ) values (
+            ${workspaceId}, ${actor.identityId}, 'listing.product_page.confirmed',
+            'published_product_page', ${id},
+            ${["sales_channel_key", "product_id", "product_url", "confirmed_at"]},
+            ${transaction.json({
+              before: { status: "absent" },
+              after: { status: "human_confirmed", salesChannelKey: input.salesChannelKey },
+            })},
+            ${[skuId, id]}, 'official_page_human_checked', ${actor.identityId}
+          )
+        `;
+        return toPublishedProductPage(rows[0]);
+      });
+    } catch (error) {
+      throw normalizeP0ItemError(error);
+    }
+  }
+
+  async salesCheck(
+    workspaceId: string,
+    skuId: string,
+    actor: RequestActor,
+  ): Promise<SalesCheckSummary> {
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId);
+        await requireManagementRole(transaction, workspaceId, actor.identityId);
+        await requireManagedSku(transaction, workspaceId, skuId);
+        const pages = await selectPublishedProductPage(transaction, workspaceId, skuId);
+        // A single statement gives the latest observation and count the same snapshot.
+        const rows = await transaction<SalesCheckRow[]>`
+          select id, workspace_id, sku_id, listing_days, current_price_yen, view_count,
+                 search_count, like_count, price_reduction_request_count,
+                 checked_on::text as checked_on, next_check_on::text as next_check_on,
+                 input_source, confirmed_by, saved_at, payload_hash,
+                 count(*) over()::integer as record_count
+          from sales_check_observation
+          where workspace_id = ${workspaceId} and sku_id = ${skuId}
+          order by saved_at desc, id desc limit 1
+        `;
+        return {
+          workspaceId,
+          skuId,
+          eligible: Boolean(pages[0]),
+          latest: rows[0] ? toSalesCheck(rows[0]) : null,
+          recordCount: rows[0]?.record_count ?? 0,
+        };
+      });
+    } catch (error) {
+      throw normalizeP0ItemError(error);
+    }
+  }
+
+  async recordSalesCheck(
+    workspaceId: string,
+    skuId: string,
+    actor: RequestActor,
+    input: RecordSalesCheckRequest,
+  ): Promise<SalesCheckResponse> {
+    const parsed = recordSalesCheckRequestSchema.safeParse(input);
+    if (!parsed.success) throw new RepositoryError("conflict", "Invalid sales check input");
+    const { idempotencyKey, ...values } = parsed.data;
+    const payloadHash = createHash("sha256")
+      .update(JSON.stringify({ skuId, ...values }), "utf8")
+      .digest("hex");
+    const integer = (value: string | null) => (value === null ? null : Number(value));
+    try {
+      return await this.sql.begin(async (transaction) => {
+        await setWorkspace(transaction, workspaceId);
+        await requireManagementRole(transaction, workspaceId, actor.identityId);
+        // Serialize a workspace key across SKUs as well as observations for the same SKU.
+        await transaction`select pg_advisory_xact_lock(hashtext(${workspaceId}), hashtext(${idempotencyKey}))`;
+        await transaction`select pg_advisory_xact_lock(hashtext(${workspaceId}), hashtext(${skuId}))`;
+        await requireManagedSku(transaction, workspaceId, skuId);
+        const replay = await transaction<SalesCheckRow[]>`
+          select id, workspace_id, sku_id, listing_days, current_price_yen, view_count,
+                 search_count, like_count, price_reduction_request_count,
+                 checked_on::text as checked_on, next_check_on::text as next_check_on,
+                 input_source, confirmed_by, saved_at, payload_hash
+          from sales_check_observation
+          where workspace_id = ${workspaceId} and idempotency_key = ${idempotencyKey}
+        `;
+        if (replay[0]) {
+          if (replay[0].payload_hash !== payloadHash || replay[0].sku_id !== skuId)
+            throw new RepositoryError("conflict", "The sales check key has another payload");
+          return toSalesCheck(replay[0]);
+        }
+        // Preserve authorization above, but do not revalidate write eligibility for a replay.
+        const pages = await selectPublishedProductPage(transaction, workspaceId, skuId);
+        if (!pages[0])
+          throw new RepositoryError("conflict", "Register the confirmed product page first");
+        await requirePublishedProductPageEligible(transaction, workspaceId, skuId);
+        const id = randomUUID();
+        const rows = await transaction<SalesCheckRow[]>`
+          insert into sales_check_observation (
+            id, workspace_id, sku_id, listing_days, current_price_yen, view_count,
+            search_count, like_count, price_reduction_request_count,
+            checked_on, next_check_on, input_source, confirmed_by, idempotency_key, payload_hash
+          ) values (
+            ${id}, ${workspaceId}, ${skuId}, ${integer(values.listingDays)}, ${integer(values.currentPriceYen)},
+            ${integer(values.viewCount)}, ${integer(values.searchCount)}, ${integer(values.likeCount)},
+            ${integer(values.priceReductionRequestCount)}, ${values.checkedOn}, ${values.nextCheckOn},
+            ${values.inputSource}, ${actor.identityId}, ${idempotencyKey}, ${payloadHash}
+          ) returning id, workspace_id, sku_id, listing_days, current_price_yen, view_count,
+                      search_count, like_count, price_reduction_request_count,
+                      checked_on::text as checked_on, next_check_on::text as next_check_on,
+                      input_source, confirmed_by, saved_at, payload_hash
+        `;
+        if (!rows[0]) throw new RepositoryError("database_error", "Sales check was not stored");
+        await transaction`
+          insert into audit_event (
+            workspace_id, actor_id, action, target_type, target_id,
+            field_names, redacted_changes, reference_ids, reason_code, approved_by
+          ) values (
+            ${workspaceId}, ${actor.identityId}, 'listing.sales_check.recorded',
+            'sales_check_observation', ${id}, ${["observation"]},
+            ${transaction.json({ after: { status: "human_checked" } })},
+            ${[skuId, id]}, 'official_page_human_checked', ${actor.identityId}
+          )
+        `;
+        return toSalesCheck(rows[0]);
+      });
+    } catch (error) {
+      throw normalizeP0ItemError(error);
+    }
+  }
+
   async close(): Promise<void> {
     await this.sql.end({ timeout: 5 });
   }
+}
+
+interface SalesCheckRow {
+  id: string;
+  workspace_id: string;
+  sku_id: string;
+  listing_days: number | null;
+  current_price_yen: number | null;
+  view_count: number | null;
+  search_count: number | null;
+  like_count: number | null;
+  price_reduction_request_count: number | null;
+  checked_on: string;
+  next_check_on: string;
+  input_source: "official_page_human_checked";
+  confirmed_by: string;
+  saved_at: Date;
+  payload_hash: string;
+  record_count?: number;
+}
+
+function toSalesCheck(row: SalesCheckRow): SalesCheckResponse {
+  return {
+    observationId: row.id,
+    workspaceId: row.workspace_id,
+    skuId: row.sku_id,
+    listingDays: row.listing_days,
+    currentPriceYen: row.current_price_yen,
+    viewCount: row.view_count,
+    searchCount: row.search_count,
+    likeCount: row.like_count,
+    priceReductionRequestCount: row.price_reduction_request_count,
+    checkedOn: row.checked_on,
+    nextCheckOn: row.next_check_on,
+    inputSource: row.input_source,
+    confirmedBy: row.confirmed_by,
+    savedAt: row.saved_at.toISOString(),
+  };
 }
 
 async function selectLocations(
@@ -2286,6 +2593,87 @@ async function requireManagementRole(
       and active and role in ('owner', 'inventory_manager')
   `;
   if (!rows[0]) throw new RepositoryError("forbidden", "Inventory management role is required");
+}
+
+async function requireManagedSku(
+  sql: postgres.TransactionSql,
+  workspaceId: string,
+  skuId: string,
+): Promise<void> {
+  const rows = await sql<Array<{ id: string }>>`
+    select id from product_sku
+    where workspace_id = ${workspaceId} and id = ${skuId}
+  `;
+  if (!rows[0]) throw new RepositoryError("forbidden", "The item is unavailable");
+}
+
+async function requirePublishedProductPageEligible(
+  sql: postgres.TransactionSql,
+  workspaceId: string,
+  skuId: string,
+): Promise<void> {
+  const rows = await sql<Array<{ state: string }>>`
+    select state from p0_workflow
+    where workspace_id = ${workspaceId} and sku_id = ${skuId}
+    for update
+  `;
+  if (
+    !rows[0] ||
+    ![
+      "listing_confirmed",
+      "order_confirmed",
+      "picked",
+      "packed",
+      "shipped",
+      "journal_approved",
+    ].includes(rows[0].state)
+  ) {
+    throw new RepositoryError(
+      "conflict",
+      "Confirm the listing handoff before registering its published product page",
+    );
+  }
+  const activePilotRuns = await sql<Array<{ id: string }>>`
+    select id from pilot_run
+    where workspace_id = ${workspaceId} and state = 'active'
+      and protocol_version = 'listing_prep_pilot_v1.1.0'
+    limit 1
+  `;
+  if (activePilotRuns[0]) {
+    throw new RepositoryError(
+      "conflict",
+      "Published product pages are disabled during the local-only pilot",
+    );
+  }
+}
+
+function selectPublishedProductPage(
+  sql: postgres.TransactionSql,
+  workspaceId: string,
+  skuId: string,
+): Promise<PublishedProductPageRow[]> {
+  return sql<PublishedProductPageRow[]>`
+    select id, workspace_id, sku_id, sales_channel_key, sales_channel_name,
+           product_id, product_url, confirmed_by, confirmed_at,
+           idempotency_key, payload_hash
+    from published_product_page
+    where workspace_id = ${workspaceId} and sku_id = ${skuId}
+      and sales_channel_key = 'mercari'
+  `;
+}
+
+function toPublishedProductPage(row: PublishedProductPageRow): PublishedProductPageResponse {
+  return {
+    registrationId: row.id,
+    workspaceId: row.workspace_id,
+    skuId: row.sku_id,
+    salesChannelKey: row.sales_channel_key,
+    salesChannelName: row.sales_channel_name,
+    productId: row.product_id,
+    productUrl: row.product_url,
+    confirmedBy: row.confirmed_by,
+    confirmedAt: row.confirmed_at.toISOString(),
+  };
 }
 
 async function requireCaptureOrManagement(

@@ -10,7 +10,7 @@ import type {
   ReplaceAccountMappingRuleResponse,
   VersionedAccountingExportResponse,
 } from "@resale/contracts";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   applyAccountingImportConfirmation,
   isAccountingImportActionDisabled,
@@ -136,7 +136,23 @@ export function AccountingWorkspace({
 }) {
   const [profile, setProfile] = useState<AccountingProfileResponse | null>(null);
   const [rules, setRules] = useState<AccountMappingRuleResponse[]>([]);
-  const [financial, setFinancial] = useState<FinancialSummaryResponse | null>(null);
+  const [financialResult, setFinancial] = useState<FinancialSummaryResponse | null>(null);
+  const [financialError, setFinancialError] = useState<{ key: string; message: string } | null>(
+    null,
+  );
+  const financialRequest = useRef(0);
+  const financialKey = `${workspaceId}:${orderId ?? ""}`;
+  const financial =
+    financialResult?.workspaceId === workspaceId && financialResult.orderId === orderId
+      ? financialResult
+      : null;
+  useEffect(() => {
+    setFinancial(null);
+    setFinancialError(null);
+    return () => {
+      financialRequest.current += 1;
+    };
+  }, [workspaceId, orderId]);
   const [batch, setBatch] = useState<VersionedAccountingExportResponse | null>(null);
   const [exportPreflight, setExportPreflight] = useState<AccountingExportPreflightResponse | null>(
     null,
@@ -357,12 +373,19 @@ export function AccountingWorkspace({
 
   function loadFinancials() {
     if (!orderId) return Promise.resolve();
+    const request = ++financialRequest.current;
+    setFinancial(null);
+    setFinancialError(null);
     return run(async () => {
-      setFinancial(
-        await requestJson<FinancialSummaryResponse>(
+      try {
+        const result = await requestJson<FinancialSummaryResponse>(
           `/v1/workspaces/${workspaceId}/orders/${orderId}/financial-summary`,
-        ),
-      );
+        );
+        if (request === financialRequest.current) setFinancial(result);
+      } catch (error) {
+        if (request === financialRequest.current)
+          setFinancialError({ key: financialKey, message: financialLoadErrorMessage(error) });
+      }
     });
   }
 
@@ -617,6 +640,7 @@ export function AccountingWorkspace({
         <button type="button" disabled={busy || !orderId} onClick={() => void loadFinancials()}>
           売上と費用を読み込む
         </button>
+        {financialError?.key === financialKey ? <p role="alert">{financialError.message}</p> : null}
         {onMobileStageChange ? (
           <button type="button" onClick={() => onMobileStageChange("profile")}>
             会計の基本設定へ
@@ -1053,6 +1077,9 @@ export function AccountingWorkspace({
               売上と費用を読み込む
             </button>
           ) : null}
+          {financialError?.key === financialKey ? (
+            <p role="alert">{financialError.message}</p>
+          ) : null}
           <div className="accountingActionRow" data-accounting-step="export">
             <button
               type="button"
@@ -1372,6 +1399,29 @@ function Money({
   );
 }
 
+export class AccountingRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: string | undefined,
+  ) {
+    super(message);
+  }
+}
+
+export function financialLoadErrorMessage(error: unknown): string {
+  if (error instanceof AccountingRequestError) {
+    if (error.code === "conflict" && error.message === "The order financial facts are incomplete")
+      return "売上と費用の記録が不足しているか、同じ種類の記録が重複しています。販売額・原価・販売手数料・送料・梱包費を注文の原資料と照合してください。この応答だけでは不足項目を特定できません。未入力を0円として扱わず、CSV作成を止めています。";
+    if (error.status === 401 || error.status === 403)
+      return "この注文の金額を確認する権限がありません。ログイン状態と担当権限を確認してください。";
+    if (error.status >= 500)
+      return "金額を取得できませんでした。接続先の稼働状態を確認し、もう一度読み込んでください。未入力と判断したわけではありません。";
+    return `金額を読み込めませんでした。表示された理由を確認してください: ${error.message}`;
+  }
+  return "金額を読み込めませんでした。通信状態を確認し、もう一度読み込んでください。";
+}
+
 async function requestJson<T = unknown>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...init,
@@ -1380,8 +1430,10 @@ async function requestJson<T = unknown>(url: string, init?: RequestInit): Promis
   });
   const payload = (await response.json().catch(() => null)) as { message?: string } | T | null;
   if (!response.ok) {
-    throw new Error(
+    throw new AccountingRequestError(
       (payload as { message?: string } | null)?.message ?? "操作を確認できませんでした。",
+      response.status,
+      (payload as { code?: string } | null)?.code,
     );
   }
   return payload as T;
