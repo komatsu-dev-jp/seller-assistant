@@ -41,7 +41,24 @@ self.addEventListener("activate", (event) => {
             .map((key) => caches.delete(key)),
         ),
       )
-      .then(() => self.clients.claim()),
+      .then(() => self.clients.claim())
+      .then(async () => {
+        const scopePath = new URL(self.registration.scope).pathname;
+        const rootPath = scopePath.endsWith("/") ? scopePath : `${scopePath}/`;
+        const windowClients = await self.clients.matchAll({
+          type: "window",
+          includeUncontrolled: true,
+        });
+        await Promise.all(
+          windowClients.map((client) => {
+            const clientUrl = new URL(client.url);
+            const isPublicRoot =
+              clientUrl.origin === self.location.origin &&
+              (clientUrl.pathname === rootPath || clientUrl.pathname === rootPath.slice(0, -1));
+            return isPublicRoot ? client.navigate(client.url) : undefined;
+          }),
+        );
+      }),
   );
 });
 

@@ -8,7 +8,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "フリマ物販業務アプリ",
     short_name: "物販業務",
-    description: "承認済みモバイル・PC画面を確認する無料のWebアプリ",
+    description: "スマホとPCで実装済みの業務フローを確認できる無料のWebアプリ",
     start_url: `${basePath}/mobile/screens/04/`,
     scope: `${basePath || ""}/`,
     display: "standalone",
