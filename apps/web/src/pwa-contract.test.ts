@@ -570,6 +570,10 @@ describe("zero-cost PWA contract", () => {
     expect(pages).toContain("actions/deploy-pages@v4");
     expect(pages).toContain("pages: write");
     expect(pages).not.toContain("macos-");
+    const sharedPackagesBuild = pages.indexOf("run: npm run build:packages");
+    const reviewAppBuild = pages.indexOf("run: npm run build --workspace @resale/review");
+    expect(sharedPackagesBuild).toBeGreaterThan(-1);
+    expect(reviewAppBuild).toBeGreaterThan(sharedPackagesBuild);
   });
 
   it("protects sensitive pages with a server-side session and role allowlist", () => {
