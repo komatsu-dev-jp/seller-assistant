@@ -661,4 +661,4 @@ Codex右サイドパネルでITM-0006へ架空素材を選択し、ITM-0005へ�
 
 最終`npm run check`は111ファイル・829テスト、整形、静的解析、型、coverage、安全確認、API/Web build（86 routes）までPASS。`git diff --check`もPASS。証拠は`output/playwright/live-sales-check-persistence-evidence.md`。
 
-チェックリスト322/346（93.1%）、実用完成度は約97%。実iPhone、実メルカリ値との照合、OCR、複数実端末、会計不足補完は未完了で、Goal activeのまま。P23差分は未commit・未push・未公開。GitHub Issue #11、Project #1、PR、外部Obsidian正本はP23分未更新。
+チェックリスト322/346（93.1%）、実用完成度は約97%。実iPhone、実メルカリ値との照合、OCR、複数実端末、会計不足補完は未完了で、Goal activeのまま。P23はcommit `f9f2f9e`（`feat: persist manual sales checks`）として保存し、`origin/codex/all-pages-interaction-fixes`へpush済み。GitHub Issue #11、Project #1、PR、外部Obsidian正本はP23分未更新。ObsidianはWindows正本とiPhone用コピーに差分があり、安全手順により上書きを停止した。
