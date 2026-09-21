@@ -542,3 +542,13 @@ APIキー、トークン、個人情報、生ログ、会話全文、一時的�
 - Zero-cost boundary: 対象は公開`komatsu-dev-jp/seller-assistant`、runnerは標準`ubuntu-latest`だけとする。larger runner、macOS runner、有料Action、有料API、有料SaaS、private repositoryの課金枠を使わない。
 - Safety boundary: PR headとmerge commitに一致するCI・Pagesだけを合格証拠にする。required checkを迂回せず、force push、管理者override、無関係な変更、実データ、外部runtime APIを追加しない。
 - Applies to: PR #9、`.github/workflows/ci.yml`、`.github/workflows/pages.yml`、`AGENTS.md`、`zero-cost-guard.md`、`technical-architecture-v1.md`。
+
+### 2026-09-21 — GitHub Pagesの入口を端末別アプリへ切り替える
+
+- Type: public PWA entry and update decision
+- Context: 利用者がGitHubの設定画面に表示されたPages URLをスマホで開いたところ、以前の「承認デザイン確認用」選択画面だけが入口に残っていると報告した。
+- Decision or rule: PagesのルートURLは、画面幅900px以下では現在のモバイルホーム、超える場合はPCホームを自動で開く。JavaScriptを使えない場合だけ、同じ2画面への手動ボタンを表示する。新しいService Workerは古いルート画面を開いているウィンドウだけを1回再読込し、途中のモバイル／PC画面は強制移動しない。
+- Why: GitHub設定画面から得たURLをそのまま開いて、旧レビュー選択画面を経由せず端末に合う実装済みフローへ入れるようにするため。古いPWAキャッシュが入口を残し続ける問題も同時に防ぐ。
+- Safety boundary: GitHub Pagesは静的ホスティングのため、認証Cookie、API、PostgreSQL、実データ保存は公開しない。公開版は架空データの操作確認に限定し、外部API、有料サービス、自動出品、自動価格変更を追加しない。
+- Verification: ルートの端末別遷移、base path、Service Worker更新、旧文言不在を契約テストで固定し、Pages用production build、公開後のスマホ幅表示とcommit一致を確認する。
+- Applies to: `apps/review/app/page.tsx`、`public-app-entry.tsx`、PWA metadata／manifest、Service Worker、GitHub Pages公開。

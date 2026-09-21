@@ -3,14 +3,36 @@ import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-const source = readFileSync(resolve(process.cwd(), "apps/review/app/page.tsx"), "utf8");
+const page = readFileSync(resolve(process.cwd(), "apps/review/app/page.tsx"), "utf8");
+const entry = readFileSync(resolve(process.cwd(), "apps/review/app/public-app-entry.tsx"), "utf8");
+const registration = readFileSync(
+  resolve(process.cwd(), "apps/review/app/pwa-registration.tsx"),
+  "utf8",
+);
+const worker = readFileSync(resolve(process.cwd(), "apps/review/public/sw.js"), "utf8");
 
-describe("review home navigation", () => {
-  it("uses browser-native links so a configured base path is applied exactly once", () => {
-    expect(source).not.toContain('from "next/link"');
-    expect(source).toContain('<a className={styles.primary} href="/mobile/screens/04">');
-    expect(source).toContain('<a className={styles.secondary} href="/pc/2">');
-    expect(source).not.toContain("<Link");
+describe("public app home navigation", () => {
+  it("opens the current mobile or PC application instead of the old review selector", () => {
+    expect(page).toContain("<PublicAppEntry />");
+    expect(entry).toContain('window.matchMedia("(max-width: 900px)")');
+    expect(entry).toContain("window.location.replace(destination)");
+    expect(entry).toContain('const mobileHome = "/mobile/screens/04/"');
+    expect(entry).toContain('const pcHome = "/pc/2/"');
+    expect(entry).not.toContain("NEXT_PUBLIC_REVIEW_BASE_PATH");
+    expect(entry).toContain("スマホ版を開く");
+    expect(entry).not.toContain("承認デザイン確認用");
+    expect(entry).not.toContain("表示する画面を選んでください");
+    expect(entry).not.toContain('from "next/link"');
+    expect(entry).not.toContain("<Link");
+  });
+
+  it("forces a service-worker update and refreshes only the public root after activation", () => {
+    expect(registration).toContain('updateViaCache: "none"');
+    expect(registration).toContain("registration.update()");
+    expect(worker).toContain('type: "window"');
+    expect(worker).toContain("includeUncontrolled: true");
+    expect(worker).toContain("clientUrl.pathname === rootPath");
+    expect(worker).toContain("client.navigate(client.url)");
   });
 
   it("uses native navigation in the mobile index without requesting server route payloads", () => {
