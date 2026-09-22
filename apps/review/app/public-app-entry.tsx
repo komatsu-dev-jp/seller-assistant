@@ -6,7 +6,7 @@ import styles from "./review-home.module.css";
 
 // Keep these paths root-relative. The static-export postprocessor adds the
 // GitHub Pages base path once to both the HTML and the hydrated client bundle.
-const mobileHome = "/mobile/screens/04/";
+const mobileHome = "/mobile/app/";
 const pcHome = "/pc/2/";
 
 export function PublicAppEntry() {

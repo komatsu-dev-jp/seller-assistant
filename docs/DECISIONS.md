@@ -572,3 +572,12 @@ APIキー、トークン、個人情報、生ログ、会話全文、一時的�
 - Safety boundary: API、サーバー、PostgreSQL、外部サービス、実商品、個人情報、複数端末同期、自動出品・自動値下げは使用しない。端末内確認版を実データ共有版または完成した全機能として表示しない。
 - Verification: 純粋関数と保存失敗のテスト、review production build、390×844の実ブラウザー、通信記録、再読み込み復元、独立レビュー。実iPhoneのカメラとホーム画面起動は公開後に本人が確認する。
 - Applies to: `apps/web/src/components/approved-mobile/`、`apps/review`、P25のテスト・証拠・公開説明。
+
+### 2026-09-22 — 古いPWAキャッシュから新しいモバイル入口へ切り替える
+
+- Type: public PWA cache migration
+- Context: GitHub Pagesは修正版へ更新済みでも、過去のService Workerが`/mobile/screens/04/`を通信前に返す端末では、疑似端末表示と「ホーム／通知」行が残ることを実ブラウザーで再現した。
+- Decision or rule: 過去のcacheに存在しない`/mobile/app/`を公開モバイル版の新しい入口とし、Pagesルートのスマホ転送先とPWAの`start_url`も同じ入口へ変更する。入口の内容は承認済みホーム`04`とし、その後の工程は既存routeを使う。
+- Why: 古いService Workerに制御された端末でも、新規pathはcache missとなって現行deploymentへ到達し、network-firstへ修正済みの新しいService Workerへ自動更新できるため。
+- Safety boundary: browser-onlyの`localStorage`と`IndexedDB`は削除しない。外部API、サーバー、有料サービス、実データ送信を追加しない。
+- Applies to: `apps/review/app/mobile/app/`、Pagesルートのモバイル遷移、PWA manifest、公開確認URL。
