@@ -72,5 +72,5 @@ const generatedWorker = injectPrecacheManifest(workerSource, manifest);
 await writeFile(workerPath, generatedWorker, "utf8");
 
 console.log(
-  `Postprocessed ${changed} exported files for base path ${basePath || "/"}; precached ${manifest.urls.length} files (${routeCoverage.mobile} mobile + ${routeCoverage.pc} PC routes) in ${manifest.cacheName}.`,
+  `Postprocessed ${changed} exported files for base path ${basePath || "/"}; runtime-cache allowlist: ${manifest.urls.length} files (${routeCoverage.mobile} mobile + ${routeCoverage.pc} PC routes), ${manifest.cacheName}.`,
 );

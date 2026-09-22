@@ -25,13 +25,11 @@ export async function createPrecacheManifest(files, exportRoot) {
   for (const file of [...files].sort()) {
     const relativeFilePath = path.relative(exportRoot, file);
     const url = toPrecacheUrl(relativeFilePath);
-    if (!url) continue;
-
     const content = await readFile(file);
-    hash.update(url);
+    hash.update(url ?? relativeFilePath);
     hash.update("\0");
     hash.update(content);
-    entries.push(url);
+    if (url) entries.push(url);
   }
 
   return {

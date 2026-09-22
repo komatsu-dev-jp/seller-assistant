@@ -1,12 +1,32 @@
 import { describe, expect, it } from "vitest";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 
 import {
   injectPrecacheManifest,
+  createPrecacheManifest,
   toPrecacheUrl,
   verifyApprovedRouteCoverage,
 } from "./review-precache.mjs";
 
 describe("review export precache", () => {
+  it("changes the cache version when only the worker changes", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "review-worker-hash-"));
+    try {
+      const page = path.join(root, "index.html");
+      const worker = path.join(root, "sw.js");
+      await writeFile(page, "same page");
+      await writeFile(worker, "first worker");
+      const before = await createPrecacheManifest([page, worker], root);
+      await writeFile(worker, "updated worker");
+      const after = await createPrecacheManifest([page, worker], root);
+      expect(after.cacheName).not.toBe(before.cacheName);
+      expect(after.urls).toEqual(["./"]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
   it("maps exported route HTML to the URL visitors actually open", () => {
     expect(toPrecacheUrl("index.html")).toBe("./");
     expect(toPrecacheUrl("mobile/screens/04/index.html")).toBe("./mobile/screens/04/");
