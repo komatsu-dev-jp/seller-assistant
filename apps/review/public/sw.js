@@ -52,10 +52,11 @@ self.addEventListener("activate", (event) => {
         await Promise.all(
           windowClients.map((client) => {
             const clientUrl = new URL(client.url);
-            const isPublicRoot =
+            const isPublicReviewPage =
               clientUrl.origin === self.location.origin &&
-              (clientUrl.pathname === rootPath || clientUrl.pathname === rootPath.slice(0, -1));
-            return isPublicRoot ? client.navigate(client.url) : undefined;
+              (clientUrl.pathname === rootPath.slice(0, -1) ||
+                clientUrl.pathname.startsWith(rootPath));
+            return isPublicReviewPage ? client.navigate(client.url) : undefined;
           }),
         );
       }),
@@ -67,19 +68,23 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
 
+  if (event.request.mode === "navigate") {
+    event.respondWith(
+      fetch(event.request).catch(async (error) => {
+        const cached = await caches.match(event.request, { ignoreSearch: true });
+        if (cached) return cached;
+        const fallback = await caches.match("./404.html");
+        if (fallback) return fallback;
+        throw error;
+      }),
+    );
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request, { ignoreSearch: true }).then(async (cached) => {
       if (cached) return cached;
-
-      try {
-        return await fetch(event.request);
-      } catch (error) {
-        if (event.request.mode === "navigate") {
-          const fallback = await caches.match("./404.html");
-          if (fallback) return fallback;
-        }
-        throw error;
-      }
+      return fetch(event.request);
     }),
   );
 });

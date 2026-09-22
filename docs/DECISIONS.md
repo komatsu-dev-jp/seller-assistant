@@ -553,6 +553,16 @@ APIキー、トークン、個人情報、生ログ、会話全文、一時的�
 - Verification: ルートの端末別遷移、base path、Service Worker更新、旧文言不在を契約テストで固定し、Pages用production build、公開後のスマホ幅表示とcommit一致を確認する。
 - Applies to: `apps/review/app/page.tsx`、`public-app-entry.tsx`、PWA metadata／manifest、Service Worker、GitHub Pages公開。
 
+### 2026-09-22 — 公開スマホホームの二重ヘッダーを表示しない
+
+- Type: reusable feedback / mobile UI correction
+- Context: 実iPhone Safariの公開スマホホームで、端末本体の時刻・電波・電池表示に加えて、旧PWAキャッシュ内の擬似端末表示と「ホーム／通知」行が重なり、利用者から赤枠部分は再現不要と再指摘された。
+- Decision or rule: 公開操作確認版のスマホホーム`04`では、擬似端末表示と「ホーム／通知」のアプリheaderをどちらも表示せず、実端末のsafe areaの直後から注意書きと「今日やること」を表示する。工程画面の戻る・画面名・ヘルプ等、操作に必要なheaderは維持する。
+- Why: Safariまたはホーム画面PWAが端末状態を既に表示するため、同じ領域をWeb側で再現すると二重表示と本文圧迫になるため。
+- Cache rule: 新しいService Workerの有効化時は同一公開範囲で開いている画面を更新し、画面遷移は通信可能時に最新HTMLを優先する。オフライン時だけversion済みcacheへ戻す。端末内の入力・写真用storageは削除しない。
+- Applies to: `ApprovedMobileDemo`の公開操作確認ホーム、review PWAのService Worker、GitHub Pages公開版。
+- Verification: 390×844の実ブラウザで擬似時刻・黒い島・電波・電池・ホームheaderが0件、本文と固定操作が表示され、「作業を続ける」で次工程へ遷移し、console error 0件であることを確認する。実iPhone Safariの更新結果はPages反映後に利用者が確認する。
+
 ### 2026-09-22 — 公開モバイル確認版は端末内だけに保存する
 
 - Type: public review runtime and zero-cost boundary

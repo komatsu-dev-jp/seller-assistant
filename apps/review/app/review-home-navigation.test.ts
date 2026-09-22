@@ -26,13 +26,18 @@ describe("public app home navigation", () => {
     expect(entry).not.toContain("<Link");
   });
 
-  it("forces a service-worker update and refreshes only the public root after activation", () => {
+  it("forces a service-worker update and refreshes every open review page after activation", () => {
     expect(registration).toContain('updateViaCache: "none"');
     expect(registration).toContain("registration.update()");
     expect(worker).toContain('type: "window"');
     expect(worker).toContain("includeUncontrolled: true");
-    expect(worker).toContain("clientUrl.pathname === rootPath");
+    expect(worker).toContain("clientUrl.pathname.startsWith(rootPath)");
     expect(worker).toContain("client.navigate(client.url)");
+    expect(worker).toContain('event.request.mode === "navigate"');
+    expect(worker).toContain("fetch(event.request).catch");
+    expect(worker.indexOf("fetch(event.request).catch")).toBeLessThan(
+      worker.indexOf("caches.match(event.request, { ignoreSearch: true })"),
+    );
   });
 
   it("uses native navigation in the mobile index without requesting server route payloads", () => {

@@ -3615,6 +3615,8 @@ export function ApprovedMobileDemo({ screenId }: { screenId: string }) {
   const isFirst = index === 0;
   const isP1Preview = isP1MobileReviewScreen(screen);
   const liveRoute = isStaticApprovedReview ? null : getMobileLiveRoute(screen);
+  const isLocalReview = isStaticApprovedReview && isLocalReviewScreen(screen.id);
+  const isHeaderlessReviewHome = isLocalReview && screen.id === "04";
 
   return (
     <main
@@ -3623,10 +3625,10 @@ export function ApprovedMobileDemo({ screenId }: { screenId: string }) {
       data-live-route={liveRoute ?? undefined}
     >
       <div className={styles.phoneShell}>
-        {screen.id === "01" ? null : (
+        {screen.id === "01" || isHeaderlessReviewHome ? null : (
           <Header
             screen={
-              isStaticApprovedReview && isLocalReviewScreen(screen.id)
+              isLocalReview
                 ? {
                     ...screen,
                     note: "架空商品1件の確認版です。入力・写真はこのブラウザーだけに保存します。外部送信・端末間共有は行いません。",
@@ -3636,14 +3638,16 @@ export function ApprovedMobileDemo({ screenId }: { screenId: string }) {
             isFirst={isFirst}
           />
         )}
-        <div className={styles.scrollArea}>
+        <div
+          className={cn(styles.scrollArea, isHeaderlessReviewHome && styles.headerlessReviewHome)}
+        >
           {isP1Preview ? (
             <div className={cn(styles.demoNotice, styles.demoNoticeP1)}>
               <span>準備中・P0対象外</span>
               <span>架空データ・保存されません</span>
             </div>
           ) : null}
-          {isStaticApprovedReview && isLocalReviewScreen(screen.id) ? (
+          {isLocalReview ? (
             <LocalReviewFlow key={screen.id} screenId={screen.id} />
           ) : (
             <>
