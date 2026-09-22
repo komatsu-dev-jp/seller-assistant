@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="robots" content="noindex" />
+    <title>アプリの表示を更新</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: max(24px, env(safe-area-inset-top)) 20px;
+        background: #f5f6fa;
+        color: #182235;
+        font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+        line-height: 1.7;
+      }
+      main {
+        max-width: 460px;
+        margin: 32px auto;
+        padding: 24px;
+        border-radius: 20px;
+        background: white;
+      }
+      h1 {
+        font-size: 24px;
+        line-height: 1.4;
+      }
+      button {
+        width: 100%;
+        padding: 16px;
+        border: 0;
+        border-radius: 12px;
+        background: #2465ef;
+        color: white;
+        font: inherit;
+        font-weight: 700;
+      }
+      button:disabled {
+        opacity: 0.65;
+      }
+      #status {
+        min-height: 3.4em;
+      }
+      small {
+        color: #657087;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>アプリの表示を更新</h1>
+      <p>古い時刻・電池マークが残る場合は、下のボタンを押してください。</p>
+      <p>
+        入力した内容や写真は消しません。このアプリの古い表示設定を解除して、現在のアプリを開きます。
+      </p>
+      <button id="refresh" type="button">表示を更新してアプリを開く</button>
+      <p id="status" role="status" aria-live="polite">通信できる状態で操作してください。</p>
+      <small>表示更新ページ：2026-09-22 / R1</small>
+    </main>
+    <script>
+      // Standalone and intentionally inline: recovery must not depend on old
+      // cached application bundles. No localStorage, IndexedDB or cache deletion.
+      const button = document.getElementById("refresh");
+      const status = document.getElementById("status");
+      const appRoot = new URL("./", window.location.href);
+      const belongsToApp = (registration) => {
+        const scope = new URL(registration.scope);
+        if (scope.origin !== appRoot.origin) return false;
+        if (scope.pathname.startsWith(appRoot.pathname)) return true;
+        if (scope.pathname !== "/") return false;
+        // A legacy root-scoped registration may belong to this app; identify
+        // it by its script rather than unregistering another app on the host.
+        return [registration.active, registration.waiting, registration.installing].some(
+          (worker) => {
+            if (!worker) return false;
+            const script = new URL(worker.scriptURL);
+            return script.origin === appRoot.origin && script.pathname.startsWith(appRoot.pathname);
+          },
+        );
+      };
+      button.addEventListener("click", async () => {
+        button.disabled = true;
+        status.textContent = "表示を更新しています…";
+        try {
+          if ("serviceWorker" in navigator) {
+            const registrations = await navigator.serviceWorker.getRegistrations();
+            await Promise.all(
+              registrations.filter(belongsToApp).map((registration) => registration.unregister()),
+            );
+          }
+          status.textContent = "更新しました。アプリを開きます。";
+          window.location.replace(new URL("mobile/app/?display=R1", appRoot).href);
+        } catch {
+          status.textContent =
+            "更新できませんでした。このページをSafariで開き直して、もう一度お試しください。";
+          button.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>
