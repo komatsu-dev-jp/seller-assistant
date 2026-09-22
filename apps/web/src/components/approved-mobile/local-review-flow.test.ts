@@ -9,6 +9,10 @@ const store = readFileSync(resolve(root, "local-review-store.ts"), "utf8");
 const styles = readFileSync(resolve(root, "approved-mobile-demo.module.css"), "utf8");
 
 describe("browser-only mobile review boundary", () => {
+  it("uses an idempotent published path for buttons and sample photographs", () => {
+    expect(flow).toContain("return reviewPath(`/mobile/screens/${id}/`, basePath)");
+    expect(flow).toContain("reviewPath(sample, basePath)");
+  });
   it("only mounts the persistence flow in the explicit static review mode", () => {
     expect(entry).toContain("isStaticApprovedReview && isLocalReviewScreen(screen.id)");
     expect(entry).toContain("<LocalReviewFlow key={screen.id} screenId={screen.id} />");
