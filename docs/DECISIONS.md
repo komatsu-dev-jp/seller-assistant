@@ -590,3 +590,10 @@ APIキー、トークン、個人情報、生ログ、会話全文、一時的�
 - Offline boundary: 初回アクセスや更新直後は通信が必要。未閲覧の画面はオフライン利用を保証しない。入力・写真のlocalStorage/IndexedDBは保持する。
 - Verification: 実workerソースをVMで実行し、install時通信0件、127画面の更新、cache拒否・容量不足・閉じたtab・通信失敗・HTTP失敗を確認する。全75モバイル生成HTMLに疑似時刻・島・電池のmarkupがないことも照合する。実iPhoneの更新結果は利用者端末での確認が残る。
 - Activation correction: 画面のnavigate完了PromiseをactivateのwaitUntilへつなぐと、fetchがactivatedを待つ仕様と循環する。画面の再読み込み要求は送るが、その完了はactivationの条件にしない。navigateが未解決のままでもactivationが完了する回帰テストを追加した。
+
+### 2026-09-22 — 自動更新で解消しないSafari向けの表示復旧入口
+
+- Context: PR #19公開後も本人のSafariでは疑似端末表示が残り、本人が共有したURLは正しい`/mobile/screens/04/`だった。公開HTMLと本人端末の表示の差は確認できたが、その端末の登録状態・ログは未取得。
+- Decision: アプリbundleに依存しない`refresh.html`を用意する。利用者がボタンを押したときだけ、このアプリのscopeおよび配下scopeのService Worker登録を解除する。ルートscopeの場合に限り、script URLがこのアプリ配下の登録も対象とする。他アプリのscopeは触らず、全対象の解除完了後に現在のモバイル入口へ移動する。
+- Safety: localStorage、IndexedDB、Cache Storageの削除は行わない。入力・写真の保存領域には触れない。外部API・有料サービス・新規依存を追加しない。
+- Verification: 範囲限定・解除完了待機・失敗再試行・非対応ブラウザの4テスト。実ブラウザの試験用旧workerから復旧ページを経由して新画面へ切り替わり、事前に保存した架空の入力が残ることを確認。本人の実iPhoneでの結果は未確認として区別する。
