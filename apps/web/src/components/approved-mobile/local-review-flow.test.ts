@@ -6,6 +6,7 @@ const root = resolve(process.cwd(), "apps/web/src/components/approved-mobile");
 const flow = readFileSync(resolve(root, "local-review-flow.tsx"), "utf8");
 const entry = readFileSync(resolve(root, "approved-mobile-demo.tsx"), "utf8");
 const store = readFileSync(resolve(root, "local-review-store.ts"), "utf8");
+const styles = readFileSync(resolve(root, "approved-mobile-demo.module.css"), "utf8");
 
 describe("browser-only mobile review boundary", () => {
   it("only mounts the persistence flow in the explicit static review mode", () => {
@@ -15,6 +16,14 @@ describe("browser-only mobile review boundary", () => {
     expect(flow).toContain('id === "05"');
     expect(flow).toContain("Number(id) >= 14");
     expect(flow).toContain("Number(id) <= 28");
+  });
+  it("does not reproduce a phone status area or a second app header on the public home", () => {
+    expect(entry).toContain('const isHeaderlessReviewHome = isLocalReview && screen.id === "04"');
+    expect(entry).toContain('screen.id === "01" || isHeaderlessReviewHome ? null :');
+    expect(entry).toContain("isHeaderlessReviewHome && styles.headerlessReviewHome");
+    expect(styles).toContain(".headerlessReviewHome.headerlessReviewHome");
+    expect(styles).toContain("env(safe-area-inset-top)");
+    expect(entry).not.toMatch(/9:41|dynamicIsland|statusBar|batteryIcon/u);
   });
   it("contains no runtime API, upload, credentials, or broad storage clearing", () => {
     expect(flow + store).not.toMatch(

@@ -15326,6 +15326,14 @@ button.previewActionBackdrop.previewActionBackdrop {
   background: rgb(15 34 63 / 18%);
 }
 
+/* The public browser-only home is shown inside the real iPhone browser or
+   installed PWA. Do not reproduce an iPhone status bar or a second app header
+   above the task card; reserve only the device's real safe area. */
+.headerlessReviewHome.headerlessReviewHome {
+  min-height: calc(100dvh - 73px);
+  padding-top: max(12px, env(safe-area-inset-top));
+}
+
 .previewActionPanel {
   position: fixed;
   right: 12px;
