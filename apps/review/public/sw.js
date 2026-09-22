@@ -40,7 +40,9 @@ self.addEventListener("activate", (event) => {
           type: "window",
           includeUncontrolled: true,
         });
-        await Promise.allSettled(
+        // Navigation fetches wait for activation to finish. Waiting for those
+        // navigations here would keep this worker in "activating" forever.
+        void Promise.allSettled(
           windowClients.map((client) => {
             const clientUrl = new URL(client.url);
             const isPublicReviewPage =

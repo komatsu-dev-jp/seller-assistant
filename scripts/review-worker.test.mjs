@@ -106,6 +106,21 @@ function harness() {
 }
 
 describe("public review worker upgrade", () => {
+  it("finishes activation before the requested navigations finish", async () => {
+    const h = harness();
+    const pending = [];
+    for (const client of h.clients) {
+      client.navigate.mockImplementation(() => new Promise((resolve) => pending.push(resolve)));
+    }
+    try {
+      // Browser navigation fetches cannot finish until activation resolves.
+      await h.dispatch("activate");
+      expect(h.self.clients.claim).toHaveBeenCalledOnce();
+      expect(pending).toHaveLength(127);
+    } finally {
+      for (const resolve of pending) resolve();
+    }
+  }, 1000);
   it("saves a visited script and reuses it offline", async () => {
     const h = harness();
     const request = h.request(`${scope}_next/static/current.js`, "cors");

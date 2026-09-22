@@ -589,3 +589,4 @@ APIキー、トークン、個人情報、生ログ、会話全文、一時的�
 - Decision: 同じ`sw.js`で先読みなしに更新を有効化し、既存の全画面URLを更新する。公開ファイルはHTTP cacheも迂回して通信を優先し、成功した閲覧分だけ現versionのcacheへ保存する。通信不能時には現versionの閲覧済み画面だけを使い、旧versionを復活させない。
 - Offline boundary: 初回アクセスや更新直後は通信が必要。未閲覧の画面はオフライン利用を保証しない。入力・写真のlocalStorage/IndexedDBは保持する。
 - Verification: 実workerソースをVMで実行し、install時通信0件、127画面の更新、cache拒否・容量不足・閉じたtab・通信失敗・HTTP失敗を確認する。全75モバイル生成HTMLに疑似時刻・島・電池のmarkupがないことも照合する。実iPhoneの更新結果は利用者端末での確認が残る。
+- Activation correction: 画面のnavigate完了PromiseをactivateのwaitUntilへつなぐと、fetchがactivatedを待つ仕様と循環する。画面の再読み込み要求は送るが、その完了はactivationの条件にしない。navigateが未解決のままでもactivationが完了する回帰テストを追加した。
