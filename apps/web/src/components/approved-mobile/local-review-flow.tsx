@@ -19,6 +19,7 @@ import {
 } from "./local-review-store";
 import styles from "./approved-mobile-demo.module.css";
 import local from "./local-review-flow.module.css";
+import { reviewPath } from "./review-path";
 
 const basePath = process.env.NEXT_PUBLIC_REVIEW_BASE_PATH ?? "";
 export function isLocalReviewScreen(id: string): boolean {
@@ -27,7 +28,7 @@ export function isLocalReviewScreen(id: string): boolean {
   );
 }
 function route(id: string): string {
-  return `${basePath}/mobile/screens/${id}/`;
+  return reviewPath(`/mobile/screens/${id}/`, basePath);
 }
 function Photo({
   blob,
@@ -50,7 +51,7 @@ function Photo({
     setUrl(value);
     return () => URL.revokeObjectURL(value);
   }, [blob]);
-  const src = url ?? (sample ? `${basePath}${sample}` : undefined);
+  const src = url ?? (sample ? reviewPath(sample, basePath) : undefined);
   return src ? (
     <img src={src} alt={alt} className={className} />
   ) : (
