@@ -581,3 +581,11 @@ APIキー、トークン、個人情報、生ログ、会話全文、一時的�
 - Why: 古いService Workerに制御された端末でも、新規pathはcache missとなって現行deploymentへ到達し、network-firstへ修正済みの新しいService Workerへ自動更新できるため。
 - Safety boundary: browser-onlyの`localStorage`と`IndexedDB`は削除しない。外部API、サーバー、有料サービス、実データ送信を追加しない。
 - Applies to: `apps/review/app/mobile/app/`、Pagesルートのモバイル遷移、PWA manifest、公開確認URL。
+
+### 2026-09-22 — Safariの全ページ更新を全ファイル先読みから切り離す
+
+- Context: 新入口公開後も利用者のSafariでは全ページに旧版の疑似端末表示が残った。現コードのinstallは約770ファイルの先読み全成功を待っており、1件でも通信・保存が失敗すると旧Service Workerが継続する。
+- Public evidence: 旧先読み対象の`mobile/__next.mobile/__PAGE__.txt`および`mobile/screens/01/__next.mobile/screens/$d$screen/__PAGE__.txt`が公開先でHTTP 404となることを確認した。利用者の実端末ログは未取得。
+- Decision: 同じ`sw.js`で先読みなしに更新を有効化し、既存の全画面URLを更新する。公開ファイルはHTTP cacheも迂回して通信を優先し、成功した閲覧分だけ現versionのcacheへ保存する。通信不能時には現versionの閲覧済み画面だけを使い、旧versionを復活させない。
+- Offline boundary: 初回アクセスや更新直後は通信が必要。未閲覧の画面はオフライン利用を保証しない。入力・写真のlocalStorage/IndexedDBは保持する。
+- Verification: 実workerソースをVMで実行し、install時通信0件、127画面の更新、cache拒否・容量不足・閉じたtab・通信失敗・HTTP失敗を確認する。全75モバイル生成HTMLに疑似時刻・島・電池のmarkupがないことも照合する。実iPhoneの更新結果は利用者端末での確認が残る。

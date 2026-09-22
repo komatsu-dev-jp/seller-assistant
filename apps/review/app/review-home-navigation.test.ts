@@ -46,10 +46,6 @@ describe("public app home navigation", () => {
     expect(worker).toContain("clientUrl.pathname.startsWith(rootPath)");
     expect(worker).toContain("client.navigate(client.url)");
     expect(worker).toContain('event.request.mode === "navigate"');
-    expect(worker).toContain("fetch(event.request).catch");
-    expect(worker.indexOf("fetch(event.request).catch")).toBeLessThan(
-      worker.indexOf("caches.match(event.request, { ignoreSearch: true })"),
-    );
   });
 
   it("uses native navigation in the mobile index without requesting server route payloads", () => {

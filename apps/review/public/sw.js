@@ -1,33 +1,19 @@
 const CACHE_NAME = "resale-review-template";
 const CACHE_PREFIX = "resale-review-";
+const LEGACY_CACHE_PREFIX = "resale-ops-public-review-";
 const PRECACHE_URLS = [
   /* REVIEW_PRECACHE_START */
   "./",
   /* REVIEW_PRECACHE_END */
 ];
-async function precacheReview() {
-  const cache = await caches.open(CACHE_NAME);
-  // Fetch and store one response at a time. This is deliberately conservative:
-  // it works on GitHub Pages and on basic local HTTP/1.0 servers that can drop
-  // bursty Cache.addAll installs even when every generated URL is valid.
-  for (const relativeUrl of PRECACHE_URLS) {
-    const request = new Request(new URL(relativeUrl, self.location.href));
-    try {
-      const response = await fetch(request);
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      await cache.put(request, response);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error(`[review-precache] ${request.url}: ${message}`);
-      throw new Error(`Precache failed for ${request.url}: ${message}`, { cause: error });
-    }
-  }
-}
+// This list limits runtime caching to files in the public static export.
+// Never block replacement of a legacy worker on downloading the entire app.
+const PUBLIC_PATHS = new Set(
+  PRECACHE_URLS.map((relativeUrl) => new URL(relativeUrl, self.location.href).pathname),
+);
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(precacheReview().then(() => self.skipWaiting()));
+  event.waitUntil(self.skipWaiting());
 });
 
 self.addEventListener("activate", (event) => {
@@ -35,12 +21,17 @@ self.addEventListener("activate", (event) => {
     caches
       .keys()
       .then((keys) =>
-        Promise.all(
+        Promise.allSettled(
           keys
-            .filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME)
+            .filter(
+              (key) =>
+                (key.startsWith(CACHE_PREFIX) || key.startsWith(LEGACY_CACHE_PREFIX)) &&
+                key !== CACHE_NAME,
+            )
             .map((key) => caches.delete(key)),
         ),
       )
+      .catch(() => undefined)
       .then(() => self.clients.claim())
       .then(async () => {
         const scopePath = new URL(self.registration.scope).pathname;
@@ -49,7 +40,7 @@ self.addEventListener("activate", (event) => {
           type: "window",
           includeUncontrolled: true,
         });
-        await Promise.all(
+        await Promise.allSettled(
           windowClients.map((client) => {
             const clientUrl = new URL(client.url);
             const isPublicReviewPage =
@@ -67,24 +58,31 @@ self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
-
-  if (event.request.mode === "navigate") {
-    event.respondWith(
-      fetch(event.request).catch(async (error) => {
-        const cached = await caches.match(event.request, { ignoreSearch: true });
-        if (cached) return cached;
-        const fallback = await caches.match("./404.html");
-        if (fallback) return fallback;
-        throw error;
-      }),
-    );
-    return;
-  }
+  const publicPath = url.pathname.endsWith("/") ? url.pathname : `${url.pathname}/`;
+  if (!PUBLIC_PATHS.has(url.pathname) && !PUBLIC_PATHS.has(publicPath)) return;
 
   event.respondWith(
-    caches.match(event.request, { ignoreSearch: true }).then(async (cached) => {
-      if (cached) return cached;
-      return fetch(event.request);
-    }),
+    fetch(new Request(event.request, { cache: "no-store" }))
+      .then(async (response) => {
+        if (response.ok) {
+          const copy = response.clone();
+          event.waitUntil(
+            caches
+              .open(CACHE_NAME)
+              .then((cache) => cache.put(event.request, copy))
+              .catch(() => undefined),
+          );
+        }
+        return response;
+      })
+      .catch(async (error) => {
+        // Only this release's cache is eligible. Never resurrect legacy HTML.
+        const cache = await caches.open(CACHE_NAME);
+        const cached = await cache.match(event.request, {
+          ignoreSearch: event.request.mode === "navigate",
+        });
+        if (cached) return cached;
+        throw error;
+      }),
   );
 });
