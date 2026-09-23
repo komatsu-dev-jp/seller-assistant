@@ -17,6 +17,7 @@ import {
 } from "./mobile-screen-data";
 import styles from "./approved-mobile-demo.module.css";
 import { isLocalReviewScreen, LocalReviewFlow } from "./local-review-flow";
+import { isReportedReviewScreen, ReportedReviewFlow } from "./reported-review-flow";
 
 type Choice = "first" | "second" | "third" | "none";
 
@@ -3616,6 +3617,7 @@ export function ApprovedMobileDemo({ screenId }: { screenId: string }) {
   const isP1Preview = isP1MobileReviewScreen(screen);
   const liveRoute = isStaticApprovedReview ? null : getMobileLiveRoute(screen);
   const isLocalReview = isStaticApprovedReview && isLocalReviewScreen(screen.id);
+  const isReportedReview = isStaticApprovedReview && isReportedReviewScreen(screen.id);
   const isHeaderlessReviewHome = isLocalReview && screen.id === "04";
 
   return (
@@ -3639,9 +3641,13 @@ export function ApprovedMobileDemo({ screenId }: { screenId: string }) {
           />
         )}
         <div
-          className={cn(styles.scrollArea, isHeaderlessReviewHome && styles.headerlessReviewHome)}
+          className={cn(
+            styles.scrollArea,
+            isHeaderlessReviewHome && styles.headerlessReviewHome,
+            isReportedReview && styles.reportedReviewScroll,
+          )}
         >
-          {isP1Preview ? (
+          {isP1Preview && !isReportedReview ? (
             <div className={cn(styles.demoNotice, styles.demoNoticeP1)}>
               <span>準備中・P0対象外</span>
               <span>架空データ・保存されません</span>
@@ -3649,6 +3655,8 @@ export function ApprovedMobileDemo({ screenId }: { screenId: string }) {
           ) : null}
           {isLocalReview ? (
             <LocalReviewFlow key={screen.id} screenId={screen.id} />
+          ) : isReportedReview ? (
+            <ReportedReviewFlow key={screen.id} screenId={screen.id} />
           ) : (
             <>
               <RenderScreenContent id={screen.id} />

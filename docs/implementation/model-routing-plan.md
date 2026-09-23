@@ -1,5 +1,15 @@
 # P0 cost-optimized モデル割当計画
 
+## 2026-09-24 公開モバイル操作不具合（現行の追加パケット）
+
+- mode: `astra-centric`。過去のcost-optimized記録は履歴として保持する。
+- 正本: `mobile-reported-controls.md`。利用者が報告した10画面と連続する会計2画面の、確認版の操作だけを修正する。
+- 計画・実装・統合: ルートCodex。親の実モデル/推論設定、利用枠、費用は未確認・未計測。
+- 独立監査・レビュー: 別実行`gpt-6-astra` / low / `reported_controls_audit`。読み取り専用。共通コンポーネントと保存失敗の境界を独立確認するため委譲。
+- 検証: 本番ハンドラーの自動テスト、root check、review export、右サイドパネル390×844、公開後の実操作。実iPhoneの代行完了は主張しない。
+- 初回独立指摘のCSV再試行P2を修正し、再レビューP1/P2 0件。対象外の実業務、API、課金、画像の外部送信へ波及する場合は停止する。
+- 公開手順は今回の修正のPR・検証・既存許可の反映だけに限定する。Issue/Projectの新設、他worktreeの変更、ローカルmain同期、Obsidianへの書き込み、削除は実行しない。
+
 - 状態: active
 - 更新日: 2026-08-29 JST
 - 対象Goal: `docs/specs/goal-contract-revised-a-v2.md`

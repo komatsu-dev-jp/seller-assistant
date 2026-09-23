@@ -15413,3 +15413,15 @@ button.previewActionBackdrop.previewActionBackdrop {
   font-weight: 800;
   text-align: center;
 }
+
+/* Keep the fixed primary/secondary controls outside the usable reading area.
+   Padding alone still lets focused inputs sit underneath these controls. */
+@media (max-width: 600px) {
+  .reportedReviewScroll.reportedReviewScroll {
+    min-height: 0;
+    max-height: calc(100dvh - 290px - env(safe-area-inset-bottom));
+    padding-bottom: 24px;
+    overflow-y: auto;
+    scroll-padding-block: 16px;
+  }
+}
