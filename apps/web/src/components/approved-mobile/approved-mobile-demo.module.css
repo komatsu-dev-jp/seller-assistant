@@ -15425,3 +15425,61 @@ button.previewActionBackdrop.previewActionBackdrop {
     scroll-padding-block: 16px;
   }
 }
+
+/* Keep one continuous reading surface on phones. The title now leaves the
+   viewport with the page; the navigation tabs and compact actions remain
+   reachable above the device's safe area. */
+@media (max-width: 620px) {
+  .phoneShell:has(.footer) {
+    display: block;
+    overflow-x: hidden;
+    overflow-y: auto;
+    scroll-padding-block: 12px calc(190px + env(safe-area-inset-bottom));
+  }
+
+  .phoneShell:has(.footer) .header {
+    position: relative;
+    min-height: 50px;
+    padding: max(7px, env(safe-area-inset-top)) 16px 7px;
+  }
+
+  .phoneShell:has(.footer) .headerTitle {
+    font-size: 18px;
+    letter-spacing: -0.03em;
+  }
+
+  .phoneShell:has(.footer) .scrollArea,
+  .phoneShell .reportedReviewScroll.reportedReviewScroll {
+    height: auto;
+    min-height: 0;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .phoneShell:has(.footer) .scrollArea {
+    padding-bottom: calc(190px + env(safe-area-inset-bottom));
+  }
+
+  .phoneShell:has(.footer) .actionBar {
+    bottom: calc(88px + env(safe-area-inset-bottom));
+    gap: 4px;
+  }
+
+  .phoneShell:has(.footer) .actionBar .primaryButton {
+    min-height: 50px;
+    padding-inline: 16px;
+    border-radius: 12px;
+    font-size: 15px;
+    font-weight: 700;
+  }
+
+  .phoneShell:has(.footer) .actionBar .secondaryAction {
+    min-height: 44px;
+    padding-inline: 12px;
+    border: 0;
+    background: rgb(255 255 255 / 96%);
+    box-shadow: none;
+    font-size: 14px;
+    font-weight: 600;
+  }
+}
