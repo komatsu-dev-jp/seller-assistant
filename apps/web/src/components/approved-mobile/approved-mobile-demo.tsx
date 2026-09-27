@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import { isStaticApprovedReview } from "../approved-review-environment";
@@ -8,13 +8,13 @@ import {
   getMobileFooterSection,
   getMobileLiveRoute,
   getMobileNext,
-  getMobilePrevious,
   getMobileScreen,
-  getMobileScreenIndex,
   isP1MobileReviewScreen,
+  mobileScreenIds,
   mobileScreens,
   type MobileScreen,
 } from "./mobile-screen-data";
+import { canReturnToMobileReviewPage } from "./mobile-back-navigation";
 import styles from "./approved-mobile-demo.module.css";
 import { isLocalReviewScreen, LocalReviewFlow } from "./local-review-flow";
 import { isReportedReviewScreen, ReportedReviewFlow } from "./reported-review-flow";
@@ -631,6 +631,23 @@ function FooterIcon({ kind }: { kind: "home" | "work" | "product" | "inventory" 
   );
 }
 
+function preventCurrentScreenReload(
+  event: MouseEvent<HTMLAnchorElement>,
+  currentId: string,
+  targetId: string,
+): void {
+  if (
+    currentId === targetId &&
+    event.button === 0 &&
+    !event.metaKey &&
+    !event.ctrlKey &&
+    !event.shiftKey &&
+    !event.altKey
+  ) {
+    event.preventDefault();
+  }
+}
+
 function Footer({ screen }: { screen: MobileScreen }) {
   if (Number(screen.id) === 1) return null;
   const active = getMobileFooterSection(screen);
@@ -640,6 +657,7 @@ function Footer({ screen }: { screen: MobileScreen }) {
         className={cn(active === "home" && styles.footerActive)}
         href="/mobile/screens/04"
         aria-current={active === "home" ? "page" : undefined}
+        onClick={(event) => preventCurrentScreenReload(event, screen.id, "04")}
       >
         <span>
           <FooterIcon kind="home" />
@@ -650,6 +668,7 @@ function Footer({ screen }: { screen: MobileScreen }) {
         className={cn(active === "work" && styles.footerActive)}
         href="/mobile/screens/05"
         aria-current={active === "work" ? "page" : undefined}
+        onClick={(event) => preventCurrentScreenReload(event, screen.id, "05")}
       >
         <span>
           <FooterIcon kind="work" />
@@ -660,6 +679,7 @@ function Footer({ screen }: { screen: MobileScreen }) {
         className={cn(active === "product" && styles.footerActive)}
         href="/mobile/screens/31"
         aria-current={active === "product" ? "page" : undefined}
+        onClick={(event) => preventCurrentScreenReload(event, screen.id, "31")}
       >
         <span>
           <FooterIcon kind="product" />
@@ -670,6 +690,7 @@ function Footer({ screen }: { screen: MobileScreen }) {
         className={cn(active === "inventory" && styles.footerActive)}
         href="/mobile/screens/39"
         aria-current={active === "inventory" ? "page" : undefined}
+        onClick={(event) => preventCurrentScreenReload(event, screen.id, "39")}
       >
         <span>
           <FooterIcon kind="inventory" />
@@ -680,6 +701,7 @@ function Footer({ screen }: { screen: MobileScreen }) {
         className={cn(active === "accounting" && styles.footerActive)}
         href="/mobile/screens/44"
         aria-current={active === "accounting" ? "page" : undefined}
+        onClick={(event) => preventCurrentScreenReload(event, screen.id, "44")}
       >
         <span>
           <FooterIcon kind="accounting" />
@@ -690,7 +712,7 @@ function Footer({ screen }: { screen: MobileScreen }) {
   );
 }
 
-function Header({ screen, isFirst }: { screen: MobileScreen; isFirst: boolean }) {
+function Header({ screen }: { screen: MobileScreen }) {
   const isHome = screen.id === "04";
   const hideBack = ["02", "03", "04", "05", "06", "sales-01"].includes(screen.id);
   const showHelp = ["07", "08", "09", "10", "11"].includes(screen.id);
@@ -734,11 +756,25 @@ function Header({ screen, isFirst }: { screen: MobileScreen; isFirst: boolean })
         <span className={styles.headerSidePlaceholder} aria-hidden="true" />
       ) : (
         <a
-          href={
-            isFirst ? "/mobile/screens" : `/mobile/screens/${getMobilePrevious(screen.id) ?? "01"}`
-          }
+          href="/mobile/screens/04"
           aria-label="前の画面へ"
           className={styles.backButton}
+          onClick={(event) => {
+            if (
+              event.defaultPrevented ||
+              event.button !== 0 ||
+              event.metaKey ||
+              event.ctrlKey ||
+              event.shiftKey ||
+              event.altKey ||
+              window.history.length <= 1 ||
+              !canReturnToMobileReviewPage(document.referrer, window.location.href, mobileScreenIds)
+            ) {
+              return;
+            }
+            event.preventDefault();
+            window.history.back();
+          }}
         >
           ‹
         </a>
@@ -3611,9 +3647,7 @@ function RenderScreenContent({ id }: { id: string }) {
 export function ApprovedMobileDemo({ screenId }: { screenId: string }) {
   const screen = getMobileScreen(screenId);
   if (!screen) return null;
-  const index = getMobileScreenIndex(screen.id);
   const next = getMobileNext(screen.id);
-  const isFirst = index === 0;
   const isP1Preview = isP1MobileReviewScreen(screen);
   const liveRoute = isStaticApprovedReview ? null : getMobileLiveRoute(screen);
   const isLocalReview = isStaticApprovedReview && isLocalReviewScreen(screen.id);
@@ -3637,7 +3671,6 @@ export function ApprovedMobileDemo({ screenId }: { screenId: string }) {
                   }
                 : screen
             }
-            isFirst={isFirst}
           />
         )}
         <div
