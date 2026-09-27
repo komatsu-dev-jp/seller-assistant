@@ -120,6 +120,13 @@
 .settingDetails > label {
   margin: 14px;
 }
+.settingDetails[open] > label {
+  font-size: 13px;
+}
+.settingDetails input::placeholder {
+  color: #667085;
+  font-weight: 500;
+}
 .settingDetails summary {
   list-style: none;
 }

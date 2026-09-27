@@ -80,11 +80,13 @@ function Field({
   value,
   onChange,
   type = "text",
+  placeholder,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   type?: string;
+  placeholder?: string;
 }) {
   return (
     <label className={styles.formField}>
@@ -93,6 +95,7 @@ function Field({
         aria-label={label}
         type={type}
         value={value}
+        placeholder={placeholder}
         maxLength={500}
         onInput={type === "date" ? (event) => onChange(event.currentTarget.value) : undefined}
         onChange={(event) => onChange(event.target.value)}
@@ -587,7 +590,9 @@ export function ReportedReviewFlow({ screenId }: { screenId: string }) {
     case "44":
       content = (
         <>
-          <p className={styles.boardInstruction}>会計の設定を入力してください</p>
+          <p className={styles.boardInstruction}>
+            会計の設定を入力してください。項目をタップすると入力欄が開きます。
+          </p>
           <div className={styles.accountList}>
             {["申告の設定", "消費税", "会計年度"].map((label, i) => (
               <details key={label} className={local.settingDetails}>
@@ -623,6 +628,7 @@ export function ReportedReviewFlow({ screenId }: { screenId: string }) {
                   <Field
                     label={label}
                     value={state.settings[i]!}
+                    placeholder="確認した内容を入力（操作練習用）"
                     onChange={(value) =>
                       update({
                         ...state,
