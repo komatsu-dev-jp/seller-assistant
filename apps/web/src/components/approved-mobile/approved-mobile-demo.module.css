@@ -15482,4 +15482,14 @@ button.previewActionBackdrop.previewActionBackdrop {
     font-size: 14px;
     font-weight: 600;
   }
+
+  /* Expanded accounting settings must never sit behind the fixed actions. */
+  .phoneShell:has(.accountList) .actionBar {
+    position: static;
+    left: auto;
+    width: 100%;
+    margin-top: 18px;
+    padding: 0;
+    transform: none;
+  }
 }
