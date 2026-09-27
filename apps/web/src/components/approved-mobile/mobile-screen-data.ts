@@ -363,11 +363,6 @@ export function getMobileScreenIndex(id: string): number {
   return mobileScreens.findIndex((screen) => screen.id === id);
 }
 
-export function getMobilePrevious(id: string): string | undefined {
-  const index = getMobileScreenIndex(id);
-  return index > 0 ? mobileScreens[index - 1]?.id : undefined;
-}
-
 export function getMobileNext(id: string): string | undefined {
   const index = getMobileScreenIndex(id);
   return index >= 0 && index < mobileScreens.length - 1 ? mobileScreens[index + 1]?.id : undefined;
