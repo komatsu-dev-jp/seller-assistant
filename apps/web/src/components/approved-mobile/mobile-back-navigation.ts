@@ -21,7 +21,12 @@ export function canReturnToMobileReviewPage(
     if (previousPath === currentPath) return false;
 
     const mobileRoot = reviewRoot.slice(0, -"screens/".length).replace(/\/$/u, "");
-    if (previousPath === mobileRoot || previousPath === `${mobileRoot}/app`) return true;
+    if (
+      previousPath === mobileRoot ||
+      previousPath === `${mobileRoot}/app` ||
+      previousPath === `${mobileRoot}/products`
+    )
+      return true;
     if (!previous.pathname.startsWith(reviewRoot)) return false;
 
     const previousId = previous.pathname.slice(reviewRoot.length).replace(/\/$/u, "");
