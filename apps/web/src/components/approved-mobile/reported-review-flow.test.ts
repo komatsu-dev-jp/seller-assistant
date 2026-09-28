@@ -178,28 +178,37 @@ afterEach(() => {
 describe("reported screen production handlers", () => {
   it("increments/decrements the actual count, confirms it and restores after remount", () => {
     let page = screen("box-02");
+    expect(page.text()).toContain("BOX-2026-014");
+    expect(page.text()).toContain("0点");
     page.click("＋1点");
-    expect(page.text()).toContain("49点");
-    page.click("49点で確定");
-    expect(page.text()).toContain("49点で確認済み");
+    expect(page.text()).toContain("1点");
+    page.click("1点で確定");
+    expect(page.text()).toContain("1点で確認済み");
     page.click("1点戻す");
-    expect(page.text()).not.toContain("49点で確認済み");
+    expect(page.text()).not.toContain("1点で確認済み");
     remount();
     page = screen("box-02");
+    expect(page.text()).toContain("0点");
+  });
+  it("lets an existing sample count restart from zero by explicit choice", () => {
+    saved = JSON.stringify({ ...stateModule.initialControls(), count: 48 });
+    const page = screen("box-02");
     expect(page.text()).toContain("48点");
+    page.click("0点から数え直す");
+    expect(page.text()).toContain("0点で確定");
   });
   it("does not claim confirmation when storage fails and retries the exact pending operation", () => {
     const page = screen("box-02");
     denyWrite = true;
-    page.click("48点で確定");
-    expect(page.text()).not.toContain("48点で確認済み");
+    page.click("0点で確定");
+    expect(page.text()).not.toContain("0点で確認済み");
     expect(page.text()).toContain("一時保存できません");
     const event = { preventDefault: vi.fn(), returnValue: undefined };
     winEvents.get("beforeunload")?.(event);
     expect(event.preventDefault).toHaveBeenCalled();
     denyWrite = false;
     page.click("保存を再試行");
-    expect(page.text()).toContain("48点で確認済み");
+    expect(page.text()).toContain("0点で確認済み");
   });
   it("protects unreadable existing data from accidental overwrite", () => {
     saved = "corrupt";
