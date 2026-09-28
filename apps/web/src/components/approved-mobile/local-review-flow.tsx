@@ -337,63 +337,125 @@ export function LocalReviewFlow({ screenId }: { screenId: string }) {
     switch (screenId) {
       case "04": {
         const complete = state.measurementsComplete && allPhotos;
+        const nextTask = complete
+          ? {
+              title: "保存した内容を見直す",
+              detail: "確認用商品の作業結果を確認します",
+              target: "14",
+            }
+          : !state.stored
+            ? {
+                title: "商品を棚にしまう",
+                detail: "商品と棚の位置を確認して保管します",
+                target: "14",
+              }
+            : !state.inspectionComplete
+              ? {
+                  title: "商品の状態を確認する",
+                  detail: "汚れ・傷など6項目を確認します",
+                  target: "17",
+                }
+              : !allPhotos
+                ? {
+                    title: "出品用の写真を用意する",
+                    detail: "商品写真を撮る・選ぶ作業です",
+                    target: "20",
+                  }
+                : { title: "商品のサイズを測る", detail: "肩幅など4か所を測ります", target: "25" };
         content = (
-          <div className={styles.homeTaskCard}>
-            <div className={styles.homeTaskHead}>
-              <strong>今日やること</strong>
-              <span>確認用 1件</span>
+          <div className={local.homeLayout}>
+            <div className={local.homeIntro}>
+              <h2>作業を選ぶ</h2>
+              <p>商品1点の作業と、仕入箱の点数を数える作業をここから始められます。</p>
             </div>
-            <p className={local.product}>REVIEW-0001 · 確認用シャツ</p>
-            {(
-              [
-                [
-                  "保管",
-                  state.stored ? "完了" : "残り 1件",
-                  "14",
-                  state.stored ? 100 : 0,
-                  state.stored,
-                ],
-                [
-                  "検品",
-                  `${inspectionCount} / 6項目${state.inspectionComplete ? " · 完了" : ""}`,
-                  "17",
-                  (inspectionCount / 6) * 100,
-                  state.inspectionComplete,
-                ],
-                ["撮影", `${photoCount} / 8枚`, "20", (photoCount / 8) * 100, allPhotos],
-                [
-                  "採寸",
-                  `${measurementCount} / 4か所${state.measurementsComplete && allPhotos ? " · 完了" : ""}`,
-                  "25",
-                  (measurementCount / 4) * 100,
-                  state.measurementsComplete && allPhotos,
-                ],
-              ] as const
-            ).map(([title, detail, target, progress, done]) => (
+            <section className={local.nextCard} aria-labelledby="next-task-title">
+              <span className={local.eyebrow}>次にすること · REVIEW-0001</span>
+              <h3 id="next-task-title">{nextTask.title}</h3>
+              <p>{nextTask.detail}</p>
               <button
                 type="button"
-                key={title}
-                className={`${styles.homeTaskRow} ${local.task} ${local.homeTaskButton}`}
-                onClick={() => go(target)}
+                className={local.nextButton}
+                disabled={busy}
+                onClick={() => go(nextTask.target)}
               >
-                <div>
-                  <strong>{title}</strong>
-                  <small>{detail}</small>
-                  <i>
-                    <b style={{ width: `${progress}%` }} />
-                  </i>
-                </div>
-                <span
-                  className={`${styles.checkMark} ${done ? styles.checkgreen : styles.checkblue}`}
-                  aria-label={done ? "完了" : "未完了"}
-                >
-                  {done ? "✓" : "○"}
-                </span>
+                {complete ? "内容を見直す" : "この作業を始める"} <span aria-hidden="true">›</span>
               </button>
-            ))}
-            {complete ? (
-              <p className={local.status}>保管・検品・撮影・採寸の操作確認が完了しました。</p>
-            ) : null}
+            </section>
+            <section className={local.boxCard} aria-labelledby="box-task-title">
+              <span className={local.eyebrow}>仕入箱 · 操作の見本</span>
+              <h3 id="box-task-title">箱の中身を数える</h3>
+              <p>見本の箱を開け、入っている商品の点数を数えます。実際の在庫には反映されません。</p>
+              <button type="button" className={local.boxButton} onClick={() => go("box-02")}>
+                見本の箱を数える <span aria-hidden="true">›</span>
+              </button>
+            </section>
+            <div className={styles.homeTaskCard}>
+              <div className={styles.homeTaskHead}>
+                <strong>今日やること</strong>
+                <span>確認用 1件</span>
+              </div>
+              <p className={local.product}>REVIEW-0001 · 確認用シャツ</p>
+              {(
+                [
+                  [
+                    "保管",
+                    "商品と棚の位置を確認してしまう",
+                    state.stored ? "完了" : "残り 1件",
+                    "14",
+                    state.stored ? 100 : 0,
+                    state.stored,
+                  ],
+                  [
+                    "検品",
+                    "汚れ・傷などを確認する",
+                    `${inspectionCount} / 6項目`,
+                    "17",
+                    (inspectionCount / 6) * 100,
+                    state.inspectionComplete,
+                  ],
+                  [
+                    "撮影",
+                    "出品用の写真を用意する",
+                    `${photoCount} / 8枚`,
+                    "20",
+                    (photoCount / 8) * 100,
+                    allPhotos,
+                  ],
+                  [
+                    "採寸",
+                    "商品のサイズを測る",
+                    `${measurementCount} / 4か所`,
+                    "25",
+                    (measurementCount / 4) * 100,
+                    state.measurementsComplete && allPhotos,
+                  ],
+                ] as const
+              ).map(([title, description, detail, target, progress, done]) => (
+                <button
+                  type="button"
+                  key={title}
+                  className={`${styles.homeTaskRow} ${local.task} ${local.homeTaskButton}`}
+                  onClick={() => go(target)}
+                >
+                  <div>
+                    <strong>{title}</strong>
+                    <small>
+                      {description} · {detail}
+                    </small>
+                    <i>
+                      <b style={{ width: `${progress}%` }} />
+                    </i>
+                  </div>
+                  <span
+                    className={`${styles.checkMark} ${done ? styles.checkgreen : styles.checkblue}`}
+                    aria-label={done ? "完了" : "未完了"}
+                  >
+                    {done ? "✓" : "○"}
+                  </span>
+                </button>
+              ))}
+              {complete ? <p className={local.status}>商品1点の操作確認が完了しました。</p> : null}
+            </div>
           </div>
         );
         label = complete ? "保存内容を見直す" : "作業を続ける";
@@ -405,10 +467,11 @@ export function LocalReviewFlow({ screenId }: { screenId: string }) {
         content = (
           <>
             <p className={styles.boardInstruction}>作業の種類を選びます</p>
+            <p className={local.workHint}>商品1点について、保管から採寸まで進めます。</p>
             <div className={styles.taskList}>
               {(
                 [
-                  ["⇩", "保管", state.stored ? "完了" : "残り 1件", "14"],
+                  ["⇩", "商品を棚にしまう", state.stored ? "完了" : "残り 1件", "14"],
                   [
                     "☑",
                     "検品",
@@ -434,6 +497,14 @@ export function LocalReviewFlow({ screenId }: { screenId: string }) {
                 </button>
               ))}
             </div>
+            <section className={local.boxCard} aria-labelledby="work-box-task-title">
+              <span className={local.eyebrow}>商品の作業とは別</span>
+              <h3 id="work-box-task-title">仕入箱の中身を数える</h3>
+              <p>見本の箱を選び、点数を数える練習をします。実際の在庫には反映されません。</p>
+              <button type="button" className={local.boxButton} onClick={() => go("box-02")}>
+                見本の箱を数える <span aria-hidden="true">›</span>
+              </button>
+            </section>
           </>
         );
         label = complete ? "保存内容を見直す" : "この作業を開く";
@@ -938,26 +1009,28 @@ export function LocalReviewFlow({ screenId }: { screenId: string }) {
       {boundary}
       <section className={styles.contentStack}>{content}</section>
       {feedback}
-      <div className={styles.actionBar}>
-        <button
-          type="button"
-          className={styles.primaryButton}
-          disabled={disabled || busy}
-          onClick={action}
-        >
-          {busy ? "端末に保存中…" : label}
-        </button>
-        {screenId !== "04" && screenId !== "05" ? (
+      {screenId !== "04" && screenId !== "05" ? (
+        <div className={styles.actionBar}>
           <button
             type="button"
-            className={styles.secondaryAction}
-            disabled={busy}
-            onClick={() => go("05")}
+            className={styles.primaryButton}
+            disabled={disabled || busy}
+            onClick={action}
           >
-            作業一覧へ戻る ›
+            {busy ? "端末に保存中…" : label}
           </button>
-        ) : null}
-      </div>
+          {screenId !== "04" && screenId !== "05" ? (
+            <button
+              type="button"
+              className={styles.secondaryAction}
+              disabled={busy}
+              onClick={() => go("05")}
+            >
+              作業一覧へ戻る ›
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       {screenId === "04" || screenId === "05" ? resetControl : null}
     </div>
   );

@@ -76,6 +76,10 @@ describe("browser-only mobile review boundary", () => {
     ])
       expect(work).toContain(part);
     expect(work).not.toContain("homeTaskCard");
+    expect(home).toContain('go("box-02")');
+    expect(work).toContain('go("box-02")');
+    expect(home).toContain("商品と棚の位置を確認してしまう");
+    expect(flow).toContain('screenId !== "04" && screenId !== "05" ? (');
     for (const part of [
       "styles.inspectionState",
       "styles.inspectionStateActive",

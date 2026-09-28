@@ -15,7 +15,7 @@ export type ControlsState = {
 export function initialControls(): ControlsState {
   return {
     version: 1,
-    count: 48,
+    count: 0,
     confirmedCount: null,
     missingChecks: [false, false, false],
     reason: "",

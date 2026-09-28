@@ -37,6 +37,95 @@
   font-size: 14px;
   color: #667085;
 }
+.homeLayout {
+  display: grid;
+  gap: 14px;
+}
+.homeIntro {
+  padding: 0 3px;
+}
+.homeIntro h2 {
+  margin: 0 0 4px;
+  color: #17233b;
+  font-size: 20px;
+  letter-spacing: -0.03em;
+}
+.homeIntro p,
+.workHint {
+  margin: 0;
+  color: #667085;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.nextCard,
+.boxCard {
+  display: grid;
+  gap: 7px;
+  padding: 17px;
+  border: 1px solid #dde4f0;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 4px 14px rgb(36 56 92 / 5%);
+}
+.nextCard {
+  border-color: #cbdafc;
+  background: #f8faff;
+}
+.eyebrow {
+  color: #4c6492;
+  font-size: 12px;
+  font-weight: 700;
+}
+.nextCard h3,
+.boxCard h3 {
+  margin: 0;
+  color: #17233b;
+  font-size: 18px;
+  letter-spacing: -0.02em;
+}
+.nextCard p,
+.boxCard p {
+  margin: 0;
+  color: #667085;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.nextButton,
+.boxButton {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 5px;
+  padding: 9px 13px;
+  border-radius: 11px;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  text-align: left;
+}
+.nextButton {
+  border: 1px solid #246bfd;
+  background: #246bfd;
+  color: #fff;
+}
+.boxButton {
+  border: 1px solid #cbdafc;
+  background: #fff;
+  color: #1858d8;
+}
+.nextButton span,
+.boxButton span {
+  font-size: 20px;
+  line-height: 1;
+}
+.nextButton:focus-visible,
+.boxButton:focus-visible,
+.homeTaskButton:focus-visible {
+  outline: 3px solid #8cb5ff;
+  outline-offset: 2px;
+}
 .tabs {
   display: flex;
   flex-wrap: wrap;

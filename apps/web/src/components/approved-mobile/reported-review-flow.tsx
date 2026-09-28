@@ -888,6 +888,7 @@ export function ReportedReviewFlow({ screenId }: { screenId: string }) {
     case "box-02":
       content = (
         <>
+          <p className={styles.boardInstruction}>見本の仕入箱：BOX-2026-014</p>
           <div className={styles.counterHero}>
             <span>箱の中を数える（確認用）</span>
             <strong aria-live="polite">{state.count}点</strong>
@@ -908,6 +909,14 @@ export function ReportedReviewFlow({ screenId }: { screenId: string }) {
               1点戻す
             </button>
           </div>
+          <button
+            type="button"
+            className={styles.outlineButton}
+            disabled={state.count === 0 && state.confirmedCount === null}
+            onClick={() => update({ ...state, count: 0, confirmedCount: null })}
+          >
+            0点から数え直す
+          </button>
           <p className={styles.infoBanner}>
             確認用の数をこのタブに一時保存します。実際の仕入れ・在庫への登録は未対応です。
           </p>

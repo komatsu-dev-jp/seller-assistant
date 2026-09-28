@@ -14,6 +14,7 @@ import {
 describe("reported mobile control state", () => {
   it("starts unchecked, with no fabricated past success history", () => {
     const state = parseControls(null);
+    expect(state.count).toBe(0);
     expect(state.history).toEqual([]);
     expect(canMarkMissing(state)).toBe(false);
     expect(canPreviewFile(state)).toBe(false);
@@ -22,8 +23,8 @@ describe("reported mobile control state", () => {
   });
   it("counts actual changes, clears old confirmation and clamps both bounds", () => {
     const start = { ...initialControls(), confirmedCount: 48 };
-    expect(changeCount(start, 1)).toMatchObject({ count: 49, confirmedCount: null });
-    expect(changeCount(changeCount(start, 1), -1).count).toBe(48);
+    expect(changeCount(start, 1)).toMatchObject({ count: 1, confirmedCount: null });
+    expect(changeCount(changeCount(start, 1), -1).count).toBe(0);
     expect(changeCount({ ...start, count: 0 }, -1).count).toBe(0);
     expect(changeCount({ ...start, count: 9999 }, 1).count).toBe(9999);
   });
