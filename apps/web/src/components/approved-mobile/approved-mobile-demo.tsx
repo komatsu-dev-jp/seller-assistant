@@ -18,6 +18,13 @@ import { canReturnToMobileReviewPage } from "./mobile-back-navigation";
 import styles from "./approved-mobile-demo.module.css";
 import { isLocalReviewScreen, LocalReviewFlow } from "./local-review-flow";
 import { isReportedReviewScreen, ReportedReviewFlow } from "./reported-review-flow";
+import {
+  describeReviewRecipes,
+  readReviewRecipes,
+  toggleReviewRecipe,
+  writeReviewRecipes,
+  type ReviewRecipe,
+} from "./review-recipe-store";
 
 type Choice = "first" | "second" | "third" | "none";
 
@@ -677,9 +684,9 @@ function Footer({ screen }: { screen: MobileScreen }) {
       </a>
       <a
         className={cn(active === "product" && styles.footerActive)}
-        href="/mobile/screens/31"
+        href="/mobile/products/"
         aria-current={active === "product" ? "page" : undefined}
-        onClick={(event) => preventCurrentScreenReload(event, screen.id, "31")}
+        onClick={(event) => preventCurrentScreenReload(event, screen.id, "product-list")}
       >
         <span>
           <FooterIcon kind="product" />
@@ -756,7 +763,12 @@ function Header({ screen }: { screen: MobileScreen }) {
         <span className={styles.headerSidePlaceholder} aria-hidden="true" />
       ) : (
         <a
-          href="/mobile/screens/04"
+          href={
+            (screen.flow === "photo" && screen.id !== "product-list") ||
+            (Number(screen.id) >= 29 && Number(screen.id) <= 33)
+              ? "/mobile/products/"
+              : "/mobile/screens/04"
+          }
           aria-label="前の画面へ"
           className={styles.backButton}
           onClick={(event) => {
@@ -1284,19 +1296,29 @@ function RecipeOption({
   label,
   detail,
   visual,
+  selected,
   onClick,
 }: {
   label: string;
   detail: string;
   visual: ReactNode;
+  selected: boolean;
   onClick: () => void;
 }) {
   return (
-    <button type="button" className={styles.recipeOption} onClick={onClick}>
+    <button
+      type="button"
+      className={cn(styles.recipeOption, selected && styles.recipeOptionSelected)}
+      aria-pressed={selected}
+      onClick={onClick}
+    >
       <span className={styles.recipeOptionVisual}>{visual}</span>
       <span>
         <strong>{label}</strong>
         <small>{detail}</small>
+      </span>
+      <span className={styles.recipeOptionCheck} aria-hidden="true">
+        {selected ? "✓" : ""}
       </span>
     </button>
   );
@@ -1436,6 +1458,28 @@ function SalesCandidateCard({
 function RenderScreenContent({ id }: { id: string }) {
   const [choice, setChoice] = useState<Choice>(id === "sales-04" ? "second" : "first");
   const [saved, setSaved] = useState(false);
+  const [recipes, setRecipes] = useState<ReviewRecipe[]>([]);
+  const [recipeError, setRecipeError] = useState("");
+
+  useEffect(() => {
+    if (id !== "photo-04" && id !== "photo-05" && id !== "32" && id !== "33") return;
+    try {
+      setRecipes(readReviewRecipes(window.localStorage));
+    } catch {
+      setRecipeError("保存内容を読み込めません。端末の保存設定を確認してください。");
+    }
+  }, [id]);
+
+  function selectRecipe(value: ReviewRecipe) {
+    try {
+      const next = toggleReviewRecipe(recipes, value);
+      writeReviewRecipes(window.localStorage, next);
+      setRecipes(next);
+      setRecipeError("");
+    } catch {
+      setRecipeError("選択を保存できませんでした。端末の保存設定を確認して再度お試しください。");
+    }
+  }
 
   switch (id) {
     case "01":
@@ -2442,7 +2486,8 @@ function RenderScreenContent({ id }: { id: string }) {
             <RecipeOption
               label="正面・背面"
               detail="白背景／中央／余白"
-              onClick={() => setChoice("first")}
+              selected={recipes.includes("front-back")}
+              onClick={() => selectRecipe("front-back")}
               visual={
                 <AssetImage
                   src="/approved-assets/mobile-fidelity/short-sleeve-front.png"
@@ -2454,7 +2499,8 @@ function RenderScreenContent({ id }: { id: string }) {
             <RecipeOption
               label="正面だけ"
               detail="ブランド左上・サイズ右下"
-              onClick={() => setChoice("second")}
+              selected={recipes.includes("front-only")}
+              onClick={() => selectRecipe("front-only")}
               visual={
                 <AssetImage
                   src="/approved-assets/mobile-fidelity/short-sleeve-front.png"
@@ -2466,7 +2512,8 @@ function RenderScreenContent({ id }: { id: string }) {
             <RecipeOption
               label="タグ・気になる箇所"
               detail="向き／明るさのみ"
-              onClick={() => setChoice("third")}
+              selected={recipes.includes("details")}
+              onClick={() => selectRecipe("details")}
               visual={
                 <span className={styles.recipePhotoPair}>
                   <AssetImage
@@ -2483,12 +2530,23 @@ function RenderScreenContent({ id }: { id: string }) {
               }
             />
           </div>
-          <div className={styles.recipeInfoBlue}>ⓘ 役割ごとに型を設定</div>
+          <div className={styles.recipeInfoBlue} role="status">
+            {recipeError ||
+              (recipes.length
+                ? `選択中：${describeReviewRecipes(recipes)}。このブラウザーに保存しました。`
+                : "レシピを選んでください。編集せず進む場合は次の画面で選べます。")}
+          </div>
         </section>
       );
     case "33":
       return (
         <section className={styles.contentStack}>
+          <div className={styles.recipeInfoBlue} role="status">
+            {recipeError ||
+              (recipes.length
+                ? `確認用レシピ：${describeReviewRecipes(recipes)}`
+                : "レシピは未選択です。編集せず進むこともできます。")}
+          </div>
           <p className={styles.boardInstruction}>現在の利用可能な方法</p>
           <div className={styles.methodCards}>
             <MethodOption
@@ -3125,7 +3183,8 @@ function RenderScreenContent({ id }: { id: string }) {
             <RecipeOption
               label="正面・背面"
               detail="白背景／中央／余白"
-              onClick={() => setChoice("first")}
+              selected={recipes.includes("front-back")}
+              onClick={() => selectRecipe("front-back")}
               visual={
                 <AssetImage
                   src="/approved-assets/mobile-fidelity/short-sleeve-front.png"
@@ -3137,7 +3196,8 @@ function RenderScreenContent({ id }: { id: string }) {
             <RecipeOption
               label="正面だけ"
               detail="ブランド左上・サイズ右下"
-              onClick={() => setChoice("second")}
+              selected={recipes.includes("front-only")}
+              onClick={() => selectRecipe("front-only")}
               visual={
                 <AssetImage
                   src="/approved-assets/mobile-fidelity/short-sleeve-front.png"
@@ -3149,7 +3209,8 @@ function RenderScreenContent({ id }: { id: string }) {
             <RecipeOption
               label="タグ・気になる箇所"
               detail="向き／明るさのみ"
-              onClick={() => setChoice("third")}
+              selected={recipes.includes("details")}
+              onClick={() => selectRecipe("details")}
               visual={
                 <span className={styles.recipePhotoPair}>
                   <AssetImage
@@ -3166,12 +3227,23 @@ function RenderScreenContent({ id }: { id: string }) {
               }
             />
           </div>
-          <div className={styles.recipeInfoBlue}>ⓘ 役割ごとに型を設定</div>
+          <div className={styles.recipeInfoBlue} role="status">
+            {recipeError ||
+              (recipes.length
+                ? `選択中：${describeReviewRecipes(recipes)}。このブラウザーに保存しました。`
+                : "レシピを選んでください。編集せず進む場合は次の画面で選べます。")}
+          </div>
         </section>
       );
     case "photo-05":
       return (
         <section className={styles.contentStack}>
+          <div className={styles.recipeInfoBlue} role="status">
+            {recipeError ||
+              (recipes.length
+                ? `確認用レシピ：${describeReviewRecipes(recipes)}`
+                : "レシピは未選択です。編集せず進むこともできます。")}
+          </div>
           <p className={styles.boardInstruction}>現在の利用可能な方法</p>
           <div className={styles.methodCards}>
             <MethodOption
@@ -3682,8 +3754,16 @@ export function ApprovedMobileDemo({ screenId }: { screenId: string }) {
         >
           {isP1Preview && !isReportedReview ? (
             <div className={cn(styles.demoNotice, styles.demoNoticeP1)}>
-              <span>準備中・P0対象外</span>
-              <span>架空データ・保存されません</span>
+              <span>
+                {["32", "33", "photo-04", "photo-05"].includes(screen.id)
+                  ? "操作確認版・架空データ"
+                  : "準備中・P0対象外"}
+              </span>
+              <span>
+                {["32", "33", "photo-04", "photo-05"].includes(screen.id)
+                  ? "レシピの選択だけ、このブラウザーに保存"
+                  : "架空データ・保存されません"}
+              </span>
             </div>
           ) : null}
           {isLocalReview ? (
@@ -3698,6 +3778,54 @@ export function ApprovedMobileDemo({ screenId }: { screenId: string }) {
           )}
         </div>
         <Footer screen={screen} />
+      </div>
+    </main>
+  );
+}
+
+const productListScreen: MobileScreen = {
+  id: "product-list",
+  title: "商品一覧",
+  primary: "",
+  group: "商品",
+  flow: "photo",
+  source: "",
+  note: "架空の商品1点だけを表示する操作確認版です。",
+};
+
+export function ApprovedMobileProductList() {
+  return (
+    <main className={styles.page} data-implementation-scope="local-review-list">
+      <div className={styles.phoneShell}>
+        <Header screen={productListScreen} />
+        <div className={styles.scrollArea}>
+          <section className={styles.productListContent} aria-labelledby="sample-products-title">
+            <p className={styles.productListNotice}>
+              操作確認用の架空商品です。実際の商品は登録されていません。
+            </p>
+            <div className={styles.productListHeading}>
+              <h2 id="sample-products-title">商品を確認</h2>
+              <span>1件</span>
+            </div>
+            <a className={styles.productListItem} href="/mobile/screens/photo-03/">
+              <AssetImage
+                src="/approved-assets/product/shirt-front.png"
+                alt="確認用シャツの見本"
+                className={styles.productListPhoto}
+              />
+              <span className={styles.productListDetails}>
+                <small>REVIEW-0001 · 見本</small>
+                <strong>確認用シャツ</strong>
+                <span>CleanStyle / M / ネイビー</span>
+                <span className={styles.productListAction}>ブランド・サイズを確認　›</span>
+              </span>
+            </a>
+            <p className={styles.productListFootnote}>
+              現在は1点だけの確認版です。入力した実商品や他の端末の商品は表示されません。
+            </p>
+          </section>
+        </div>
+        <Footer screen={productListScreen} />
       </div>
     </main>
   );

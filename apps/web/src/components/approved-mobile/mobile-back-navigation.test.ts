@@ -15,7 +15,7 @@ describe("mobile review back arrow", () => {
     );
     expect(source).toContain('href="/mobile/screens/04"');
     expect(source).toContain("window.history.back()");
-    for (const destination of ["04", "05", "31", "39", "44"]) {
+    for (const destination of ["04", "05", "product-list", "39", "44"]) {
       expect(source).toContain(`preventCurrentScreenReload(event, screen.id, "${destination}")`);
     }
     expect(source).not.toContain("getMobilePrevious(screen.id)");
@@ -41,6 +41,13 @@ describe("mobile review back arrow", () => {
         "https://komatsu-dev-jp.github.io/seller-assistant/mobile/app/",
         current,
         ids,
+      ),
+    ).toBe(true);
+    expect(
+      canReturnToMobileReviewPage(
+        "https://komatsu-dev-jp.github.io/seller-assistant/mobile/products/",
+        "https://komatsu-dev-jp.github.io/seller-assistant/mobile/screens/photo-03/",
+        mobileScreenIds,
       ),
     ).toBe(true);
     expect(
