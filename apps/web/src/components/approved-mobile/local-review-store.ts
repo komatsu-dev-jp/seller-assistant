@@ -1,3 +1,9 @@
+import {
+  sampleProductDetails,
+  validateProductDetails,
+  type ProductDetails,
+} from "./review-product-details";
+
 // Dedicated to the synthetic, browser-only Pages review. Never used by the live API app.
 export const reviewStorageKey = "seller-assistant:mobile-review:v1";
 const photoDatabase = "seller-assistant-mobile-review-photos-v1";
@@ -26,11 +32,18 @@ export type ReviewState = {
   selectedPhoto: number;
   measurements: string[];
   measurementsComplete: boolean;
+  details?: ProductDetails;
 };
 export type ReviewPhoto = { token: string; blob: Blob };
 export type ReviewPhotos = Record<string, ReviewPhoto>;
 type ReadStorage = Pick<Storage, "getItem">;
 type WriteStorage = Pick<Storage, "getItem" | "setItem">;
+export class ReviewConflictError extends Error {
+  constructor() {
+    super("別の画面で内容が変わりました。保存済みの内容を確認してください。");
+    this.name = "ReviewConflictError";
+  }
+}
 
 export function createReviewState(): ReviewState {
   return {
@@ -44,6 +57,7 @@ export function createReviewState(): ReviewState {
     selectedPhoto: 0,
     measurements: ["", "", "", ""],
     measurementsComplete: false,
+    details: sampleProductDetails(),
   };
 }
 export function validMeasurement(value: string): boolean {
@@ -85,7 +99,11 @@ export function validateReviewState(value: unknown): ReviewState {
   ) {
     throw new Error("保存データが壊れているため開けません。上書きせず停止しました。");
   }
-  return s;
+  // Existing v1 data predates the shared product form. Preserve every work result.
+  return {
+    ...s,
+    details: s.details === undefined ? sampleProductDetails() : validateProductDetails(s.details),
+  };
 }
 export function readReviewState(storage: ReadStorage): { state: ReviewState; raw: string | null } {
   const raw = storage.getItem(reviewStorageKey);
@@ -97,9 +115,7 @@ export function writeReviewState(
   expected: string | null,
 ): string {
   if (storage.getItem(reviewStorageKey) !== expected) {
-    throw new Error(
-      "別の画面で内容が変わりました。再読み込みして保存済みの内容を確認してください。",
-    );
+    throw new ReviewConflictError();
   }
   const raw = JSON.stringify(validateReviewState(state));
   storage.setItem(reviewStorageKey, raw);
@@ -215,12 +231,33 @@ export async function saveReviewPhoto(
   factory: IDBFactory,
   slot: string,
   blob: Blob,
+  expectedDraftToken?: string | null,
 ): Promise<void> {
   if (!validKey(slot) || slot.startsWith("draft:")) throw new Error("写真の場所が不正です。");
   validatePhoto(blob);
-  await photoTransaction<void>(factory, "readwrite", (store, result) => {
-    store.put({ token: crypto.randomUUID(), blob }, `draft:${slot}`);
-    result();
+  await photoTransaction<void>(factory, "readwrite", (store, result, fail) => {
+    const save = () => {
+      store.put({ token: crypto.randomUUID(), blob }, `draft:${slot}`);
+      result();
+    };
+    if (expectedDraftToken === undefined) {
+      save();
+      return;
+    }
+    const request = store.get(`draft:${slot}`);
+    request.onsuccess = () => {
+      try {
+        const existing =
+          request.result === undefined ? null : validatePhotoRecord(request.result).token;
+        if (existing !== expectedDraftToken) {
+          fail(new Error("別の画面で写真が変わりました。写真を読み直してから選び直してください。"));
+          return;
+        }
+        save();
+      } catch (cause) {
+        fail(cause instanceof Error ? cause : new Error("写真を保存できませんでした。"));
+      }
+    };
   });
 }
 export function confirmReviewPhoto(

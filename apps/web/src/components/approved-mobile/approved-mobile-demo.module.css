@@ -15622,3 +15622,19 @@ button.previewActionBackdrop.previewActionBackdrop {
   font-weight: 800;
   line-height: 1.4;
 }
+
+/* Product preparation has in-flow controls: no fixed CTA can cover fields/photos. */
+.phoneShell.productPreparationShell {
+  display: block;
+  overflow-y: auto;
+}
+.phoneShell.productPreparationShell .header {
+  position: relative;
+}
+.phoneShell.productPreparationShell .scrollArea {
+  height: auto;
+  min-height: 0;
+  max-height: none;
+  overflow: visible;
+  padding: 18px 16px calc(112px + env(safe-area-inset-bottom));
+}

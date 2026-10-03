@@ -367,6 +367,9 @@ export function LocalReviewFlow({ screenId }: { screenId: string }) {
             <div className={local.homeIntro}>
               <h2>作業を選ぶ</h2>
               <p>商品1点の作業と、仕入箱の点数を数える作業をここから始められます。</p>
+              <button type="button" className={local.boxButton} onClick={() => go("photo-03")}>
+                商品情報から出品文を作る　›
+              </button>
             </div>
             <section className={local.nextCard} aria-labelledby="next-task-title">
               <span className={local.eyebrow}>次にすること · REVIEW-0001</span>

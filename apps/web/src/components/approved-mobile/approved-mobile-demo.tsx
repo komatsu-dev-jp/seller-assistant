@@ -18,6 +18,8 @@ import { canReturnToMobileReviewPage } from "./mobile-back-navigation";
 import styles from "./approved-mobile-demo.module.css";
 import { isLocalReviewScreen, LocalReviewFlow } from "./local-review-flow";
 import { isReportedReviewScreen, ReportedReviewFlow } from "./reported-review-flow";
+import { isProductPreparationScreen } from "./product-description";
+import { PreparationProductCard, ProductPreparation } from "./product-preparation";
 import {
   describeReviewRecipes,
   readReviewRecipes,
@@ -825,6 +827,8 @@ function Header({ screen }: { screen: MobileScreen }) {
 
 function ActionBar({ screen, next }: { screen: MobileScreen; next: string | undefined }) {
   if (screen.id === "01") return null;
+  const optionalPhotoSettings =
+    isStaticApprovedReview && ["32", "33", "photo-04", "photo-05"].includes(screen.id);
   const noContinue =
     (Number(screen.id) >= 1 && Number(screen.id) <= 11) ||
     (Number(screen.id) >= 29 && Number(screen.id) <= 33) ||
@@ -838,9 +842,15 @@ function ActionBar({ screen, next }: { screen: MobileScreen; next: string | unde
     <div className={styles.actionBar}>
       <a
         className={styles.primaryButton}
-        href={next ? `/mobile/screens/${next}` : "/mobile/screens"}
+        href={
+          optionalPhotoSettings
+            ? "/mobile/screens/photo-03/"
+            : next
+              ? `/mobile/screens/${next}`
+              : "/mobile/screens"
+        }
       >
-        {screen.primary}
+        {optionalPhotoSettings ? "出品の準備へ戻る" : screen.primary}
       </a>
       {!noContinue ? (
         <a className={styles.secondaryAction} href="/mobile/screens/05">
@@ -3724,24 +3734,33 @@ export function ApprovedMobileDemo({ screenId }: { screenId: string }) {
   const liveRoute = isStaticApprovedReview ? null : getMobileLiveRoute(screen);
   const isLocalReview = isStaticApprovedReview && isLocalReviewScreen(screen.id);
   const isReportedReview = isStaticApprovedReview && isReportedReviewScreen(screen.id);
+  const isPreparation = isStaticApprovedReview && isProductPreparationScreen(screen.id);
   const isHeaderlessReviewHome = isLocalReview && screen.id === "04";
 
   return (
     <main
       className={styles.page}
-      data-implementation-scope={isP1Preview ? "p1-preview" : "p0-live-mapped"}
+      data-implementation-scope={
+        isPreparation ? "local-product-preparation" : isP1Preview ? "p1-preview" : "p0-live-mapped"
+      }
       data-live-route={liveRoute ?? undefined}
     >
-      <div className={styles.phoneShell}>
+      <div className={cn(styles.phoneShell, isPreparation && styles.productPreparationShell)}>
         {screen.id === "01" || isHeaderlessReviewHome ? null : (
           <Header
             screen={
-              isLocalReview
+              isPreparation
                 ? {
                     ...screen,
-                    note: "架空商品1件の確認版です。入力・写真はこのブラウザーだけに保存します。外部送信・端末間共有は行いません。",
+                    title: "出品の準備",
+                    note: "確認用1点。入力と写真はこのブラウザーに保存します。外部送信・出品は行いません。",
                   }
-                : screen
+                : isLocalReview
+                  ? {
+                      ...screen,
+                      note: "架空商品1件の確認版です。入力・写真はこのブラウザーだけに保存します。外部送信・端末間共有は行いません。",
+                    }
+                  : screen
             }
           />
         )}
@@ -3752,7 +3771,7 @@ export function ApprovedMobileDemo({ screenId }: { screenId: string }) {
             isReportedReview && styles.reportedReviewScroll,
           )}
         >
-          {isP1Preview && !isReportedReview ? (
+          {isP1Preview && !isReportedReview && !isPreparation ? (
             <div className={cn(styles.demoNotice, styles.demoNoticeP1)}>
               <span>
                 {["32", "33", "photo-04", "photo-05"].includes(screen.id)
@@ -3766,7 +3785,9 @@ export function ApprovedMobileDemo({ screenId }: { screenId: string }) {
               </span>
             </div>
           ) : null}
-          {isLocalReview ? (
+          {isPreparation ? (
+            <ProductPreparation key={screen.id} screenId={screen.id} />
+          ) : isLocalReview ? (
             <LocalReviewFlow key={screen.id} screenId={screen.id} />
           ) : isReportedReview ? (
             <ReportedReviewFlow key={screen.id} screenId={screen.id} />
@@ -3807,19 +3828,7 @@ export function ApprovedMobileProductList() {
               <h2 id="sample-products-title">商品を確認</h2>
               <span>1件</span>
             </div>
-            <a className={styles.productListItem} href="/mobile/screens/photo-03/">
-              <AssetImage
-                src="/approved-assets/product/shirt-front.png"
-                alt="確認用シャツの見本"
-                className={styles.productListPhoto}
-              />
-              <span className={styles.productListDetails}>
-                <small>REVIEW-0001 · 見本</small>
-                <strong>確認用シャツ</strong>
-                <span>CleanStyle / M / ネイビー</span>
-                <span className={styles.productListAction}>ブランド・サイズを確認　›</span>
-              </span>
-            </a>
+            <PreparationProductCard />
             <p className={styles.productListFootnote}>
               現在は1点だけの確認版です。入力した実商品や他の端末の商品は表示されません。
             </p>
