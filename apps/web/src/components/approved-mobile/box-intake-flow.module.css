@@ -1,0 +1,422 @@
+.flow {
+  display: grid;
+  gap: 16px;
+  color: #17243c;
+  font-size: 16px;
+  line-height: 1.55;
+  min-width: 0;
+}
+
+.flow :where(h2, h3, p, dl, fieldset) {
+  margin: 0;
+}
+
+.flow :where(button, input, select, textarea, a) {
+  font: inherit;
+}
+
+.flow :where(button, input, select, textarea, a):focus-visible {
+  outline: 3px solid #1859da;
+  outline-offset: 3px;
+}
+
+.flow :where(button, summary) {
+  cursor: pointer;
+}
+
+.flow button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.heading {
+  font-size: 24px;
+  line-height: 1.3;
+  letter-spacing: -0.025em;
+}
+
+.subheading,
+.hint,
+.saveStatus {
+  font-size: 13px;
+  color: #536179;
+  overflow-wrap: anywhere;
+}
+
+.saveStatus:empty {
+  display: none;
+}
+
+.topline {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  color: #536179;
+  font-size: 12px;
+}
+
+.steps {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid #dce3ee;
+}
+
+.steps button {
+  flex: 1;
+  min-height: 44px;
+  padding: 8px 4px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: #536179;
+  font-size: 13px;
+}
+
+.steps button[aria-current="step"] {
+  border-bottom-color: #2467ee;
+  color: #1453cb;
+  font-weight: 700;
+}
+
+.card,
+.countCard {
+  padding: 16px;
+  border: 1px solid #dce3ee;
+  border-radius: 18px;
+  background: #fff;
+}
+
+.card > * + * {
+  margin-top: 14px;
+}
+
+.card h3 {
+  font-size: 17px;
+}
+
+.card summary {
+  min-height: 44px;
+  align-content: center;
+  font-weight: 600;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.field > span {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.field :where(input, select, textarea) {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid #bac6d8;
+  border-radius: 10px;
+  color: #17243c;
+  background: #fff;
+  font-size: 16px;
+}
+
+.field textarea {
+  resize: vertical;
+}
+
+.fields {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.actions {
+  display: grid;
+  gap: 10px;
+}
+
+.primary,
+.secondary {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid #2467ee;
+  background: #2467ee;
+  color: #fff;
+  font-weight: 600;
+  text-align: center;
+  line-height: 1.4;
+}
+
+.secondary {
+  background: #f4f7fd;
+  color: #1453cb;
+  border-color: #dce3ee;
+}
+
+.counterLabel {
+  display: grid;
+  gap: 8px;
+  text-align: center;
+  color: #536179;
+  font-size: 13px;
+}
+
+.counterLabel input {
+  width: 100%;
+  box-sizing: border-box;
+  text-align: center;
+  font-size: 48px;
+  font-weight: 700;
+  color: #17243c;
+  background: #f4f7fd;
+  border: 1px solid #dce3ee;
+  border-radius: 12px;
+}
+
+.counterButtons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.options {
+  display: grid;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+}
+
+.options legend {
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.options label,
+.check {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-height: 44px;
+}
+
+.options input,
+.check input {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  accent-color: #2467ee;
+}
+
+.warning,
+.error {
+  padding: 12px;
+  border: 1px solid #e6cba3;
+  border-radius: 12px;
+  background: #fff9ed;
+  color: #734b0e;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.error {
+  border-color: #e5b2ba;
+  background: #fff3f4;
+  color: #912134;
+}
+
+.error .actions {
+  margin-top: 12px;
+}
+
+.itemHeading {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.itemHeading strong {
+  overflow-wrap: anywhere;
+}
+
+.itemHeading button,
+.textButton {
+  border: 0;
+  padding: 8px 0;
+  min-height: 44px;
+  background: transparent;
+  color: #1453cb;
+  font-size: 14px;
+}
+
+.itemHeading button {
+  flex: 0 0 auto;
+}
+
+.external {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  color: #1453cb;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  font-weight: 600;
+}
+
+.comparison {
+  display: grid;
+  gap: 12px;
+  border: 1px solid #dce3ee;
+  border-radius: 12px;
+  padding: 12px;
+  min-width: 0;
+}
+
+.comparison legend {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.check {
+  font-size: 14px;
+}
+
+.candidate {
+  display: grid;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid #dce3ee;
+}
+
+.result,
+.loss {
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+  border: 1px solid #c5dfd6;
+  border-radius: 16px;
+  background: #f0f8f5;
+}
+
+.loss {
+  background: #fff3f4;
+  border-color: #e5b2ba;
+}
+
+.result > strong,
+.loss > strong {
+  font-size: 25px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.result > p,
+.loss > p {
+  font-size: 13px;
+}
+
+.result dl,
+.loss dl {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.result dd,
+.loss dd {
+  margin: 0;
+  text-align: right;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.stats > div {
+  display: grid;
+  padding: 12px;
+  border-radius: 12px;
+  background: #f4f7fd;
+}
+
+.stats span {
+  font-size: 12px;
+  color: #536179;
+}
+
+.productRow {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  gap: 10px;
+  padding: 14px 12px;
+  align-items: center;
+  width: 100%;
+  border: 1px solid #dce3ee;
+  border-radius: 14px;
+  background: #fff;
+  color: #17243c;
+  text-align: left;
+}
+
+.productRow :where(strong, small) {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.productRow small {
+  color: #536179;
+  font-size: 12px;
+}
+
+.number {
+  color: #536179;
+  font-size: 13px;
+}
+
+.rowResult {
+  max-width: 100px;
+  overflow-wrap: anywhere;
+  text-align: right;
+  color: #1453cb;
+  font-size: 13px;
+}
+
+.boxes {
+  display: grid;
+  gap: 8px;
+}
+
+.boxes button {
+  min-height: 44px;
+  border: 1px solid #dce3ee;
+  border-radius: 10px;
+  padding: 10px;
+  background: #fff;
+  color: #17243c;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.boxes button[aria-current="true"] {
+  border-color: #2467ee;
+  background: #f4f7fd;
+}
+
+@media (max-width: 360px) {
+  .fields {
+    grid-template-columns: 1fr;
+  }
+}
