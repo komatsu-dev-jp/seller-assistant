@@ -310,11 +310,27 @@ export function BoxIntakeFlow({ screenId }: { screenId: string }) {
         const next = { ...item, ...patch };
         if (next.nameMode === "auto") next.name = productTitle(next);
         if (
-          ["brand", "size", "audience", "category", "sleeve", "color"].some((key) =>
-            Object.hasOwn(patch, key),
-          )
-        )
+          (
+            [
+              "name",
+              "brand",
+              "size",
+              "audience",
+              "category",
+              "sleeve",
+              "color",
+              "condition",
+              "inspection",
+              "memo",
+            ] as const
+          ).some((key) => next[key] !== item[key])
+        ) {
+          // Evidence was checked against the previous item. Keep the reference inputs for
+          // human rechecking, but require both fresh confirmation and a newly chosen price.
           next.registered = false;
+          next.priceYen = "";
+          next.comparisons = next.comparisons.map((row) => ({ ...row, confirmedSold: false }));
+        }
         return next;
       }),
     });
@@ -596,6 +612,7 @@ export function BoxIntakeFlow({ screenId }: { screenId: string }) {
         <>
           <p className={ui.hint}>
             選んだ内容から商品名を作ります。不明な項目は飛ばして、商品名を直接入力しても進めます。
+            商品情報や検品内容を変えると、販売事例の確認と見込み販売価格をやり直します。
           </p>
           <div className={ui.card}>
             <div className={ui.field}>
@@ -663,9 +680,7 @@ export function BoxIntakeFlow({ screenId }: { screenId: string }) {
                 label="商品名・種類（必須）"
                 value={item.name}
                 placeholder="例：紺のシャツ"
-                onChange={(value) =>
-                  updateItem({ name: value, nameMode: "manual", registered: false })
-                }
+                onChange={(value) => updateItem({ name: value, nameMode: "manual" })}
               />
               <p className={ui.hint}>
                 {item.nameMode === "auto"
@@ -678,7 +693,7 @@ export function BoxIntakeFlow({ screenId }: { screenId: string }) {
                   <button
                     className={ui.textButton}
                     type="button"
-                    onClick={() => updateItem({ nameMode: "auto", registered: false })}
+                    onClick={() => updateItem({ nameMode: "auto" })}
                   >
                     選んだ内容から商品名を作り直す
                   </button>
@@ -695,9 +710,7 @@ export function BoxIntakeFlow({ screenId }: { screenId: string }) {
               <select
                 aria-label="商品の状態"
                 value={item.condition}
-                onChange={(event) =>
-                  updateItem({ condition: event.target.value, registered: false })
-                }
+                onChange={(event) => updateItem({ condition: event.target.value })}
               >
                 <option value="">選んでください</option>
                 {["新品・未使用", "使用感が少ない", "一般的な中古品", "傷・汚れがある"].map(
@@ -716,7 +729,7 @@ export function BoxIntakeFlow({ screenId }: { screenId: string }) {
                     name="inspection"
                     value={value}
                     checked={item.inspection === value}
-                    onChange={() => updateItem({ inspection: value, registered: false })}
+                    onChange={() => updateItem({ inspection: value })}
                   />
                   {inspectionLabels[value]}
                 </label>

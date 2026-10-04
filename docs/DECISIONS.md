@@ -605,3 +605,10 @@ APIキー、トークン、個人情報、生ログ、会話全文、一時的�
 - Preservation: 手入力した商品名は属性変更で上書きしない。v1保存を厳密に読み、既存名は手入力扱いでv2へメモリ内移行する。長い合成名は未登録の下書きに限り保存可能とし、登録前は100文字以内を要求する。
 - Safety: 既存のブラウザー保存・編集ロック・費用計算を維持。ブランドAPI、自動相場取得、自動出品、課金、端末間共有を追加しない。公開・マージは実装とは区別する。
 - Evidence: `docs/implementation/intake-product-attributes-packet.md`、`handoffs/active/2026-10-04-intake-product-attributes.md`。実ブラウザー・実iPhoneは未確認。
+
+### 2026-10-04 — 商品情報の変更後に販売根拠と見込み価格を再確認する
+
+- User decision: PR32で報告された、商品情報を変更して再登録すると以前の販売事例と価格で粗利を計算できる不具合を修正する。修正・テスト・修正ブランチのpush・Draft PRまでが今回の許可。
+- Implementation: 商品名・ブランド・サイズ・服属性・状態・検品結果・傷汚れメモが実際に変わったら、登録を解除し、販売事例を未確認に戻し、見込み販売価格を空にする。事例入力と費用は保持し、本人の再確認と価格選択を要求する。同じ値の再選択では無効化しない。
+- Preservation: 自動商品名・手動名保持・v1→v2保存移行を維持。PR33の履歴ナビゲーション、既存ヘルプ、他リポジトリ、mainへのマージ・公開は変更しない。
+- Evidence: `docs/implementation/intake-evidence-invalidation-packet.md`、`handoffs/archive/2026-10-04-intake-evidence-invalidation.md`。
