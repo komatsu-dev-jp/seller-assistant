@@ -20,8 +20,18 @@ import { controlsKey, parseControls } from "./review-controls-state";
 import { reviewPath } from "./review-path";
 import { acquireIntakeEditor, type IntakeEditorLease } from "./box-intake-write-lease";
 import ui from "./box-intake-flow.module.css";
+import {
+  audiences,
+  categories,
+  sleeves,
+  colors,
+  sizes,
+  brandChoices,
+  productTitle,
+  type BrandFilter,
+} from "./intake-product-options";
 
-type Step = "count" | "item" | "profit" | "list";
+type Step = "count" | "item" | "brand" | "profit" | "list";
 const basePath = process.env.NEXT_PUBLIC_REVIEW_BASE_PATH ?? "";
 const entry = reviewPath("/mobile/screens/box-02/", basePath);
 export const isBoxIntakeScreen = (id: string) =>
@@ -64,6 +74,35 @@ function Field({
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
       />
+    </label>
+  );
+}
+function SelectField({
+  label,
+  value,
+  options,
+  onChange,
+  custom = false,
+}: {
+  label: string;
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
+  custom?: boolean;
+}) {
+  return (
+    <label className={ui.field}>
+      <span>{label}</span>
+      <select aria-label={label} value={value} onChange={(event) => onChange(event.target.value)}>
+        <option value="">選んでください（不明なら空欄）</option>
+        {value && value !== "__custom__" && !options.includes(value) ? (
+          <option value={value}>{value}（入力済み）</option>
+        ) : null}
+        {options.map((option) => (
+          <option key={option}>{option}</option>
+        ))}
+        {custom ? <option value="__custom__">その他（手入力）</option> : null}
+      </select>
     </label>
   );
 }
@@ -113,6 +152,10 @@ export function BoxIntakeFlow({ screenId }: { screenId: string }) {
   const [legacyNotice, setLegacyNotice] = useState("");
   const heading = useRef<HTMLHeadingElement>(null);
   const editorLease = useRef<IntakeEditorLease | null>(null);
+  const savedHref = useRef(entry);
+  const [brandQuery, setBrandQuery] = useState("");
+  const [brandFilter, setBrandFilter] = useState<BrandFilter>("all");
+  const [customSize, setCustomSize] = useState(false);
 
   function load() {
     if (editorLease.current?.canWrite()) {
@@ -157,6 +200,7 @@ export function BoxIntakeFlow({ screenId }: { screenId: string }) {
         setState(next);
       }
       const requested = params.get("step");
+      savedHref.current = `${entry}${window.location.search}`;
       const requestedIndex = Number(params.get("item") ?? "0");
       setIndex(
         Number.isInteger(requestedIndex) &&
@@ -169,6 +213,7 @@ export function BoxIntakeFlow({ screenId }: { screenId: string }) {
         !selected.confirmed
           ? "count"
           : requested === "item" ||
+              requested === "brand" ||
               requested === "profit" ||
               requested === "list" ||
               requested === "count"
@@ -194,12 +239,25 @@ export function BoxIntakeFlow({ screenId }: { screenId: string }) {
         setError("未保存の入力があります。先に保存を再試行するか、入力の控えを保存してください。");
       }
     };
+    const handleBack = () => {
+      if (pending.current) {
+        window.history.pushState(null, "", savedHref.current);
+        setError(
+          "未保存の入力があるため戻れません。先に保存を再試行するか、入力の控えを保存してください。",
+        );
+        return;
+      }
+      restore();
+      requestAnimationFrame(() => heading.current?.focus());
+    };
     window.addEventListener("beforeunload", preventLoss);
+    window.addEventListener("popstate", handleBack);
     document.addEventListener("click", preventLinkLoss, true);
     return () => {
       editorLease.current?.close();
       editorLease.current = null;
       window.removeEventListener("beforeunload", preventLoss);
+      window.removeEventListener("popstate", handleBack);
       document.removeEventListener("click", preventLinkLoss, true);
     };
     // A screen starts from the persisted box once. Subsequent input must never reload over a draft.
@@ -247,21 +305,48 @@ export function BoxIntakeFlow({ screenId }: { screenId: string }) {
     );
     if (!box || !box.items[index]) return false;
     return updateBox({
-      items: box.items.map((item, i) => (i === index ? { ...item, ...patch } : item)),
+      items: box.items.map((item, i) => {
+        if (i !== index) return item;
+        const next = { ...item, ...patch };
+        if (next.nameMode === "auto") next.name = productTitle(next);
+        if (
+          ["brand", "size", "audience", "category", "sleeve", "color"].some((key) =>
+            Object.hasOwn(patch, key),
+          )
+        )
+          next.registered = false;
+        return next;
+      }),
     });
   }
-  function navigate(nextStep: Step, nextIndex = index, replacement?: IntakeState): boolean {
+  function navigate(
+    nextStep: Step,
+    nextIndex = index,
+    replacement?: IntakeState,
+    push = false,
+  ): boolean {
     const latest = replacement ?? current.current;
     if (!latest || !persist(latest, !replacement)) return false;
     setStep(nextStep);
     setIndex(nextIndex);
     setVisibleItems(30);
+    setCustomSize(false);
     const params = new URLSearchParams({
       box: latest.activeBoxId!,
       step: nextStep,
       item: String(nextIndex),
     });
-    window.history.replaceState(null, "", `${entry}?${params}`);
+    const href = `${entry}?${params}`;
+    if (push) {
+      // Give browser Back the exact originating item, even when opened through a legacy route.
+      window.history.replaceState(
+        null,
+        "",
+        `${entry}?${new URLSearchParams({ box: latest.activeBoxId!, step, item: String(index) })}`,
+      );
+      window.history.pushState(null, "", href);
+    } else window.history.replaceState(null, "", href);
+    savedHref.current = href;
     requestAnimationFrame(() => {
       heading.current?.focus();
       heading.current?.scrollIntoView({ block: "start", behavior: "auto" });
@@ -385,9 +470,11 @@ export function BoxIntakeFlow({ screenId }: { screenId: string }) {
       ? "箱の中を数える"
       : step === "item"
         ? `${index + 1}点目を検品・登録`
-        : step === "profit"
-          ? "売れた価格から利益を確認"
-          : "箱の商品を確認";
+        : step === "brand"
+          ? "ブランドを選ぶ"
+          : step === "profit"
+            ? "売れた価格から利益を確認"
+            : "箱の商品を確認";
   const boxCosts = (
     <div className={ui.fields}>
       <Field
@@ -428,25 +515,27 @@ export function BoxIntakeFlow({ screenId }: { screenId: string }) {
         {headingText}
       </h2>
       <p className={ui.subheading}>{box.name || "名前をつけていない箱"}</p>
-      <nav className={ui.steps} aria-label="箱の作業">
-        {(
-          [
-            ["count", "1 点数"],
-            ["item", "2 検品・登録"],
-            ["list", "3 商品一覧"],
-          ] as const
-        ).map(([name, label]) => (
-          <button
-            key={name}
-            type="button"
-            aria-current={step === name ? "step" : undefined}
-            disabled={!box.confirmed && name !== "count"}
-            onClick={() => navigate(name, index)}
-          >
-            {label}
-          </button>
-        ))}
-      </nav>
+      {step !== "brand" ? (
+        <nav className={ui.steps} aria-label="箱の作業">
+          {(
+            [
+              ["count", "1 点数"],
+              ["item", "2 検品・登録"],
+              ["list", "3 商品一覧"],
+            ] as const
+          ).map(([name, label]) => (
+            <button
+              key={name}
+              type="button"
+              aria-current={step === name ? "step" : undefined}
+              disabled={!box.confirmed && name !== "count"}
+              onClick={() => navigate(name, index)}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+      ) : null}
       {feedback}
 
       {step === "count" ? (
@@ -506,29 +595,100 @@ export function BoxIntakeFlow({ screenId }: { screenId: string }) {
       {step === "item" && item ? (
         <>
           <p className={ui.hint}>
-            まず名前と状態だけ。ブランド・サイズが分からなければ、空欄のまま次へ進めます。
+            選んだ内容から商品名を作ります。不明な項目は飛ばして、商品名を直接入力しても進めます。
           </p>
           <div className={ui.card}>
-            <Field
-              label="商品名・種類（必須）"
-              value={item.name}
-              placeholder="例：紺のシャツ"
-              onChange={(value) => updateItem({ name: value, registered: false })}
-            />
+            <div className={ui.field}>
+              <span>ブランド（任意）</span>
+              <button
+                className={ui.brandButton}
+                type="button"
+                onClick={() => {
+                  setBrandQuery("");
+                  setBrandFilter("all");
+                  navigate("brand", index, undefined, true);
+                }}
+              >
+                <span>{item.brand || "ブランドを検索・選択"}</span>
+                <span aria-hidden="true">›</span>
+              </button>
+            </div>
             <div className={ui.fields}>
-              <Field
-                label="ブランド（任意）"
-                value={item.brand}
-                maxLength={100}
-                onChange={(value) => updateItem({ brand: value })}
+              <SelectField
+                label="対象（任意）"
+                value={item.audience}
+                options={audiences}
+                onChange={(value) => updateItem({ audience: value })}
               />
-              <Field
+              <SelectField
+                label="種類（任意）"
+                value={item.category}
+                options={categories}
+                onChange={(value) => updateItem({ category: value })}
+              />
+              <SelectField
+                label="袖（任意）"
+                value={item.sleeve}
+                options={sleeves}
+                onChange={(value) => updateItem({ sleeve: value })}
+              />
+              <SelectField
+                label="色（任意）"
+                value={item.color}
+                options={colors}
+                onChange={(value) => updateItem({ color: value })}
+              />
+              <SelectField
                 label="サイズ（任意）"
-                value={item.size}
+                value={customSize ? "__custom__" : item.size}
+                options={sizes}
+                custom
+                onChange={(value) => {
+                  setCustomSize(value === "__custom__");
+                  if (value !== "__custom__") updateItem({ size: value });
+                }}
+              />
+            </div>
+            {customSize ? (
+              <Field
+                label="サイズを入力"
                 maxLength={50}
-                placeholder="例：M"
+                value={item.size}
+                placeholder="例：W30 / 9号"
                 onChange={(value) => updateItem({ size: value })}
               />
+            ) : null}
+            <div className={ui.titlePreview}>
+              <Field
+                label="商品名・種類（必須）"
+                value={item.name}
+                placeholder="例：紺のシャツ"
+                onChange={(value) =>
+                  updateItem({ name: value, nameMode: "manual", registered: false })
+                }
+              />
+              <p className={ui.hint}>
+                {item.nameMode === "auto"
+                  ? "選択した内容に合わせて自動で作成します。直接直すこともできます。"
+                  : "商品名は手入力の内容を維持します。"}
+              </p>
+              {item.nameMode === "manual" && productTitle(item) ? (
+                <>
+                  <p className={ui.hint}>選んだ内容：{productTitle(item)}</p>
+                  <button
+                    className={ui.textButton}
+                    type="button"
+                    onClick={() => updateItem({ nameMode: "auto", registered: false })}
+                  >
+                    選んだ内容から商品名を作り直す
+                  </button>
+                </>
+              ) : null}
+              {item.name.length > 100 ? (
+                <p className={ui.error}>
+                  商品名が100文字を超えています。下書きは保存できますが、商品登録の前に短く直してください。
+                </p>
+              ) : null}
             </div>
             <label className={ui.field}>
               <span>商品の状態</span>
@@ -587,6 +747,96 @@ export function BoxIntakeFlow({ screenId }: { screenId: string }) {
         </>
       ) : null}
 
+      {step === "brand" && item ? (
+        <>
+          <p className={ui.hint}>{index + 1}点目のブランドを選ぶと、商品登録へ戻ります。</p>
+          <Field
+            label="ブランドを検索"
+            value={brandQuery}
+            placeholder="例：ラルフ / Ralph"
+            onChange={setBrandQuery}
+          />
+          <div className={ui.filters} role="group" aria-label="ブランドの絞り込み">
+            {(
+              [
+                ["all", "すべて"],
+                ["used", "登録で使ったブランド"],
+              ] as const
+            ).map(([filter, label]) => (
+              <button
+                type="button"
+                key={filter}
+                aria-pressed={brandFilter === filter}
+                onClick={() => setBrandFilter(filter)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className={ui.brandList}>
+            {brandChoices(
+              brandQuery,
+              brandFilter,
+              state.boxes.flatMap((savedBox) => savedBox.items.map((savedItem) => savedItem.brand)),
+            ).map((brand) => (
+              <button
+                type="button"
+                key={brand}
+                aria-pressed={item.brand === brand}
+                onClick={() => {
+                  if (updateItem({ brand })) navigate("item");
+                }}
+              >
+                <span>{brand}</span>
+                <span aria-hidden="true">{item.brand === brand ? "✓" : "›"}</span>
+              </button>
+            ))}
+          </div>
+          {!brandChoices(
+            brandQuery,
+            brandFilter,
+            state.boxes.flatMap((savedBox) => savedBox.items.map((savedItem) => savedItem.brand)),
+          ).length ? (
+            <p className={ui.hint}>該当するブランドがありません。下から名前を入力できます。</p>
+          ) : null}
+          <div className={ui.card}>
+            <p className={ui.hint}>一覧にないブランドは、検索欄に正式な名前を入力して使えます。</p>
+            <Action
+              secondary
+              disabled={!brandQuery.trim() || brandQuery.trim().length > 100}
+              onClick={() => {
+                if (updateItem({ brand: brandQuery.trim() })) navigate("item");
+              }}
+            >
+              入力したブランド名を使う
+            </Action>
+            <button
+              className={ui.textButton}
+              type="button"
+              onClick={() => {
+                if (updateItem({ brand: "ノーブランド" })) navigate("item");
+              }}
+            >
+              ノーブランドを選ぶ
+            </button>
+            {item.brand ? (
+              <button
+                className={ui.textButton}
+                type="button"
+                onClick={() => {
+                  if (updateItem({ brand: "" })) navigate("item");
+                }}
+              >
+                ブランドを未選択に戻す
+              </button>
+            ) : null}
+          </div>
+          <Action secondary onClick={() => navigate("item")}>
+            選択せず商品登録へ戻る
+          </Action>
+        </>
+      ) : null}
+
       {step === "profit" && item && summary ? (
         <>
           <div className={ui.itemHeading}>
@@ -613,7 +863,7 @@ export function BoxIntakeFlow({ screenId }: { screenId: string }) {
                 <h3>似た商品の「売れた価格」を記録</h3>
                 <a
                   className={ui.external}
-                  href={`https://jp.mercari.com/search?keyword=${encodeURIComponent([item.brand, item.name, item.size].filter(Boolean).join(" "))}`}
+                  href={`https://jp.mercari.com/search?keyword=${encodeURIComponent(item.nameMode === "auto" ? item.name : [item.brand, item.name, item.size].filter(Boolean).join(" "))}`}
                   target="_blank"
                   rel="noopener noreferrer"
                 >
@@ -891,38 +1141,40 @@ export function BoxIntakeFlow({ screenId }: { screenId: string }) {
         </>
       ) : null}
 
-      <details className={ui.card}>
-        <summary>別の箱・保存について</summary>
-        <p className={ui.hint}>
-          入力はこの端末のこのブラウザーに保存されます。他の端末には共有されません。ブラウザーのデータを消すと失われるため、大切な記録は控えを保存してください。
-        </p>
-        <div className={ui.actions}>
-          <Action secondary onClick={() => current.current && downloadState(current.current)}>
-            箱と商品の控えを保存
-          </Action>
-          <Action secondary disabled={state.boxes.length >= 100} onClick={newBox}>
-            別の箱を登録する
-          </Action>
-        </div>
-        <div className={ui.boxes}>
-          {state.boxes.map((savedBox) => (
-            <button
-              type="button"
-              key={savedBox.id}
-              aria-current={savedBox.id === box.id ? "true" : undefined}
-              onClick={() => {
-                const latest = current.current!;
-                navigate(savedBox.confirmed ? "list" : "count", 0, {
-                  ...latest,
-                  activeBoxId: savedBox.id,
-                });
-              }}
-            >
-              {savedBox.name || "名前のない箱"} · {savedBox.count}点
-            </button>
-          ))}
-        </div>
-      </details>
+      {step !== "brand" ? (
+        <details className={ui.card}>
+          <summary>別の箱・保存について</summary>
+          <p className={ui.hint}>
+            入力はこの端末のこのブラウザーに保存されます。他の端末には共有されません。ブラウザーのデータを消すと失われるため、大切な記録は控えを保存してください。
+          </p>
+          <div className={ui.actions}>
+            <Action secondary onClick={() => current.current && downloadState(current.current)}>
+              箱と商品の控えを保存
+            </Action>
+            <Action secondary disabled={state.boxes.length >= 100} onClick={newBox}>
+              別の箱を登録する
+            </Action>
+          </div>
+          <div className={ui.boxes}>
+            {state.boxes.map((savedBox) => (
+              <button
+                type="button"
+                key={savedBox.id}
+                aria-current={savedBox.id === box.id ? "true" : undefined}
+                onClick={() => {
+                  const latest = current.current!;
+                  navigate(savedBox.confirmed ? "list" : "count", 0, {
+                    ...latest,
+                    activeBoxId: savedBox.id,
+                  });
+                }}
+              >
+                {savedBox.name || "名前のない箱"} · {savedBox.count}点
+              </button>
+            ))}
+          </div>
+        </details>
+      ) : null}
     </section>
   );
 }

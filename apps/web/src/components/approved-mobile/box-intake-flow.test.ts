@@ -7,6 +7,7 @@ import * as store from "./box-intake-store";
 import * as controls from "./review-controls-state";
 import { reviewPath } from "./review-path";
 import * as leaseModule from "./box-intake-write-lease";
+import * as productOptions from "./intake-product-options";
 
 // Run the real component and its real input/button handlers. Native layout/touch need browser QA.
 const values: unknown[] = [];
@@ -91,6 +92,7 @@ new Function("require", "exports", "React", compiled)(
     if (name === "react") return hooks;
     if (name.endsWith(".css")) return { default: new Proxy({}, { get: (_, key) => key }) };
     if (name === "./box-intake-store") return store;
+    if (name === "./intake-product-options") return productOptions;
     if (name === "./review-controls-state") return controls;
     if (name === "./box-intake-write-lease") return leaseModule;
     if (name === "./review-path") return { reviewPath };
@@ -144,6 +146,7 @@ function screen(screenId = "box-02", list = false) {
         target: { value, checked: false },
       }),
     value: (label: string) => find((node) => node.props["aria-label"] === label).props.value,
+    controlType: (label: string) => find((node) => node.props["aria-label"] === label).type,
     inspect: (value: string) =>
       find((node) => node.props.type === "radio" && node.props.value === value).props.onChange?.({
         target: { value, checked: true },
@@ -202,6 +205,9 @@ beforeEach(() => {
     sessionStorage: { getItem: () => legacy },
     location,
     history: {
+      pushState: vi.fn((_a: unknown, _b: unknown, path: string) => {
+        location.search = new URL(path, "https://example.com").search;
+      }),
       replaceState: vi.fn((_a: unknown, _b: unknown, path: string) => {
         location.search = new URL(path, "https://example.com").search;
       }),
@@ -231,6 +237,100 @@ afterEach(() => {
 });
 
 describe("box receipt production UI handlers", () => {
+  it("saves a long generated title as a draft, returns from brand selection and requires shortening before registration", () => {
+    const page = startTwo();
+    page.edit("サイズ（任意）", "M");
+    page.click("ブランドを検索・選択›");
+    const brand = "A".repeat(100);
+    page.edit("ブランドを検索", brand);
+    page.click("入力したブランド名を使う");
+    expect(window.location.search).toContain("step=item");
+    expect(page.value("商品名・種類（必須）")).toBe(`${brand} M`);
+    expect(page.text()).toContain("商品登録の前に短く");
+    expect(persisted().boxes[0]!.items[0]!.brand).toBe(brand);
+    page.edit("商品の状態", "一般的な中古品");
+    page.inspect("sellable");
+    page.click("保存して2点目へ");
+    expect(page.text()).toContain("1点目を検品・登録");
+    expect(persisted().boxes[0]!.items[0]!.registered).toBe(false);
+    remount();
+    const reloaded = screen();
+    expect(reloaded.value("商品名・種類（必須）")).toBe(`${brand} M`);
+    reloaded.edit("商品名・種類（必須）", "短く直した商品名 M");
+    reloaded.click("保存して2点目へ");
+    expect(reloaded.text()).toContain("2点目を検品・登録");
+    expect(persisted().boxes[0]!.items[0]!.name).toBe("短く直した商品名 M");
+  });
+  it("selects a searchable brand on its own page and builds the product title from dropdowns", () => {
+    const page = startTwo();
+    page.click("ブランドを検索・選択›");
+    expect(window.location.search).toContain("step=brand");
+    expect(window.history.pushState).toHaveBeenCalled();
+    page.edit("ブランドを検索", "Ralph");
+    expect(page.text()).toContain("ラルフローレン");
+    expect(page.text()).not.toContain("ユニクロ");
+    page.click("ラルフローレン›");
+    expect(window.location.search).toContain("step=item");
+    expect(page.text()).toContain("1点目を検品・登録");
+    for (const [label, value] of [
+      ["対象（任意）", "レディース"],
+      ["種類（任意）", "シャツ"],
+      ["袖（任意）", "半袖"],
+      ["色（任意）", "ネイビー"],
+      ["サイズ（任意）", "M"],
+    ]) {
+      expect(page.controlType(label!)).toBe("select");
+      page.edit(label!, value!);
+    }
+    expect(page.value("商品名・種類（必須）")).toBe(
+      "ラルフローレン 半袖シャツ レディース ネイビー M",
+    );
+    remount();
+    expect(screen().value("商品名・種類（必須）")).toBe(
+      "ラルフローレン 半袖シャツ レディース ネイビー M",
+    );
+  });
+  it("keeps manual names, supports custom brands and sizes, and explicitly restores automatic naming", () => {
+    const page = startTwo();
+    page.edit("商品名・種類（必須）", "本人が付けた名前");
+    page.click("ブランドを検索・選択›");
+    page.edit("ブランドを検索", "  架空ブランド  ");
+    page.click("入力したブランド名を使う");
+    page.edit("種類（任意）", "シャツ");
+    page.edit("サイズ（任意）", "__custom__");
+    page.edit("サイズを入力", "W30");
+    expect(page.value("商品名・種類（必須）")).toBe("本人が付けた名前");
+    page.click("選んだ内容から商品名を作り直す");
+    expect(page.value("商品名・種類（必須）")).toBe("架空ブランド シャツ W30");
+    page.click("架空ブランド›");
+    page.click("登録で使ったブランド");
+    expect(page.text()).toContain("架空ブランド");
+    expect(page.text()).not.toContain("ラルフローレン");
+    page.click("選択せず商品登録へ戻る");
+    expect(page.value("サイズ（任意）")).toBe("W30");
+  });
+  it("returns to the same item on browser Back and does not leave the brand page on save failure", () => {
+    const page = startTwo();
+    registerFirst(page);
+    page.click("ブランドを検索・選択›");
+    window.location.search = window.location.search.replace("step=brand", "step=item");
+    events.get("popstate")?.({});
+    expect(page.text()).toContain("2点目を検品・登録");
+    page.click("ブランドを検索・選択›");
+    page.edit("ブランドを検索", "UNIQLO");
+    denyWrite = true;
+    page.click("ユニクロ›");
+    expect(window.location.search).toContain("step=brand");
+    expect(page.text()).toContain("未保存");
+    window.location.search = window.location.search.replace("step=brand", "step=item");
+    events.get("popstate")?.({});
+    expect(window.location.search).toContain("step=brand");
+    denyWrite = false;
+    page.click("保存を再試行");
+    page.click("選択せず商品登録へ戻る");
+    expect(page.value("商品名・種類（必須）")).toBe("ユニクロ");
+    expect(persisted().boxes[0]!.items[0]!.name).toBe("紺のシャツ");
+  });
   it("confirms the count, advances to registration, and keeps two separate products", () => {
     const page = startTwo();
     expect(page.text()).toContain("1点目を検品・登録");
@@ -311,7 +411,8 @@ describe("box receipt production UI handlers", () => {
     const a = store.confirmBox({ ...store.createBox("A", "箱A"), count: 2 });
     const b = store.confirmBox({ ...store.createBox("B", "箱B"), count: 1 });
     a.items[1]!.name = "2点目の入力";
-    saved.set(store.intakeKey, JSON.stringify({ version: 1, activeBoxId: "A", boxes: [a, b] }));
+    a.items[1]!.nameMode = "manual";
+    saved.set(store.intakeKey, JSON.stringify({ version: 2, activeBoxId: "A", boxes: [a, b] }));
     window.location.search = "?box=A&step=item&item=1";
     const page = screen();
     denyWrite = true;
