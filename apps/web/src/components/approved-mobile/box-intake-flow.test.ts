@@ -151,10 +151,17 @@ function screen(screenId = "box-02", list = false) {
       find((node) => node.props.type === "radio" && node.props.value === value).props.onChange?.({
         target: { value, checked: true },
       }),
-    verifySale: () =>
-      find((node) => node.props.type === "checkbox").props.onChange?.({
-        target: { value: "", checked: true },
-      }),
+    verifySale: (index = 0) =>
+      nodes(render())
+        .filter((node) => node.props.type === "checkbox")
+        .at(index)!
+        .props.onChange?.({
+          target: { value: "", checked: true },
+        }),
+    confirmedSales: () =>
+      nodes(render())
+        .filter((node) => node.props.type === "checkbox")
+        .map((node) => node.props.checked),
     disabled: (label: string) =>
       find((node) => node.type === "button" && text(node) === label).props.disabled,
     links: () =>
@@ -178,6 +185,36 @@ function registerFirst(page: ReturnType<typeof screen>) {
   page.edit("商品の状態", "一般的な中古品");
   page.inspect("sellable");
   page.click("保存して2点目へ");
+}
+function pricedTwo(automaticName = false) {
+  const page = startTwo();
+  page.click("ブランドを検索・選択›");
+  page.edit("ブランドを検索", "UNIQLO");
+  page.click("ユニクロ›");
+  page.edit("種類（任意）", "シャツ");
+  page.edit("サイズ（任意）", "M");
+  if (automaticName) {
+    page.edit("商品の状態", "一般的な中古品");
+    page.inspect("sellable");
+    page.click("保存して2点目へ");
+  } else registerFirst(page);
+  page.edit("商品名・種類（必須）", "破れた服");
+  page.inspect("unsellable");
+  page.click("保存して箱の一覧へ");
+  page.clickContaining(automaticName ? "ユニクロ シャツ M" : "紺のシャツ");
+  for (let index = 1; index <= 3; index++) {
+    page.click("＋ 販売事例を追加");
+    page.edit(`事例${index}のURL`, `https://example.com/sold/${index}`);
+    page.edit(`事例${index}の売れた価格（円）`, index === 3 ? "9000" : "4000");
+    page.edit(`事例${index}の比較メモ（任意）`, `架空資料${index}`);
+    if (index < 3) page.verifySale(index - 1);
+  }
+  page.click("安めの4,000円を見込み販売価格に使う");
+  page.edit("発送する送料（円）", "750");
+  page.edit("梱包代（円）", "50");
+  page.click("保存して箱の一覧へ");
+  expect(page.text()).toContain("箱全体の見込み粗利600円");
+  return page;
 }
 beforeEach(() => {
   remount();
@@ -237,6 +274,196 @@ afterEach(() => {
 });
 
 describe("box receipt production UI handlers", () => {
+  const detailChanges: [string, (page: ReturnType<typeof screen>) => void][] = [
+    ["name", (page) => page.edit("商品名・種類（必須）", "紺のブラウス")],
+    ["condition", (page) => page.edit("商品の状態", "傷・汚れがある")],
+    [
+      "brand",
+      (page) => {
+        page.click("ユニクロ›");
+        page.edit("ブランドを検索", "架空ブランド");
+        page.click("入力したブランド名を使う");
+      },
+    ],
+    ["size", (page) => page.edit("サイズ（任意）", "L")],
+    [
+      "custom size",
+      (page) => {
+        page.edit("サイズ（任意）", "__custom__");
+        page.edit("サイズを入力", "W30");
+      },
+    ],
+    ["audience", (page) => page.edit("対象（任意）", "レディース")],
+    ["category", (page) => page.edit("種類（任意）", "ニット")],
+    ["sleeve", (page) => page.edit("袖（任意）", "長袖")],
+    ["color", (page) => page.edit("色（任意）", "ネイビー")],
+    ["condition memo", (page) => page.edit("気になる点", "袖にほつれ")],
+    [
+      "inspection and reversal",
+      (page) => {
+        page.inspect("hold");
+        page.inspect("sellable");
+      },
+    ],
+    ["regenerated title", (page) => page.click("選んだ内容から商品名を作り直す")],
+  ];
+  it.each(detailChanges)(
+    "invalidates old evidence after changing %s through re-registration, reload and box totals",
+    (field, change) => {
+      let page = pricedTwo();
+      const before = persisted().boxes[0]!;
+      page.clickContaining("紺のシャツ");
+      page.click("商品情報を直す");
+      change(page);
+      const changed = persisted().boxes[0]!;
+      expect(changed.items[0]).toMatchObject({ registered: false, priceYen: "" });
+      expect(changed.items[0]!.comparisons).toEqual(
+        before.items[0]!.comparisons.map((row) => ({ ...row, confirmedSold: false })),
+      );
+      expect(changed.items[0]!.id).toBe(before.items[0]!.id);
+      expect(changed.items[1]).toEqual(before.items[1]);
+      if (field !== "name" && field !== "regenerated title")
+        expect(page.value("商品名・種類（必須）")).toBe("紺のシャツ");
+      page.click("3 商品一覧");
+      expect(page.text()).toContain("全点の確認後に表示");
+      expect(page.text()).not.toContain("箱全体の見込み粗利600円");
+      page.clickContaining(changed.items[0]!.name);
+      page.click("この商品の見込み利益を確認");
+      expect(persisted().boxes[0]!.items[0]!.registered).toBe(true);
+      expect(page.text()).toContain("まだ計算できません");
+      remount();
+      page = screen();
+      expect(page.value("見込み販売価格（円）")).toBe("");
+      expect(page.confirmedSales()).toEqual([false, false, false]);
+      expect(store.itemProfit(persisted().boxes[0]!, 0)).toBeNull();
+      page.edit("見込み販売価格（円）", "4000");
+      expect(page.text()).toContain("まだ計算できません");
+      page.edit("見込み販売価格（円）", "");
+      page.verifySale();
+      expect(page.value("見込み販売価格（円）")).toBe("");
+      expect(store.itemProfit(persisted().boxes[0]!, 0)).toBeNull();
+      page.click("安めの4,000円を見込み販売価格に使う");
+      expect(store.itemProfit(persisted().boxes[0]!, 0)?.gross).toBe(1700);
+      page.click("保存して箱の一覧へ");
+      remount();
+      expect(screen().text()).toContain("箱全体の見込み粗利600円");
+    },
+  );
+  it("keeps confirmed evidence on unchanged details and recalculates legitimate cost and price edits", () => {
+    const page = pricedTwo();
+    const before = persisted().boxes[0]!.items[0]!;
+    page.clickContaining("紺のシャツ");
+    page.click("商品情報を直す");
+    page.edit("商品名・種類（必須）", before.name);
+    page.edit("商品の状態", before.condition);
+    page.edit("種類（任意）", before.category);
+    page.edit("サイズ（任意）", before.size);
+    page.edit("気になる点", before.memo);
+    page.inspect("sellable");
+    page.click("ユニクロ›");
+    page.edit("ブランドを検索", "UNIQLO");
+    page.click("ユニクロ✓");
+    expect(persisted().boxes[0]!.items[0]).toEqual(before);
+    page.click("この商品の見込み利益を確認");
+    page.edit("見込み販売価格（円）", "5000");
+    page.edit("販売手数料（%）", "5");
+    page.edit("発送する送料（円）", "800");
+    page.edit("梱包代（円）", "100");
+    page.edit("箱の仕入れ代（円）", "2400");
+    expect(persisted().boxes[0]!.items[0]!.comparisons).toEqual(before.comparisons);
+    expect(store.itemProfit(persisted().boxes[0]!, 0)?.gross).toBe(2550);
+    page.click("保存して箱の一覧へ");
+    expect(page.text()).toContain("箱全体の見込み粗利1,250円");
+  });
+  it("preserves evidence when naming mode alone changes and invalidates a changed automatic title", () => {
+    let page = pricedTwo(true);
+    const before = persisted().boxes[0]!.items[0]!;
+    expect(before.nameMode).toBe("auto");
+    page.clickContaining(before.name);
+    page.click("商品情報を直す");
+    page.edit("商品名・種類（必須）", before.name);
+    expect(persisted().boxes[0]!.items[0]).toEqual({ ...before, nameMode: "manual" });
+    page.click("選んだ内容から商品名を作り直す");
+    expect(persisted().boxes[0]!.items[0]).toEqual(before);
+    page.edit("色（任意）", "ネイビー");
+    expect(page.value("商品名・種類（必須）")).toBe("ユニクロ シャツ ネイビー M");
+    expect(persisted().boxes[0]!.items[0]).toMatchObject({
+      nameMode: "auto",
+      registered: false,
+      priceYen: "",
+    });
+    remount();
+    page = screen();
+    page.click("この商品の見込み利益を確認");
+    expect(page.confirmedSales()).toEqual([false, false, false]);
+    expect(page.value("見込み販売価格（円）")).toBe("");
+    expect(store.itemProfit(persisted().boxes[0]!, 0)).toBeNull();
+    page.verifySale();
+    page.click("安めの4,000円を見込み販売価格に使う");
+    page.click("保存して箱の一覧へ");
+    expect(page.text()).toContain("箱全体の見込み粗利600円");
+  });
+  it("preserves v1 evidence during migration, then persists invalidation after an actual edit", () => {
+    pricedTwo();
+    const original = persisted();
+    const legacyRaw = JSON.stringify({
+      ...original,
+      version: 1,
+      boxes: original.boxes.map((box) => ({
+        ...box,
+        items: box.items.map(({ audience, category, sleeve, color, nameMode, ...item }) => {
+          void audience;
+          void category;
+          void sleeve;
+          void color;
+          void nameMode;
+          return item;
+        }),
+      })),
+    });
+    saved.set(store.intakeKey, legacyRaw);
+    remount();
+    let page = screen();
+    expect(page.text()).toContain("箱全体の見込み粗利600円");
+    expect(saved.get(store.intakeKey)).toBe(legacyRaw);
+    page.clickContaining("紺のシャツ");
+    expect(persisted().boxes[0]!.items[0]!.comparisons).toEqual(
+      original.boxes[0]!.items[0]!.comparisons,
+    );
+    page.click("商品情報を直す");
+    page.edit("商品の状態", "傷・汚れがある");
+    expect(JSON.parse(saved.get(store.intakeKey)!).version).toBe(2);
+    remount();
+    page = screen();
+    expect(page.value("商品名・種類（必須）")).toBe("紺のシャツ");
+    expect(page.value("サイズ（任意）")).toBe("M");
+    page.click("この商品の見込み利益を確認");
+    expect(page.confirmedSales()).toEqual([false, false, false]);
+    expect(page.value("見込み販売価格（円）")).toBe("");
+    expect(store.itemProfit(persisted().boxes[0]!, 0)).toBeNull();
+    expect(persisted().boxes[0]!.items[1]!.id).toBe(original.boxes[0]!.items[1]!.id);
+  });
+  it("keeps an unsaved detail edit and its invalidated evidence together until saving succeeds", () => {
+    const page = pricedTwo();
+    page.clickContaining("紺のシャツ");
+    page.click("商品情報を直す");
+    const originalRaw = saved.get(store.intakeKey);
+    denyWrite = true;
+    page.edit("商品の状態", "傷・汚れがある");
+    page.click("3 商品一覧");
+    expect(page.text()).toContain("未保存の入力があります");
+    expect(page.text()).toContain("1点目を検品・登録");
+    expect(page.value("商品の状態")).toBe("傷・汚れがある");
+    expect(saved.get(store.intakeKey)).toBe(originalRaw);
+    denyWrite = false;
+    page.click("保存を再試行");
+    remount();
+    const reloaded = screen();
+    expect(persisted().boxes[0]!.items[0]).toMatchObject({ registered: false, priceYen: "" });
+    reloaded.click("この商品の見込み利益を確認");
+    expect(reloaded.confirmedSales()).toEqual([false, false, false]);
+    expect(store.itemProfit(persisted().boxes[0]!, 0)).toBeNull();
+  });
   it("saves a long generated title as a draft, returns from brand selection and requires shortening before registration", () => {
     const page = startTwo();
     page.edit("サイズ（任意）", "M");
