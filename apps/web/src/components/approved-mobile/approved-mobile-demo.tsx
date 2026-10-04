@@ -20,6 +20,7 @@ import { isLocalReviewScreen, LocalReviewFlow } from "./local-review-flow";
 import { isReportedReviewScreen, ReportedReviewFlow } from "./reported-review-flow";
 import { isProductPreparationScreen } from "./product-description";
 import { PreparationProductCard, ProductPreparation } from "./product-preparation";
+import { BoxIntakeFlow, IntakeProductList, isBoxIntakeScreen } from "./box-intake-flow";
 import {
   describeReviewRecipes,
   readReviewRecipes,
@@ -3735,32 +3736,50 @@ export function ApprovedMobileDemo({ screenId }: { screenId: string }) {
   const isLocalReview = isStaticApprovedReview && isLocalReviewScreen(screen.id);
   const isReportedReview = isStaticApprovedReview && isReportedReviewScreen(screen.id);
   const isPreparation = isStaticApprovedReview && isProductPreparationScreen(screen.id);
+  const isIntake = isStaticApprovedReview && isBoxIntakeScreen(screen.id);
   const isHeaderlessReviewHome = isLocalReview && screen.id === "04";
 
   return (
     <main
       className={styles.page}
       data-implementation-scope={
-        isPreparation ? "local-product-preparation" : isP1Preview ? "p1-preview" : "p0-live-mapped"
+        isIntake
+          ? "browser-box-intake"
+          : isPreparation
+            ? "local-product-preparation"
+            : isP1Preview
+              ? "p1-preview"
+              : "p0-live-mapped"
       }
       data-live-route={liveRoute ?? undefined}
     >
-      <div className={cn(styles.phoneShell, isPreparation && styles.productPreparationShell)}>
+      <div
+        className={cn(
+          styles.phoneShell,
+          (isPreparation || isIntake) && styles.productPreparationShell,
+        )}
+      >
         {screen.id === "01" || isHeaderlessReviewHome ? null : (
           <Header
             screen={
-              isPreparation
+              isIntake
                 ? {
                     ...screen,
-                    title: "出品の準備",
-                    note: "確認用1点。入力と写真はこのブラウザーに保存します。外部送信・出品は行いません。",
+                    title: "箱の検品と利益",
+                    note: "箱と商品の入力はこのブラウザーに保存します。外部への自動送信はありません。",
                   }
-                : isLocalReview
+                : isPreparation
                   ? {
                       ...screen,
-                      note: "架空商品1件の確認版です。入力・写真はこのブラウザーだけに保存します。外部送信・端末間共有は行いません。",
+                      title: "出品の準備",
+                      note: "確認用1点。入力と写真はこのブラウザーに保存します。外部送信・出品は行いません。",
                     }
-                  : screen
+                  : isLocalReview
+                    ? {
+                        ...screen,
+                        note: "架空商品1件の確認版です。入力・写真はこのブラウザーだけに保存します。外部送信・端末間共有は行いません。",
+                      }
+                    : screen
             }
           />
         )}
@@ -3768,10 +3787,10 @@ export function ApprovedMobileDemo({ screenId }: { screenId: string }) {
           className={cn(
             styles.scrollArea,
             isHeaderlessReviewHome && styles.headerlessReviewHome,
-            isReportedReview && styles.reportedReviewScroll,
+            isReportedReview && !isIntake && styles.reportedReviewScroll,
           )}
         >
-          {isP1Preview && !isReportedReview && !isPreparation ? (
+          {isP1Preview && !isReportedReview && !isPreparation && !isIntake ? (
             <div className={cn(styles.demoNotice, styles.demoNoticeP1)}>
               <span>
                 {["32", "33", "photo-04", "photo-05"].includes(screen.id)
@@ -3785,7 +3804,9 @@ export function ApprovedMobileDemo({ screenId }: { screenId: string }) {
               </span>
             </div>
           ) : null}
-          {isPreparation ? (
+          {isIntake ? (
+            <BoxIntakeFlow key={screen.id} screenId={screen.id} />
+          ) : isPreparation ? (
             <ProductPreparation key={screen.id} screenId={screen.id} />
           ) : isLocalReview ? (
             <LocalReviewFlow key={screen.id} screenId={screen.id} />
@@ -3811,27 +3832,27 @@ const productListScreen: MobileScreen = {
   group: "商品",
   flow: "photo",
   source: "",
-  note: "架空の商品1点だけを表示する操作確認版です。",
+  note: "このブラウザーで登録した箱の商品と、操作の見本を分けて表示します。",
 };
 
 export function ApprovedMobileProductList() {
   return (
-    <main className={styles.page} data-implementation-scope="local-review-list">
-      <div className={styles.phoneShell}>
+    <main className={styles.page} data-implementation-scope="browser-intake-and-sample-list">
+      <div className={cn(styles.phoneShell, styles.productPreparationShell)}>
         <Header screen={productListScreen} />
         <div className={styles.scrollArea}>
+          <IntakeProductList />
           <section className={styles.productListContent} aria-labelledby="sample-products-title">
-            <p className={styles.productListNotice}>
-              操作確認用の架空商品です。実際の商品は登録されていません。
-            </p>
-            <div className={styles.productListHeading}>
-              <h2 id="sample-products-title">商品を確認</h2>
-              <span>1件</span>
-            </div>
-            <PreparationProductCard />
-            <p className={styles.productListFootnote}>
-              現在は1点だけの確認版です。入力した実商品や他の端末の商品は表示されません。
-            </p>
+            <details>
+              <summary id="sample-products-title">操作の見本（架空商品1点）</summary>
+              <p className={styles.productListNotice}>
+                写真・採寸・説明文の操作を試すための見本です。箱から登録した商品とは別です。
+              </p>
+              <PreparationProductCard />
+              <p className={styles.productListFootnote}>
+                箱の検品・見込み利益は上の商品一覧から進めてください。他の端末の入力は共有されません。
+              </p>
+            </details>
           </section>
         </div>
         <Footer screen={productListScreen} />
