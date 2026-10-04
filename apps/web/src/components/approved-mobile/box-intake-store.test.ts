@@ -50,10 +50,35 @@ function soldItem(id: string): IntakeItem {
 function state(): IntakeState {
   const box = confirmBox({ ...createBox("box"), count: 2 });
   box.items[0] = soldItem("box-1");
-  return { version: 1, activeBoxId: "box", boxes: [box] };
+  return { version: 2, activeBoxId: "box", boxes: [box] };
 }
 
 describe("private browser box intake storage", () => {
+  it("keeps generated draft names without weakening legacy or registration limits", () => {
+    const data = state();
+    data.boxes[0]!.items[0]!.registered = false;
+    data.boxes[0]!.items[0]!.name = "A".repeat(102);
+    expect(parseIntake(JSON.stringify(data)).boxes[0]!.items[0]!.name).toHaveLength(102);
+    expect(itemRegistrationProblems(data.boxes[0]!.items[0]!)).not.toHaveLength(0);
+    data.boxes[0]!.items[0]!.name = "A".repeat(501);
+    expect(() => parseIntake(JSON.stringify(data))).toThrow("保存内容");
+    const old = {
+      ...data,
+      version: 1,
+      boxes: data.boxes.map((box) => ({
+        ...box,
+        items: box.items.map(({ audience, category, sleeve, color, nameMode, ...item }) => {
+          void audience;
+          void category;
+          void sleeve;
+          void color;
+          void nameMode;
+          return { ...item, name: "A".repeat(101) };
+        }),
+      })),
+    };
+    expect(() => parseIntake(JSON.stringify(old))).toThrow("保存内容");
+  });
   it("creates fresh blank state and restores exact records without touching demo keys", () => {
     const storage = memory();
     storage.entries.set("old-demo", "keep");
@@ -96,7 +121,7 @@ describe("private browser box intake storage", () => {
     };
     expect(() => writeIntake(full, state(), null)).toThrow("quota");
   });
-  it.each(["", "null", "{}", "broken", '{"version":2,"activeBoxId":null,"boxes":[]}'])(
+  it.each(["", "null", "{}", "broken", '{"version":3,"activeBoxId":null,"boxes":[]}'])(
     "rejects corrupt raw %s",
     (raw) => {
       expect(() => parseIntake(raw)).toThrow("保存内容");
@@ -106,6 +131,53 @@ describe("private browser box intake storage", () => {
       expect(storage.entries.get(intakeKey)).toBe(raw);
     },
   );
+  it("migrates only complete v1 records in memory, preserving names, IDs, costs and evidence", () => {
+    const original = state();
+    original.boxes[0]!.items[0]!.size = "W30";
+    const old = {
+      ...original,
+      version: 1,
+      boxes: original.boxes.map((box) => ({
+        ...box,
+        items: box.items.map(({ audience, category, sleeve, color, nameMode, ...item }) => {
+          void audience;
+          void category;
+          void sleeve;
+          void color;
+          void nameMode;
+          return item;
+        }),
+      })),
+    };
+    const raw = JSON.stringify(old);
+    const storage = memory();
+    storage.entries.set(intakeKey, raw);
+    const loaded = readIntake(storage);
+    expect(loaded.raw).toBe(raw);
+    expect(storage.getItem(intakeKey)).toBe(raw);
+    expect(loaded.state.version).toBe(2);
+    expect(loaded.state.boxes[0]!.items[0]).toEqual({
+      ...original.boxes[0]!.items[0],
+      nameMode: "manual",
+    });
+    expect(loaded.state.boxes[0]!.items[1]!.nameMode).toBe("auto");
+    const newRaw = writeIntake(storage, loaded.state, raw);
+    expect(JSON.parse(newRaw).version).toBe(2);
+    const malformed = structuredClone(old);
+    Object.assign(malformed.boxes[0]!.items[0]!, { color: "ネイビー" });
+    expect(() => parseIntake(JSON.stringify(malformed))).toThrow("保存内容");
+  });
+  it("leaves original v1 bytes intact when migration cannot be saved", () => {
+    const old = JSON.stringify({ version: 1, activeBoxId: null, boxes: [] });
+    const storage = {
+      getItem: () => old,
+      setItem: () => {
+        throw Error("quota");
+      },
+    };
+    expect(() => writeIntake(storage, parseIntake(old), old)).toThrow("quota");
+    expect(storage.getItem()).toBe(old);
+  });
   it("validates IDs, shape, bounds, item count and active box", () => {
     const mutations: ((data: IntakeState) => void)[] = [
       (data) => {

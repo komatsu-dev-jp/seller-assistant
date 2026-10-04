@@ -41,7 +41,7 @@ describe("intake single-writer browser lease", () => {
     expect(second.canWrite()).toBe(false);
     expect(secondReady).not.toHaveBeenCalled();
     expect(secondFailed).toHaveBeenCalledWith(expect.stringContaining("別のタブ"));
-    raw = writeIntake(storage, { version: 1, activeBoxId: "a", boxes: [createBox("a")] }, firstRaw);
+    raw = writeIntake(storage, { version: 2, activeBoxId: "a", boxes: [createBox("a")] }, firstRaw);
     second.close();
     first.close();
     await Promise.resolve();

@@ -11,6 +11,11 @@ export interface IntakeItem {
   name: string;
   brand: string;
   size: string;
+  audience: string;
+  category: string;
+  sleeve: string;
+  color: string;
+  nameMode: "auto" | "manual";
   condition: string;
   inspection: "unchecked" | "sellable" | "hold" | "unsellable";
   memo: string;
@@ -33,14 +38,14 @@ export interface IntakeBox {
 }
 
 export interface IntakeState {
-  version: 1;
+  version: 2;
   activeBoxId: string | null;
   boxes: IntakeBox[];
 }
 
 // Independent from every existing review/demo key. Never migrate or clear those keys.
 export const intakeKey = "resale-box-intake-browser-v1";
-export const emptyIntakeState = (): IntakeState => ({ version: 1, activeBoxId: null, boxes: [] });
+export const emptyIntakeState = (): IntakeState => ({ version: 2, activeBoxId: null, boxes: [] });
 export const createBox = (id: string, name = ""): IntakeBox => ({
   id,
   name,
@@ -55,6 +60,11 @@ export const createItem = (id: string): IntakeItem => ({
   name: "",
   brand: "",
   size: "",
+  audience: "",
+  category: "",
+  sleeve: "",
+  color: "",
+  nameMode: "auto",
   condition: "",
   inspection: "unchecked",
   memo: "",
@@ -73,7 +83,11 @@ export function confirmBox(box: IntakeBox): IntakeBox {
   const entered = (item: IntakeItem) => {
     const empty = createItem(item.id);
     return (Object.keys(empty) as (keyof IntakeItem)[]).some((key) =>
-      key === "comparisons" ? item.comparisons.length > 0 : item[key] !== empty[key],
+      key === "nameMode"
+        ? false
+        : key === "comparisons"
+          ? item.comparisons.length > 0
+          : item[key] !== empty[key],
     );
   };
   if (box.items.slice(box.count).some(entered)) {
@@ -110,14 +124,24 @@ function validComparison(value: unknown): value is SoldComparison {
     textWithin(value.note, 1000)
   );
 }
-function validItem(value: unknown): value is IntakeItem {
+const attributeKeys = ["audience", "category", "sleeve", "color", "nameMode"];
+function validItem(value: unknown, legacy = false): value is IntakeItem {
   return (
     record(value) &&
-    exact(value, Object.keys(createItem("template"))) &&
+    exact(
+      value,
+      Object.keys(createItem("template")).filter((key) => !legacy || !attributeKeys.includes(key)),
+    ) &&
     validId(value.id) &&
-    textWithin(value.name, 100) &&
+    textWithin(value.name, legacy || value.registered === true ? 100 : 500) &&
     textWithin(value.brand, 100) &&
     textWithin(value.size, 50) &&
+    (legacy ||
+      (textWithin(value.audience, 50) &&
+        textWithin(value.category, 50) &&
+        textWithin(value.sleeve, 50) &&
+        textWithin(value.color, 50) &&
+        (value.nameMode === "auto" || value.nameMode === "manual"))) &&
     textWithin(value.condition, 500) &&
     textWithin(value.memo, 2000) &&
     typeof value.inspection === "string" &&
@@ -132,7 +156,7 @@ function validItem(value: unknown): value is IntakeItem {
     unique(value.comparisons.map((v) => v.id))
   );
 }
-function validBox(value: unknown): value is IntakeBox {
+function validBox(value: unknown, legacy = false): value is IntakeBox {
   return (
     record(value) &&
     exact(value, Object.keys(createBox("template"))) &&
@@ -146,7 +170,7 @@ function validBox(value: unknown): value is IntakeBox {
     textWithin(value.purchaseYen, 20) &&
     textWithin(value.inboundShippingYen, 20) &&
     Array.isArray(value.items) &&
-    value.items.every(validItem) &&
+    value.items.every((item) => validItem(item, legacy)) &&
     unique(value.items.map((v) => v.id)) &&
     (value.confirmed
       ? value.count > 0 && value.items.length === value.count
@@ -162,10 +186,10 @@ export function parseIntake(raw: string | null): IntakeState {
     if (
       !record(value) ||
       !exact(value, ["version", "activeBoxId", "boxes"]) ||
-      value.version !== 1 ||
+      (value.version !== 1 && value.version !== 2) ||
       !Array.isArray(value.boxes) ||
       value.boxes.length > 100 ||
-      !value.boxes.every(validBox) ||
+      !value.boxes.every((box) => validBox(box, value.version === 1)) ||
       !unique(value.boxes.map((box) => box.id)) ||
       !unique(value.boxes.flatMap((box) => box.items.map((item) => item.id))) ||
       value.boxes.reduce((sum, box) => sum + box.items.length, 0) > 20000 ||
@@ -176,7 +200,24 @@ export function parseIntake(raw: string | null): IntakeState {
     ) {
       throw new Error();
     }
-    return value as unknown as IntakeState;
+    const validated = value as unknown as IntakeState;
+    if (value.version === 2) return validated;
+    // Migration is in memory only. IDs, names, costs and evidence are never inferred or discarded.
+    return {
+      ...validated,
+      version: 2,
+      boxes: validated.boxes.map((box) => ({
+        ...box,
+        items: box.items.map((item) => ({
+          ...item,
+          audience: "",
+          category: "",
+          sleeve: "",
+          color: "",
+          nameMode: item.name ? "manual" : "auto",
+        })),
+      })),
+    };
   } catch {
     throw new Error("保存内容を読み取れません。元の保存内容は変更していません。");
   }

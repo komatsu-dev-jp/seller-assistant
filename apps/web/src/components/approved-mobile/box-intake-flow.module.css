@@ -140,6 +140,59 @@
   gap: 10px;
 }
 
+.brandButton,
+.brandList button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid #bac6d8;
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #fff;
+  color: #1453cb;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.filters {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.filters button {
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid #dce3ee;
+  border-radius: 22px;
+  background: #fff;
+  color: #536179;
+  font-size: 14px;
+}
+
+.filters button[aria-pressed="true"],
+.brandList button[aria-pressed="true"] {
+  border-color: #2467ee;
+  background: #eef4ff;
+  color: #1453cb;
+}
+
+.brandList {
+  display: grid;
+  gap: 6px;
+}
+
+.titlePreview {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  background: #f4f7fd;
+}
+
 .primary,
 .secondary {
   box-sizing: border-box;
