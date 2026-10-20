@@ -21,11 +21,11 @@ import {
   type ProductDetails,
 } from "./review-product-details";
 import { reviewPath } from "./review-path";
+import { reviewScreenHref, workflowHref, type ReviewPlatform } from "./review-workflow-routes";
 import ui from "./product-preparation.module.css";
 import { prepareProductRecovery, type RecoveryChange } from "./product-preparation-recovery";
 
 const basePath = process.env.NEXT_PUBLIC_REVIEW_BASE_PATH ?? "";
-const path = (id: string) => reviewPath(`/mobile/screens/${id}/`, basePath);
 const sampleFront = "/approved-assets/product/shirt-front.png";
 const sampleSources: Record<string, string> = {
   front: sampleFront,
@@ -61,7 +61,13 @@ function errorText(cause: unknown): string {
     : "保存内容を読み書きできません。端末の空き容量・保存設定を確認してください。";
 }
 
-export function ProductPreparation({ screenId }: { screenId: string }) {
+export function ProductPreparation({
+  screenId,
+  platform = "mobile",
+}: {
+  screenId: string;
+  platform?: ReviewPlatform;
+}) {
   const photoEntry = ["29", "30", "photo-01", "photo-02", "photo-06", "photo-07"].includes(
     screenId,
   );
@@ -320,7 +326,7 @@ export function ProductPreparation({ screenId }: { screenId: string }) {
       <details className={ui.boundary}>
         <summary>確認用1点 · このブラウザーに保存</summary>
         <p>
-          実商品・個人情報は入力しないでください。入力と選んだ写真はこの端末の同じブラウザーだけに保存します。PC・別端末との共有、自動加工、自動出品はしません。ブラウザーのデータ消去で失われます。
+          実商品・個人情報は入力しないでください。入力と選んだ写真はこの端末の同じブラウザーだけに保存します。別端末・別ブラウザーとの共有、自動加工、自動出品はしません。ブラウザーのデータ消去で失われます。
         </p>
       </details>
       <nav className={ui.sections} aria-label="出品準備の項目">
@@ -490,7 +496,7 @@ export function ProductPreparation({ screenId }: { screenId: string }) {
               <p className={ui.hint}>
                 保管場所は出品文に載せません。場所の確定・検品は作業画面で行います。
               </p>
-              <a className={ui.textLink} href={path("14")}>
+              <a className={ui.textLink} href={reviewScreenHref(platform, "14")}>
                 保管場所を確認・変更する　›
               </a>
             </details>
@@ -561,7 +567,7 @@ export function ProductPreparation({ screenId }: { screenId: string }) {
               <p className={ui.hint}>
                 この確認版に自動加工・一括書き出しはありません。難しいファイル操作をしなくても、商品情報と出品文を使えます。
               </p>
-              <a className={ui.textLink} href={path("photo-04")}>
+              <a className={ui.textLink} href={workflowHref(platform, "recipes")}>
                 編集の好みを選ぶ（任意）　›
               </a>
             </details>
@@ -622,7 +628,7 @@ export function ProductPreparation({ screenId }: { screenId: string }) {
       <p className={ui.status} role="status">
         {busy ? "写真を保存しています…" : notice}
       </p>
-      <a className={ui.textLink} href={reviewPath("/mobile/products/", basePath)}>
+      <a className={ui.textLink} href={workflowHref(platform, "products")}>
         商品一覧へ戻る　›
       </a>
       <input
@@ -674,7 +680,9 @@ export function ProductPreparation({ screenId }: { screenId: string }) {
   );
 }
 
-export function PreparationProductCard() {
+export function PreparationProductCard({
+  platform = "mobile",
+}: { platform?: ReviewPlatform } = {}) {
   const [state, setState] = useState<ReviewState | null>(null);
   const [photos, setPhotos] = useState<ReviewPhotos>({});
   const [error, setError] = useState("");
@@ -699,7 +707,7 @@ export function PreparationProductCard() {
   const d = state?.details ?? sampleProductDetails();
   return (
     <>
-      <a className={ui.listCard} href={path("photo-03")}>
+      <a className={ui.listCard} href={workflowHref(platform, "preparation")}>
         <div className={ui.productImage}>
           <Photo
             blob={(photos["draft:front"] ?? photos.front)?.blob}

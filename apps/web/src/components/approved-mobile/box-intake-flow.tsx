@@ -5,6 +5,7 @@ import {
   comparisonsSummary,
   confirmBox,
   createBox,
+  intakeKey,
   itemProfit,
   itemRegistrationProblems,
   money,
@@ -17,7 +18,7 @@ import {
   type SoldComparison,
 } from "./box-intake-store";
 import { controlsKey, parseControls } from "./review-controls-state";
-import { reviewPath } from "./review-path";
+import { workflowHref, type ReviewPlatform } from "./review-workflow-routes";
 import { acquireIntakeEditor, type IntakeEditorLease } from "./box-intake-write-lease";
 import ui from "./box-intake-flow.module.css";
 import {
@@ -32,8 +33,6 @@ import {
 } from "./intake-product-options";
 
 type Step = "count" | "item" | "brand" | "profit" | "list";
-const basePath = process.env.NEXT_PUBLIC_REVIEW_BASE_PATH ?? "";
-const entry = reviewPath("/mobile/screens/box-02/", basePath);
 export const isBoxIntakeScreen = (id: string) =>
   ["box-01", "box-02", "box-03", "box-04", "box-05"].includes(id);
 const yen = (value: number) => `${value.toLocaleString("ja-JP")}円`;
@@ -138,7 +137,17 @@ function downloadState(state: IntakeState) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export function BoxIntakeFlow({ screenId }: { screenId: string }) {
+// One workflow and storage model for both layouts; only the navigation target differs.
+export function BoxIntakeFlow({
+  screenId,
+  platform = "mobile",
+  defaultStep,
+}: {
+  screenId: string;
+  platform?: ReviewPlatform;
+  defaultStep?: Step;
+}) {
+  const entry = workflowHref(platform, "intake");
   const [state, setState] = useState<IntakeState | null>(null);
   const current = useRef<IntakeState | null>(null);
   const expected = useRef<string | null>(null);
@@ -218,9 +227,11 @@ export function BoxIntakeFlow({ screenId }: { screenId: string }) {
               requested === "list" ||
               requested === "count"
             ? requested
-            : screenId === "box-03"
-              ? "item"
-              : "list",
+            : defaultStep
+              ? defaultStep
+              : screenId === "box-03"
+                ? "item"
+                : "list",
       );
     } catch (cause) {
       setError(errorMessage(cause));
@@ -455,7 +466,7 @@ export function BoxIntakeFlow({ screenId }: { screenId: string }) {
   );
   if (!state)
     return (
-      <section className={ui.flow}>
+      <section className={ui.flow} data-platform={platform}>
         {feedback}
         {!error ? <p>箱を読み込んでいます…</p> : null}
       </section>
@@ -504,7 +515,7 @@ export function BoxIntakeFlow({ screenId }: { screenId: string }) {
   }
 
   return (
-    <section className={ui.flow}>
+    <section className={ui.flow} data-platform={platform}>
       <div className={ui.topline}>
         <span>箱の検品と見込み利益</span>
         <span>
@@ -520,15 +531,18 @@ export function BoxIntakeFlow({ screenId }: { screenId: string }) {
           {(
             [
               ["count", "1 点数"],
-              ["item", "2 検品・登録"],
-              ["list", "3 商品一覧"],
+              ["item", "2 検品"],
+              ["profit", "3 利益"],
+              ["list", "一覧"],
             ] as const
           ).map(([name, label]) => (
             <button
               key={name}
               type="button"
               aria-current={step === name ? "step" : undefined}
-              disabled={!box.confirmed && name !== "count"}
+              disabled={
+                (!box.confirmed && name !== "count") || (name === "profit" && !item?.registered)
+              }
               onClick={() => navigate(name, index)}
             >
               {label}
@@ -540,7 +554,10 @@ export function BoxIntakeFlow({ screenId }: { screenId: string }) {
 
       {step === "count" ? (
         <>
-          <div className={ui.card}>
+          <details className={ui.card}>
+            <summary>
+              箱の名前・仕入れ代 <span className={ui.hint}>あとで入力できます</span>
+            </summary>
             <Field
               label="箱の名前・番号"
               value={box.name}
@@ -552,9 +569,9 @@ export function BoxIntakeFlow({ screenId }: { screenId: string }) {
             <p className={ui.hint}>
               箱の仕入れ代と送料を、中の全点に均等に割り振ります。金額は後から入力・修正できます。
             </p>
-          </div>
+          </details>
           {legacyNotice ? <p className={ui.hint}>{legacyNotice}</p> : null}
-          <div className={ui.countCard}>
+          <div className={ui.countCard} data-intake-count>
             <label className={ui.counterLabel}>
               入っている点数
               <input
@@ -586,6 +603,7 @@ export function BoxIntakeFlow({ screenId }: { screenId: string }) {
           <Action disabled={box.count <= 0} onClick={finishCount}>
             {box.count > 0 ? `${box.count}点で確定して検品へ` : "1点以上を数えてください"}
           </Action>
+          <p className={ui.hint}>次に、1点ずつブランド・サイズ・状態を登録します。</p>
           {box.items.length ? (
             <p className={ui.hint}>入力済みの商品を消すような点数の変更はできません。</p>
           ) : null}
@@ -1179,22 +1197,39 @@ export function BoxIntakeFlow({ screenId }: { screenId: string }) {
   );
 }
 
-export function IntakeProductList() {
+export function IntakeProductList({ platform = "mobile" }: { platform?: ReviewPlatform } = {}) {
+  const entry = workflowHref(platform, "intake");
   const [state, setState] = useState<IntakeState | null>(null);
   const [error, setError] = useState("");
-  useEffect(() => {
+  const refresh = () => {
     try {
       setState(readIntake(window.localStorage).state);
+      setError("");
     } catch (cause) {
       setError(errorMessage(cause));
     }
+  };
+  useEffect(() => {
+    refresh();
+    const storageChanged = (event: StorageEvent) => {
+      if (event.key === intakeKey || event.key === null) refresh();
+    };
+    window.addEventListener("storage", storageChanged);
+    window.addEventListener("focus", refresh);
+    return () => {
+      window.removeEventListener("storage", storageChanged);
+      window.removeEventListener("focus", refresh);
+    };
   }, []);
   return (
-    <section className={ui.flow} aria-label="届いた箱の商品">
+    <section className={ui.flow} aria-label="届いた箱の商品" data-platform={platform}>
       <h2 className={ui.heading}>届いた箱から登録した商品</h2>
       <a className={ui.external} href={entry}>
         箱の点数・検品を進める ›
       </a>
+      <button className={ui.textButton} type="button" onClick={refresh}>
+        一覧を更新
+      </button>
       {error ? (
         <p role="alert" className={ui.error}>
           {error}
@@ -1209,6 +1244,27 @@ export function IntakeProductList() {
           <a className={ui.external} href={`${entry}?box=${encodeURIComponent(box.id)}&step=list`}>
             この箱の商品一覧・見込み利益へ ›
           </a>
+          {box.items.slice(0, 30).map((item, index) => (
+            <a
+              key={item.id}
+              className={ui.productRow}
+              href={`${entry}?box=${encodeURIComponent(box.id)}&step=${item.registered ? "profit" : "item"}&item=${index}`}
+            >
+              <span className={ui.number}>{index + 1}</span>
+              <span>
+                <strong>{item.name || "これから登録"}</strong>
+                <small>
+                  {item.registered ? inspectionLabels[item.inspection] : "検品・登録が未完了"}
+                </small>
+              </span>
+              <span className={ui.rowResult}>
+                {item.registered ? "見込み利益へ ›" : "検品する ›"}
+              </span>
+            </a>
+          ))}
+          {box.items.length > 30 ? (
+            <p className={ui.hint}>残りの商品は、この箱の商品一覧から確認できます。</p>
+          ) : null}
         </div>
       ))}
       {state && !state.boxes.length ? (

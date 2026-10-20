@@ -8,6 +8,7 @@ import * as description from "./product-description";
 import * as details from "./review-product-details";
 import { reviewPath } from "./review-path";
 import * as recovery from "./product-preparation-recovery";
+import * as workflow from "./review-workflow-routes";
 
 // Execute the actual handlers with storage/clipboard failures. Native layout/dialog
 // behaviour must additionally be verified in the browser; this harness does not cover layout.
@@ -50,6 +51,7 @@ type Props = {
   onClick?: () => void;
   onChange?: (e: { target: { value: string } }) => void;
   role?: string;
+  href?: string;
 };
 function nodes(node: ReactNode): ReactElement<Props>[] {
   if (Array.isArray(node)) return node.flatMap(nodes);
@@ -72,7 +74,12 @@ const compiled = ts.transpileModule(source, {
     target: ts.ScriptTarget.ES2022,
   },
 }).outputText;
-const exported: { ProductPreparation?: (props: { screenId: string }) => ReactElement } = {};
+const exported: {
+  ProductPreparation?: (props: {
+    screenId: string;
+    platform: workflow.ReviewPlatform;
+  }) => ReactElement;
+} = {};
 new Function("require", "exports", "React", compiled)(
   (name: string) => {
     if (name === "react") return hooks;
@@ -82,6 +89,7 @@ new Function("require", "exports", "React", compiled)(
     if (name === "./review-product-details") return details;
     if (name === "./review-path") return { reviewPath };
     if (name === "./product-preparation-recovery") return recovery;
+    if (name === "./review-workflow-routes") return workflow;
     throw Error(name);
   },
   exported,
@@ -99,10 +107,10 @@ function remount() {
   values = [];
   effects = [];
 }
-function page(id = "photo-03") {
+function page(id = "photo-03", platform: workflow.ReviewPlatform = "mobile") {
   const render = () => {
     cursor = 0;
-    const tree = exported.ProductPreparation!({ screenId: id });
+    const tree = exported.ProductPreparation!({ screenId: id, platform });
     const pending = effects;
     effects = [];
     pending.forEach((e) => e());
@@ -129,6 +137,10 @@ function page(id = "photo-03") {
       if (!b.props.disabled) b.props.onClick?.();
     },
     disabled: (label: string) => !!button(label).props.disabled,
+    links: () =>
+      nodes(render())
+        .filter((node) => node.type === "a")
+        .map((node) => node.props.href),
   };
 }
 beforeEach(() => {
@@ -165,6 +177,19 @@ afterEach(() => {
 });
 
 describe("product preparation handlers", () => {
+  it("shares the same preparation record between PC and mobile and returns to the correct catalog", () => {
+    const pc = page("photo-03", "pc");
+    pc.input("ブランド").onChange?.({ target: { value: "PCで入力した見本" } });
+    expect(pc.links()).toContain("/pc/products/");
+    expect(pc.links()).toContain("/pc/workflow/?screen=14");
+    pc.click("写真");
+    expect(pc.links()).toContain("/pc/recipes/");
+    expect(pc.links().some((href) => href?.startsWith("/mobile/"))).toBe(false);
+    remount();
+    const mobile = page();
+    expect(mobile.input("ブランド").value).toBe("PCで入力した見本");
+    expect(mobile.links()).toContain("/mobile/products/");
+  });
   it("reuses measurements and metadata, saves changes and copies only after the user's action", async () => {
     raw = JSON.stringify({
       ...store.createReviewState(),

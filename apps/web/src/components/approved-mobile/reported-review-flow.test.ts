@@ -6,6 +6,7 @@ import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import * as stateModule from "./review-controls-state";
 import { reviewPath } from "./review-path";
 import { validatePhoto } from "./local-review-store";
+import * as workflow from "./review-workflow-routes";
 
 // Execute production handlers; native rendering/focus/touch are separately checked in the browser.
 const values: unknown[] = [];
@@ -56,6 +57,7 @@ type Props = {
   onPointerCancel?: () => void;
   onKeyDown?: (e: unknown) => void;
   onKeyUp?: (e: unknown) => void;
+  type?: string;
 };
 function nodes(node: ReactNode): ReactElement<Props>[] {
   if (Array.isArray(node)) return node.flatMap(nodes);
@@ -79,7 +81,10 @@ const compiled = ts.transpileModule(source, {
   },
 }).outputText;
 const exports: {
-  ReportedReviewFlow?: (props: { screenId: string }) => ReactElement;
+  ReportedReviewFlow?: (props: {
+    screenId: string;
+    platform: workflow.ReviewPlatform;
+  }) => ReactElement;
   HoldToConfirm?: (props: { disabled: boolean; onConfirm: () => void }) => ReactElement;
 } = {};
 new Function("require", "exports", "React", compiled)(
@@ -89,6 +94,7 @@ new Function("require", "exports", "React", compiled)(
     if (name === "./review-path") return { reviewPath };
     if (name === "./local-review-store") return { validatePhoto };
     if (name === "./review-controls-state") return stateModule;
+    if (name === "./review-workflow-routes") return workflow;
     throw new Error(name);
   },
   exports,
@@ -99,10 +105,10 @@ let denyWrite: boolean;
 let denyRead: boolean;
 const winEvents = new Map<string, (e: unknown) => void>();
 const docEvents = new Map<string, (e: unknown) => void>();
-function screen(id: string) {
+function screen(id: string, platform: workflow.ReviewPlatform = "mobile") {
   const render = () => {
     cursor = 0;
-    const tree = exports.ReportedReviewFlow!({ screenId: id });
+    const tree = exports.ReportedReviewFlow!({ screenId: id, platform });
     const current = effects;
     effects = [];
     current.forEach((e) => e());
@@ -128,6 +134,12 @@ function screen(id: string) {
       find((n) => n.props.label === label).props.onChange?.(value),
     check: (label: string) => find((n) => n.props.label === label).props.onChange?.(""),
     hold: () => find((n) => !!n.props.onConfirm).props,
+    field: (label: string) => {
+      const field = find((n) => n.props.label === label);
+      return nodes((field.type as (props: Props) => ReactNode)(field.props)).find(
+        (node) => node.type === "select" || node.type === "input",
+      )!;
+    },
     links: () =>
       nodes(render())
         .filter((n) => n.type === "a")
@@ -176,6 +188,45 @@ afterEach(() => {
 });
 
 describe("reported screen production handlers", () => {
+  it("uses actual dropdowns for filing and tax while retaining dates and legacy custom values", () => {
+    saved = JSON.stringify({
+      ...stateModule.initialControls(),
+      settings: ["以前の区分", "以前の税区分", "2026-01-01", "2026-12-31"],
+    });
+    const page = screen("44", "pc");
+    expect(page.field("申告の設定").type).toBe("select");
+    expect(page.field("消費税").type).toBe("select");
+    expect(page.field("開始日").props.type).toBe("date");
+    expect(page.field("終了日").props.type).toBe("date");
+    expect(text(page.field("申告の設定"))).toContain("以前の区分（以前の入力）");
+    page.edit("申告の設定", "青色申告");
+    page.edit("消費税", "免税");
+    page.click("内容を確認して保存");
+    expect(window.location.assign).toHaveBeenCalledWith("/pc/47/");
+    remount();
+    expect(screen("44").field("申告の設定").props.value).toBe("青色申告");
+  });
+  it("keeps PC accounting preflight and file navigation inside the PC workspace", () => {
+    saved = JSON.stringify({
+      ...stateModule.initialControls(),
+      settings: ["青色申告", "免税", "2026-01-01", "2026-12-31"],
+      candidates: [true, false, false, false],
+    });
+    const page = screen("46", "pc");
+    expect(page.links()).toContain("/pc/46/");
+    expect(page.links()).toContain("/pc/47/");
+    expect(page.links()).toContain("/pc/3/");
+    page.check("資料（このファイルが架空例であることを確認）");
+    page.check("重複（見本の選択項目を確認）");
+    denyWrite = true;
+    page.click("ファイル内容を確認");
+    expect(window.location.assign).not.toHaveBeenCalled();
+    expect(page.text()).toContain("一時保存できません");
+    denyWrite = false;
+    page.click("保存を再試行");
+    page.click("ファイル内容を確認");
+    expect(window.location.assign).toHaveBeenCalledWith("/pc/48/?stage=file");
+  });
   it("increments/decrements the actual count, confirms it and restores after remount", () => {
     let page = screen("box-02");
     expect(page.text()).toContain("BOX-2026-014");
@@ -222,7 +273,7 @@ describe("reported screen production handlers", () => {
     expect(page.text()).toContain("読み込みを再試行");
     denyRead = false;
     page.click("読み込みを再試行");
-    expect(page.text()).toContain("会計の設定を入力");
+    expect(page.text()).toContain("会計の設定を選んで");
   });
   it("connects settings, candidate selection and explicit preflight, resetting checks on edit", () => {
     let page = screen("44");

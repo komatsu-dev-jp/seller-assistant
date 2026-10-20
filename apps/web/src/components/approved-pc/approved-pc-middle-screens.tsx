@@ -1,4 +1,5 @@
 "use client";
+import { pcNavigationPath } from "./pc-navigation-path";
 import { type ChangeEvent, useEffect, useRef, useState } from "react";
 import {
   APPROVED_PC_LISTING_DESCRIPTION,
@@ -189,7 +190,7 @@ function Shell({ n, children }: { n: number; children: React.ReactNode }) {
         {nav.map((x, i) => (
           <a
             className={x === active ? styles.active : ""}
-            href={to([2, 3, 5, 9, 29, 33, 45, 37, 49][i] ?? 2)}
+            href={pcNavigationPath(x, to([2, 3, 5, 9, 29, 33, 45, 37, 49][i] ?? 2))}
             key={x}
             aria-current={x === active ? "page" : undefined}
           >
