@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import styles from "./approved-mobile-demo.module.css";
 import local from "./reported-review-flow.module.css";
 import { reviewPath } from "./review-path";
+import { accountingHref, type ReviewPlatform } from "./review-workflow-routes";
 import { validatePhoto } from "./local-review-store";
 import {
   candidateLabels,
@@ -109,6 +110,35 @@ function Help({ label, children }: { label: string; children: ReactNode }) {
       <summary>{label}について</summary>
       <p>{children}</p>
     </details>
+  );
+}
+
+function SettingSelect({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: readonly string[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className={styles.formField}>
+      <span>{label}</span>
+      <select aria-label={label} value={value} onChange={(event) => onChange(event.target.value)}>
+        <option value="">選んでください</option>
+        {value && !options.includes(value) ? (
+          <option value={value}>{value}（以前の入力）</option>
+        ) : null}
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 
@@ -369,7 +399,14 @@ function PhotoReview({ processed }: { processed: boolean }) {
   );
 }
 
-export function ReportedReviewFlow({ screenId }: { screenId: string }) {
+export function ReportedReviewFlow({
+  screenId,
+  platform = "mobile",
+}: {
+  screenId: string;
+  platform?: ReviewPlatform;
+}) {
+  const route = (id: string) => accountingHref(platform, id);
   const [state, setState] = useState<ControlsState | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -591,7 +628,7 @@ export function ReportedReviewFlow({ screenId }: { screenId: string }) {
       content = (
         <>
           <p className={styles.boardInstruction}>
-            会計の設定を入力してください。項目をタップすると入力欄が開きます。
+            会計の設定を選んでください。会計年度は開始日と終了日を指定します。
           </p>
           <div className={styles.accountList}>
             {["申告の設定", "消費税", "会計年度"].map((label, i) => (
@@ -625,10 +662,12 @@ export function ReportedReviewFlow({ screenId }: { screenId: string }) {
                   </span>
                 </summary>
                 {i < 2 ? (
-                  <Field
+                  <SettingSelect
                     label={label}
                     value={state.settings[i]!}
-                    placeholder="確認した内容を入力（操作練習用）"
+                    options={
+                      i === 0 ? ["青色申告", "白色申告", "確認中"] : ["免税", "課税", "確認中"]
+                    }
                     onChange={(value) =>
                       update({
                         ...state,
@@ -1036,7 +1075,7 @@ export function ReportedReviewFlow({ screenId }: { screenId: string }) {
     }
   }
   return (
-    <div className={local.flow}>
+    <div className={local.flow} data-platform={platform}>
       <p className={local.note}>
         操作確認版・架空データ。入力はこのタブ内に一時保存します。実商品・個人情報は入力しないでください。外部への自動送信・実業務への反映はありません。
       </p>
@@ -1061,7 +1100,7 @@ export function ReportedReviewFlow({ screenId }: { screenId: string }) {
           {notice}
         </p>
       ) : null}
-      <div className={`${styles.actionBar} ${local.actions}`}>
+      <div className={`${styles.actionBar} ${local.actions}`} data-shared-actions>
         {action}
         <a className={styles.secondaryAction} href={route("05")}>
           作業一覧へ戻る　›

@@ -59,7 +59,9 @@
 .steps {
   display: flex;
   gap: 4px;
-  border-bottom: 1px solid #dce3ee;
+  padding: 4px;
+  border-radius: 12px;
+  background: #edf0f5;
 }
 
 .steps button {
@@ -67,14 +69,15 @@
   min-height: 44px;
   padding: 8px 4px;
   border: 0;
-  border-bottom: 2px solid transparent;
+  border-radius: 9px;
   background: transparent;
   color: #536179;
   font-size: 13px;
 }
 
 .steps button[aria-current="step"] {
-  border-bottom-color: #2467ee;
+  background: #fff;
+  box-shadow: 0 1px 4px rgb(23 36 60 / 10%);
   color: #1453cb;
   font-weight: 700;
 }
@@ -226,7 +229,9 @@
   width: 100%;
   box-sizing: border-box;
   text-align: center;
-  font-size: 48px;
+  min-height: 104px;
+  font-size: 56px;
+  font-variant-numeric: tabular-nums;
   font-weight: 700;
   color: #17243c;
   background: #f4f7fd;
@@ -422,6 +427,7 @@
   background: #fff;
   color: #17243c;
   text-align: left;
+  text-decoration: none;
 }
 
 .productRow :where(strong, small) {

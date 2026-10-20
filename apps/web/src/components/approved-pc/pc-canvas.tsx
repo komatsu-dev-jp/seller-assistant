@@ -13,6 +13,7 @@ import {
 import { isStaticApprovedReview } from "../approved-review-environment";
 import { getApprovedPcLiveRoute, isP1ApprovedPcScreen } from "./approved-screen-scope";
 import styles from "./pc-canvas.module.css";
+import { pcNavigationPath } from "./pc-navigation-path";
 
 type HeaderPanel = "sidebar" | "work" | "notifications" | "help" | "account";
 
@@ -88,7 +89,7 @@ function HeaderPanelContent({
       {panel === "sidebar" ? (
         <nav aria-label="画面メニュー">
           {menuLinks.map(([label, number]) => (
-            <a href={`/pc/${number}`} key={label}>
+            <a href={pcNavigationPath(label, `/pc/${number}`)} key={label}>
               {label}
             </a>
           ))}

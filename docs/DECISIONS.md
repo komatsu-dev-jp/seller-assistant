@@ -605,3 +605,10 @@ APIキー、トークン、個人情報、生ログ、会話全文、一時的�
 - Preservation: 手入力した商品名は属性変更で上書きしない。v1保存を厳密に読み、既存名は手入力扱いでv2へメモリ内移行する。長い合成名は未登録の下書きに限り保存可能とし、登録前は100文字以内を要求する。
 - Safety: 既存のブラウザー保存・編集ロック・費用計算を維持。ブランドAPI、自動相場取得、自動出品、課金、端末間共有を追加しない。公開・マージは実装とは区別する。
 - Evidence: `docs/implementation/intake-product-attributes-packet.md`、`handoffs/active/2026-10-04-intake-product-attributes.md`。実ブラウザー・実iPhoneは未確認。
+
+### 2026-10-20 — iOS風の配置とPC共通作業を切り分けて公開する
+
+- User decision: iOS風の配置・導線改善とmergeを依頼。混在していたGoogle共有準備を除き、画面改善と必要なPC共通処理だけを別の作業フォルダへ切り分けて公開する方針に「公開までお願いします」と承認。
+- Scope: ホームの箱作業・登録商品の入口、見本との区別、スクロール内の主操作、コンパクトな下部タブ、点数・検品・利益・一覧の工程。PCにも同じ部品とPC内の移動先を提供する。会計の選択式設定と開始日・終了日を保持。
+- Safety: 保存キー・形式・利益式・API・認証・課金・依存関係は変更しない。未完成のGoogleコードと設定資料は公開に含めず元フォルダに保持。別端末の自動共有が完成したとは表示しない。
+- Evidence: `docs/implementation/ios-workflow-delivery.md`、[Issue #36](https://github.com/komatsu-dev-jp/seller-assistant/issues/36)。最終テスト・公開結果はIssueとPRで変更番号を照合する。実iPhone/Safari・キーボード表示中・拡大文字は別途確認。

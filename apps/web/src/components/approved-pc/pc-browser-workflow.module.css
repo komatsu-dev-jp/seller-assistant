@@ -1,0 +1,244 @@
+.workspace {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  min-height: 100dvh;
+  color: #17233b;
+  background: #f5f7fb;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", sans-serif;
+}
+.workspace *,
+.workspace *::before,
+.workspace *::after {
+  box-sizing: border-box;
+}
+.workspace :where(button, input, select, textarea) {
+  font-family: inherit;
+}
+.workspace :where(a, button, input, select, textarea, summary):focus-visible {
+  outline: 3px solid #246bfd;
+  outline-offset: 3px;
+}
+.sidebar {
+  background: white;
+  border-right: 1px solid #e3e7ee;
+  padding: 24px 12px;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px 24px;
+  color: #17233b;
+  font-weight: 750;
+  text-decoration: none;
+}
+.sidebar svg {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+}
+.brand svg {
+  color: #246bfd;
+}
+.sidebar nav {
+  display: grid;
+  gap: 4px;
+}
+.sidebar nav a {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 10px 14px;
+  border-radius: 9px;
+  color: #536179;
+  text-decoration: none;
+  font-size: 14px;
+}
+.sidebar nav a[aria-current="page"] {
+  color: #1c59d5;
+  background: #eaf1ff;
+  font-weight: 700;
+}
+.switchView {
+  display: block;
+  margin-top: 24px;
+  padding: 12px;
+  color: #1c59d5;
+  font-size: 12px;
+  text-decoration: none;
+}
+.main {
+  min-width: 0;
+}
+.header {
+  display: flex;
+  align-items: center;
+  min-height: 84px;
+  padding: 20px 32px;
+  background: white;
+  border-bottom: 1px solid #e3e7ee;
+}
+.header small {
+  color: #697386;
+  font-size: 12px;
+}
+.header h1 {
+  margin: 6px 0 0;
+  font-size: 24px;
+  line-height: 1.3;
+}
+.content {
+  display: grid;
+  gap: 20px;
+  max-width: 1320px;
+  padding: 24px 32px 48px;
+  margin-inline: auto;
+}
+.boundary {
+  color: #697386;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.boundary summary {
+  cursor: pointer;
+  min-height: 44px;
+  align-content: center;
+}
+.boundary p {
+  margin: 8px 0;
+}
+.panel {
+  min-width: 0;
+  padding: 24px;
+  background: white;
+  border: 1px solid #e3e7ee;
+  border-radius: 16px;
+}
+.panel h2 {
+  margin-top: 0;
+  font-size: 22px;
+}
+.hint {
+  color: #697386;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.quickActions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.quickActions a {
+  display: grid;
+  gap: 12px;
+  padding: 20px;
+  border: 1px solid #dce5f2;
+  border-radius: 14px;
+  background: white;
+  color: #17233b;
+  text-decoration: none;
+}
+.quickActions a:first-child {
+  border-color: #b3caff;
+  background: #f3f7ff;
+}
+.quickActions strong {
+  display: flex;
+  justify-content: space-between;
+  font-size: 17px;
+  gap: 12px;
+}
+.quickActions strong span {
+  color: #246bfd;
+}
+.quickActions small {
+  color: #697386;
+  line-height: 1.6;
+}
+.textLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 10px 0;
+  color: #1c59d5;
+  font-size: 14px;
+}
+/* Shared mobile actions must stay in document flow in the PC workspace. */
+.workspace [data-shared-actions] {
+  position: static;
+  inset: auto;
+  transform: none;
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 24px;
+  padding: 0;
+  background: none;
+}
+.workspace [data-shared-actions] > :is(button, a) {
+  position: static;
+  min-height: 44px;
+  height: auto;
+  width: auto;
+  max-width: 100%;
+  padding: 10px 20px;
+  font-size: 15px;
+  line-height: 1.5;
+}
+.workspace [data-platform="pc"] {
+  padding-bottom: 0;
+}
+.workspace [data-platform="pc"] :where(input, select, textarea) {
+  max-width: 100%;
+}
+.workspace [data-shared-recipe] strong {
+  font-size: 16px;
+}
+.workspace [data-shared-recipe] small {
+  font-size: 13px;
+}
+@media (min-width: 1050px) {
+  .workspace [data-intake-count] {
+    max-width: 600px;
+  }
+}
+@media (max-width: 760px) {
+  .workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .sidebar {
+    padding: 8px 12px;
+    border-right: 0;
+    border-bottom: 1px solid #e3e7ee;
+  }
+  .brand {
+    padding: 8px 0;
+  }
+  .sidebar nav {
+    display: flex;
+    overflow-x: auto;
+  }
+  .sidebar nav a {
+    flex: 0 0 auto;
+    padding: 8px 12px;
+  }
+  .switchView {
+    margin: 0;
+    padding: 8px 0;
+  }
+  .header {
+    padding: 16px;
+  }
+  .content {
+    padding: 16px 12px 32px;
+    gap: 16px;
+  }
+  .panel {
+    padding: 16px;
+  }
+  .quickActions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

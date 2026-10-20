@@ -21,13 +21,8 @@ import { isReportedReviewScreen, ReportedReviewFlow } from "./reported-review-fl
 import { isProductPreparationScreen } from "./product-description";
 import { PreparationProductCard, ProductPreparation } from "./product-preparation";
 import { BoxIntakeFlow, IntakeProductList, isBoxIntakeScreen } from "./box-intake-flow";
-import {
-  describeReviewRecipes,
-  readReviewRecipes,
-  toggleReviewRecipe,
-  writeReviewRecipes,
-  type ReviewRecipe,
-} from "./review-recipe-store";
+import { ReviewRecipePicker } from "./review-recipe-picker";
+import { describeReviewRecipes, readReviewRecipes, type ReviewRecipe } from "./review-recipe-store";
 
 type Choice = "first" | "second" | "third" | "none";
 
@@ -1303,38 +1298,6 @@ function EditableValueRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function RecipeOption({
-  label,
-  detail,
-  visual,
-  selected,
-  onClick,
-}: {
-  label: string;
-  detail: string;
-  visual: ReactNode;
-  selected: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      className={cn(styles.recipeOption, selected && styles.recipeOptionSelected)}
-      aria-pressed={selected}
-      onClick={onClick}
-    >
-      <span className={styles.recipeOptionVisual}>{visual}</span>
-      <span>
-        <strong>{label}</strong>
-        <small>{detail}</small>
-      </span>
-      <span className={styles.recipeOptionCheck} aria-hidden="true">
-        {selected ? "✓" : ""}
-      </span>
-    </button>
-  );
-}
-
 function MethodOption({
   kind,
   label,
@@ -1473,24 +1436,13 @@ function RenderScreenContent({ id }: { id: string }) {
   const [recipeError, setRecipeError] = useState("");
 
   useEffect(() => {
-    if (id !== "photo-04" && id !== "photo-05" && id !== "32" && id !== "33") return;
+    if (id !== "photo-05" && id !== "33") return;
     try {
       setRecipes(readReviewRecipes(window.localStorage));
     } catch {
       setRecipeError("保存内容を読み込めません。端末の保存設定を確認してください。");
     }
   }, [id]);
-
-  function selectRecipe(value: ReviewRecipe) {
-    try {
-      const next = toggleReviewRecipe(recipes, value);
-      writeReviewRecipes(window.localStorage, next);
-      setRecipes(next);
-      setRecipeError("");
-    } catch {
-      setRecipeError("選択を保存できませんでした。端末の保存設定を確認して再度お試しください。");
-    }
-  }
 
   switch (id) {
     case "01":
@@ -2490,65 +2442,7 @@ function RenderScreenContent({ id }: { id: string }) {
         </section>
       );
     case "32":
-      return (
-        <section className={styles.contentStack}>
-          <p className={styles.boardInstruction}>役割ごとに適したレシピを選択してください</p>
-          <div className={styles.recipeList}>
-            <RecipeOption
-              label="正面・背面"
-              detail="白背景／中央／余白"
-              selected={recipes.includes("front-back")}
-              onClick={() => selectRecipe("front-back")}
-              visual={
-                <AssetImage
-                  src="/approved-assets/mobile-fidelity/short-sleeve-front.png"
-                  alt="正面写真の編集例"
-                  className={styles.recipeAsset}
-                />
-              }
-            />
-            <RecipeOption
-              label="正面だけ"
-              detail="ブランド左上・サイズ右下"
-              selected={recipes.includes("front-only")}
-              onClick={() => selectRecipe("front-only")}
-              visual={
-                <AssetImage
-                  src="/approved-assets/mobile-fidelity/short-sleeve-front.png"
-                  alt="正面だけの編集例"
-                  className={styles.recipeAsset}
-                />
-              }
-            />
-            <RecipeOption
-              label="タグ・気になる箇所"
-              detail="向き／明るさのみ"
-              selected={recipes.includes("details")}
-              onClick={() => selectRecipe("details")}
-              visual={
-                <span className={styles.recipePhotoPair}>
-                  <AssetImage
-                    src="/approved-assets/product/brand-tag.png"
-                    alt="ブランドタグ"
-                    className={styles.recipeAsset}
-                  />
-                  <AssetImage
-                    src="/approved-assets/product/defect-detail.png"
-                    alt="気になる箇所"
-                    className={styles.recipeAsset}
-                  />
-                </span>
-              }
-            />
-          </div>
-          <div className={styles.recipeInfoBlue} role="status">
-            {recipeError ||
-              (recipes.length
-                ? `選択中：${describeReviewRecipes(recipes)}。このブラウザーに保存しました。`
-                : "レシピを選んでください。編集せず進む場合は次の画面で選べます。")}
-          </div>
-        </section>
-      );
+      return <ReviewRecipePicker />;
     case "33":
       return (
         <section className={styles.contentStack}>
@@ -3187,65 +3081,7 @@ function RenderScreenContent({ id }: { id: string }) {
         </section>
       );
     case "photo-04":
-      return (
-        <section className={styles.contentStack}>
-          <p className={styles.boardInstruction}>役割ごとに適したレシピを選択してください</p>
-          <div className={styles.recipeList}>
-            <RecipeOption
-              label="正面・背面"
-              detail="白背景／中央／余白"
-              selected={recipes.includes("front-back")}
-              onClick={() => selectRecipe("front-back")}
-              visual={
-                <AssetImage
-                  src="/approved-assets/mobile-fidelity/short-sleeve-front.png"
-                  alt="正面と背面の編集例"
-                  className={styles.recipeAsset}
-                />
-              }
-            />
-            <RecipeOption
-              label="正面だけ"
-              detail="ブランド左上・サイズ右下"
-              selected={recipes.includes("front-only")}
-              onClick={() => selectRecipe("front-only")}
-              visual={
-                <AssetImage
-                  src="/approved-assets/mobile-fidelity/short-sleeve-front.png"
-                  alt="正面だけの編集例"
-                  className={styles.recipeAsset}
-                />
-              }
-            />
-            <RecipeOption
-              label="タグ・気になる箇所"
-              detail="向き／明るさのみ"
-              selected={recipes.includes("details")}
-              onClick={() => selectRecipe("details")}
-              visual={
-                <span className={styles.recipePhotoPair}>
-                  <AssetImage
-                    src="/approved-assets/product/brand-tag.png"
-                    alt="ブランドタグ"
-                    className={styles.recipeAsset}
-                  />
-                  <AssetImage
-                    src="/approved-assets/product/defect-detail.png"
-                    alt="気になる箇所"
-                    className={styles.recipeAsset}
-                  />
-                </span>
-              }
-            />
-          </div>
-          <div className={styles.recipeInfoBlue} role="status">
-            {recipeError ||
-              (recipes.length
-                ? `選択中：${describeReviewRecipes(recipes)}。このブラウザーに保存しました。`
-                : "レシピを選んでください。編集せず進む場合は次の画面で選べます。")}
-          </div>
-        </section>
-      );
+      return <ReviewRecipePicker />;
     case "photo-05":
       return (
         <section className={styles.contentStack}>
@@ -3756,6 +3592,7 @@ export function ApprovedMobileDemo({ screenId }: { screenId: string }) {
       <div
         className={cn(
           styles.phoneShell,
+          isStaticApprovedReview && screen.id !== "01" && styles.iosWorkspace,
           (isPreparation || isIntake) && styles.productPreparationShell,
         )}
       >
@@ -3838,7 +3675,7 @@ const productListScreen: MobileScreen = {
 export function ApprovedMobileProductList() {
   return (
     <main className={styles.page} data-implementation-scope="browser-intake-and-sample-list">
-      <div className={cn(styles.phoneShell, styles.productPreparationShell)}>
+      <div className={cn(styles.phoneShell, styles.productPreparationShell, styles.iosWorkspace)}>
         <Header screen={productListScreen} />
         <div className={styles.scrollArea}>
           <IntakeProductList />

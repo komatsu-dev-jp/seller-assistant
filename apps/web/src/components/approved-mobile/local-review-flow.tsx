@@ -20,15 +20,13 @@ import {
 import styles from "./approved-mobile-demo.module.css";
 import local from "./local-review-flow.module.css";
 import { reviewPath } from "./review-path";
+import { reviewScreenHref, workflowHref, type ReviewPlatform } from "./review-workflow-routes";
 
 const basePath = process.env.NEXT_PUBLIC_REVIEW_BASE_PATH ?? "";
 export function isLocalReviewScreen(id: string): boolean {
   return (
     id === "04" || id === "05" || (/^\d{2}$/u.test(id) && Number(id) >= 14 && Number(id) <= 28)
   );
-}
-function route(id: string): string {
-  return reviewPath(`/mobile/screens/${id}/`, basePath);
 }
 function Photo({
   blob,
@@ -109,7 +107,14 @@ async function checkImage(blob: Blob): Promise<void> {
   }
 }
 
-export function LocalReviewFlow({ screenId }: { screenId: string }) {
+export function LocalReviewFlow({
+  screenId,
+  platform = "mobile",
+}: {
+  screenId: string;
+  platform?: ReviewPlatform;
+}) {
+  const route = (id: string) => reviewScreenHref(platform, id);
   const [state, setState] = useState<ReviewState | null>(null);
   const [photos, setPhotos] = useState<ReviewPhotos>({});
   const [error, setError] = useState("");
@@ -365,100 +370,116 @@ export function LocalReviewFlow({ screenId }: { screenId: string }) {
         content = (
           <div className={local.homeLayout}>
             <div className={local.homeIntro}>
-              <h2>作業を選ぶ</h2>
-              <p>商品1点の作業と、仕入箱の点数を数える作業をここから始められます。</p>
-              <button type="button" className={local.boxButton} onClick={() => go("photo-03")}>
-                商品情報から出品文を作る　›
-              </button>
+              <span className={local.eyebrow}>ホーム</span>
+              <h2>どこから始めますか？</h2>
+              <p>届いた箱の確認から、商品の登録と利益の確認まで。</p>
             </div>
-            <section className={local.nextCard} aria-labelledby="next-task-title">
-              <span className={local.eyebrow}>次にすること · REVIEW-0001</span>
-              <h3 id="next-task-title">{nextTask.title}</h3>
-              <p>{nextTask.detail}</p>
-              <button
-                type="button"
-                className={local.nextButton}
-                disabled={busy}
-                onClick={() => go(nextTask.target)}
-              >
-                {complete ? "内容を見直す" : "この作業を始める"} <span aria-hidden="true">›</span>
+            <section className={local.intakeCard} aria-labelledby="box-task-title">
+              <span className={local.eyebrow}>届いた箱の作業</span>
+              <h3 id="box-task-title">箱を開けたら、まず点数から</h3>
+              <ol className={local.journey} aria-label="箱の作業の流れ">
+                <li>数える</li>
+                <li>商品を登録</li>
+                <li>利益を確認</li>
+              </ol>
+              <button type="button" className={local.nextButton} onClick={() => go("box-02")}>
+                箱の作業を開く <span aria-hidden="true">›</span>
               </button>
+              <a className={local.resumeLink} href={workflowHref(platform, "products")}>
+                登録した商品の続きを開く <span aria-hidden="true">›</span>
+              </a>
             </section>
-            <section className={local.boxCard} aria-labelledby="box-task-title">
-              <span className={local.eyebrow}>仕入箱 · 操作の見本</span>
-              <h3 id="box-task-title">箱の中身を数える</h3>
-              <p>見本の箱を開け、入っている商品の点数を数えます。実際の在庫には反映されません。</p>
-              <button type="button" className={local.boxButton} onClick={() => go("box-02")}>
-                見本の箱を数える <span aria-hidden="true">›</span>
+            <details className={local.sampleGroup}>
+              <summary>
+                写真・採寸・出品文の操作を試す<span>別の見本商品1点</span>
+              </summary>
+              <p className={local.workHint}>箱から登録した商品とは別の、確認用シャツで試します。</p>
+              <button type="button" className={local.boxButton} onClick={() => go("photo-03")}>
+                見本の商品情報から出品文を作る <span aria-hidden="true">›</span>
               </button>
-            </section>
-            <div className={styles.homeTaskCard}>
-              <div className={styles.homeTaskHead}>
-                <strong>今日やること</strong>
-                <span>確認用 1件</span>
-              </div>
-              <p className={local.product}>REVIEW-0001 · 確認用シャツ</p>
-              {(
-                [
-                  [
-                    "保管",
-                    "商品と棚の位置を確認してしまう",
-                    state.stored ? "完了" : "残り 1件",
-                    "14",
-                    state.stored ? 100 : 0,
-                    state.stored,
-                  ],
-                  [
-                    "検品",
-                    "汚れ・傷などを確認する",
-                    `${inspectionCount} / 6項目`,
-                    "17",
-                    (inspectionCount / 6) * 100,
-                    state.inspectionComplete,
-                  ],
-                  [
-                    "撮影",
-                    "出品用の写真を用意する",
-                    `${photoCount} / 8枚`,
-                    "20",
-                    (photoCount / 8) * 100,
-                    allPhotos,
-                  ],
-                  [
-                    "採寸",
-                    "商品のサイズを測る",
-                    `${measurementCount} / 4か所`,
-                    "25",
-                    (measurementCount / 4) * 100,
-                    state.measurementsComplete && allPhotos,
-                  ],
-                ] as const
-              ).map(([title, description, detail, target, progress, done]) => (
+              <section className={local.nextCard} aria-labelledby="next-task-title">
+                <span className={local.eyebrow}>次にすること · REVIEW-0001</span>
+                <h3 id="next-task-title">{nextTask.title}</h3>
+                <p>{nextTask.detail}</p>
                 <button
                   type="button"
-                  key={title}
-                  className={`${styles.homeTaskRow} ${local.task} ${local.homeTaskButton}`}
-                  onClick={() => go(target)}
+                  className={local.nextButton}
+                  disabled={busy}
+                  onClick={() => go(nextTask.target)}
                 >
-                  <div>
-                    <strong>{title}</strong>
-                    <small>
-                      {description} · {detail}
-                    </small>
-                    <i>
-                      <b style={{ width: `${progress}%` }} />
-                    </i>
-                  </div>
-                  <span
-                    className={`${styles.checkMark} ${done ? styles.checkgreen : styles.checkblue}`}
-                    aria-label={done ? "完了" : "未完了"}
-                  >
-                    {done ? "✓" : "○"}
-                  </span>
+                  {complete ? "内容を見直す" : nextTask.title} <span aria-hidden="true">›</span>
                 </button>
-              ))}
-              {complete ? <p className={local.status}>商品1点の操作確認が完了しました。</p> : null}
-            </div>
+              </section>
+              <div className={styles.homeTaskCard}>
+                <div className={styles.homeTaskHead}>
+                  <strong>今日やること</strong>
+                  <span>確認用 1件</span>
+                </div>
+                <p className={local.product}>REVIEW-0001 · 確認用シャツ</p>
+                {(
+                  [
+                    [
+                      "棚にしまう",
+                      "商品と棚の位置を確認してしまう",
+                      state.stored ? "完了" : "残り 1件",
+                      "14",
+                      state.stored ? 100 : 0,
+                      state.stored,
+                    ],
+                    [
+                      "状態を確認する",
+                      "汚れ・傷などを確認する",
+                      `${inspectionCount} / 6項目`,
+                      "17",
+                      (inspectionCount / 6) * 100,
+                      state.inspectionComplete,
+                    ],
+                    [
+                      "写真を用意する",
+                      "出品用の写真を用意する",
+                      `${photoCount} / 8枚`,
+                      "20",
+                      (photoCount / 8) * 100,
+                      allPhotos,
+                    ],
+                    [
+                      "サイズを測る",
+                      "商品のサイズを測る",
+                      `${measurementCount} / 4か所`,
+                      "25",
+                      (measurementCount / 4) * 100,
+                      state.measurementsComplete && allPhotos,
+                    ],
+                  ] as const
+                ).map(([title, description, detail, target, progress, done]) => (
+                  <button
+                    type="button"
+                    key={title}
+                    className={`${styles.homeTaskRow} ${local.task} ${local.homeTaskButton}`}
+                    onClick={() => go(target)}
+                  >
+                    <div>
+                      <strong>{title}</strong>
+                      <small>
+                        {description} · {detail}
+                      </small>
+                      <i>
+                        <b style={{ width: `${progress}%` }} />
+                      </i>
+                    </div>
+                    <span
+                      className={`${styles.checkMark} ${done ? styles.checkgreen : styles.checkblue}`}
+                      aria-label={done ? "完了" : "未完了"}
+                    >
+                      {done ? "✓" : "○"}
+                    </span>
+                  </button>
+                ))}
+                {complete ? (
+                  <p className={local.status}>商品1点の操作確認が完了しました。</p>
+                ) : null}
+              </div>
+            </details>
           </div>
         );
         label = complete ? "保存内容を見直す" : "作業を続ける";
@@ -470,44 +491,56 @@ export function LocalReviewFlow({ screenId }: { screenId: string }) {
         content = (
           <>
             <p className={styles.boardInstruction}>作業の種類を選びます</p>
-            <p className={local.workHint}>商品1点について、保管から採寸まで進めます。</p>
-            <div className={styles.taskList}>
-              {(
-                [
-                  ["⇩", "商品を棚にしまう", state.stored ? "完了" : "残り 1件", "14"],
-                  [
-                    "☑",
-                    "検品",
-                    state.inspectionComplete ? "完了" : `${inspectionCount} / 6項目`,
-                    "17",
-                  ],
-                  ["▣", "撮影", `${photoCount} / 8枚`, "20"],
-                  ["／", "採寸", `${measurementCount} / 4か所${complete ? " · 完了" : ""}`, "25"],
-                ] as const
-              ).map(([icon, title, detail, target]) => (
-                <button
-                  type="button"
-                  key={title}
-                  className={`${styles.listRow} ${local.task}`}
-                  onClick={() => go(target)}
-                >
-                  <span className={styles.rowIcon}>{icon}</span>
-                  <div>
-                    <strong>{title}</strong>
-                    <small>{detail}</small>
-                  </div>
-                  <span className={styles.chevron}>›</span>
-                </button>
-              ))}
-            </div>
-            <section className={local.boxCard} aria-labelledby="work-box-task-title">
-              <span className={local.eyebrow}>商品の作業とは別</span>
-              <h3 id="work-box-task-title">仕入箱の中身を数える</h3>
-              <p>見本の箱を選び、点数を数える練習をします。実際の在庫には反映されません。</p>
-              <button type="button" className={local.boxButton} onClick={() => go("box-02")}>
-                見本の箱を数える <span aria-hidden="true">›</span>
+            <section className={local.intakeCard} aria-labelledby="work-box-task-title">
+              <h3 id="work-box-task-title">届いた箱を検品する</h3>
+              <p>点数を数える → 商品を登録 → 売れた価格から利益を確認</p>
+              <button type="button" className={local.nextButton} onClick={() => go("box-02")}>
+                箱の作業を開く <span aria-hidden="true">›</span>
               </button>
+              <a className={local.resumeLink} href={workflowHref(platform, "products")}>
+                登録した商品の続きを開く <span aria-hidden="true">›</span>
+              </a>
             </section>
+            <details className={local.sampleGroup}>
+              <summary>
+                商品1点の操作を試す<span>別の見本商品で、保管・写真・採寸を確認</span>
+              </summary>
+              <p className={local.workHint}>商品1点について、保管から採寸まで進めます。</p>
+              <div className={styles.taskList}>
+                {(
+                  [
+                    ["⇩", "商品を棚にしまう", state.stored ? "完了" : "残り 1件", "14"],
+                    [
+                      "☑",
+                      "状態を確認する",
+                      state.inspectionComplete ? "完了" : `${inspectionCount} / 6項目`,
+                      "17",
+                    ],
+                    ["▣", "写真を用意する", `${photoCount} / 8枚`, "20"],
+                    [
+                      "／",
+                      "サイズを測る",
+                      `${measurementCount} / 4か所${complete ? " · 完了" : ""}`,
+                      "25",
+                    ],
+                  ] as const
+                ).map(([icon, title, detail, target]) => (
+                  <button
+                    type="button"
+                    key={title}
+                    className={`${styles.listRow} ${local.task}`}
+                    onClick={() => go(target)}
+                  >
+                    <span className={styles.rowIcon}>{icon}</span>
+                    <div>
+                      <strong>{title}</strong>
+                      <small>{detail}</small>
+                    </div>
+                    <span className={styles.chevron}>›</span>
+                  </button>
+                ))}
+              </div>
+            </details>
           </>
         );
         label = complete ? "保存内容を見直す" : "この作業を開く";
@@ -1008,12 +1041,12 @@ export function LocalReviewFlow({ screenId }: { screenId: string }) {
         break;
     }
   return (
-    <div className={local.flow} data-local-review="browser-only">
+    <div className={local.flow} data-local-review="browser-only" data-platform={platform}>
       {boundary}
       <section className={styles.contentStack}>{content}</section>
       {feedback}
       {screenId !== "04" && screenId !== "05" ? (
-        <div className={styles.actionBar}>
+        <div className={styles.actionBar} data-shared-actions>
           <button
             type="button"
             className={styles.primaryButton}

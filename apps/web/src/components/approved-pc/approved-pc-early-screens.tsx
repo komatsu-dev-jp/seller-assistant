@@ -7,6 +7,7 @@ import { PcCanvas } from "./pc-canvas";
 import { PcLiveRouteLink, PcPreviewActionButton } from "./pc-preview-action-button";
 import { PcUiGlyph, pcNavGlyphs } from "./pc-ui-glyph";
 import { isP1ApprovedPcScreen } from "./approved-screen-scope";
+import { pcNavigationPath } from "./pc-navigation-path";
 
 const nav = ["ホーム", "作業", "仕入れ", "商品", "注文・発送", "在庫", "会計", "メンバー", "設定"];
 const storageNav = [
@@ -241,7 +242,10 @@ function Side({ screen }: { screen: number }) {
         <a
           key={item}
           className={item === active ? styles.active : ""}
-          href={go(routes[item] ?? [2, 3, 5, 9, 29, 33, 45, 37, 49][index] ?? 2)}
+          href={pcNavigationPath(
+            item,
+            go(routes[item] ?? [2, 3, 5, 9, 29, 33, 45, 37, 49][index] ?? 2),
+          )}
           aria-current={item === active ? "page" : undefined}
         >
           <i>

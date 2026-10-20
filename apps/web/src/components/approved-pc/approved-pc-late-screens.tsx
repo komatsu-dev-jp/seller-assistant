@@ -1,4 +1,5 @@
 "use client";
+import { pcNavigationPath } from "./pc-navigation-path";
 import { useState } from "react";
 import styles from "./approved-pc-late-screens.module.css";
 import { PcCanvas } from "./pc-canvas";
@@ -317,7 +318,7 @@ function Shell({ n, children }: { n: number; children: React.ReactNode }) {
           <a
             className={x === active ? styles.active : ""}
             key={x}
-            href={go([2, 3, 5, 9, 29, 33, 45, 37, 49][i] ?? 2)}
+            href={pcNavigationPath(x, go([2, 3, 5, 9, 29, 33, 45, 37, 49][i] ?? 2))}
             aria-current={x === active ? "page" : undefined}
           >
             <i>

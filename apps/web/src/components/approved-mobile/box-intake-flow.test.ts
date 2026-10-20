@@ -8,6 +8,7 @@ import * as controls from "./review-controls-state";
 import { reviewPath } from "./review-path";
 import * as leaseModule from "./box-intake-write-lease";
 import * as productOptions from "./intake-product-options";
+import * as workflow from "./review-workflow-routes";
 
 // Run the real component and its real input/button handlers. Native layout/touch need browser QA.
 const values: unknown[] = [];
@@ -83,8 +84,12 @@ const compiled = ts.transpileModule(
   },
 ).outputText;
 const exports: {
-  BoxIntakeFlow?: (props: { screenId: string }) => ReactElement;
-  IntakeProductList?: () => ReactElement;
+  BoxIntakeFlow?: (props: {
+    screenId: string;
+    platform: workflow.ReviewPlatform;
+    defaultStep?: "count" | "item" | "list";
+  }) => ReactElement;
+  IntakeProductList?: (props: { platform: workflow.ReviewPlatform }) => ReactElement;
   isBoxIntakeScreen?: (id: string) => boolean;
 } = {};
 new Function("require", "exports", "React", compiled)(
@@ -96,6 +101,7 @@ new Function("require", "exports", "React", compiled)(
     if (name === "./review-controls-state") return controls;
     if (name === "./box-intake-write-lease") return leaseModule;
     if (name === "./review-path") return { reviewPath };
+    if (name === "./review-workflow-routes") return workflow;
     throw Error(name);
   },
   exports,
@@ -116,10 +122,17 @@ function remount() {
   effects = [];
   cursor = 0;
 }
-function screen(screenId = "box-02", list = false) {
+function screen(
+  screenId = "box-02",
+  list = false,
+  platform: workflow.ReviewPlatform = "mobile",
+  defaultStep?: "count" | "item" | "list",
+) {
   const render = () => {
     cursor = 0;
-    const result = list ? exports.IntakeProductList!() : exports.BoxIntakeFlow!({ screenId });
+    const result = list
+      ? exports.IntakeProductList!({ platform })
+      : exports.BoxIntakeFlow!({ screenId, platform, ...(defaultStep ? { defaultStep } : {}) });
     const pending = effects;
     effects = [];
     pending.forEach((effect) => effect());
@@ -164,8 +177,8 @@ function screen(screenId = "box-02", list = false) {
   };
 }
 const persisted = () => store.parseIntake(saved.get(store.intakeKey) ?? null);
-function startTwo() {
-  const page = screen();
+function startTwo(platform: workflow.ReviewPlatform = "mobile") {
+  const page = screen("box-02", false, platform);
   page.edit("箱の仕入れ代（円）", "2000");
   page.edit("箱を受け取る送料（円）", "200");
   page.click("＋1点");
@@ -237,6 +250,100 @@ afterEach(() => {
 });
 
 describe("box receipt production UI handlers", () => {
+  it("performs counting, brand selection, two registrations and gross calculation on PC without mobile navigation", () => {
+    const page = startTwo("pc");
+    page.click("ブランドを検索・選択›");
+    expect(window.history.pushState).toHaveBeenLastCalledWith(
+      null,
+      "",
+      expect.stringMatching(/^\/pc\/6\/\?box=.*&step=brand&item=0$/u),
+    );
+    page.edit("ブランドを検索", "UNIQLO");
+    page.click("ユニクロ›");
+    page.edit("種類（任意）", "Tシャツ");
+    page.edit("サイズ（任意）", "M");
+    page.edit("商品の状態", "一般的な中古品");
+    page.inspect("sellable");
+    page.click("保存して2点目へ");
+    page.edit("商品名・種類（必須）", "2点目");
+    page.inspect("unsellable");
+    page.click("保存して箱の一覧へ");
+    page.clickContaining("ユニクロ");
+    page.click("＋ 販売事例を追加");
+    page.edit("事例1のURL", "https://jp.mercari.com/item/m-example-1");
+    page.edit("事例1の売れた価格（円）", "4000");
+    page.verifySale();
+    page.click("安めの4,000円を見込み販売価格に使う");
+    page.edit("発送する送料（円）", "750");
+    page.edit("梱包代（円）", "50");
+    expect(store.itemProfit(persisted().boxes[0]!, 0)?.gross).toBe(1700);
+    page.click("保存して箱の一覧へ");
+    expect(page.text()).toContain("箱全体の見込み粗利600円");
+    expect(window.history.replaceState).toHaveBeenLastCalledWith(
+      null,
+      "",
+      expect.stringMatching(/^\/pc\/6\//u),
+    );
+    remount();
+    const mobile = screen();
+    expect(mobile.text()).toContain("ユニクロ");
+    expect(mobile.text()).toContain("箱全体の見込み粗利600円");
+    mobile.clickContaining("ユニクロ");
+    expect(window.history.replaceState).toHaveBeenLastCalledWith(
+      null,
+      "",
+      expect.stringMatching(/^\/mobile\/screens\/box-02\//u),
+    );
+  });
+  it("keeps PC count confirmation on the same step when saving fails", () => {
+    const page = screen("box-02", false, "pc", "count");
+    page.click("＋1点");
+    denyWrite = true;
+    page.click("1点で確定して検品へ");
+    expect(page.text()).toContain("箱の中を数える");
+    expect(page.text()).toContain("未保存");
+    expect(window.history.replaceState).not.toHaveBeenCalled();
+    denyWrite = false;
+    page.click("保存を再試行");
+    page.click("1点で確定して検品へ");
+    expect(page.text()).toContain("1点目を検品・登録");
+    expect(window.history.replaceState).toHaveBeenLastCalledWith(
+      null,
+      "",
+      expect.stringContaining("/pc/6/"),
+    );
+  });
+  it("exposes the same saved products in PC and mobile catalogs and refreshes after another tab saves", () => {
+    const flow = startTwo();
+    registerFirst(flow);
+    remount();
+    const catalog = screen("", true, "pc");
+    expect(catalog.text()).toContain("紺のシャツ");
+    expect(catalog.links().filter((href) => href?.includes("step=profit"))).toHaveLength(1);
+    expect(catalog.links().every((href) => href?.startsWith("/pc/6/"))).toBe(true);
+    const next = persisted();
+    next.boxes[0]!.items[0]!.name = "別タブの変更";
+    saved.set(store.intakeKey, JSON.stringify(next));
+    events.get("storage")?.({ key: store.intakeKey });
+    expect(catalog.text()).toContain("別タブの変更");
+    remount();
+    const mobile = screen("", true);
+    expect(mobile.text()).toContain("別タブの変更");
+    expect(mobile.links().every((href) => href?.startsWith("/mobile/screens/box-02/"))).toBe(true);
+  });
+  it("opens the intended legacy PC stage but never skips counting an unconfirmed box", () => {
+    let flow = screen("box-03", false, "pc", "item");
+    expect(flow.text()).toContain("箱の中を数える");
+    flow.click("＋1点");
+    flow.click("1点で確定して検品へ");
+    remount();
+    window.location.search = "";
+    flow = screen("box-05", false, "pc", "list");
+    expect(flow.text()).toContain("箱の商品を確認");
+    remount();
+    flow = screen("box-03", false, "pc", "item");
+    expect(flow.text()).toContain("1点目を検品・登録");
+  });
   it("saves a long generated title as a draft, returns from brand selection and requires shortening before registration", () => {
     const page = startTwo();
     page.edit("サイズ（任意）", "M");
@@ -403,9 +510,24 @@ describe("box receipt production UI handlers", () => {
     page.edit("商品名・種類（必須）", "未保存の商品");
     expect(page.text()).toContain("別の画面で保存内容が変わりました");
     expect(page.value("商品名・種類（必須）")).toBe("未保存の商品");
-    page.click("3 商品一覧");
+    page.click("一覧");
     expect(page.text()).toContain("1点目を検品・登録");
     expect(saved.get(store.intakeKey)).toBe(raw);
+  });
+  it("keeps the profit step unavailable until the item is registered", () => {
+    const page = startTwo();
+    expect(page.disabled("3 利益")).toBe(true);
+    page.click("3 利益");
+    expect(page.text()).toContain("1点目を検品・登録");
+    page.edit("商品名・種類（必須）", "確認用シャツ");
+    page.edit("商品の状態", "一般的な中古品");
+    page.inspect("sellable");
+    page.click("この商品の見込み利益を確認");
+    expect(page.disabled("3 利益")).toBe(false);
+    page.click("2 検品");
+    page.click("3 利益");
+    expect(page.text()).toContain("売れた価格から利益を確認");
+    expect(persisted().boxes[0]!.items[0]!.name).toBe("確認用シャツ");
   });
   it("keeps the same box, item and input when switching to a smaller box cannot save", () => {
     const a = store.confirmBox({ ...store.createBox("A", "箱A"), count: 2 });

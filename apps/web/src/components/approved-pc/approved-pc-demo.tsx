@@ -4,6 +4,8 @@ import styles from "./approved-pc-demo.module.css";
 import { ApprovedPcEarlyScreens } from "./approved-pc-early-screens";
 import { ApprovedPcMiddleScreens } from "./approved-pc-middle-screens";
 import { ApprovedPcLateScreens } from "./approved-pc-late-screens";
+import { isStaticApprovedReview } from "../approved-review-environment";
+import { PcBrowserWorkflow, pcBrowserWorkflowScreens } from "./pc-browser-workflow";
 
 type Screen = {
   number: number;
@@ -742,6 +744,12 @@ function Visual({ screen }: { screen: Screen }) {
 }
 
 export function ApprovedPcDemo({ screenNumber }: { screenNumber: number }) {
+  if (
+    isStaticApprovedReview &&
+    pcBrowserWorkflowScreens.some((number) => number === screenNumber)
+  ) {
+    return <PcBrowserWorkflow screenNumber={screenNumber} />;
+  }
   if (screenNumber <= 16) return <ApprovedPcEarlyScreens screenNumber={screenNumber} />;
   if (screenNumber <= 32) return <ApprovedPcMiddleScreens screenNumber={screenNumber} />;
   if (screenNumber <= 52) return <ApprovedPcLateScreens screenNumber={screenNumber} />;
