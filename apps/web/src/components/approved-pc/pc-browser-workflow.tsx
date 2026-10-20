@@ -17,6 +17,8 @@ import {
 } from "../approved-mobile/review-workflow-routes";
 import { PcUiGlyph, type PcUiGlyphName } from "./pc-ui-glyph";
 import ui from "./pc-browser-workflow.module.css";
+import { SellerWorkspace } from "../seller-workspace/seller-workspace";
+import { sellerHref } from "../seller-workspace/navigation";
 
 type Kind = "products" | "preparation" | "recipes" | "workflow";
 const basePath = process.env.NEXT_PUBLIC_REVIEW_BASE_PATH ?? "";
@@ -25,14 +27,10 @@ export const pcBrowserWorkflowScreens = [2, 3, 6, 7, 8, 46, 47, 48] as const;
 
 const navigation: readonly [string, PcUiGlyphName, string][] = [
   ["ホーム", "home", pcPath(2)],
-  ["作業", "work", workflowHref("pc", "work")],
-  ["仕入れ", "purchase", workflowHref("pc", "intake")],
   ["商品", "product", workflowHref("pc", "products")],
-  ["注文・発送", "orders", pcPath(29)],
-  ["在庫", "inventory", pcPath(11)],
-  ["会計", "accounting", accountingHref("pc", "44")],
-  ["メンバー", "members", pcPath(37)],
-  ["設定", "settings", pcPath(49)],
+  ["発送", "orders", sellerHref("pc", "shipping")],
+  ["レポート", "accounting", sellerHref("pc", "reports")],
+  ["設定", "settings", sellerHref("pc", "settings")],
 ];
 
 function Workspace({
@@ -49,7 +47,7 @@ function Workspace({
       <aside className={ui.sidebar}>
         <a className={ui.brand} href={pcPath(2)}>
           <PcUiGlyph name="purchase" />
-          物販業務
+          Seller Assistant
         </a>
         <nav aria-label="PCのメニュー">
           {navigation.map(([label, icon, href]) => (
@@ -144,6 +142,8 @@ export function PcBrowserWorkflow({ screenNumber, kind }: { screenNumber?: numbe
       panel: params.get("panel"),
     });
   }, []);
+  if (isStaticApprovedReview && (screenNumber === 2 || kind === "products"))
+    return <SellerWorkspace platform="pc" initialTab={kind === "products" ? "products" : "home"} />;
   if (!isStaticApprovedReview) {
     return (
       <Workspace title="公開確認版の専用画面" active="作業">

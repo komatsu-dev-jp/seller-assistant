@@ -86,6 +86,10 @@ new Function("require", "exports", "React", compiled)(
     if (name === "../approved-mobile/mobile-screen-data")
       return { getMobileScreen: (id: string) => ({ title: `screen ${id}` }) };
     if (name === "./pc-ui-glyph") return { PcUiGlyph: shared("glyph") };
+    if (name === "../seller-workspace/seller-workspace")
+      return { SellerWorkspace: shared("seller") };
+    if (name === "../seller-workspace/navigation")
+      return { sellerHref: (_platform: string, tab: string) => `/pc/products/?tab=${tab}` };
     const modules: Record<string, Record<string, unknown>> = {
       "../approved-mobile/box-intake-flow": {
         BoxIntakeFlow: shared("intake"),
@@ -138,7 +142,7 @@ describe("PC uses the mobile workflow modules instead of duplicate business rule
       });
     },
   );
-  it.each([2, 3])("has actionable entries and the saved catalog on PC%d", (number) => {
+  it.each([3])("has actionable entries and the saved catalog on PC%d", (number) => {
     const view = page({ screenNumber: number });
     expect(view.text()).toContain("届いた箱を検品する");
     expect(view.nodes().some((node) => node.props["data-shared"] === "catalog")).toBe(true);
@@ -146,15 +150,17 @@ describe("PC uses the mobile workflow modules instead of duplicate business rule
     for (const href of ["/pc/6/", "/pc/products/", "/pc/preparation/", "/pc/46/"])
       expect(links).toContain(href);
   });
-  it("makes the catalog and sample preparation separate, without inventing box photography integration", () => {
-    const view = page({ kind: "products" });
-    expect(
-      view.nodes().find((node) => node.props["data-shared"] === "catalog")?.props["data-props"],
-    ).toEqual({ platform: "pc" });
-    expect(view.text()).toContain("箱の商品とは別の確認用1点");
-    expect(view.nodes().some((node) => node.props["data-shared"] === "preparation-card")).toBe(
-      true,
-    );
+  it("uses the shared C home and B product workspace on PC, with old intake preserved", () => {
+    for (const [props, tab] of [
+      [{ screenNumber: 2 }, "home"],
+      [{ kind: "products" }, "products"],
+    ] as const) {
+      expect(
+        page(props)
+          .nodes()
+          .find((node) => node.props["data-shared"] === "seller")?.props["data-props"],
+      ).toEqual({ platform: "pc", initialTab: tab });
+    }
   });
   it.each(["file", "history", "import", "__proto__"])(
     "uses a guarded accounting stage query %s",
