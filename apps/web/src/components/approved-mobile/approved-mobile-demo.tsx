@@ -23,6 +23,8 @@ import { PreparationProductCard, ProductPreparation } from "./product-preparatio
 import { BoxIntakeFlow, IntakeProductList, isBoxIntakeScreen } from "./box-intake-flow";
 import { ReviewRecipePicker } from "./review-recipe-picker";
 import { describeReviewRecipes, readReviewRecipes, type ReviewRecipe } from "./review-recipe-store";
+import { SellerWorkspace } from "../seller-workspace/seller-workspace";
+import { SellerNavigation } from "../seller-workspace/navigation";
 
 type Choice = "first" | "second" | "third" | "none";
 
@@ -656,6 +658,12 @@ function preventCurrentScreenReload(
 function Footer({ screen }: { screen: MobileScreen }) {
   if (Number(screen.id) === 1) return null;
   const active = getMobileFooterSection(screen);
+  if (isStaticApprovedReview)
+    return (
+      <SellerNavigation
+        active={active === "home" ? "home" : active === "accounting" ? "settings" : "products"}
+      />
+    );
   return (
     <nav className={styles.footer} aria-label="モバイルナビゲーション">
       <a
@@ -3564,6 +3572,7 @@ function RenderScreenContent({ id }: { id: string }) {
 }
 
 export function ApprovedMobileDemo({ screenId }: { screenId: string }) {
+  if (isStaticApprovedReview && screenId === "04") return <SellerWorkspace />;
   const screen = getMobileScreen(screenId);
   if (!screen) return null;
   const next = getMobileNext(screen.id);
@@ -3673,6 +3682,7 @@ const productListScreen: MobileScreen = {
 };
 
 export function ApprovedMobileProductList() {
+  if (isStaticApprovedReview) return <SellerWorkspace initialTab="products" />;
   return (
     <main className={styles.page} data-implementation-scope="browser-intake-and-sample-list">
       <div className={cn(styles.phoneShell, styles.productPreparationShell, styles.iosWorkspace)}>
