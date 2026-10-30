@@ -10,6 +10,163 @@
   line-height: 1.6;
   font-size: 15px;
 }
+
+/* Settings-only density: do not change the other four workspace pages. */
+.workspace[data-active-tab="settings"] .header {
+  margin-bottom: 8px;
+}
+.workspace[data-active-tab="settings"] .header h1 {
+  font-size: 28px;
+}
+.settingsProgress {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 12px;
+  margin: 0 0 20px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: #e9edff;
+  font-size: 14px;
+}
+.settingsProgress > span {
+  font-weight: 700;
+  color: var(--blue);
+}
+.settingsProgress p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.settingsProgressBar {
+  grid-column: 1 / -1;
+  width: 100%;
+  height: 7px;
+  appearance: none;
+  border: 0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #d6dced;
+  accent-color: var(--blue);
+}
+.settingsProgressBar::-webkit-progress-bar {
+  background: #d6dced;
+  border-radius: 10px;
+}
+.settingsProgressBar::-webkit-progress-value {
+  background: var(--blue);
+  border-radius: 10px;
+}
+.settingsProgressBar::-moz-progress-bar {
+  background: var(--blue);
+  border-radius: 10px;
+}
+.settingsCategory {
+  margin-bottom: 22px;
+  min-width: 0;
+}
+.workspace .settingsCategory h2 {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 0 0 8px 4px;
+  font-size: 15px;
+  color: var(--ink);
+}
+.settingsCategory h2 svg {
+  width: 18px;
+  height: 18px;
+  color: var(--muted);
+}
+.settingsList {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  overflow: hidden;
+}
+.settingsRow,
+.settingsDisclosure > summary {
+  width: 100%;
+  min-height: 56px;
+  padding: 12px 14px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 16px;
+  gap: 10px;
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: var(--ink);
+  text-align: left;
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.settingsRow > span,
+.settingsDisclosure > summary {
+  min-width: 0;
+}
+.settingsRow small {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.settingsRow + .settingsRow,
+.settingsDisclosure,
+.settingsRow + .settingsDisclosure {
+  border-top: 1px solid var(--line);
+}
+.settingsValue {
+  color: var(--muted);
+  text-align: right;
+  font-size: 12px;
+}
+.settingsValue[data-state="未設定"],
+.settingsValue[data-state="要確認"] {
+  color: #9b4d00;
+}
+.settingsRow[data-single-label] {
+  grid-template-columns: minmax(0, 1fr) 16px;
+}
+.settingsRow svg,
+.settingsDisclosure svg {
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
+}
+.settingsDisclosure > summary {
+  grid-template-columns: minmax(0, 1fr) 16px;
+  list-style: none;
+  cursor: pointer;
+}
+.settingsDisclosure > summary[data-has-value] {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.6fr) 16px;
+}
+.settingsDisclosure:first-child {
+  border-top: 0;
+}
+.settingsDisclosure > summary::-webkit-details-marker {
+  display: none;
+}
+.settingsDisclosure[open] > summary svg {
+  transform: rotate(90deg);
+}
+.settingsDisclosure > div {
+  padding: 0 14px 14px;
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.settingsDisclosure p {
+  margin: 0 0 10px;
+}
+.settingsDisclosure p:last-child {
+  margin-bottom: 0;
+}
+.settingsRow:hover,
+.settingsDisclosure > summary:hover {
+  background: #f6f7fb;
+}
 .workspace *,
 .navigation *,
 .dialog * {

@@ -7,6 +7,7 @@ import * as stateModule from "./review-controls-state";
 import { reviewPath } from "./review-path";
 import { validatePhoto } from "./local-review-store";
 import * as workflow from "./review-workflow-routes";
+import * as accountingView from "./accounting-settings-view";
 
 // Execute production handlers; native rendering/focus/touch are separately checked in the browser.
 const values: unknown[] = [];
@@ -49,6 +50,7 @@ type Props = {
   value?: string;
   href?: string;
   "aria-label"?: string;
+  "aria-invalid"?: boolean;
   onClick?: () => void;
   onChange?: (value: string) => void;
   onConfirm?: () => void;
@@ -87,6 +89,33 @@ const exports: {
   }) => ReactElement;
   HoldToConfirm?: (props: { disabled: boolean; onConfirm: () => void }) => ReactElement;
 } = {};
+const navigation: { sellerHref?: (platform: workflow.ReviewPlatform, tab: string) => string } = {};
+new Function(
+  "require",
+  "exports",
+  "React",
+  ts.transpileModule(
+    readFileSync(
+      resolve(process.cwd(), "apps/web/src/components/seller-workspace/navigation.tsx"),
+      "utf8",
+    ),
+    {
+      compilerOptions: {
+        jsx: ts.JsxEmit.React,
+        module: ts.ModuleKind.CommonJS,
+        target: ts.ScriptTarget.ES2022,
+      },
+    },
+  ).outputText,
+)(
+  (name: string) => {
+    if (name.endsWith(".css")) return { default: {} };
+    if (name.endsWith("/review-path")) return { reviewPath };
+    throw new Error(name);
+  },
+  navigation,
+  React,
+);
 new Function("require", "exports", "React", compiled)(
   (name: string) => {
     if (name === "react") return hooks;
@@ -95,6 +124,8 @@ new Function("require", "exports", "React", compiled)(
     if (name === "./local-review-store") return { validatePhoto };
     if (name === "./review-controls-state") return stateModule;
     if (name === "./review-workflow-routes") return workflow;
+    if (name === "./accounting-settings-view") return accountingView;
+    if (name === "../seller-workspace/navigation") return navigation;
     throw new Error(name);
   },
   exports,
@@ -188,6 +219,22 @@ afterEach(() => {
 });
 
 describe("reported screen production handlers", () => {
+  it("shows input progress and the existing date error next to the affected field", () => {
+    const page = screen("44");
+    page.edit("申告の設定", "青色申告");
+    page.edit("消費税", "免税");
+    expect(page.text()).toContain("入力状況 2 / 3項目");
+    page.edit("開始日", "2026-12-31");
+    page.edit("終了日", "2026-01-01");
+    expect(page.text()).toContain("終了日は開始日以降にしてください。");
+    expect(page.field("終了日").props["aria-invalid"]).toBe(true);
+    expect(page.disabled("内容を確認して保存")).toBe(true);
+    expect(page.links()).toContain("/mobile/products/?tab=settings");
+    expect(page.links()).toContain("/mobile/screens/05/");
+    page.edit("終了日", "2026-12-31");
+    expect(page.text()).toContain("入力状況 3 / 3項目");
+    expect(page.field("終了日").props["aria-invalid"]).toBeUndefined();
+  });
   it("uses actual dropdowns for filing and tax while retaining dates and legacy custom values", () => {
     saved = JSON.stringify({
       ...stateModule.initialControls(),
@@ -273,7 +320,7 @@ describe("reported screen production handlers", () => {
     expect(page.text()).toContain("読み込みを再試行");
     denyRead = false;
     page.click("読み込みを再試行");
-    expect(page.text()).toContain("会計の設定を選んで");
+    expect(page.text()).toContain("必要な項目を開いて入力してください");
   });
   it("connects settings, candidate selection and explicit preflight, resetting checks on edit", () => {
     let page = screen("44");
