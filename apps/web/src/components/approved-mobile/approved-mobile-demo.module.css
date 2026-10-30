@@ -15786,3 +15786,28 @@ button.previewActionBackdrop.previewActionBackdrop {
     backdrop-filter: none;
   }
 }
+
+/* Basic settings uses SellerNavigation, not the historical .footer marker.
+   Let this page grow and scroll; never clip the save/back actions at 100dvh. */
+.page:has([data-accounting-settings]) {
+  height: auto;
+  min-height: 100dvh;
+  overflow: visible;
+}
+.phoneShell.iosWorkspace:has([data-accounting-settings]) {
+  display: block;
+  height: auto;
+  min-height: 100dvh;
+  overflow: visible;
+}
+.phoneShell.iosWorkspace:has([data-accounting-settings]) .header {
+  position: relative;
+  top: auto;
+}
+.phoneShell.iosWorkspace:has([data-accounting-settings]) .scrollArea {
+  height: auto;
+  min-height: 0;
+  max-height: none;
+  overflow: visible;
+  padding: 12px 0 calc(96px + env(safe-area-inset-bottom));
+}

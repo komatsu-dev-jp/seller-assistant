@@ -8,6 +8,8 @@ import * as lease from "../approved-mobile/box-intake-write-lease";
 import * as routes from "../approved-mobile/review-workflow-routes";
 import * as paths from "../approved-mobile/review-path";
 import * as commerce from "./sales-store";
+import * as controls from "../approved-mobile/review-controls-state";
+import * as accountingView from "../approved-mobile/accounting-settings-view";
 
 // Execute production JSX handlers and domain functions. This does not replace
 // native dialog, input preservation, accessibility, or visual browser verification.
@@ -16,7 +18,8 @@ type Props = {
   title?: string;
   name?: string;
   type?: string;
-  value?: string;
+  value?: string | number;
+  max?: number;
   disabled?: boolean;
   role?: string;
   "aria-label"?: string;
@@ -66,6 +69,8 @@ function load(name: string): unknown {
   if (name.endsWith("/box-intake-write-lease")) return lease;
   if (name.endsWith("/review-workflow-routes")) return routes;
   if (name.endsWith("/review-path")) return paths;
+  if (name.endsWith("/review-controls-state")) return controls;
+  if (name.endsWith("/accounting-settings-view")) return accountingView;
   if (name === "./sales-store") return commerce;
   if (modules.has(name)) return modules.get(name);
   if (!["./seller-workspace", "./navigation", "./sample-data", "./product-adapter"].includes(name))
@@ -151,7 +156,10 @@ function page(initialTab: Tab = "home") {
   return {
     text: () => text(render()),
     click: (label: string) => {
-      const control = find((node) => node.type === "button" && text(node) === label);
+      const control = find(
+        (node) =>
+          node.type === "button" && (text(node) === label || node.props["aria-label"] === label),
+      );
       if (!control.props.disabled) control.props.onClick?.(event);
     },
     navigate: (label: string) =>
@@ -164,6 +172,7 @@ function page(initialTab: Tab = "home") {
         currentTarget: fields,
       }),
     dialogs: () => nodes(render()).filter((node) => node.type === "dialog").length,
+    progress: () => nodes(render()).filter((node) => node.type === "progress"),
     alerts: () =>
       nodes(render())
         .filter((node) => node.props.role === "alert")
@@ -220,6 +229,7 @@ beforeEach(() => {
   vi.setSystemTime(new Date(2026, 9, 20, 12));
   const location = { search: "", pathname: "/mobile/screens/04/" };
   vi.stubGlobal("window", {
+    sessionStorage: { getItem: (key: string) => saved.get(key) ?? null },
     localStorage: { getItem: (key: string) => saved.get(key) ?? null, setItem },
     location,
     history: {
@@ -260,6 +270,91 @@ afterEach(() => {
 });
 
 describe("seller workspace production interaction handlers", () => {
+  it("reads accounting status without writing or confusing tab-only settings with local records", () => {
+    const state = { ...controls.initialControls(), settings: ["青色申告", "免税", "", ""] };
+    const raw = JSON.stringify(state);
+    saved.set(controls.controlsKey, raw);
+    const screen = page("settings");
+    expect(screen.text()).toContain("初期設定の進捗2 / 3 完了");
+    expect(screen.text()).toContain("会計年度の設定が残っています。");
+    expect(screen.progress()[0]?.props).toMatchObject({ value: 2, max: 3 });
+    expect(screen.text()).toContain("青色申告");
+    expect(screen.text()).toContain("会計・税務");
+    expect(screen.text()).toContain("データ管理");
+    expect(screen.text()).toContain("アプリ・ヘルプ");
+    expect(screen.text()).toContain("使い方・操作見本");
+    expect(screen.text()).toContain("アプリについて");
+    expect(screen.text()).toContain("税務上の正しさを示すものではありません。");
+    expect(saved.get(controls.controlsKey)).toBe(raw);
+    expect(setItem).not.toHaveBeenCalled();
+  });
+  it("shows unreadable accounting state without overwriting it or blocking other settings", () => {
+    saved.set(controls.controlsKey, "{broken");
+    const screen = page("settings");
+    expect(screen.text()).toContain("読取不可");
+    expect(screen.text()).not.toContain("0 / 3項目");
+    expect(screen.progress()).toEqual([]);
+    expect(screen.text()).toContain("記録の控えを保存");
+    expect(saved.get(controls.controlsKey)).toBe("{broken");
+    expect(setItem).not.toHaveBeenCalled();
+  });
+  it.each([
+    {
+      settings: ["", "", "", ""],
+      completed: 0,
+      message: "申告区分・消費税区分・会計年度の設定が残っています。",
+    },
+    {
+      settings: ["青色申告", "免税", "2026-01-01", "2026-12-31"],
+      completed: 3,
+      message: "すべての項目が入力されています。",
+    },
+    {
+      settings: ["青色申告", "免税", "2026-12-31", "2026-01-01"],
+      completed: 2,
+      message: "会計年度の設定が残っています。",
+    },
+  ])(
+    "shows the real setup progress for $completed completed groups",
+    ({ settings, completed, message }) => {
+      const raw = JSON.stringify({ ...controls.initialControls(), settings });
+      saved.set(controls.controlsKey, raw);
+      const screen = page("settings");
+      expect(screen.progress()[0]?.props).toMatchObject({ value: completed, max: 3 });
+      expect(screen.text()).toContain(message);
+      expect(saved.get(controls.controlsKey)).toBe(raw);
+      expect(setItem).not.toHaveBeenCalled();
+    },
+  );
+  it("downloads the same backup payload without adding accounting settings or changing storage", async () => {
+    seedProduct();
+    saved.set(
+      controls.controlsKey,
+      JSON.stringify({ ...controls.initialControls(), settings: ["青色申告", "免税", "", ""] }),
+    );
+    const blobs: Blob[] = [];
+    const click = vi.fn();
+    const link = { href: "", download: "", click };
+    vi.spyOn(URL, "createObjectURL").mockImplementation((blob) => {
+      blobs.push(blob as Blob);
+      return "blob:backup-test";
+    });
+    vi.stubGlobal("document", { createElement: () => link });
+    window.setTimeout = vi.fn() as unknown as typeof window.setTimeout;
+    const before = new Map(saved);
+    const screen = page("settings");
+    screen.click("記録の控えを保存");
+    expect(click).toHaveBeenCalledOnce();
+    expect(link.download).toBe("seller-records-2026-10-20.json");
+    const backup = JSON.parse(await blobs[0]!.text());
+    expect(Object.keys(backup)).toEqual(["scope", "exportedAt", "intake", "commerce"]);
+    expect(backup.scope).toBe("seller-workspace-backup");
+    expect(backup.intake).toEqual(intake.parseIntake(saved.get(intake.intakeKey) ?? null));
+    expect(backup.commerce).toEqual(commerce.emptyCommerce());
+    expect(saved).toEqual(before);
+    expect(setItem).not.toHaveBeenCalled();
+    vi.restoreAllMocks();
+  });
   it("reads existing products, searches them, and never rewrites intake", () => {
     seedProduct();
     const original = saved.get(intake.intakeKey);

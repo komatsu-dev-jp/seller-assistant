@@ -6,6 +6,8 @@ import local from "./reported-review-flow.module.css";
 import { reviewPath } from "./review-path";
 import { accountingHref, type ReviewPlatform } from "./review-workflow-routes";
 import { validatePhoto } from "./local-review-store";
+import { accountingSections, accountingSettingsView } from "./accounting-settings-view";
+import { sellerHref } from "../seller-workspace/navigation";
 import {
   candidateLabels,
   canMarkMissing,
@@ -82,18 +84,27 @@ function Field({
   onChange,
   type = "text",
   placeholder,
+  describedBy,
+  invalid,
+  required,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   type?: string;
   placeholder?: string;
+  describedBy?: string;
+  invalid?: boolean;
+  required?: boolean;
 }) {
   return (
     <label className={styles.formField}>
       <span>{label}</span>
       <input
         aria-label={label}
+        aria-describedby={describedBy}
+        aria-invalid={invalid || undefined}
+        aria-required={required || undefined}
         type={type}
         value={value}
         placeholder={placeholder}
@@ -118,16 +129,24 @@ function SettingSelect({
   value,
   options,
   onChange,
+  describedBy,
 }: {
   label: string;
   value: string;
   options: readonly string[];
   onChange: (value: string) => void;
+  describedBy?: string;
 }) {
   return (
     <label className={styles.formField}>
       <span>{label}</span>
-      <select aria-label={label} value={value} onChange={(event) => onChange(event.target.value)}>
+      <select
+        aria-label={label}
+        aria-required="true"
+        aria-describedby={describedBy}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      >
         <option value="">選んでください</option>
         {value && !options.includes(value) ? (
           <option value={value}>{value}（以前の入力）</option>
@@ -420,6 +439,22 @@ export function ReportedReviewFlow({
   const [actionError, setActionError] = useState("");
   const [categoryOpen, setCategoryOpen] = useState(false);
   const pending = useRef<ControlsState | null>(null);
+  useEffect(() => {
+    if (screenId !== "44") return;
+    const revealSection = () => {
+      const id = (window.location.hash ?? "").slice(1);
+      if (!accountingSections.some((section) => section.id === id)) return;
+      const detail = document.getElementById?.(id) as HTMLDetailsElement | null;
+      if (detail) {
+        detail.open = true;
+        detail.scrollIntoView({ block: "start" });
+      }
+    };
+    // Wait until the saved state has mounted the form, including on browser back.
+    if (state) revealSection();
+    window.addEventListener("hashchange", revealSection);
+    return () => window.removeEventListener("hashchange", revealSection);
+  }, [screenId, !!state]);
   const load = () => {
     try {
       setState(parseControls(window.sessionStorage.getItem(controlsKey)));
@@ -624,75 +659,95 @@ export function ReportedReviewFlow({
         />
       );
       break;
-    case "44":
+    case "44": {
+      const view = accountingSettingsView(state);
       content = (
         <>
-          <p className={styles.boardInstruction}>
-            会計の設定を選んでください。会計年度は開始日と終了日を指定します。
-          </p>
-          <div className={styles.accountList}>
+          <a className={local.settingsBack} href={sellerHref(platform, "settings")}>
+            ‹ 設定一覧へ戻る
+          </a>
+          <div className={local.accountingIntro}>
+            <strong>入力状況 {view.completed} / 3項目</strong>
+            <p>必要な項目を開いて入力してください。各入力はこのタブ内に一時保存します。</p>
+          </div>
+          <div className={local.accountingGroups}>
             {["申告の設定", "消費税", "会計年度"].map((label, i) => (
-              <details key={label} className={local.settingDetails}>
-                <summary className={styles.settingCard}>
-                  <span className={styles.settingIcon}>▤</span>
-                  <div>
+              <details
+                key={label}
+                id={accountingSections[i]!.id}
+                className={local.accountingGroup}
+                open={i === 0}
+              >
+                <summary>
+                  <span>
                     <strong>{label}</strong>
-                    <small>
-                      {
-                        [
-                          "申告区分や提出方法などの設定を確認してください。",
-                          "税区分などの設定を本人が確認してください。",
-                          "会計年度の開始日と終了日を設定してください。",
-                        ][i]
-                      }
-                    </small>
-                  </div>
-                  <span className={styles.settingStatus}>
-                    {i === 2
-                      ? state.settings[2] && state.settings[3]
-                        ? "入力済み"
-                        : "未設定"
-                      : state.settings[i]
-                        ? "入力済み"
-                        : "未設定"}
+                    <small>{view.groups[i]!.value}</small>
                   </span>
-                  <span className={styles.settingChevron}>›</span>
-                  <span className={styles.settingHelp} aria-hidden="true">
-                    ?
+                  <span className={local.inputStatus}>{view.groups[i]!.status}</span>
+                  <span className={local.disclosureChevron} aria-hidden="true">
+                    ›
                   </span>
                 </summary>
-                {i < 2 ? (
-                  <SettingSelect
-                    label={label}
-                    value={state.settings[i]!}
-                    options={
-                      i === 0 ? ["青色申告", "白色申告", "確認中"] : ["免税", "課税", "確認中"]
-                    }
-                    onChange={(value) =>
-                      update({
-                        ...state,
-                        preflight: [false, false],
-                        settings: state.settings.map((v, j) => (i === j ? value : v)),
-                      })
-                    }
-                  />
-                ) : (
-                  ["開始日", "終了日"].map((name, j) => (
-                    <Field
-                      key={name}
-                      label={name}
-                      type="date"
-                      value={state.settings[j + 2]!}
+                <div className={local.settingsFields}>
+                  <p id={`setting-help-${i}`} className={local.fieldHint}>
+                    <span className={local.requiredLabel}>必須</span>
+                    {i === 2 ? "開始日と終了日を指定します。" : "既存の選択肢から選んでください。"}
+                  </p>
+                  {i < 2 ? (
+                    <SettingSelect
+                      label={label}
+                      value={state.settings[i]!}
+                      describedBy={`setting-help-${i}`}
+                      options={
+                        i === 0 ? ["青色申告", "白色申告", "確認中"] : ["免税", "課税", "確認中"]
+                      }
                       onChange={(value) =>
                         update({
                           ...state,
                           preflight: [false, false],
-                          settings: state.settings.map((v, k) => (k === j + 2 ? value : v)),
+                          settings: state.settings.map((v, j) => (i === j ? value : v)),
                         })
                       }
                     />
-                  ))
-                )}
+                  ) : (
+                    <div className={local.yearFields}>
+                      {["開始日", "終了日"].map((name, j) => (
+                        <div key={name}>
+                          <Field
+                            label={name}
+                            type="date"
+                            value={state.settings[j + 2]!}
+                            required
+                            describedBy={`date-feedback-${j}`}
+                            invalid={!!(j === 0 ? view.startError : view.endError)}
+                            onChange={(value) =>
+                              update({
+                                ...state,
+                                preflight: [false, false],
+                                settings: state.settings.map((v, k) => (k === j + 2 ? value : v)),
+                              })
+                            }
+                          />
+                          <p
+                            id={`date-feedback-${j}`}
+                            className={
+                              j === 0
+                                ? view.startError
+                                  ? local.fieldError
+                                  : local.fieldHint
+                                : view.endError
+                                  ? local.fieldError
+                                  : local.fieldHint
+                            }
+                          >
+                            {(j === 0 ? view.startError : view.endError) ||
+                              `${name}を選択してください。`}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </details>
             ))}
           </div>
@@ -712,6 +767,7 @@ export function ReportedReviewFlow({
         </button>
       );
       break;
+    }
     case "45":
       content = (
         <>
@@ -1075,9 +1131,15 @@ export function ReportedReviewFlow({
     }
   }
   return (
-    <div className={local.flow} data-platform={platform}>
+    <div
+      className={local.flow}
+      data-platform={platform}
+      data-accounting-settings={screenId === "44" || undefined}
+    >
       <p className={local.note}>
-        操作確認版・架空データ。入力はこのタブ内に一時保存します。実商品・個人情報は入力しないでください。外部への自動送信・実業務への反映はありません。
+        {screenId === "44"
+          ? "操作確認用・このタブ内に一時保存。実商品・個人情報の入力、実際の申告はできません。"
+          : "操作確認版・架空データ。入力はこのタブ内に一時保存します。実商品・個人情報は入力しないでください。外部への自動送信・実業務への反映はありません。"}
       </p>
       <section className={styles.contentStack}>{content}</section>
       {error ? (

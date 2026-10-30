@@ -10,6 +10,15 @@ import {
 import { intakeWriteLock } from "../approved-mobile/box-intake-write-lease";
 import { reviewPath } from "../approved-mobile/review-path";
 import {
+  controlsKey,
+  parseControls,
+  type ControlsState,
+} from "../approved-mobile/review-controls-state";
+import {
+  accountingSections,
+  accountingSettingsView,
+} from "../approved-mobile/accounting-settings-view";
+import {
   accountingHref,
   workflowHref,
   type ReviewPlatform,
@@ -178,6 +187,27 @@ export function SellerWorkspace({
   const [popup, setPopup] = useState<Popup | null>(null);
   const [selectedProduct, setSelectedProduct] = useState("");
   const [tools, setTools] = useState(false);
+  const [accounting, setAccounting] = useState<ControlsState | null>(null);
+  const [accountingError, setAccountingError] = useState(false);
+  useEffect(() => {
+    if (tab !== "settings") return;
+    const readSettings = () => {
+      try {
+        setAccounting(parseControls(window.sessionStorage.getItem(controlsKey)));
+        setAccountingError(false);
+      } catch {
+        setAccounting(null);
+        setAccountingError(true);
+      }
+    };
+    readSettings();
+    window.addEventListener("focus", readSettings);
+    window.addEventListener("pageshow", readSettings);
+    return () => {
+      window.removeEventListener("focus", readSettings);
+      window.removeEventListener("pageshow", readSettings);
+    };
+  }, [tab]);
   const refresh = () => {
     try {
       const nextIntakeRaw = window.localStorage.getItem(intakeKey);
@@ -409,11 +439,14 @@ export function SellerWorkspace({
   ) : null;
   const activeProduct = popup && "productId" in popup ? item(popup.productId ?? "") : undefined;
   const activeSale = activeProduct ? saleFor(activeProduct.id) : undefined;
+  const settingsView = accounting ? accountingSettingsView(accounting) : null;
+  const remainingSettings = settingsView?.groups.filter((group) => !group.ready) ?? [];
 
   return (
     <main
       className={ui.workspace}
       data-platform={platform}
+      data-active-tab={tab}
       data-implementation-scope="seller-workspace"
       onClickCapture={(event) => {
         const link = event.target instanceof Element ? event.target.closest("a[href]") : null;
@@ -958,66 +991,179 @@ export function SellerWorkspace({
             ) : null}
             {tab === "settings" ? (
               <>
-                <section className={ui.card}>
-                  <h2>保存と共有</h2>
+                <section className={ui.settingsProgress} aria-label="会計設定の入力状況">
+                  <strong>初期設定の進捗</strong>
+                  <span>
+                    {accountingError
+                      ? "確認できません"
+                      : settingsView
+                        ? `${settingsView.completed} / ${accountingSections.length} 完了`
+                        : "確認中"}
+                  </span>
+                  {!accountingError && settingsView ? (
+                    <progress
+                      className={ui.settingsProgressBar}
+                      aria-label="会計設定の入力済み項目"
+                      aria-valuetext={`${accountingSections.length}項目中${settingsView.completed}項目入力済み`}
+                      value={settingsView.completed}
+                      max={accountingSections.length}
+                    />
+                  ) : null}
                   <p>
-                    箱・商品・売上・発送は、このブラウザー内に保存します。別のスマホ・PCとの自動共有は未対応です。同じ端末でも、ブラウザーを変えると記録は共有されません。
+                    {accountingError
+                      ? "保存内容を読み取れません。設定画面で確認してください。上書きはしていません。"
+                      : !settingsView
+                        ? "保存されている設定を確認しています。"
+                        : remainingSettings.length
+                          ? `${remainingSettings.map((group) => group.label).join("・")}の設定が残っています。`
+                          : "すべての項目が入力されています。"}
                   </p>
-                  <p>有料API・外部への自動送信・自動出品は使用しません。</p>
-                  <button
-                    className={ui.secondary}
-                    onClick={() => {
-                      const blob = new Blob(
-                        [
-                          JSON.stringify(
-                            {
-                              scope: "seller-workspace-backup",
-                              exportedAt: new Date().toISOString(),
-                              intake: sample ? null : intake,
-                              commerce: state,
-                            },
-                            null,
-                            2,
-                          ),
-                        ],
-                        { type: "application/json" },
+                </section>
+                <section
+                  className={ui.settingsCategory}
+                  aria-labelledby="accounting-settings-title"
+                >
+                  <h2 id="accounting-settings-title">
+                    <Glyph name="reports" />
+                    会計・税務
+                  </h2>
+                  <div className={ui.settingsList}>
+                    {accountingSections.map((section, index) => {
+                      const group = settingsView?.groups[index];
+                      return (
+                        <a
+                          key={section.id}
+                          className={ui.settingsRow}
+                          href={`${accountingHref(platform, "44")}#${section.id}`}
+                        >
+                          <span>{section.label}</span>
+                          <span className={ui.settingsValue} data-state={group?.status}>
+                            {accountingError ? "読取不可" : (group?.value ?? "確認中")}
+                            {group && group.value !== "未設定" ? (
+                              <small>{group.status}</small>
+                            ) : null}
+                          </span>
+                          <Glyph name="arrow" />
+                        </a>
                       );
-                      const url = URL.createObjectURL(blob);
-                      const link = document.createElement("a");
-                      link.href = url;
-                      link.download = `seller-records-${today()}${sample ? "-sample" : ""}.json`;
-                      link.click();
-                      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-                    }}
-                  >
-                    記録の控えを保存
-                  </button>
-                  <p className={ui.caption}>
-                    この画面の箱・売上・発送・経費・保管場所の控えです。写真・別の見本・会計設定は含みません。控えの再取込は未対応です。
-                  </p>
+                    })}
+                  </div>
                 </section>
-                <section className={ui.card}>
-                  <h2>設定・これまでの作業</h2>
-                  <a className={ui.settingLink} href={accountingHref(platform, "44")}>
-                    会計の基本設定（操作確認）
-                    <Glyph name="arrow" />
-                  </a>
-                  <a className={ui.settingLink} href={workflowHref(platform, "work")}>
-                    検品・撮影・採寸の作業一覧
-                    <Glyph name="arrow" />
-                  </a>
-                  <a className={ui.settingLink} href={workflowHref(platform, "preparation")}>
-                    写真・説明文の操作見本
-                    <Glyph name="arrow" />
-                  </a>
+                <section className={ui.settingsCategory} aria-labelledby="data-settings-title">
+                  <h2 id="data-settings-title">
+                    <Glyph name="box" />
+                    データ管理
+                  </h2>
+                  <div className={ui.settingsList}>
+                    <button
+                      type="button"
+                      aria-label="記録の控えを保存"
+                      className={ui.settingsRow}
+                      onClick={() => {
+                        const blob = new Blob(
+                          [
+                            JSON.stringify(
+                              {
+                                scope: "seller-workspace-backup",
+                                exportedAt: new Date().toISOString(),
+                                intake: sample ? null : intake,
+                                commerce: state,
+                              },
+                              null,
+                              2,
+                            ),
+                          ],
+                          { type: "application/json" },
+                        );
+                        const url = URL.createObjectURL(blob);
+                        const link = document.createElement("a");
+                        link.href = url;
+                        link.download = `seller-records-${today()}${sample ? "-sample" : ""}.json`;
+                        link.click();
+                        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+                      }}
+                    >
+                      <span>
+                        バックアップ<small>記録の控えを保存</small>
+                      </span>
+                      <span className={ui.settingsValue}>JSON</span>
+                      <Glyph name="arrow" />
+                    </button>
+                    <details className={ui.settingsDisclosure}>
+                      <summary data-has-value>
+                        <span>データの保存・共有</span>
+                        <span className={ui.settingsValue}>共有なし</span>
+                        <Glyph name="arrow" />
+                      </summary>
+                      <div>
+                        <p>
+                          箱・商品・売上・発送は、このブラウザー内に保存します。別のスマホ・PCや別のブラウザーとの自動共有は未対応です。
+                        </p>
+                        <p>
+                          控えは箱・売上・発送・経費・保管場所が対象です。写真・別の見本・会計設定は含みません。控えの再取込は未対応です。
+                        </p>
+                        <p>有料API・外部への自動送信・自動出品は使用しません。</p>
+                      </div>
+                    </details>
+                  </div>
                 </section>
-                <section className={ui.card}>
-                  <h2>利益の見方</h2>
-                  <p>
-                    商品利益＝売上 − 仕入れ − 手数料 − 送料 −
-                    梱包費。月の利益は、さらにその月の経費を差し引きます。
-                  </p>
-                  <p>未売却の商品は「見込み」と表示し、月の売上・利益には入れません。</p>
+                <section className={ui.settingsCategory} aria-labelledby="guide-settings-title">
+                  <h2 id="guide-settings-title">
+                    <Glyph name="settings" />
+                    アプリ・ヘルプ
+                  </h2>
+                  <div className={ui.settingsList}>
+                    <details className={ui.settingsDisclosure}>
+                      <summary>
+                        使い方・操作見本
+                        <Glyph name="arrow" />
+                      </summary>
+                      <div>
+                        <a
+                          className={ui.settingsRow}
+                          data-single-label
+                          href={workflowHref(platform, "work")}
+                        >
+                          <span>検品・撮影・採寸の作業一覧</span>
+                          <Glyph name="arrow" />
+                        </a>
+                        <a
+                          className={ui.settingsRow}
+                          data-single-label
+                          href={workflowHref(platform, "preparation")}
+                        >
+                          <span>写真・説明文の操作見本</span>
+                          <Glyph name="arrow" />
+                        </a>
+                      </div>
+                    </details>
+                    <details className={ui.settingsDisclosure}>
+                      <summary>
+                        利益の見方
+                        <Glyph name="arrow" />
+                      </summary>
+                      <div>
+                        <p>
+                          商品利益＝売上 − 仕入れ − 手数料 − 送料 −
+                          梱包費。月の利益は、さらにその月の経費を差し引きます。
+                        </p>
+                        <p>未売却の商品は「見込み」と表示し、月の売上・利益には入れません。</p>
+                      </div>
+                    </details>
+                    <details className={ui.settingsDisclosure}>
+                      <summary>
+                        アプリについて
+                        <Glyph name="arrow" />
+                      </summary>
+                      <div>
+                        <p>操作確認版です。実商品・個人情報はまだ入力しないでください。</p>
+                        <p>
+                          会計設定はこのタブ内の仮入力です。進捗は入力状況のみで、税務上の正しさを示すものではありません。
+                        </p>
+                        <p>端末間共有・外部への自動送信・自動出品には対応していません。</p>
+                      </div>
+                    </details>
+                  </div>
                 </section>
               </>
             ) : null}

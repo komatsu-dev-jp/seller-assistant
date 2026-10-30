@@ -233,3 +233,160 @@
   border-radius: 14px;
   margin-block: 16px;
 }
+
+/* Isolated to basic accounting settings (screen 44 / shared PC equivalent). */
+.flow[data-accounting-settings] {
+  padding: 12px 16px 28px;
+  background: #f6f7fb;
+}
+.flow[data-accounting-settings] > section {
+  min-height: 0;
+  display: grid;
+  gap: 16px;
+}
+.flow[data-accounting-settings] .note {
+  margin: 0 0 10px;
+}
+.settingsBack {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  color: #283ce5;
+  font-size: 14px;
+  text-decoration: none;
+}
+.accountingIntro p,
+.accountingIntro strong {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.accountingIntro p {
+  margin-top: 4px;
+  color: #626c80;
+  font-size: 12px;
+}
+.accountingGroups {
+  border: 1px solid #e1e5ee;
+  border-radius: 14px;
+  background: #fff;
+  min-width: 0;
+}
+.accountingGroup {
+  min-width: 0;
+  scroll-margin-top: 16px;
+}
+.accountingGroup + .accountingGroup {
+  border-top: 1px solid #e1e5ee;
+}
+.accountingGroup > summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 12px;
+  align-items: center;
+  gap: 10px;
+  min-height: 64px;
+  padding: 14px;
+  list-style: none;
+  overflow-wrap: anywhere;
+}
+.accountingGroup > summary::-webkit-details-marker {
+  display: none;
+}
+.accountingGroup strong,
+.accountingGroup small {
+  display: block;
+  line-height: 1.5;
+}
+.accountingGroup strong {
+  font-size: 16px;
+}
+.accountingGroup small {
+  color: #626c80;
+  font-size: 12px;
+  margin-top: 4px;
+}
+.inputStatus {
+  color: #626c80;
+  font-size: 12px;
+  font-weight: 650;
+}
+.disclosureChevron {
+  color: #626c80;
+  font-size: 22px;
+}
+.accountingGroup[open] > summary .disclosureChevron {
+  transform: rotate(90deg);
+}
+.settingsFields {
+  padding: 0 14px 16px;
+}
+.settingsFields label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  font-size: 14px;
+}
+.settingsFields select,
+.settingsFields input {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  height: 46px;
+  border: 1px solid #cdd4e0;
+  border-radius: 10px;
+  background: #fff;
+  color: #17233b;
+  padding: 8px 10px;
+  box-sizing: border-box;
+}
+.settingsFields [aria-invalid="true"] {
+  border-color: #b42318;
+}
+.settingsFields input[type="date"] {
+  -webkit-appearance: none;
+  appearance: none;
+}
+.yearFields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+}
+.fieldHint,
+.fieldError {
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 6px 0 8px;
+  color: #626c80;
+}
+.fieldError {
+  color: #b42318;
+}
+.requiredLabel {
+  font-size: 11px;
+  padding: 2px 5px;
+  border: 1px solid #d7ddec;
+  border-radius: 4px;
+  color: #475467;
+  margin-right: 8px;
+}
+.flow[data-accounting-settings][data-platform] > .actions[data-shared-actions] {
+  position: static;
+  inset: auto;
+  transform: none;
+  width: 100%;
+  max-width: none;
+  padding: 0;
+  box-shadow: none;
+  background: transparent;
+  margin-top: 20px;
+}
+.flow[data-accounting-settings] :focus-visible {
+  outline: 3px solid #6690ff;
+  outline-offset: 3px;
+}
+@media (min-width: 700px) {
+  .yearFields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
